@@ -541,13 +541,24 @@ const pressed = (c) => !!Input.down[c];
 const GAME_VERSION = '1.0.2';
 
 /* ================================================================ 01 DONNÉES ==
-   Carte : 1 caractère = 1 mètre. Modifiez-la librement en gardant des lignes
-   de même longueur.
+   Cartes : une carte est un objet de données (format « zsmap », version 1),
+   enregistré tel quel en JSON par l'éditeur. Bunker 7 ci-dessous est la carte
+   livrée avec le jeu ; d'autres cartes peuvent être chargées par loadMap().
+
+   grid : 1 caractère = 1 mètre ; toutes les lignes ont la même longueur.
      #  mur            .  sol intérieur      W  fenêtre barricadée
-     1-4 porte (id)    x  caisse             P  pilier
+     1-9 porte (id)    x  caisse             P  pilier
      o  cour extérieure où les zombies sortent de terre      (espace) dehors
+   Coordonnées des objets = [colonne, ligne] de grid ; positions libres en mètres
+   [x, y, z] (x = colonne, z = ligne, y = hauteur).
+   materials : textures (identifiants « proc:… » générées, « ph:… » Poly Haven,
+   « user:… » importées) par défaut, par zone, par face de mur, par case.
+   props : objets décoratifs posés librement.
    ============================================================================ */
-const MAP = [
+const BUNKER7 = {
+  format: 'zsmap', version: 1, id: 'bunker7', name: 'Bunker 7',
+  description: 'Le bunker d\'origine : quatre salles en boucle autour de la salle d\'arrivée.',
+  grid: [
   '                ooo     ooo     ooo                 ',
   '                ooo     ooo     ooo                 ',
   '                ooo     ooo     ooo                 ',
@@ -579,10 +590,7 @@ const MAP = [
   '                   ooo  ooo ooo        ooo          ',
   '                   ooo  ooo ooo        ooo          ',
   '                   ooo  ooo ooo        ooo          ',
-];
-
-/* Tout ce qui est posé sur la carte. Coordonnées = [colonne, ligne] de MAP. */
-const LAYOUT = {
+  ],
   zones: [
     { key: 'A', name: "Salle d'arrivée", seed: [24, 20], tint: [1.0, 0.96, 0.9] },
     { key: 'B', name: 'Entrepôt', seed: [40, 20], tint: [1.05, 0.9, 0.74] },
@@ -643,7 +651,14 @@ const LAYOUT = {
     { text: 'INFIRMERIE', pos: [14, 3.05, 11.995], n: [0, -1] },
   ],
   spawn: { pos: [24.5, 22.5], yaw: 0 },
+  // caméra du menu principal : balancement autour de center, regard vers target
+  menuCamera: { center: [24.6, 1.72, 21.6], sway: [3.4, 0.08, 1.5], target: [24.9, 1.25, 13.4] },
+  materials: {},
+  props: [],
 };
+
+/* Carte en cours (remplacée par loadMap). */
+let MAPDEF = BUNKER7;
 
 /* --------------------------------------------------------------- Armes ---
    dmg = dégâts par balle (zombie manche 1 = 150 PV) ; head = multiplicateur tête
@@ -1836,45 +1851,70 @@ function buildTextures() {
    et navigation des zombies (champ de distances recalculé autour du joueur).
    ============================================================================ */
 const T = { VOID: 0, FLOOR: 1, WALL: 2, WINDOW: 3, DOOR: 4, CRATE: 5, PILLAR: 6, YARD: 7, PROP: 8 };
-const GW = MAP[0].length, GH = MAP.length;
 const WALL_H = 3.5, WIN_LO = 0.9, WIN_HI = 2.3, DOOR_H = 2.6;
-const grid = new Uint8Array(GW * GH);
-const solidTop = new Float32Array(GW * GH);
-const doorOf = new Array(GW * GH).fill(null);
-const doorOpen = new Uint8Array(GW * GH);
-const zoneOf = new Int8Array(GW * GH).fill(-1);
-const interior = new Uint8Array(GW * GH);
+/* Grilles de la carte en cours : réallouées à chaque chargement (allocGrid). */
+let GW = 0, GH = 0;
+let grid, solidTop, doorOf, doorOpen, zoneOf, interior;
 const idx = (x, z) => z * GW + x;
 const inb = (x, z) => x >= 0 && z >= 0 && x < GW && z < GH;
-const World = { windows: [], doors: {}, lights: [], flicker: [], decor: null };
+const World = { windows: [], doors: {}, lights: [], issues: [] };
+/* Zones de la carte en cours : celles de la carte (nommées) puis les pièces
+   détectées automatiquement. */
+let ZONES = [];
+
+function allocGrid(w, h) {
+  GW = w; GH = h;
+  const n = w * h;
+  grid = new Uint8Array(n);
+  solidTop = new Float32Array(n);
+  doorOf = new Array(n).fill(null);
+  doorOpen = new Uint8Array(n);
+  zoneOf = new Int8Array(n).fill(-1);
+  interior = new Uint8Array(n);
+  flow = new Float32Array(n);
+  _heapI = new Int32Array(n * 8);
+  _heapD = new Float32Array(n * 8);
+}
+
+const CELL_OF_CHAR = { '#': T.WALL, '.': T.FLOOR, W: T.WINDOW, x: T.CRATE, P: T.PILLAR, o: T.YARD };
+const ROOM_CELL = (t) => t === T.FLOOR || t === T.CRATE || t === T.PILLAR;
 
 function parseMap() {
+  const rows = MAPDEF.grid;
   for (let z = 0; z < GH; z++) {
-    if (MAP[z].length !== GW) throw new Error(`MAP : la ligne ${z} n'a pas ${GW} caractères`);
     for (let x = 0; x < GW; x++) {
-      const ch = MAP[z][x], i = idx(x, z);
-      let t = T.VOID;
-      if (ch === '#') t = T.WALL;
-      else if (ch === '.') t = T.FLOOR;
-      else if (ch === 'W') t = T.WINDOW;
-      else if (ch >= '1' && ch <= '9') { t = T.DOOR; doorOf[i] = ch; }
-      else if (ch === 'x') { t = T.CRATE; solidTop[i] = 0.95; }
-      else if (ch === 'P') t = T.PILLAR;
-      else if (ch === 'o') t = T.YARD;
+      const ch = rows[z][x] || ' ', i = idx(x, z);
+      let t = CELL_OF_CHAR[ch] || T.VOID;
+      if (ch >= '1' && ch <= '9') { t = T.DOOR; doorOf[i] = ch; }
+      if (t === T.CRATE) solidTop[i] = 0.95;
       grid[i] = t;
     }
   }
-  LAYOUT.zones.forEach((zone, zi) => {
-    const stack = [zone.seed.slice()];
+  // zones nommées (graine) puis zones automatiques pour les pièces restantes
+  const fill = (sx, sz, zi) => {
+    const stack = [[sx, sz]];
+    let n = 0;
     while (stack.length) {
       const [x, z] = stack.pop();
       if (!inb(x, z)) continue;
-      const i = idx(x, z), t = grid[i];
-      if (zoneOf[i] !== -1 || (t !== T.FLOOR && t !== T.CRATE && t !== T.PILLAR)) continue;
-      zoneOf[i] = zi;
+      const i = idx(x, z);
+      if (zoneOf[i] !== -1 || !ROOM_CELL(grid[i])) continue;
+      zoneOf[i] = zi; n++;
       stack.push([x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]);
     }
+    return n;
+  };
+  ZONES = MAPDEF.zones.map((zone) => ({ ...zone }));
+  ZONES.forEach((zone, zi) => {
+    if (!fill(zone.seed[0], zone.seed[1], zi)) World.issues.push({ level: 'warn', text: `La zone « ${zone.name} » n'est posée sur aucun sol.`, cell: zone.seed });
   });
+  for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+    const i = idx(x, z);
+    if (zoneOf[i] !== -1 || !ROOM_CELL(grid[i]) || ZONES.length >= 120) continue;
+    const zi = ZONES.length;
+    ZONES.push({ name: `Pièce ${zi + 1}`, seed: [x, z], tint: [0.95, 0.95, 0.95], auto: true });
+    fill(x, z, zi);
+  }
   for (let i = 0; i < grid.length; i++) interior[i] = zoneOf[i] >= 0 || grid[i] === T.DOOR ? 1 : 0;
   // portes : cellules et zones reliées
   for (let i = 0; i < grid.length; i++) {
@@ -1887,16 +1927,28 @@ function parseMap() {
       if (inb(x + dx, z + dz) && zoneOf[idx(x + dx, z + dz)] >= 0) d.zones.add(zoneOf[idx(x + dx, z + dz)]);
     }
   }
-  // fenêtres : orientation vers l'extérieur
+  // fenêtres : orientation vers l'extérieur ; une fenêtre sans pièce d'un côté
+  // et sans dehors de l'autre devient un mur (signalé à l'éditeur)
   for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
     if (grid[idx(x, z)] !== T.WINDOW) continue;
+    let ok = false;
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const zi = inb(x - dx, z - dz) ? zoneOf[idx(x - dx, z - dz)] : -1;
       if (zi >= 0 && inb(x + dx, z + dz) && !interior[idx(x + dx, z + dz)]) {
         World.windows.push({ x, z, nx: dx, nz: dz, zone: zi });
+        ok = true;
         break;
       }
     }
+    if (!ok) {
+      grid[idx(x, z)] = T.WALL;
+      World.issues.push({ level: 'warn', text: 'Fenêtre sans pièce d\'un côté et sans extérieur de l\'autre : traitée comme un mur.', cell: [x, z] });
+    }
+  }
+  // portes : une porte doit relier au moins une pièce
+  for (const id in World.doors) {
+    const d = World.doors[id];
+    if (!d.zones.size) World.issues.push({ level: 'warn', text: `La porte ${id} ne touche aucune pièce.`, cell: [d.cells[0] % GW, (d.cells[0] / GW) | 0] });
   }
 }
 
@@ -1999,8 +2051,8 @@ function raycast(ox, oy, oz, dx, dy, dz, maxT) {
 }
 
 /* ----------------------------------- Champ de flux (navigation zombies) -- */
-const flow = new Float32Array(GW * GH);
-const _heapI = new Int32Array(GW * GH * 8), _heapD = new Float32Array(GW * GH * 8);
+let flow = null;
+let _heapI = null, _heapD = null;
 const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 function computeFlow(px, pz) {
   flow.fill(1e9);
@@ -2120,7 +2172,7 @@ function mtx(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
 
 function zoneTint(i) {
   const z = zoneOf[i];
-  return z >= 0 ? LAYOUT.zones[z].tint : [0.92, 0.92, 0.92];
+  return z >= 0 ? ZONES[z].tint : [0.92, 0.92, 0.92];
 }
 const OUTSIDE_TINT = [0.5, 0.53, 0.6];
 
@@ -2183,7 +2235,7 @@ function buildLevelGeometry(mats) {
       } else if (t === T.WINDOW) {
         const w = World.windows.find((ww) => ww.x === x && ww.z === z);
         const inside = dirIndex(-w.nx, -w.nz), outside = dirIndex(w.nx, w.nz);
-        const tin = LAYOUT.zones[w.zone].tint;
+        const tin = ZONES[w.zone].tint;
         vface(x, z, inside, 0, WIN_LO, tin); vface(x, z, inside, WIN_HI, WALL_H, tin);
         vface(x, z, outside, 0, WIN_LO, OUTSIDE_TINT); vface(x, z, outside, WIN_HI, WALL_H, OUTSIDE_TINT);
         hface(W, x, z, WIN_LO, true, ao(tin, 0.8), 1);
@@ -2251,7 +2303,7 @@ function buildDecor(mats) {
     }
   }
   group.add(new THREE.Mesh(mergeGeometries(wood), mats.frame));
-  LAYOUT.zones.forEach((zone, zi) => {
+  ZONES.forEach((zone, zi) => {
     let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
     for (let i = 0; i < grid.length; i++) if (zoneOf[i] === zi) {
       const x = i % GW, z = (i / GW) | 0;
@@ -2291,7 +2343,9 @@ function buildDecor(mats) {
   }
   if (trees.length) group.add(new THREE.Mesh(mergeGeometries(trees), mats.bark));
   // Sol extérieur
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(220, 220), mats.ground);
+  const gs = Math.max(220, Math.ceil((Math.max(GW, GH) + 80) / 4) * 4);
+  TEX.ground.repeat.set(gs / 4, gs / 4);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(gs, gs), mats.ground);
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(GW / 2, -0.02, GH / 2);
   group.add(ground);
@@ -2305,7 +2359,7 @@ function buildLights() {
   const cableGeo = new THREE.CylinderGeometry(0.012, 0.012, 1, 4);
   const shadeMat = new THREE.MeshStandardMaterial({ color: 0x2c3a30, roughness: 0.6, metalness: 0.4, side: THREE.DoubleSide });
   const cableMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-  for (const L of LAYOUT.lights) {
+  for (const L of MAPDEF.lights) {
     const light = new THREE.PointLight(L.color, L.intensity, L.range || 12, 2);
     light.position.set(L.pos[0], L.pos[1] - 0.25, L.pos[2]);
     group.add(light);
@@ -2679,6 +2733,7 @@ function chalkTexture(id) {
     const b = new GunBuilder();
     GUN_MODELS[id](b, gunMats(false), false);
     CHALK[id] = makeChalkTexture(b.prims, WEAPONS[id].name);
+    SHARED.add(CHALK[id]);
   }
   return CHALK[id];
 }
@@ -3288,15 +3343,15 @@ const PLAYER_EYE = 1.62;
 const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3();
 
 function resetPlayer() {
-  player.pos.set(LAYOUT.spawn.pos[0], 0, LAYOUT.spawn.pos[1]);
+  player.pos.set(MAPDEF.spawn.pos[0], 0, MAPDEF.spawn.pos[1]);
   player.vel.set(0, 0, 0);
   player.y = 0; player.vy = 0; player.grounded = true;
-  player.yaw = LAYOUT.spawn.yaw; player.pitch = 0; player.recoil = 0; player.recoilYaw = 0; player.punch = 0;
+  player.yaw = MAPDEF.spawn.yaw; player.pitch = 0; player.recoil = 0; player.recoilYaw = 0; player.punch = 0;
   player.hp = RULES.playerHp; player.maxHp = RULES.playerHp; player.lastHit = -99;
   player.stamina = 1; player.sprinting = false; player.crouch = 0; player.ads = 0;
   player.perks.clear(); player.souffleUses = 0;
   player.down = false; player.downT = 0;
-  player.zone = LAYOUT.startZone;
+  player.zone = MAPDEF.startZone;
 }
 
 function playerDamage(amount, self = false) {
@@ -3434,7 +3489,7 @@ function updatePlayer(dt) {
     if (p.stepAcc > stride) { p.stepAcc = 0; Sound.step(p.sprinting); }
   }
   const z = zoneAt(p.pos.x, p.pos.z);
-  if (z >= 0 && z !== p.zone) { p.zone = z; HUD.zone(LAYOUT.zones[z].name); }
+  if (z >= 0 && z !== p.zone) { p.zone = z; HUD.zone(ZONES[z].name); }
   updateCamera(dt);
 }
 
@@ -4381,13 +4436,15 @@ function trySpend(cost) {
 function buildFeatures() {
   const group = new THREE.Group();
   Features.group = group;
+  Features.interactables = []; Features.perkMachines = [];
+  Features.box = null; Features.power = null; Features.amp = null;
   buildWindows(group);
   buildDoors(group);
   buildWallbuys(group);
   buildPerks(group);
-  buildBox(group);
-  buildPowerSwitchFeature(group);
-  buildAmpFeature(group);
+  if (MAPDEF.boxes && MAPDEF.boxes.length) buildBox(group);
+  if (MAPDEF.power) buildPowerSwitchFeature(group);
+  if (MAPDEF.amp) buildAmpFeature(group);
   buildSigns(group);
   return group;
 }
@@ -4476,9 +4533,20 @@ function repairAllWindows() {
 }
 
 /* ------------------------------------------------------------ Portes --- */
+const DOOR_TYPES = {
+  door: { label: 'Porte en bois', verb: 'ouvrir la porte' },
+  debris: { label: 'Débris', verb: 'dégager les débris' },
+  steel: { label: 'Porte blindée', verb: 'ouvrir la porte blindée' },
+};
+function doorDef(id) {
+  const def = (MAPDEF.doors && MAPDEF.doors[id]) || {};
+  const type = DOOR_TYPES[def.type] ? def.type : 'door';
+  const cost = Number.isFinite(def.cost) ? Math.max(0, Math.round(def.cost)) : 1000;
+  return { cost, type, verb: def.verb || DOOR_TYPES[type].verb };
+}
 function buildDoors(group) {
   for (const id in World.doors) {
-    const d = World.doors[id], def = LAYOUT.doors[id];
+    const d = World.doors[id], def = doorDef(id);
     Object.assign(d, { cost: def.cost, type: def.type, verb: def.verb, pieces: [], anim: -1 });
     const xs = d.cells.map((i) => i % GW), zs = d.cells.map((i) => (i / GW) | 0);
     const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1, z0 = Math.min(...zs), z1 = Math.max(...zs) + 1;
@@ -4557,7 +4625,7 @@ function updateDoors(dt) {
 
 /* ----------------------------------------------------- Achats muraux --- */
 function buildWallbuys(group) {
-  for (const wb of LAYOUT.wallbuys) {
+  for (const wb of MAPDEF.wallbuys) {
     const def = WEAPONS[wb.w];
     const [cx, cz] = wb.cell, [nx, nz] = wb.n;
     const fx = cx + 0.5 + nx * 0.506, fz = cz + 0.5 + nz * 0.506;
@@ -4596,7 +4664,7 @@ function lightMachine(m, on) {
   m.glow.material.opacity = on ? 0.5 : 0;
 }
 function buildPerks(group) {
-  for (const pm of LAYOUT.perks) {
+  for (const pm of MAPDEF.perks) {
     const built = buildPerkMachine(pm.p);
     const [cx, cz] = pm.cell, [fx, fz] = pm.face;
     built.group.position.set(cx + 0.5 - fx * 0.1, 0, cz + 0.5 - fz * 0.1);
@@ -4651,10 +4719,10 @@ function updatePerkMachines(dt) {
 function buildBox(group) {
   const model = buildBoxModel();
   const box = Features.box = Object.assign(model, {
-    locs: [], cur: LAYOUT.boxStart, state: 'idle', t: 0, uses: 0, offer: null, final: null, cycleT: 0,
+    locs: [], cur: MAPDEF.boxStart, state: 'idle', t: 0, uses: 0, offer: null, final: null, cycleT: 0,
     beam: buildBeam(), holder: new THREE.Group(), root: new THREE.Group(), displayModels: {}, display: null, skull: null,
   });
-  for (const b of LAYOUT.boxes) {
+  for (const b of MAPDEF.boxes) {
     box.locs.push({ cells: b.cells, face: b.face, x: (b.cells[0][0] + b.cells[1][0]) / 2 + 0.5, z: (b.cells[0][1] + b.cells[1][1]) / 2 + 0.5 });
   }
   box.holder.position.y = 0.8;
@@ -4687,6 +4755,8 @@ function buildBox(group) {
 }
 function placeBox(i) {
   const box = Features.box;
+  if (!box) return;
+  i = clamp(Math.round(i) || 0, 0, box.locs.length - 1);
   const prev = box.locs[box.cur];
   if (prev) for (const [x, z] of prev.cells) clearProp(x, z);
   box.cur = i;
@@ -4703,6 +4773,7 @@ function placeBox(i) {
 }
 function boxShow(id) {
   const box = Features.box;
+  if (!box) return;
   if (box.display) box.display.visible = false;
   box.display = null;
   if (!id) return;
@@ -4736,6 +4807,7 @@ function startBoxRoll() {
 }
 function updateBox(dt) {
   const box = Features.box;
+  if (!box) return;
   box.t += dt;
   box.beam.material.opacity = 0.2 + Math.sin(G.time * 2.2) * 0.06;
   const lidOpen = box.state === 'rolling' || box.state === 'offer' || box.state === 'skull';
@@ -4811,7 +4883,7 @@ function updateBox(dt) {
 /* ------------------------------------------------- Courant électrique --- */
 function buildPowerSwitchFeature(group) {
   const ps = buildPowerSwitch();
-  const [cx, cz] = LAYOUT.power.cell, [nx, nz] = LAYOUT.power.n;
+  const [cx, cz] = MAPDEF.power.cell, [nx, nz] = MAPDEF.power.n;
   ps.group.position.set(cx + 0.5 + nx * 0.5 + nx * 0.04, 0, cz + 0.5 + nz * 0.5 + nz * 0.04);
   ps.group.rotation.y = Math.atan2(nx, nz);
   group.add(ps.group);
@@ -4822,24 +4894,39 @@ function buildPowerSwitchFeature(group) {
     use() { if (!G.power) activatePower(); },
   });
 }
+function lightAmp(on) {
+  const a = Features.amp;
+  if (!a) return;
+  setLin(a.tubeMat.color, on ? 0x8a3ad0 : 0x5a2a7a);
+  a.labelMat.emissiveIntensity = on ? 0.9 : 0.05;
+  a.glow.material.opacity = on ? 0.45 : 0;
+}
 function activatePower() {
   G.power = true;
-  Features.power.anim = 0;
-  setLin(Features.power.lampMat.color, 0x40ff60);
+  if (Features.power) {
+    Features.power.anim = 0;
+    setLin(Features.power.lampMat.color, 0x40ff60);
+  }
   Sound.powerOn();
   setPoweredLights();
   Features.perkMachines.forEach((m, i) => {
     if (!PERKS[m.id].power || !m.active) return;
     schedule(0.7 + i * 0.4, () => { lightMachine(m, true); Sound.perkJingle(m.id, { x: m.group.position.x, z: m.group.position.z }); });
   });
-  const a = Features.amp;
-  schedule(1.2, () => { setLin(a.tubeMat.color, 0x8a3ad0); a.labelMat.emissiveIntensity = 0.9; a.glow.material.opacity = 0.45; });
+  schedule(1.2, () => lightAmp(true));
   HUD.banner('Courant rétabli', 'Atouts et Amplificateur disponibles', 'power');
   Sound.say('Courant rétabli');
 }
+/* Carte sans interrupteur : le courant est là dès le départ, sans annonce. */
+function powerOnSilently() {
+  G.power = true;
+  setPoweredLights();
+  for (const m of Features.perkMachines) if (m.active) lightMachine(m, true);
+  lightAmp(true);
+}
 function updatePowerSwitch(dt) {
   const p = Features.power;
-  if (p.anim < 0) return;
+  if (!p || p.anim < 0) return;
   p.anim += dt;
   p.pivot.rotation.x = lerp(0.5, -2.3, smooth(clamp(p.anim / 0.45, 0, 1)));
 }
@@ -4847,7 +4934,7 @@ function updatePowerSwitch(dt) {
 /* --------------------------------------------------- Amplificateur ---- */
 function buildAmpFeature(group) {
   const a = buildAmp();
-  const L = LAYOUT.amp;
+  const L = MAPDEF.amp;
   const x = (L.cells[0][0] + L.cells[1][0]) / 2 + 0.5, z = (L.cells[0][1] + L.cells[1][1]) / 2 + 0.5;
   a.group.position.set(x, 0, z);
   a.group.rotation.y = Math.atan2(L.face[0], L.face[1]);
@@ -4887,6 +4974,7 @@ function buildAmpFeature(group) {
 }
 function ampShow(id, up) {
   const amp = Features.amp;
+  if (!amp) return;
   if (amp.display) amp.display.visible = false;
   amp.display = null;
   if (!id) return;
@@ -4908,6 +4996,7 @@ function ampShow(id, up) {
 }
 function updateAmp(dt) {
   const amp = Features.amp;
+  if (!amp) return;
   amp.t += dt;
   const spin = amp.state === 'working' ? 9 : G.power ? 1.2 : 0;
   for (const r of amp.rollers) r.rotation.x += spin * dt;
@@ -4933,7 +5022,7 @@ function updateAmp(dt) {
 
 /* ------------------------------------------------------------ Panneaux -- */
 function buildSigns(group) {
-  for (const s of LAYOUT.signs) {
+  for (const s of MAPDEF.signs) {
     const tex = toTex(genLabel(s.text, 512, 128, { color: 'rgba(232,224,204,0.85)', chip: 900 }), { clamp: true });
     const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const m = new THREE.Mesh(GEO.plane, mat);
@@ -5060,12 +5149,14 @@ function resetFeatures() {
     }
   }
   const box = Features.box;
-  box.state = 'idle'; box.t = 0; box.uses = 0; box.offer = null; box.final = null;
-  boxShow(null);
-  box.skull.visible = false;
-  box.lidPivot.rotation.x = 0;
-  box.inner.material.opacity = 0;
-  placeBox(LAYOUT.boxStart);
+  if (box) {
+    box.state = 'idle'; box.t = 0; box.uses = 0; box.offer = null; box.final = null;
+    boxShow(null);
+    box.skull.visible = false;
+    box.lidPivot.rotation.x = 0;
+    box.inner.material.opacity = 0;
+    placeBox(MAPDEF.boxStart);
+  }
   for (const m of Features.perkMachines) {
     m.active = true; m.sinkT = -1; m.group.visible = true; m.group.position.y = 0;
     setProp(m.cell[0], m.cell[1], 2.1);
@@ -5073,12 +5164,13 @@ function resetFeatures() {
   }
   G.power = false;
   const p = Features.power;
-  p.anim = -1; p.pivot.rotation.x = 0.5; setLin(p.lampMat.color, 0xff2a1a);
+  if (p) { p.anim = -1; p.pivot.rotation.x = 0.5; setLin(p.lampMat.color, 0xff2a1a); }
   resetLights();
   const a = Features.amp;
-  a.state = 'idle'; a.t = 0; a.weapon = null; ampShow(null);
-  setLin(a.tubeMat.color, 0x5a2a7a); a.labelMat.emissiveIntensity = 0.05; a.glow.material.opacity = 0;
+  if (a) { a.state = 'idle'; a.t = 0; a.weapon = null; ampShow(null); }
+  lightAmp(false);
   clearPowerups();
+  if (!p) powerOnSilently();
 }
 
 /* ================================================================= 11 PARTIE ==
@@ -5153,6 +5245,123 @@ function updateRounds(dt) {
   }
 }
 
+/* ------------------------------------------------- Chargement de carte -- */
+/* Ressources partagées entre les cartes (jamais libérées au changement de carte). */
+const SHARED = new WeakSet();
+function markShared(...items) {
+  for (const it of items) {
+    if (!it) continue;
+    if (it.isTexture || it.isMaterial || it.isBufferGeometry) SHARED.add(it);
+    else if (typeof it === 'object') for (const k in it) markShared(it[k]);
+  }
+}
+function disposeTree(root) {
+  root.traverse((o) => {
+    if (o.geometry && !SHARED.has(o.geometry)) o.geometry.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
+      if (SHARED.has(m)) continue;
+      for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'aoMap', 'metalnessMap', 'alphaMap']) {
+        if (m[k] && !SHARED.has(m[k])) m[k].dispose();
+      }
+      m.dispose();
+    }
+  });
+}
+
+const MapGroups = { level: null, decor: null, lights: null, features: null, props: null };
+const cellOK = (c) => Array.isArray(c) && c.length === 2 && Number.isInteger(c[0]) && Number.isInteger(c[1]);
+const dirOK = (n) => Array.isArray(n) && n.length === 2 && Math.abs(n[0]) + Math.abs(n[1]) === 1;
+const vecOK = (v, n = 3) => Array.isArray(v) && v.length === n && v.every(Number.isFinite);
+function colorNum(c, d) {
+  if (Number.isFinite(c)) return c;
+  if (typeof c === 'string' && /^#?[0-9a-f]{6}$/i.test(c)) return parseInt(c.replace('#', ''), 16);
+  return d;
+}
+
+/* Carte lue d'un fichier : valeurs vérifiées et complétées, jamais d'exception. */
+function normalizeMap(src) {
+  const m = JSON.parse(JSON.stringify(src || {}));
+  m.format = 'zsmap'; m.version = 1;
+  m.id = String(m.id || 'carte').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'carte';
+  m.name = String(m.name || 'Carte sans nom').slice(0, 60);
+  m.description = String(m.description || '').slice(0, 400);
+  let rows = Array.isArray(m.grid) ? m.grid.map((r) => String(r)) : [];
+  if (rows.length < 3) rows = ['oooooo', '#W####', '#....#', '#....#', '######'];
+  const W = clamp(Math.max(...rows.map((r) => r.length)), 3, 200), H = clamp(rows.length, 3, 200);
+  m.grid = rows.slice(0, H).map((r) => r.slice(0, W).padEnd(W, ' '));
+  const inMap = (c) => cellOK(c) && c[0] >= 0 && c[1] >= 0 && c[0] < W && c[1] < H;
+  m.zones = (Array.isArray(m.zones) ? m.zones : []).filter((z) => z && inMap(z.seed)).slice(0, 60)
+    .map((z) => ({ ...z, name: String(z.name || 'Zone').slice(0, 40), seed: [z.seed[0], z.seed[1]], tint: vecOK(z.tint) ? z.tint.map((v) => clamp(v, 0, 2)) : [1, 1, 1] }));
+  m.startZone = Number.isInteger(m.startZone) && m.startZone >= 0 ? m.startZone : 0;
+  m.doors = m.doors && typeof m.doors === 'object' && !Array.isArray(m.doors) ? m.doors : {};
+  m.wallbuys = (Array.isArray(m.wallbuys) ? m.wallbuys : []).filter((w) => w && WEAPONS[w.w] && WEAPONS[w.w].wall && inMap(w.cell) && dirOK(w.n));
+  m.perks = (Array.isArray(m.perks) ? m.perks : []).filter((p) => p && PERKS[p.p] && inMap(p.cell) && dirOK(p.face));
+  m.boxes = (Array.isArray(m.boxes) ? m.boxes : []).filter((b) => b && Array.isArray(b.cells) && b.cells.length === 2 && b.cells.every(inMap) && dirOK(b.face));
+  m.boxStart = Number.isInteger(m.boxStart) && m.boxStart >= 0 && m.boxStart < m.boxes.length ? m.boxStart : 0;
+  m.power = m.power && inMap(m.power.cell) && dirOK(m.power.n) ? m.power : null;
+  m.amp = m.amp && Array.isArray(m.amp.cells) && m.amp.cells.length === 2 && m.amp.cells.every(inMap) && dirOK(m.amp.face) ? m.amp : null;
+  m.lights = (Array.isArray(m.lights) ? m.lights : []).filter((l) => l && vecOK(l.pos)).slice(0, 64).map((l) => ({
+    ...l, color: colorNum(l.color, 0xffc78f), powered: l.powered == null ? undefined : colorNum(l.powered, undefined),
+    intensity: Number.isFinite(l.intensity) ? clamp(l.intensity, 0, 10) : 1.6, range: Number.isFinite(l.range) ? clamp(l.range, 1, 60) : 12,
+    flicker: Number.isFinite(l.flicker) ? clamp(l.flicker, 0, 1) : 0.1,
+  }));
+  m.signs = (Array.isArray(m.signs) ? m.signs : []).filter((s) => s && typeof s.text === 'string' && vecOK(s.pos) && dirOK(s.n));
+  if (!(m.spawn && vecOK(m.spawn.pos, 2))) {
+    let p = [W / 2, H / 2];
+    for (let z = 0; z < H; z++) { const x = m.grid[z].indexOf('.'); if (x >= 0) { p = [x + 0.5, z + 0.5]; break; } }
+    m.spawn = { pos: p, yaw: 0 };
+  }
+  m.spawn.yaw = Number.isFinite(m.spawn.yaw) ? m.spawn.yaw : 0;
+  if (!(m.menuCamera && vecOK(m.menuCamera.center) && vecOK(m.menuCamera.sway) && vecOK(m.menuCamera.target))) {
+    const [sx, sz] = m.spawn.pos, a = m.spawn.yaw;
+    m.menuCamera = { center: [sx, 1.72, sz], sway: [1.5, 0.08, 0.8], target: [sx - Math.sin(a) * 8, 1.25, sz - Math.cos(a) * 8] };
+  }
+  m.materials = m.materials && typeof m.materials === 'object' ? m.materials : {};
+  m.props = (Array.isArray(m.props) ? m.props : []).filter((p) => p && typeof p.asset === 'string' && vecOK(p.pos)).slice(0, 4000);
+  m.environment = m.environment && typeof m.environment === 'object' ? m.environment : {};
+  return m;
+}
+
+function unloadWorld() {
+  clearZombies();
+  clearFX();
+  clearPowerups();
+  for (const k in MapGroups) {
+    if (!MapGroups[k]) continue;
+    scene.remove(MapGroups[k]);
+    disposeTree(MapGroups[k]);
+    MapGroups[k] = null;
+  }
+  World.windows = []; World.doors = {}; World.lights = [];
+}
+
+/* Construit le monde d'une carte (grille, géométrie, décor, lumières, éléments
+   de jeu). Renvoie les problèmes relevés (fenêtre mal placée, zone vide…). */
+function loadMap(def) {
+  const m = normalizeMap(def);
+  unloadWorld();
+  MAPDEF = m;
+  World.issues = [];
+  allocGrid(m.grid[0].length, m.grid.length);
+  parseMap();
+  const sz = zoneAt(m.spawn.pos[0], m.spawn.pos[1]);
+  if (sz < 0) World.issues.push({ level: 'error', text: 'Le point de départ du joueur n\'est pas sur un sol.', cell: [Math.floor(m.spawn.pos[0]), Math.floor(m.spawn.pos[1])] });
+  // la pièce de départ est celle où le joueur apparaît
+  if (sz >= 0) m.startZone = sz;
+  else if (!(m.startZone < ZONES.length)) m.startZone = 0;
+  MapGroups.level = buildLevelGeometry(MAT);
+  MapGroups.decor = buildDecor(MAT);
+  MapGroups.lights = buildLights();
+  MapGroups.features = buildFeatures();
+  for (const k in MapGroups) if (MapGroups[k]) { linearizeTree(MapGroups[k]); scene.add(MapGroups[k]); }
+  if (World.moon) World.moon.position.set(GW / 2 - 60, 55, -70);
+  if (!World.windows.some((w) => w.zone === m.startZone)) World.issues.push({ level: 'warn', text: 'Aucune fenêtre dans la pièce de départ : aucun zombie ne pourra apparaître au début.' });
+  resetPlayer();
+  computeFlow(player.pos.x, player.pos.z);
+  return World.issues;
+}
+
 /* ------------------------------------------------- Nouvelle partie ---- */
 function newGame(save) {
   clearZombies();
@@ -5165,7 +5374,7 @@ function newGame(save) {
   G.points = RULES.startPoints;
   G.grenades = 2;
   G.repairPts = 0;
-  G.activeZones = new Set([LAYOUT.startZone]);
+  G.activeZones = new Set([MAPDEF.startZone]);
   G.timers.insta = 0; G.timers.double = 0;
   G.stats = freshStats();
   resetArms();
@@ -5180,7 +5389,7 @@ function serializeGame() {
     round: Math.max(1, G.round), points: G.points, grenades: G.grenades,
     slots: Arms.slots.map((s) => s && { id: s.id, up: s.up, mag: s.mag, res: s.res }), cur: Arms.cur,
     perks: [...player.perks], souffleUses: player.souffleUses, power: G.power,
-    doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box.cur,
+    doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box ? Features.box.cur : 0, map: MAPDEF.id,
     stats: Object.assign({}, G.stats),
   };
 }
@@ -5202,14 +5411,14 @@ function restoreSave(s) {
     if (s.power) {
       G.power = true;
       setPoweredLights();
-      Features.power.anim = 1; setLin(Features.power.lampMat.color, 0x40ff60);
+      if (Features.power) { Features.power.anim = 1; setLin(Features.power.lampMat.color, 0x40ff60); }
       for (const m of Features.perkMachines) lightMachine(m, true);
-      setLin(Features.amp.tubeMat.color, 0x8a3ad0); Features.amp.labelMat.emissiveIntensity = 0.9; Features.amp.glow.material.opacity = 0.45;
+      lightAmp(true);
     }
     for (const p of s.perks) if (PERKS[p]) player.perks.add(p);
     if (player.perks.has('cuirasse')) { player.maxHp = RULES.cuirasseHp; player.hp = player.maxHp; }
     player.souffleUses = s.souffleUses || 0;
-    if (s.box >= 0 && s.box < Features.box.locs.length) placeBox(s.box);
+    if (Features.box && s.box >= 0 && s.box < Features.box.locs.length) placeBox(s.box);
     G.round = s.round - 1;
     G.stats = Object.assign(freshStats(), s.stats || {});
   } catch (e) { /* sauvegarde illisible : partie neuve */ }
@@ -5601,10 +5810,11 @@ function update(dt) {
 function menuCamera(dt) {
   G.menuT += dt;
   const t = G.menuT * 0.11;
-  camera.position.set(24.6 + Math.sin(t) * 3.4, 1.72 + Math.sin(t * 1.7) * 0.08, 21.6 + Math.cos(t) * 1.5);
-  camera.lookAt(24.9, 1.25, 13.4);
+  const { center: c, sway: s, target: tg } = MAPDEF.menuCamera;
+  camera.position.set(c[0] + Math.sin(t) * s[0], c[1] + Math.sin(t * 1.7) * s[1], c[2] + Math.cos(t) * s[2]);
+  camera.lookAt(tg[0], tg[1], tg[2]);
   updateLights(dt, G.menuT);
-  Features.box.beam.material.opacity = 0.2 + Math.sin(G.menuT * 2.2) * 0.06;
+  if (Features.box) Features.box.beam.material.opacity = 0.2 + Math.sin(G.menuT * 2.2) * 0.06;
 }
 function render() {
   renderer.clear();
@@ -5650,14 +5860,11 @@ async function boot(data) {
   if (!initRenderer()) { showScreen('nogl'); return; }
   buildTextures();
   buildMaterials();
-  parseMap();
-  scene.add(buildLevelGeometry(MAT));
-  scene.add(buildDecor(MAT));
-  scene.add(buildLights());
-  scene.add(buildFeatures());
+  markShared(GEO, MAT, TEX);
+  loadMap(BUNKER7);
   scene.add(buildZombieRenderer());
   scene.add(buildFX());
-  const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x9fb6d6, fog: false, transparent: true, opacity: 0.8, depthWrite: false }));
+  const moon = World.moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x9fb6d6, fog: false, transparent: true, opacity: 0.8, depthWrite: false }));
   moon.scale.set(30, 30, 1); moon.position.set(GW / 2 - 60, 55, -70);
   scene.add(moon);
   buildViewmodel();
