@@ -9,6 +9,8 @@ const yazl = require('yazl');
 
 const THREE_RE = /<script[^>]+src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/three\.js\/[^"]+"[^>]*><\/script>/i;
 const LOCAL_THREE_RE = /<script[^>]+src="lib\/three\.min\.js"[^>]*><\/script>/i;
+/* modules complémentaires de Three.js (chargeur glTF, poignées de l'éditeur) */
+const THREE_EXTRA_RE = /<script[^>]+src="https:\/\/cdn\.jsdelivr\.net\/npm\/three@[^/"]+\/examples\/js\/(?:loaders|controls)\/([A-Za-z0-9]+\.js)"[^>]*><\/script>/gi;
 const FONTS_LINK_RE = /<link[^>]+href="https:\/\/fonts\.googleapis\.com\/[^"]*"[^>]*>/gi;
 const PRECONNECT_RE = /<link[^>]+rel="preconnect"[^>]*>\s*/gi;
 const VERSION_RE = /const GAME_VERSION = '([^']*)';/;
@@ -24,6 +26,7 @@ function rewriteHtml(html, version) {
     throw new Error('Ce fichier HTML ne charge pas Three.js : ce n\'est pas le fichier du jeu.');
   }
   let out = html.replace(THREE_RE, '<script src="lib/three.min.js"></script>');
+  out = out.replace(THREE_EXTRA_RE, (m, file) => `<script src="lib/${file}"></script>`);
   out = out.replace(PRECONNECT_RE, '');
   let fontsDone = false;
   out = out.replace(FONTS_LINK_RE, () => {
