@@ -1,0 +1,577 @@
+'use strict';
+/* Processus principal du launcher Zombie Survival.
+   - Fenêtre du launcher (actualités, notes de version, bouton Jouer / Mettre à jour)
+   - Fenêtre de jeu : le jeu installé est servi par le protocole zsgame://game/
+   - Mises à jour signées du jeu et du launcher (voir updater.js)
+   - Outil de publication pour l'auteur (voir publisher.js) */
+const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, Menu, session, safeStorage, clipboard } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
+const { pathToFileURL } = require('url');
+const { Updater, UpdateError, compareVersions, parseVersion } = require('./updater');
+const publisher = require('./publisher');
+const createLog = require('./log');
+
+if (process.env.ZS_USER_DATA) app.setPath('userData', process.env.ZS_USER_DATA);
+// PC portables à deux cartes graphiques : le jeu tourne sur la carte la plus puissante.
+app.commandLine.appendSwitch('force_high_performance_gpu');
+
+const APP_ROOT = path.join(__dirname, '..', '..');
+const RES = app.isPackaged ? process.resourcesPath : APP_ROOT;
+const BUNDLE_DIR = path.join(RES, app.isPackaged ? 'game-bundle' : 'game');
+const LIBS_DIR = path.join(RES, 'gamelibs');
+const RENDERER = path.join(__dirname, '..', 'renderer');
+const PRELOAD = path.join(__dirname, '..', 'preload');
+const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
+const APP_ID = 'fr.zombiesurvival.launcher';
+const PLACEHOLDER = 'VOTRE-PSEUDO';
+const DEFAULT_SETTINGS = { autoCheck: true, autoInstall: true, fullscreen: true, keepLauncherOpen: false };
+
+let log = () => {};
+let updater = null;
+let config = null;
+let settings = { ...DEFAULT_SETTINGS };
+let launcherWin = null, gameWin = null, publisherWin = null;
+let lastManifest = null;
+let busy = null; // null | 'check' | 'install' | 'repair' | 'launcher'
+let abortCtrl = null;
+let phaseAfterPlay = 'ready';
+let gameCrash = null;
+
+const status = {
+  phase: 'starting', launcherVersion: app.getVersion(), installed: null, remote: null, launcherUpdate: null,
+  news: [], progress: null, error: null, settings: null, source: null,
+  justUpdated: process.argv.includes('--updated') ? app.getVersion() : null,
+};
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'zsgame', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
+
+/* ------------------------------------------------------- Réglages --- */
+const userFile = (name) => path.join(app.getPath('userData'), name);
+function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; } }
+function writeJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2));
+  fs.renameSync(`${file}.tmp`, file);
+}
+function loadSettings() { return { ...DEFAULT_SETTINGS, ...(readJson(userFile('settings.json')) || {}) }; }
+function loadConfig() {
+  const def = readJson(path.join(APP_ROOT, 'config', 'default.json')) || {};
+  const user = readJson(userFile('config.json')) || {};
+  const cfg = { updateUrl: def.updateUrl || '', publicKey: def.publicKey || '', custom: false, defaultKey: def.publicKey || '' };
+  if (typeof user.updateUrl === 'string' && user.updateUrl.trim()) { cfg.updateUrl = user.updateUrl.trim(); cfg.custom = true; }
+  if (typeof user.publicKey === 'string' && user.publicKey.includes('BEGIN PUBLIC KEY')) { cfg.publicKey = user.publicKey; cfg.custom = true; }
+  cfg.configured = !!cfg.updateUrl && !cfg.updateUrl.includes(PLACEHOLDER) && cfg.publicKey.includes('BEGIN PUBLIC KEY');
+  return cfg;
+}
+function makeUpdater() {
+  updater = new Updater({
+    dataDir: app.getPath('userData'), bundledDir: BUNDLE_DIR, updateUrl: config.updateUrl, publicKey: config.publicKey,
+    fetchImpl: (url, opts) => net.fetch(url, opts), log,
+  });
+  status.source = {
+    url: config.updateUrl, custom: config.custom, configured: config.configured,
+    keyFingerprint: safeFingerprint(config.publicKey),
+  };
+}
+function safeFingerprint(pem) { try { return publisher.fingerprint(pem); } catch (e) { return null; } }
+
+/* ----------------------------------------------------------- État --- */
+function setStatus(patch) {
+  // Pendant une partie, la phase reste « playing » ; la phase calculée est rendue à la fermeture du jeu.
+  if (gameWin && patch.phase && patch.phase !== 'playing') {
+    phaseAfterPlay = patch.phase;
+    patch = { ...patch, phase: 'playing' };
+  }
+  Object.assign(status, patch);
+  for (const w of [launcherWin, publisherWin]) {
+    if (w && !w.isDestroyed()) w.webContents.send('launcher:status-changed', status);
+  }
+}
+function pickInstalled(inst) {
+  return inst ? { version: inst.version, previous: inst.previous, notes: inst.notes, installedAt: inst.installedAt } : null;
+}
+function remoteIsNewer() {
+  const inst = updater.getInstalled();
+  return !!lastManifest && (!inst || compareVersions(lastManifest.game.version, inst.version) > 0);
+}
+function idlePhase() {
+  if (!updater.getInstalled()) return 'error';
+  if (remoteIsNewer()) return 'update';
+  return lastManifest ? 'ready' : 'offline';
+}
+function handleError(e, context) {
+  const code = (e && e.code) || 'UNKNOWN';
+  const message = e instanceof UpdateError ? e.message : `Erreur inattendue : ${e && e.message ? e.message : e}`;
+  log(`[${context}] ${code} ${e && e.stack ? e.stack : e}`);
+  const installed = pickInstalled(updater.getInstalled());
+  if (code === 'CANCELLED') { setStatus({ phase: idlePhase(), progress: null, error: null, installed }); return; }
+  const soft = context === 'check' && installed && ['NETWORK', 'TIMEOUT', 'NOT_FOUND', 'HTTP', 'CONFIG'].includes(code);
+  setStatus({ phase: soft ? 'offline' : 'error', error: { code, message, context }, progress: null, installed });
+}
+
+/* ---------------------------------------------------- Mises à jour --- */
+async function checkForUpdates({ auto = false } = {}) {
+  if (busy || gameWin) return status;
+  if (!config.configured) {
+    setStatus({ phase: 'offline', error: { code: 'NOT_CONFIGURED', message: "Mises à jour pas encore configurées : l'adresse de publication est provisoire.", context: 'check' } });
+    return status;
+  }
+  busy = 'check';
+  setStatus({ phase: 'checking', error: null });
+  try {
+    const m = await updater.fetchManifest();
+    lastManifest = m;
+    writeJson(userFile(path.join('cache', 'last-manifest.json')), { game: m.game, launcher: m.launcher || null, news: m.news || [], published: m.published || null });
+    const inst = updater.getInstalled();
+    const launcherUpdate = m.launcher && compareVersions(m.launcher.version, app.getVersion()) > 0
+      ? { version: m.launcher.version, size: m.launcher.size, notes: m.launcher.notes || [] } : null;
+    setStatus({
+      remote: { version: m.game.version, size: m.game.size, notes: m.game.notes || [], date: m.game.date || m.published || null },
+      news: m.news || [], launcherUpdate, installed: pickInstalled(inst), checkedAt: Date.now(),
+      phase: remoteIsNewer() ? 'update' : 'ready', error: null,
+    });
+    log(`Vérification : en ligne ${m.game.version}, installée ${inst ? inst.version : 'aucune'}`);
+    busy = null;
+    if (remoteIsNewer() && auto && settings.autoInstall && !gameWin) await installUpdate();
+  } catch (e) {
+    busy = null;
+    handleError(e, 'check');
+  }
+  return status;
+}
+
+async function installUpdate({ force = false } = {}) {
+  if (busy || gameWin || !lastManifest) return status;
+  const g = lastManifest.game;
+  if (!force && !remoteIsNewer()) return status;
+  if (g.minLauncher && compareVersions(app.getVersion(), g.minLauncher) < 0) {
+    setStatus({ phase: 'error', error: { code: 'LAUNCHER_TOO_OLD', message: `Cette version du jeu demande le launcher ${g.minLauncher} ou plus récent : installez d'abord la mise à jour du launcher.`, context: 'install' } });
+    return status;
+  }
+  busy = 'install';
+  abortCtrl = new AbortController();
+  setStatus({ phase: 'downloading', error: null, progress: { phase: 'download', received: 0, total: g.size, target: g.version } });
+  try {
+    const inst = await updater.installGame(lastManifest, {
+      signal: abortCtrl.signal,
+      onProgress: (p) => setStatus({ phase: p.phase === 'install' ? 'installing' : 'downloading', progress: { ...p, target: g.version } }),
+    });
+    setStatus({ phase: 'ready', installed: pickInstalled(inst), progress: null, error: null });
+  } catch (e) {
+    handleError(e, 'install');
+  } finally {
+    busy = null;
+    abortCtrl = null;
+  }
+  return status;
+}
+
+async function repair() {
+  if (busy || gameWin) return status;
+  const inst = updater.getInstalled();
+  if (lastManifest && (!inst || compareVersions(lastManifest.game.version, inst.version) >= 0)) return installUpdate({ force: true });
+  busy = 'repair';
+  setStatus({ phase: 'installing', error: null, progress: null });
+  try {
+    const st = updater.readState();
+    await updater.writeState({});
+    const restored = await updater.ensureBundled();
+    if (!restored && st.current) await updater.writeState(st);
+    setStatus({ phase: idlePhase(), installed: pickInstalled(updater.getInstalled()) });
+  } catch (e) { handleError(e, 'repair'); } finally { busy = null; }
+  return status;
+}
+
+async function rollback() {
+  if (busy || gameWin) return status;
+  try {
+    const inst = await updater.rollback();
+    setStatus({ installed: pickInstalled(inst), phase: idlePhase(), error: null });
+  } catch (e) { handleError(e, 'rollback'); }
+  return status;
+}
+
+async function installLauncherUpdate() {
+  if (busy || gameWin || !lastManifest || !lastManifest.launcher) return status;
+  const l = lastManifest.launcher;
+  busy = 'launcher';
+  abortCtrl = new AbortController();
+  setStatus({ phase: 'downloading', error: null, progress: { phase: 'launcher', received: 0, total: l.size, target: l.version } });
+  try {
+    const setup = await updater.downloadLauncher(lastManifest, {
+      signal: abortCtrl.signal,
+      onProgress: (p) => setStatus({ progress: { ...p, phase: 'launcher', target: l.version } }),
+    });
+    log(`Launcher ${l.version} téléchargé : ${setup}`);
+    if (process.platform === 'win32') {
+      setStatus({ phase: 'restarting', progress: null });
+      // Mêmes options qu'electron-updater : installation silencieuse puis relance du launcher.
+      const child = spawn(setup, ['--updated', '/S', '--force-run'], { detached: true, stdio: 'ignore', windowsHide: false });
+      child.unref();
+      setTimeout(() => app.quit(), 500);
+    } else {
+      shell.showItemInFolder(setup);
+      setStatus({ phase: idlePhase(), progress: null });
+    }
+  } catch (e) {
+    handleError(e, 'launcher');
+  } finally {
+    busy = null;
+    abortCtrl = null;
+  }
+  return status;
+}
+
+/* --------------------------------------------------------- Fenêtres --- */
+function harden(win, allowPrefix) {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!allowPrefix || !url.startsWith(allowPrefix)) e.preventDefault();
+  });
+}
+function createLauncherWindow() {
+  launcherWin = new BrowserWindow({
+    width: 1080, height: 660, resizable: false, maximizable: false, fullscreenable: false, frame: false,
+    show: false, backgroundColor: '#07090a', title: 'Zombie Survival', icon: ICON,
+    webPreferences: { preload: path.join(PRELOAD, 'launcher.js'), contextIsolation: true, sandbox: true, spellcheck: false },
+  });
+  harden(launcherWin);
+  launcherWin.loadFile(path.join(RENDERER, 'launcher', 'index.html'));
+  launcherWin.once('ready-to-show', () => launcherWin.show());
+  launcherWin.on('closed', () => {
+    launcherWin = null;
+    if (!gameWin) app.quit();
+  });
+}
+function play() {
+  if (gameWin) { gameWin.focus(); return status; }
+  const inst = updater.getInstalled();
+  if ((busy && busy !== 'check') || !inst) return status;
+  phaseAfterPlay = busy === 'check' ? 'checking' : idlePhase();
+  gameCrash = null;
+  gameWin = new BrowserWindow({
+    width: 1280, height: 720, minWidth: 960, minHeight: 540, show: false, backgroundColor: '#000000',
+    title: `Zombie Survival ${inst.version}`, autoHideMenuBar: true, icon: ICON,
+    webPreferences: {
+      preload: path.join(PRELOAD, 'game.js'), contextIsolation: true, sandbox: true, spellcheck: false,
+      backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required',
+    },
+  });
+  harden(gameWin, 'zsgame://game/');
+  gameWin.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11' || (input.alt && input.key === 'Enter')) {
+      e.preventDefault();
+      gameWin.setFullScreen(!gameWin.isFullScreen());
+    } else if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+      gameWin.webContents.toggleDevTools();
+    }
+  });
+  gameWin.webContents.on('render-process-gone', (e, details) => {
+    log(`Jeu arrêté : ${details.reason} (code ${details.exitCode})`);
+    if (details.reason !== 'clean-exit') {
+      gameCrash = details.reason;
+      if (gameWin && !gameWin.isDestroyed()) gameWin.close();
+    }
+  });
+  gameWin.once('ready-to-show', () => {
+    if (settings.fullscreen) gameWin.setFullScreen(true); else gameWin.maximize();
+    gameWin.show();
+    gameWin.focus();
+  });
+  gameWin.on('closed', () => {
+    gameWin = null;
+    log('Partie fermée');
+    if (!launcherWin) { app.quit(); return; }
+    launcherWin.show();
+    launcherWin.focus();
+    if (gameCrash) {
+      const reason = gameCrash;
+      gameCrash = null;
+      setStatus({ phase: 'error', error: { code: 'GAME_CRASH', context: 'game', message: `Le jeu s'est arrêté brutalement (${reason}). Relancez-le ; si cela se répète, utilisez « Réparer le jeu » dans les réglages.` } });
+    } else {
+      setStatus({ phase: busy === 'check' ? 'checking' : phaseAfterPlay === 'checking' ? idlePhase() : phaseAfterPlay });
+    }
+  });
+  gameWin.loadURL('zsgame://game/index.html');
+  log(`Lancement du jeu ${inst.version}`);
+  setStatus({ phase: 'playing' });
+  if (!settings.keepLauncherOpen && launcherWin) launcherWin.hide();
+  return status;
+}
+function openPublisher() {
+  if (publisherWin) { publisherWin.focus(); return; }
+  publisherWin = new BrowserWindow({
+    width: 940, height: 780, minWidth: 780, minHeight: 600, show: false, backgroundColor: '#07090a',
+    title: 'Zombie Survival — Publication', autoHideMenuBar: true, icon: ICON,
+    webPreferences: { preload: path.join(PRELOAD, 'publisher.js'), contextIsolation: true, sandbox: true, spellcheck: false },
+  });
+  harden(publisherWin);
+  publisherWin.loadFile(path.join(RENDERER, 'publisher', 'index.html'));
+  publisherWin.once('ready-to-show', () => publisherWin.show());
+  publisherWin.on('closed', () => { publisherWin = null; });
+}
+
+/* -------------------------------------------- Protocole et permissions --- */
+function registerGameProtocol() {
+  protocol.handle('zsgame', (req) => {
+    try {
+      const u = new URL(req.url);
+      const inst = updater.getInstalled();
+      if (u.hostname !== 'game' || !inst) return new Response('Introuvable', { status: 404 });
+      let rel = decodeURIComponent(u.pathname);
+      if (!rel || rel === '/') rel = '/index.html';
+      const root = path.resolve(inst.dir);
+      const file = path.resolve(root, `.${rel}`);
+      if (!file.startsWith(root + path.sep)) return new Response('Interdit', { status: 403 });
+      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('Introuvable', { status: 404 });
+      return net.fetch(pathToFileURL(file).href);
+    } catch (e) {
+      return new Response('Erreur', { status: 500 });
+    }
+  });
+}
+function setupPermissions() {
+  const allowed = new Set(['pointerLock', 'fullscreen', 'keyboardLock']);
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowed.has(permission)));
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => allowed.has(permission));
+}
+
+/* -------------------------------------------- Clé de publication --- */
+const keyDir = () => userFile('publisher');
+function readPrivateKey() {
+  const enc = path.join(keyDir(), 'signing-key.bin'), plain = path.join(keyDir(), 'signing-key.pem');
+  try {
+    if (fs.existsSync(enc) && safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(fs.readFileSync(enc));
+    if (fs.existsSync(plain)) return fs.readFileSync(plain, 'utf8');
+  } catch (e) { log(`Lecture de la clé impossible : ${e.message}`); }
+  return null;
+}
+function writePrivateKey(pem) {
+  fs.mkdirSync(keyDir(), { recursive: true });
+  const enc = path.join(keyDir(), 'signing-key.bin'), plain = path.join(keyDir(), 'signing-key.pem');
+  if (safeStorage.isEncryptionAvailable()) {
+    fs.writeFileSync(enc, safeStorage.encryptString(pem));
+    fs.rmSync(plain, { force: true });
+  } else {
+    fs.writeFileSync(plain, pem, { mode: 0o600 });
+  }
+}
+function publisherState() {
+  const pem = readPrivateKey();
+  const pub = pem ? publisher.publicFromPrivate(pem) : null;
+  const ps = readJson(path.join(keyDir(), 'settings.json')) || {};
+  const last = ps.lastGameVersion || (updater.getInstalled() || {}).version || '1.0.0';
+  return {
+    hasKey: !!pem, publicKey: pub, fingerprint: pub ? publisher.fingerprint(pub) : null,
+    launcherFingerprint: safeFingerprint(config.defaultKey), activeFingerprint: safeFingerprint(config.publicKey),
+    keyMatchesLauncher: !!pub && publisher.sameKey(pub, config.defaultKey),
+    encrypted: safeStorage.isEncryptionAvailable(),
+    repo: ps.repo || '', outDir: ps.outDir || path.join(app.getPath('documents'), 'Zombie Survival - Publications'),
+    gameSource: ps.gameSource || '', lastGameVersion: ps.lastGameVersion || null, suggestedVersion: publisher.nextPatch(last),
+    lastLauncher: carriedLauncher(ps), launcherVersion: app.getVersion(), latestUrl: publisher.githubLatestUrl(ps.repo),
+  };
+}
+/* Dernier launcher annoncé, repris dans les publications suivantes tant qu'aucun autre n'est joint.
+   Abandonné s'il est plus ancien que le launcher qui publie (installateur de test d'une version
+   provisoire, par exemple) ou si son fichier local a disparu. */
+function carriedLauncher(ps) {
+  const l = ps.lastLauncher;
+  if (!l || !parseVersion(l.version) || compareVersions(l.version, app.getVersion()) < 0) return null;
+  if (!/^https?:/.test(l.file || '') && !(l.localPath && fs.existsSync(l.localPath))) return null;
+  return l;
+}
+function savePublisherSettings(patch) {
+  const file = path.join(keyDir(), 'settings.json');
+  writeJson(file, { ...(readJson(file) || {}), ...patch });
+}
+
+/* ---------------------------------------------------------- IPC --- */
+function from(win, event) { return !!win && !win.isDestroyed() && event.sender === win.webContents; }
+function handle(channel, wins, fn) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!wins().some((w) => from(w, event))) throw new Error('Appel refusé');
+    return fn(...args);
+  });
+}
+function setupIpc() {
+  const L = () => [launcherWin];
+  const P = () => [publisherWin];
+  const LP = () => [launcherWin, publisherWin];
+  handle('launcher:status', LP, () => status);
+  handle('launcher:check', L, () => checkForUpdates());
+  handle('launcher:install', L, () => installUpdate());
+  handle('launcher:cancel', L, () => { if (abortCtrl) abortCtrl.abort(); return true; });
+  handle('launcher:play', L, () => play());
+  handle('launcher:repair', L, () => repair());
+  handle('launcher:rollback', L, () => rollback());
+  handle('launcher:updateLauncher', L, () => installLauncherUpdate());
+  handle('launcher:publisher', L, () => { openPublisher(); return true; });
+  handle('launcher:open', L, (what) => {
+    const target = what === 'logs' ? log.dir : what === 'game' && updater.getInstalled() ? updater.getInstalled().dir : app.getPath('userData');
+    return shell.openPath(target);
+  });
+  handle('launcher:setting', L, (k, v) => {
+    if (!(k in DEFAULT_SETTINGS) || typeof v !== 'boolean') return settings;
+    settings[k] = v;
+    writeJson(userFile('settings.json'), settings);
+    setStatus({ settings: { ...settings } });
+    return settings;
+  });
+  handle('launcher:resetSource', L, () => {
+    fs.rmSync(userFile('config.json'), { force: true });
+    config = loadConfig();
+    makeUpdater();
+    lastManifest = null;
+    setStatus({ remote: null, launcherUpdate: null, news: [] });
+    return checkForUpdates();
+  });
+  handle('launcher:window', L, (action) => {
+    if (action === 'minimize') launcherWin.minimize();
+    else if (action === 'close') launcherWin.close();
+    return true;
+  });
+  handle('launcher:external', LP, (url) => {
+    if (typeof url === 'string' && /^https:\/\//i.test(url)) shell.openExternal(url);
+    return true;
+  });
+  ipcMain.on('game:quit', (event) => { if (from(gameWin, event)) gameWin.close(); });
+  ipcMain.on('game:fullscreen', (event) => { if (from(gameWin, event)) gameWin.setFullScreen(!gameWin.isFullScreen()); });
+
+  // ---- outil de publication
+  handle('pub:state', P, () => publisherState());
+  handle('pub:generateKey', P, (confirmReplace) => {
+    if (readPrivateKey() && confirmReplace !== true) throw new Error('Une clé existe déjà.');
+    const kp = publisher.generateKeyPair();
+    writePrivateKey(kp.privatePem);
+    log(`Nouvelle clé de signature ${publisher.fingerprint(kp.publicPem)}`);
+    return publisherState();
+  });
+  handle('pub:importKey', P, async () => {
+    const r = await dialog.showOpenDialog(publisherWin, { title: 'Importer une clé privée', properties: ['openFile'], filters: [{ name: 'Clé PEM', extensions: ['pem', 'key', 'txt'] }] });
+    if (r.canceled || !r.filePaths[0]) return publisherState();
+    const pem = fs.readFileSync(r.filePaths[0], 'utf8');
+    publisher.publicFromPrivate(pem);
+    writePrivateKey(pem);
+    return publisherState();
+  });
+  handle('pub:exportKey', P, async () => {
+    const pem = readPrivateKey();
+    if (!pem) throw new Error('Aucune clé à exporter.');
+    const r = await dialog.showSaveDialog(publisherWin, { title: 'Sauvegarder la clé privée', defaultPath: path.join(app.getPath('documents'), 'zombie-survival-cle-privee.pem'), filters: [{ name: 'Clé PEM', extensions: ['pem'] }] });
+    if (r.canceled || !r.filePath) return false;
+    fs.writeFileSync(r.filePath, pem, { mode: 0o600 });
+    return r.filePath;
+  });
+  handle('pub:copyPublicKey', P, () => {
+    const pem = readPrivateKey();
+    if (!pem) return false;
+    clipboard.writeText(publisher.publicFromPrivate(pem));
+    return true;
+  });
+  handle('pub:pickGame', P, async () => {
+    const r = await dialog.showOpenDialog(publisherWin, { title: 'Fichier du jeu', properties: ['openFile'], filters: [{ name: 'Jeu (HTML)', extensions: ['html', 'htm'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const html = fs.readFileSync(r.filePaths[0], 'utf8');
+    return { path: r.filePaths[0], version: require('./gamepack').readGameVersion(html) };
+  });
+  handle('pub:pickSetup', P, async () => {
+    const r = await dialog.showOpenDialog(publisherWin, { title: 'Installateur du launcher', properties: ['openFile'], filters: [{ name: 'Installateur', extensions: ['exe'] }] });
+    return r.canceled ? null : r.filePaths[0] || null;
+  });
+  handle('pub:pickOutDir', P, async () => {
+    const r = await dialog.showOpenDialog(publisherWin, { title: 'Dossier des publications', properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : r.filePaths[0] || null;
+  });
+  handle('pub:create', P, async (form) => {
+    const pem = readPrivateKey();
+    if (!pem) throw new Error("Générez ou importez d'abord une clé de signature.");
+    if (!form || !form.gameSource || !fs.existsSync(form.gameSource)) throw new Error('Choisissez le fichier du jeu.');
+    const ps = publisherState();
+    if (ps.lastGameVersion && parseVersion(form.version) && compareVersions(form.version, ps.lastGameVersion) <= 0 && !form.allowSame) {
+      throw new Error(`La version ${form.version} n'est pas plus récente que la dernière publiée (${ps.lastGameVersion}).`);
+    }
+    const news = form.newsTitle ? [{ title: form.newsTitle, text: form.newsText || '', date: new Date().toISOString().slice(0, 10) }] : [];
+    const result = await publisher.createRelease({
+      source: { htmlPath: form.gameSource }, version: form.version, notes: String(form.notes || '').split('\n'),
+      news, outDir: form.outDir || ps.outDir, privatePem: pem, libsDir: LIBS_DIR, repo: form.repo || null,
+      launcher: form.setupPath ? { setupPath: form.setupPath, version: form.launcherVersion, notes: String(form.launcherNotes || '').split('\n') } : null,
+      previousLauncher: form.setupPath ? null : ps.lastLauncher,
+    });
+    savePublisherSettings({
+      repo: form.repo || '', outDir: form.outDir || ps.outDir, gameSource: form.gameSource, lastGameVersion: result.version,
+      lastLauncher: result.manifest.launcher ? { ...result.manifest.launcher, localPath: /^https?:/.test(result.manifest.launcher.file) ? undefined : path.join(result.dir, result.manifest.launcher.file) } : ps.lastLauncher,
+    });
+    log(`Publication ${result.version} créée dans ${result.dir}`);
+    return { dir: result.dir, version: result.version, upload: result.upload, gameSize: result.manifest.game.size, launcher: result.manifest.launcher || null, repo: form.repo || '' };
+  });
+  handle('pub:openDir', P, (dir) => (typeof dir === 'string' && fs.existsSync(dir) ? shell.openPath(dir) : false));
+  handle('pub:testLocal', P, async (dir) => {
+    const pem = readPrivateKey();
+    const file = path.join(String(dir || ''), 'latest.json');
+    if (!pem || !fs.existsSync(file)) throw new Error('Publication introuvable.');
+    writeJson(userFile('config.json'), { updateUrl: pathToFileURL(file).href, publicKey: publisher.publicFromPrivate(pem), note: 'Source de test créée par l’outil de publication. Supprimez ce fichier pour revenir à la source officielle.' });
+    config = loadConfig();
+    makeUpdater();
+    lastManifest = null;
+    setStatus({});
+    await checkForUpdates();
+    if (launcherWin) launcherWin.focus();
+    return true;
+  });
+  handle('pub:openGithub', P, (repo, version) => {
+    const m = String(repo || '').match(/^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/);
+    const url = m ? `https://github.com/${m[1]}/${m[2]}/releases/new?tag=v${encodeURIComponent(version)}&title=${encodeURIComponent(`Zombie Survival ${version}`)}` : 'https://github.com/new';
+    shell.openExternal(url);
+    return url;
+  });
+}
+
+/* -------------------------------------------------------- Démarrage --- */
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (e, argv) => {
+    if (argv.includes('--publier')) openPublisher();
+    const w = gameWin || launcherWin;
+    if (w) { if (w.isMinimized()) w.restore(); w.show(); w.focus(); }
+  });
+  app.whenReady().then(async () => {
+    if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+    log = createLog(userFile('logs'));
+    log(`Démarrage du launcher ${app.getVersion()} (${process.platform} ${process.arch}, Electron ${process.versions.electron})`);
+    Menu.setApplicationMenu(null);
+    settings = loadSettings();
+    config = loadConfig();
+    makeUpdater();
+    setupPermissions();
+    registerGameProtocol();
+    setupIpc();
+    try {
+      const inst = await updater.ensureBundled();
+      setStatus({ installed: pickInstalled(inst) });
+    } catch (e) { handleError(e, 'bundle'); }
+    const cached = readJson(userFile(path.join('cache', 'last-manifest.json')));
+    if (cached && cached.game) {
+      setStatus({ news: cached.news || [], remote: { version: cached.game.version, size: cached.game.size, notes: cached.game.notes || [], date: cached.game.date || cached.published, cached: true } });
+    }
+    if (!updater.getInstalled() && status.phase !== 'error') {
+      setStatus({ phase: 'error', error: { code: 'NO_GAME', context: 'bundle', message: "Le jeu n'est pas installé : vérifiez votre connexion puis cliquez sur Réparer." } });
+    }
+    setStatus({ settings: { ...settings } });
+    createLauncherWindow();
+    if (process.argv.includes('--publier')) openPublisher();
+    launcherWin.webContents.once('did-finish-load', () => {
+      if (settings.autoCheck || !updater.getInstalled()) checkForUpdates({ auto: true });
+      else setStatus({ phase: idlePhase() });
+    });
+  });
+  app.on('window-all-closed', () => app.quit());
+}

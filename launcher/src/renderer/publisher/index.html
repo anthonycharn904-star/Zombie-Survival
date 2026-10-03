@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Zombie Survival — Publication</title>
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="publisher.css">
+</head>
+<body>
+<header class="head">
+  <div>
+    <p class="eyebrow">Réservé à l'auteur du jeu</p>
+    <h1>Publier une mise à jour</h1>
+  </div>
+  <p class="lead">Fabrique une version signée du jeu. Une fois mise en ligne, les launchers des joueurs la détectent, la vérifient et l'installent.</p>
+</header>
+
+<main class="steps">
+  <!-- 1. Clé -->
+  <section class="card" id="card-key">
+    <h2><span class="n">1</span>Clé de signature</h2>
+    <div id="key-none" hidden>
+      <p>Aucune clé sur ce PC. Elle prouve aux launchers que la mise à jour vient de vous : <b>sans elle, impossible de publier pour les launchers déjà distribués</b>. Générez-la une seule fois, puis sauvegardez-la.</p>
+      <div class="row">
+        <button class="btn primary" id="key-generate" type="button">Générer une clé</button>
+        <button class="btn" id="key-import" type="button">Importer une clé…</button>
+      </div>
+    </div>
+    <div id="key-some" hidden>
+      <p class="fp">Empreinte <b id="key-fp">—</b></p>
+      <p class="ok" id="key-match" hidden>Ce launcher fait confiance à cette clé.</p>
+      <p class="warn" id="key-mismatch" hidden></p>
+      <p class="muted" id="key-storage"></p>
+      <div class="row">
+        <button class="btn" id="key-copy" type="button">Copier la clé publique</button>
+        <button class="btn" id="key-export" type="button">Sauvegarder la clé privée…</button>
+        <button class="btn danger" id="key-replace" type="button">Remplacer la clé…</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Jeu -->
+  <section class="card" id="card-game">
+    <h2><span class="n">2</span>Version du jeu</h2>
+    <div class="field">
+      <span class="label">Fichier du jeu (zombie-survival.html)</span>
+      <div class="pick"><output id="game-path" class="path">Aucun fichier choisi</output><button class="btn" id="game-pick" type="button">Choisir…</button></div>
+      <p class="muted" id="game-detected"></p>
+    </div>
+    <div class="grid2">
+      <label class="field"><span class="label">Numéro de version</span><input id="game-version" type="text" inputmode="decimal" placeholder="1.0.1" autocomplete="off" spellcheck="false"></label>
+      <p class="muted hint" id="game-last"></p>
+    </div>
+    <label class="field"><span class="label">Notes de version · une ligne par point</span><textarea id="game-notes" rows="4" placeholder="Nouvelle arme : Ray Gun&#10;Les zombies courent plus vite à partir de la manche 10"></textarea></label>
+    <details class="more">
+      <summary>Ajouter une actualité (facultatif)</summary>
+      <label class="field"><span class="label">Titre</span><input id="news-title" type="text" maxlength="160" placeholder="Double points ce week-end"></label>
+      <label class="field"><span class="label">Texte</span><textarea id="news-text" rows="2" maxlength="2000"></textarea></label>
+    </details>
+    <label class="check"><input type="checkbox" id="allow-same"> Republier une version déjà publiée (corrige une publication pas encore mise en ligne)</label>
+  </section>
+
+  <!-- 3. Launcher -->
+  <section class="card" id="card-launcher">
+    <h2><span class="n">3</span>Nouveau launcher <em>facultatif</em></h2>
+    <p class="muted" id="launcher-last"></p>
+    <div class="field">
+      <span class="label">Installateur (Zombie-Survival-Setup-x.y.z.exe)</span>
+      <div class="pick"><output id="setup-path" class="path">Aucun · le launcher actuel reste annoncé</output><button class="btn" id="setup-pick" type="button">Choisir…</button><button class="btn" id="setup-clear" type="button" hidden>Retirer</button></div>
+    </div>
+    <div class="grid2" id="setup-fields" hidden>
+      <label class="field"><span class="label">Version du launcher</span><input id="launcher-version" type="text" placeholder="1.0.1" autocomplete="off" spellcheck="false"></label>
+      <label class="field"><span class="label">Notes · une ligne par point</span><textarea id="launcher-notes" rows="2"></textarea></label>
+    </div>
+  </section>
+
+  <!-- 4. Hébergement -->
+  <section class="card" id="card-host">
+    <h2><span class="n">4</span>Hébergement</h2>
+    <label class="field"><span class="label">Dépôt GitHub (pseudo/depot)</span><input id="repo" type="text" placeholder="mon-pseudo/zombie-survival" autocomplete="off" spellcheck="false"></label>
+    <p class="muted" id="repo-url"></p>
+    <div class="field">
+      <span class="label">Dossier des publications sur ce PC</span>
+      <div class="pick"><output id="out-dir" class="path">—</output><button class="btn" id="out-pick" type="button">Choisir…</button></div>
+    </div>
+  </section>
+
+  <div class="create">
+    <p class="error" id="form-error" role="alert" hidden></p>
+    <button class="btn big" id="create" type="button">Créer la publication</button>
+  </div>
+
+  <!-- Résultat -->
+  <section class="card result" id="result" hidden>
+    <h2>Publication <span id="res-version"></span> prête</h2>
+    <p class="muted path" id="res-dir"></p>
+    <h3>Fichiers à mettre en ligne</h3>
+    <ul class="files" id="res-files"></ul>
+    <ol class="howto" id="res-howto"></ol>
+    <div class="row">
+      <button class="btn primary" id="res-github" type="button">Ouvrir GitHub</button>
+      <button class="btn" id="res-open" type="button">Ouvrir le dossier</button>
+      <button class="btn" id="res-test" type="button">Tester avec ce launcher</button>
+    </div>
+    <p class="muted" id="res-test-note">« Tester » fait pointer ce launcher vers ce dossier pour vérifier la mise à jour avant de la publier. Retour à la source officielle : Réglages du launcher.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Source active du launcher : <b id="active-source">—</b></span>
+  <span id="toast" role="status"></span>
+</footer>
+
+<script src="publisher.js"></script>
+</body>
+</html>

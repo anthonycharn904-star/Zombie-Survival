@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Zombie Survival</title>
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="launcher.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="titlebar">
+  <div class="brand"><img src="../../assets/icon.png" alt="" width="18" height="18"><span>Zombie Survival</span><em>Launcher</em></div>
+  <div class="win-buttons">
+    <button class="win" id="win-min" type="button" aria-label="Réduire" title="Réduire">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6h9"/></svg>
+    </button>
+    <button class="win close" id="win-close" type="button" aria-label="Fermer" title="Fermer">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="banner" id="launcher-banner" hidden>
+  <span><b>Nouveau launcher</b> <span id="lu-version"></span> disponible</span>
+  <button class="banner-btn" id="lu-install" type="button">Installer et redémarrer</button>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<main class="content" id="content">
+  <section class="intro">
+    <p class="eyebrow">Rapport d'incident · Bunker 7 · nuit du 14 décembre</p>
+    <h1 class="title">Zombie<span>Survival.</span></h1>
+    <div class="chips">
+      <span class="chip" id="chip-game">Jeu —</span>
+      <span class="chip" id="chip-launcher">Launcher —</span>
+    </div>
+    <section class="news" id="news" hidden aria-labelledby="news-title">
+      <h2 id="news-title">Communiqués</h2>
+      <ul id="news-list"></ul>
+    </section>
+  </section>
+
+  <aside class="dossier" aria-labelledby="notes-title">
+    <span class="stamp" id="notes-stamp">—</span>
+    <h2 id="notes-title">Notes de version</h2>
+    <p class="notes-meta" id="notes-meta"></p>
+    <ul class="notes" id="notes-list"></ul>
+  </aside>
+</main>
+
+<footer class="dock">
+  <div class="status" id="status" data-tone="idle">
+    <div class="status-head" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="status-title">Ouverture du bunker…</span></div>
+    <p class="status-detail" id="status-detail" aria-live="polite"></p>
+    <div class="progress" id="progress" hidden><i id="progress-bar"></i></div>
+    <div class="status-links">
+      <button class="link" id="link-a" type="button" hidden></button>
+      <button class="link" id="link-b" type="button" hidden></button>
+    </div>
+  </div>
+  <div class="dock-actions">
+    <button class="icon-btn" id="btn-folder" type="button" title="Ouvrir le dossier du jeu" aria-label="Ouvrir le dossier du jeu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-settings" type="button" title="Réglages" aria-label="Réglages" aria-controls="drawer" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button class="play" id="btn-main" type="button" disabled><span id="btn-main-label">Jouer</span></button>
+  </div>
+</footer>
+
+<div class="veil" id="veil" hidden></div>
+<aside class="drawer" id="drawer" aria-labelledby="drawer-title" inert>
+  <div class="drawer-head">
+    <h2 id="drawer-title">Réglages</h2>
+    <button class="win" id="drawer-close" type="button" aria-label="Fermer les réglages" title="Fermer (Échap)">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <section>
+      <h3>Partie</h3>
+      <label class="toggle"><input type="checkbox" id="set-fullscreen"><i aria-hidden="true"></i><span>Lancer le jeu en plein écran<small>F11 ou Alt+Entrée pour basculer pendant la partie</small></span></label>
+      <label class="toggle"><input type="checkbox" id="set-keepLauncherOpen"><i aria-hidden="true"></i><span>Garder le launcher ouvert pendant la partie</span></label>
+    </section>
+    <section>
+      <h3>Mises à jour</h3>
+      <label class="toggle"><input type="checkbox" id="set-autoCheck"><i aria-hidden="true"></i><span>Rechercher les mises à jour au démarrage</span></label>
+      <label class="toggle"><input type="checkbox" id="set-autoInstall"><i aria-hidden="true"></i><span>Installer automatiquement les mises à jour du jeu</span></label>
+      <div class="row"><button class="btn" id="act-check" type="button">Vérifier maintenant</button></div>
+    </section>
+    <section>
+      <h3>Dépannage</h3>
+      <div class="row">
+        <button class="btn" id="act-repair" type="button">Réparer le jeu</button>
+        <button class="btn" id="act-rollback" type="button" hidden>Revenir à la version précédente</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="act-folder" type="button">Dossier du jeu</button>
+        <button class="btn" id="act-logs" type="button">Journal</button>
+      </div>
+    </section>
+    <section>
+      <h3>Source des mises à jour</h3>
+      <p class="source" id="source-url">—</p>
+      <p class="source-sub" id="source-sub" hidden></p>
+      <p class="source-key">Clé de confiance : <b id="source-key">—</b></p>
+      <p class="note warn" id="source-custom" hidden>Source de test active (créée par l'outil de publication).</p>
+      <p class="note" id="source-placeholder" hidden>Adresse provisoire : les mises à jour en ligne seront actives quand le jeu sera publié sur GitHub.</p>
+      <div class="row" id="source-reset-row" hidden><button class="btn" id="act-reset-source" type="button">Revenir à la source officielle</button></div>
+    </section>
+  </div>
+  <div class="drawer-foot">
+    <span id="versions-line">—</span>
+    <button class="link" id="act-publisher" type="button">Outil de publication</button>
+  </div>
+</aside>
+
+<script src="launcher.js"></script>
+</body>
+</html>
