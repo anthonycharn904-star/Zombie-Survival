@@ -23,7 +23,7 @@ Ouvrir `game/zombie-survival.html` dans Chrome, Edge ou Firefox. Une connexion i
 
 ## Cartes
 
-Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, format 1) : grille de cases de 1 m (sol, murs, fenêtres, portes payantes, murets, piliers, caisses, cour des zombies), textures par case, pièces nommées, éléments de jeu (départ, armes murales, atouts, emplacements de la boîte mystère, interrupteur, Amplificateur, lumières, panneaux, apparitions de zombies au sol), objets posés, ambiance et règles de la partie.
+Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, format 1) : grille de cases de 1 m (sol, murs, fenêtres, portes payantes, murets, piliers, caisses, cour des zombies), textures par case, pièces nommées, éléments de jeu (départ, armes murales, atouts, emplacements de la boîte mystère, interrupteur, Amplificateur, digi pass, lumières, panneaux, apparitions de zombies au sol), objets posés, ambiance et règles de la partie.
 
 - **Bunker 7** est intégré au fichier du jeu.
 - Les autres cartes sont livrées dans le paquet du jeu : `maps/index.json` (ordre du menu) et `maps/<id>.json`. Une carte de ce dossier qui porte l'identifiant `bunker7` remplace celle qui est intégrée.
@@ -57,6 +57,16 @@ Depuis le jeu 1.4.0, le zombie de base est **Le Fantassin** : « Un soldat tomb�
 - Faiblesse : la tête, dégâts ×2 quelle que soit l'arme. Le casque encaisse le premier tir à la tête (0 dégât, +10 points), puis tombe et roule au sol ; sous Mort instantanée, il saute sans rien encaisser. Les explosions peuvent aussi l'arracher.
 
 Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : nom, catégorie, première manche, description, multiplicateurs `mult` des PV, de la vitesse et des dégâts par rapport au Fantassin, multiplicateur de la tête, casque, capacité, cartes où il apparaît), son modèle dans `SPECIMEN_MODELS` (section 05) et ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
+
+## Digi pass (Bunker 7)
+
+Depuis le jeu 1.4.0, un digi pass (clavier à code) est fixé au mur de la Gewehr 43, à sa droite, à hauteur de main.
+
+- **F** devant le clavier l'ouvre. Le code tapé s'affiche au centre de l'écran, en blanc. Chiffres de la rangée du haut (sur un clavier AZERTY, sans Maj) ou du pavé numérique ; **Retour arrière** corrige ; **F** referme. S'éloigner, tomber ou mettre en pause referme aussi. Pendant la saisie, 1 et 2 ne changent pas d'arme et les éléments voisins (la Gewehr 43) ne réagissent pas à F.
+- Mauvais code : « Code erroné », puis le clavier se vide.
+- Bon code (le code d'Anthony, 4 chiffres) : le digi pass disparaît de la carte et, jusqu'à la fin de la partie, les points sont infinis (∞ ; tout achat passe sans rien retirer) et le joueur est immortel. Une nouvelle partie remet le digi pass en place.
+- Le code n'est pas écrit en clair dans le jeu : seule son empreinte l'est (`DIGIPASS_HASH`, section 10). Pour le changer, calculer `digipassHash('1234')` (fonction du jeu) et remplacer la valeur. Limite : il n'existe que 10 000 codes, quelqu'un qui lit le code source peut tous les essayer ; l'empreinte empêche seulement de le lire d'un coup d'œil.
+- Format de carte : élément facultatif `digipass: { cell, n, off, y }` (case de mur, direction de la pièce, décalage latéral de −0,42 à 0,42 m, hauteur de 0,9 à 2,2 m). Les Mod Tools (launcher 1.2.5) le déplacent quand la carte est redimensionnée et le retirent si son mur disparaît ; ils ne permettent pas encore d'en poser un.
 
 ## Mod Tools (éditeur de cartes)
 
@@ -129,9 +139,9 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
-- **4 octobre 2026 — jeu 1.4.0** : le zombie de base devient **Le Fantassin** (fiche d'Anthony) : nouveau modèle, démarche traînante, casque qui tombe ; règles de la fiche (100 PV +50 par manche puis ×1,1 dès la 10, 30 dégâts, trot dès la manche 4, sprint dès la 8, tête ×2 pour toutes les armes au lieu de ×1,5 à ×4 selon l'arme, casque qui encaisse le premier tir à la tête). Écran Modèles : fiche au format de la sienne (en-tête, jauges ×1, capacité, faiblesse), démonstration du casque, brume au sol. Seuls les zombies présents sont dessinés (le modèle est plus détaillé).
+- **4 octobre 2026 — jeu 1.4.0** : le zombie de base devient **Le Fantassin** (fiche d'Anthony) : nouveau modèle, démarche traînante, casque qui tombe ; règles de la fiche (100 PV +50 par manche puis ×1,1 dès la 10, 30 dégâts, trot dès la manche 4, sprint dès la 8, tête ×2 pour toutes les armes au lieu de ×1,5 à ×4 selon l'arme, casque qui encaisse le premier tir à la tête). Écran Modèles : fiche au format de la sienne (en-tête, jauges ×1, capacité, faiblesse), démonstration du casque, brume au sol. Seuls les zombies présents sont dessinés (le modèle est plus détaillé). **Digi pass** sur le mur de la Gewehr 43 (Bunker 7) : code à 4 chiffres tapé au centre de l'écran ; le bon code retire le clavier et donne, pour la partie, points infinis et immortalité.
 - **4 octobre 2026 — jeu 1.3.0** : écran **Modèles** dans le menu (fiche et modèle 3D animé de chaque type de zombie, caractéristiques tirées des règles du jeu, éliminations du joueur).
-- **Launcher 1.2.5 (en préparation, pas encore compilé)** : aide de l'étape « Mise en ligne » adaptée à la nouvelle page des jetons GitHub (« Add permissions », puis *Read-only* → *Read and write*).
+- **Launcher 1.2.5 (en préparation, pas encore compilé)** : aide de l'étape « Mise en ligne » adaptée à la nouvelle page des jetons GitHub (« Add permissions », puis *Read-only* → *Read and write*) ; Mod Tools : le digi pass suit le redimensionnement de la carte et part avec son mur.
 - **4 octobre 2026, 21 h 10 — en ligne : jeu 1.2.1 et launcher 1.2.4** (release `v1.2.1`), première publication faite en un clic depuis le launcher. Le jeu 1.2.1 est le code du jeu 1.2.0, republié sous un numéro plus grand que la release 1.2.0 retirée. Vérifié : signature, contenu identique au dépôt, mise à jour d'un launcher 1.1.0 simulée (jeu installé, launcher 1.2.4 proposé et vérifié).
 - **4 octobre 2026 — launcher 1.2.4** : la page de chaque version mise en ligne donne aux nouveaux joueurs le lien de l'installateur (« Nouveau joueur ? »), même quand la version ne joint pas de nouveau launcher : le premier téléchargement se fait toujours depuis la page de la dernière version.
 - **4 octobre 2026 — launcher 1.2.3** : publication en un clic depuis le launcher (« Publier pour tous les joueurs », jeton GitHub chiffré, brouillon puis publication, vérification de l'adresse des mises à jour, reprise après coupure) ; mise à jour automatique du launcher lui-même ; nouvelle vérification au retour d'une partie ; garde-fous contre la republication d'un ancien jeu (incident de la version 1.2.0 du 4 octobre, retirée avant tout téléchargement) et contre un numéro trop petit.

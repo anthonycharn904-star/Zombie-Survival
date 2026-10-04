@@ -2,7 +2,8 @@
 /* Essai de bout en bout du jeu dans la fenêtre du launcher : menu, sélection de la carte,
    statistiques enregistrées à la fermeture de la fenêtre et retrouvées à l'ouverture suivante,
    écran « Modèles » (fiche du Fantassin, modèle 3D dessiné, animations), règles du Fantassin
-   (casque qui encaisse le premier tir à la tête, tête ×2, points de vie et dégâts).
+   (casque qui encaisse le premier tir à la tête, tête ×2, points de vie et dégâts), digi pass
+   (code tapé au clavier, mauvais code refusé, bon code : points infinis et immortalité).
      xvfb-run -a node e2e/game-menu.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -63,6 +64,43 @@ async function openGame() {
     });
     ok(rules.hp0 === 100 && rules.helmet0 && rules.hp1 === 100 && !rules.helmet1 && rules.loose, 'Fantassin : le casque encaisse le premier tir à la tête puis tombe', rules);
     ok(rules.hp2 === 100 - rules.dmg * 2 && rules.hit === 30 && rules.r10 === 550 && rules.trot && rules.sprint, 'Fantassin : tête ×2, 30 dégâts, 550 PV à la manche 10, trot dès la 4, sprint dès la 8', rules);
+    // Digi pass (Bunker 7, à droite de la Gewehr 43) : vraies touches, mauvais code puis le bon.
+    // Le jeu ne garde que l'empreinte du code : l'essai retrouve le code par les 10 000 essais
+    // possibles (et vérifie qu'un seul code convient), pour ne pas l'écrire en clair ici.
+    const codes = await game.evaluate(() => { const r = []; for (let i = 0; i < 1e4; i++) { const c = String(i).padStart(4, '0'); if (digipassHash(c) === DIGIPASS_HASH) r.push(c); } return r; });
+    ok(codes.length === 1, 'Digi pass : un seul code à 4 chiffres ouvre le clavier', codes.length);
+    const wrong = codes[0] === '0512' ? '0513' : '0512';
+    const near = await game.evaluate(() => {
+      clearZombies(); G.spawnT = 1e9;
+      __zs.give('mp40'); __zs.step(90);
+      __zs.tp(30.75, 14.3, 0); __zs.step(2);
+      const p = document.getElementById('prompt');
+      return { prompt: p.hidden ? null : document.getElementById('prompt-text').textContent, shown: !!Features.digipass && Features.digipass.root.visible, cur: Arms.cur };
+    });
+    ok(near.prompt === 'Appuyez sur F pour utiliser le Digi pass' && near.shown, 'Digi pass : présent sur le mur, F pour l’utiliser', near);
+    const keys = async (list) => { for (const k of list) { await game.keyboard.press(k); await game.evaluate(() => __zs.step(1)); } };
+    await keys(['KeyF', `Digit${wrong[0]}`, `Numpad${wrong[1]}`, `Digit${wrong[2]}`, `Digit${wrong[3]}`]);
+    const bad = await game.evaluate(() => {
+      const r = { open: Keypad.open, shown: !document.getElementById('keypad').hidden, digits: [...document.querySelectorAll('#kp-code span')].map((s) => s.textContent).join(''), color: getComputedStyle(document.querySelector('#kp-code span')).color };
+      __zs.step(9, 0.05);
+      r.msg = document.getElementById('kp-msg').textContent; r.cheat = G.cheat; r.cur = Arms.cur;
+      __zs.step(20, 0.05);
+      r.again = Keypad.open && Keypad.state === 'typing' && Keypad.code === '';
+      return r;
+    });
+    ok(bad.open && bad.shown && bad.digits === wrong && bad.color === 'rgb(255, 255, 255)' && bad.msg === 'Code erroné' && !bad.cheat && bad.cur === near.cur && bad.again,
+      'Digi pass : code tapé au centre en blanc, mauvais code refusé, les chiffres ne changent pas d’arme', bad);
+    await keys([...codes[0]].map((d) => `Digit${d}`));
+    const good = await game.evaluate(() => {
+      __zs.step(30, 0.05);
+      const r = { open: Keypad.open, gone: Features.digipass.gone, shown: Features.digipass.root.visible, cheat: G.cheat, pts: document.getElementById('points').textContent };
+      const hp = player.hp; playerDamage(500); r.hpKept = player.hp === hp && G.state === 'playing';
+      const pts = G.points; r.spend = trySpend(1e6) && G.points === pts;
+      __zs.step(2); r.prompt = document.getElementById('prompt').hidden ? null : document.getElementById('prompt-text').textContent;
+      return r;
+    });
+    ok(!good.open && good.gone && !good.shown && good.cheat && good.pts === '∞' && good.hpKept && good.spend && good.prompt !== 'Appuyez sur F pour utiliser le Digi pass',
+      'Digi pass : le bon code le retire de la carte, points infinis et immortel', good);
     const live = await game.evaluate(() => ({ games: Life.data.games, kills: Life.data.kills, melee: Life.data.killsMelee, time: Life.data.time }));
     ok(live.games === 1 && live.kills === 1 && live.melee === 1 && live.time >= 2.9, 'compteurs pendant la partie', live);
     // fermeture de la fenêtre du jeu en pleine partie (sans pause)

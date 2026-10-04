@@ -62,6 +62,19 @@ async function author(userData) {
     await mt.waitForLoadState('domcontentloaded');
     await mt.waitForFunction(() => document.documentElement.dataset.modtools === 'ready', null, { timeout: 120000 });
     ok(await mt.evaluate(() => ZS.G.state === 'editor' && !!MT.state.map), 'Mod Tools ouverts sur une carte');
+    // digi pass de Bunker 7 : il suit l'agrandissement de la carte et part avec son mur
+    const dp = await mt.evaluate(() => {
+      MT.openMap(ZS.normalizeMap(JSON.parse(JSON.stringify(ZS.BUNKER7))), { id: 'bunker7', source: 'game' });
+      const c0 = MT.state.map.digipass && MT.state.map.digipass.cell.slice();
+      MT.resizeMap(MT.state.map.w + 4, MT.state.map.h + 2, 1, 1);
+      const c1 = MT.state.map.digipass && MT.state.map.digipass.cell.slice();
+      MT.edit('Mur', () => MT.setTiles([c1], '.'), 'grid');
+      const gone = MT.state.map.digipass === null;
+      MT.undo(); MT.undo();
+      const back = MT.state.map.digipass;
+      return { c0, c1, gone, back: !!back && back.cell.join() === c0.join() && MT.state.map.w === ZS.BUNKER7.grid[0].length };
+    });
+    ok(!!dp.c0 && !!dp.c1 && dp.c1[0] === dp.c0[0] + 2 && dp.c1[1] === dp.c0[1] + 1 && dp.gone && dp.back, `Mod Tools : le digi pass suit l’agrandissement et part avec son mur ${JSON.stringify(dp)}`);
     // carte enregistrée dans l'atelier, image importée, liste de publication
     const r = await mt.evaluate(async () => {
       MT.openMap(ZS.blankMap(36, 26, 'Carte E2E'), { id: 'carte-e2e', source: 'new' });

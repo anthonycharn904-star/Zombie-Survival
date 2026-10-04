@@ -337,6 +337,7 @@
     m.risers = keep(m.risers, (r) => !at(r) || tile(r) === '.', () => 'apparition de zombies');
     if (m.power && at(m.power.cell) && tile(m.power.cell) !== '#') { m.power = null; removed.push('interrupteur du courant'); }
     if (m.amp && m.amp.cells.some(at) && !m.amp.cells.every((c) => tile(c) === '.')) { m.amp = null; removed.push('Amplificateur'); }
+    if (m.digipass && at(m.digipass.cell) && tile(m.digipass.cell) !== '#') { m.digipass = null; removed.push('digi pass'); }
     return removed;
   }
 
@@ -723,6 +724,7 @@
       raw.boxes = raw.boxes.map((b) => ({ ...b, cells: b.cells.map(mv) })).filter((b) => b.cells.every((c) => inside(...c)));
       if (raw.power) { raw.power.cell = mv(raw.power.cell); if (!inside(...raw.power.cell)) raw.power = null; }
       if (raw.amp) { raw.amp.cells = raw.amp.cells.map(mv); if (!raw.amp.cells.every((c) => inside(...c))) raw.amp = null; }
+      if (raw.digipass) { raw.digipass.cell = mv(raw.digipass.cell); if (!inside(...raw.digipass.cell)) raw.digipass = null; }
       raw.lights = raw.lights.map((l) => ({ ...l, pos: [l.pos[0] + dx, l.pos[1], l.pos[2] + dz] })).filter((l) => inside(Math.floor(l.pos[0]), Math.floor(l.pos[2])));
       raw.signs = raw.signs.map((s) => ({ ...s, pos: [s.pos[0] + dx, s.pos[1], s.pos[2] + dz] }));
       raw.risers = raw.risers.map(mv).filter((c) => inside(...c));

@@ -141,6 +141,36 @@ body {
 #prompt-sub:empty { display: none; }
 #prompt.disabled { color: var(--paper-2); }
 
+/* Digi pass : le code tapé, au centre de l'écran, en blanc net (pas de flou ni de lueur). */
+#keypad {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: max-content; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; box-sizing: border-box;
+  padding: 14px clamp(16px, 4vw, 34px) 12px; background: rgba(5, 7, 6, 0.88);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+#keypad p { margin: 0; }
+.kp-title { font-weight: 700; font-size: 15px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--paper-2); }
+.kp-code { display: flex; gap: clamp(10px, 2.4vw, 20px); }
+.kp-code span {
+  display: grid; place-items: center; width: 0.66em; height: 1.06em;
+  font-weight: 700; font-size: clamp(56px, 13vw, 92px); line-height: 1; font-variant-numeric: tabular-nums;
+  color: #fff; text-shadow: 0 2px 0 #000; border-bottom: 4px solid rgba(255, 255, 255, 0.28);
+}
+.kp-code span.filled { border-bottom-color: #fff; }
+#keypad.error .kp-code { animation: kpshake 0.38s; }
+#keypad.error .kp-code span { border-bottom-color: var(--blood-hi); }
+#keypad.ok .kp-code span { border-bottom-color: var(--toxic); }
+@keyframes kpshake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+.kp-msg { min-height: 1.25em; font-weight: 700; font-size: 18px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--paper); text-shadow: 0 1px 0 #000; }
+#keypad.error .kp-msg { color: var(--blood-hi); }
+#keypad.ok .kp-msg { color: var(--toxic); }
+.kp-help { font-size: 15px; color: var(--paper-2); text-shadow: 0 1px 0 #000; }
+.kp-help kbd {
+  font-family: var(--font-hud); font-weight: 700; display: inline-block; min-width: 1.2em; padding: 0 0.3em;
+  border: 1px solid var(--paper-2); border-radius: 3px; line-height: 1.25;
+}
+#hud.keypad-on #crosshair, #hud.keypad-on #hitmarker { visibility: hidden; }
+
 #banner { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); text-align: center; width: max-content; max-width: calc(100vw - 32px); opacity: 0; }
 #banner.show { animation: banner 3s ease-out forwards; }
 #banner-title {
@@ -435,6 +465,12 @@ body {
   <div id="banner" hidden><div id="banner-title"></div><div id="banner-sub"></div></div>
   <div id="hint" hidden></div>
   <div id="prompt" hidden><span id="prompt-text"></span><span id="prompt-cost"></span><div id="prompt-sub"></div></div>
+  <div id="keypad" hidden role="dialog" aria-label="Digi pass">
+    <p class="kp-title">Digi pass</p>
+    <div class="kp-code" id="kp-code" aria-live="polite"><span></span><span></span><span></span><span></span></div>
+    <p class="kp-msg" id="kp-msg"></p>
+    <p class="kp-help"><kbd>0</kbd>–<kbd>9</kbd> taper · <kbd>⌫</kbd> corriger · <kbd>F</kbd> fermer</p>
+  </div>
   <div id="pu-active"></div>
   <div id="bl">
     <div id="perks"></div>
@@ -830,6 +866,8 @@ const BUNKER7 = {
     { w: "stg44", cell: [21, 3], n: [0, 1] },
     { w: "bar", cell: [29, 3], n: [0, 1] },
   ],
+  // clavier à code, à droite de la Gewehr 43
+  digipass: { cell: [30, 12], n: [0, 1], off: 0.35, y: 1.45 },
   perks: [
     { p: "souffle", cell: [17, 14], face: [1, 0] },
     { p: "mainleste", cell: [47, 15], face: [-1, 0] },
@@ -871,7 +909,7 @@ const BUNKER7 = {
 };
 
 /* Tout ce qui est posé sur la carte en cours (rempli au chargement d'une carte). */
-let LAYOUT = { zones: [], doors: {}, wallbuys: [], perks: [], boxes: [], boxStart: 0, power: null, amp: null, lights: [], signs: [], spawn: { pos: [0, 0], yaw: 0 }, startZone: 0 };
+let LAYOUT = { zones: [], doors: {}, wallbuys: [], perks: [], boxes: [], boxStart: 0, power: null, amp: null, digipass: null, lights: [], signs: [], spawn: { pos: [0, 0], yaw: 0 }, startZone: 0 };
 
 /* --------------------------------------------------------------- Armes ---
    dmg = dégâts par balle (zombie manche 1 = 100 PV) ; tête : multiplicateur du type
@@ -1200,6 +1238,9 @@ function normalizeMap(raw) {
   m.boxStart = int(raw.boxStart, 0, Math.max(0, m.boxes.length - 1), 0);
   m.power = raw.power && cell(raw.power.cell) && dir(raw.power.n) ? { cell: cell(raw.power.cell), n: dir(raw.power.n) } : null;
   m.amp = raw.amp && two(raw.amp.cells) && dir(raw.amp.face) ? { cells: two(raw.amp.cells), face: dir(raw.amp.face) } : null;
+  // digi pass : sur la face d'un mur (cell, n), décalé de off mètres vers la droite vu de la pièce, à la hauteur y
+  m.digipass = raw.digipass && cell(raw.digipass.cell) && dir(raw.digipass.n)
+    ? { cell: cell(raw.digipass.cell), n: dir(raw.digipass.n), off: num(raw.digipass.off, -0.42, 0.42, 0), y: num(raw.digipass.y, 0.9, 2.2, 1.45) } : null;
   m.lights = (Array.isArray(raw.lights) ? raw.lights : []).slice(0, 64).map((l) => {
     if (!l || !vec3(l.pos)) return null;
     const o = {
@@ -1296,6 +1337,7 @@ function serializeMap(m) {
     boxes: m.boxes.map((b) => ({ cells: b.cells.map((c) => c.slice()), face: b.face.slice() })), boxStart: m.boxStart,
     power: m.power ? { cell: m.power.cell.slice(), n: m.power.n.slice() } : null,
     amp: m.amp ? { cells: m.amp.cells.map((c) => c.slice()), face: m.amp.face.slice() } : null,
+    digipass: m.digipass ? { cell: m.digipass.cell.slice(), n: m.digipass.n.slice(), off: m.digipass.off, y: m.digipass.y } : undefined,
     lights: m.lights.map((l) => {
       const o2 = { pos: l.pos.slice(), color: colorHex(l.color), intensity: l.intensity, range: l.range, flicker: l.flicker, fixture: l.fixture };
       if (l.powered !== undefined && l.powered !== null) { o2.powered = colorHex(l.powered); o2.poweredRange = l.poweredRange; }
@@ -1413,6 +1455,7 @@ function validateMap(m) {
     if (need.length) Wn(`Pas d'interrupteur du courant : ${need.join(', ')} ne fonctionneront jamais (ou cochez « Courant allumé au départ »).`);
     if (m.amp) Wn("Pas d'interrupteur du courant : l'Amplificateur ne fonctionnera jamais.");
   }
+  if (m.digipass && (tileAt(m.digipass.cell[0], m.digipass.cell[1]) !== 2 || !floorAt(m.digipass.cell[0] + m.digipass.n[0], m.digipass.cell[1] + m.digipass.n[1]))) Wn('Digi pass : il doit être sur un mur, tourné vers le sol.', m.digipass.cell);
   if (m.lights.length > 16) Wn(`${m.lights.length} lumières : au-delà de 16, le jeu ralentit sur les petites cartes graphiques.`);
   if (m.props.length > 1500) Wn(`${m.props.length} objets : la carte risque d'être lente à charger.`);
   return { errors, warnings, analysis: A };
@@ -1767,6 +1810,22 @@ const Sound = (() => {
     tone('square', 118, 112, t, 0.28, 0.5, f);
     tone('square', 124, 118, t, 0.28, 0.4, f);
   }
+  /* Digi pass : bip de touche, double bip d'accès, bourdon d'erreur. */
+  function keypad(kind = 'key') {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, kind === 'key' ? 0.1 : 0.2);
+    const f = filt('lowpass', 4200, 0.7); f.connect(o);
+    if (kind === 'ok') {
+      tone('square', 1318.5, 1318.5, t, 0.09, 0.45, f);
+      tone('square', 1760, 1760, t + 0.11, 0.22, 0.45, f);
+    } else if (kind === 'err') {
+      tone('sawtooth', 220, 196, t, 0.42, 0.5, f);
+      tone('sawtooth', 233, 207, t, 0.42, 0.35, f);
+    } else {
+      tone('square', 1480, 1480, t, 0.06, 0.4, f);
+      noiseHit(t, 0.015, 0.25, 'highpass', 3000, null, 0.7, o);
+    }
+  }
   function door(type, pos) {
     if (!ctx) return;
     const o = out(pos, 0.7, 6); if (!o) return;
@@ -1995,7 +2054,7 @@ const Sound = (() => {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
     zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
-    buy, deny, door, drink, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
+    buy, deny, keypad, door, drink, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say,
   };
 })();
@@ -4371,7 +4430,7 @@ function disposeWorld() {
     World.root = null;
   }
   clearPowerups();
-  Features.interactables = []; Features.perkMachines = []; Features.box = null; Features.power = null; Features.amp = null;
+  Features.interactables = []; Features.perkMachines = []; Features.box = null; Features.power = null; Features.amp = null; Features.digipass = null;
   World.windows = []; World.doors = {}; World.lights = []; World.risers = []; World.props = null; World.ground = null;
 }
 /* Recopie les éléments de la carte dans LAYOUT (format attendu par les éléments de jeu). */
@@ -4380,7 +4439,7 @@ function applyMapLayout(map) {
     zones: [], startZone: 0,
     doors: Object.fromEntries(map.doors.map((d, i) => [String(i), { cost: d.cost, type: d.type, verb: d.verb }])),
     wallbuys: map.wallbuys, perks: map.perks, boxes: map.boxes, boxStart: map.boxStart, power: map.power, amp: map.amp,
-    lights: map.lights, signs: map.signs, spawn: map.spawn,
+    digipass: map.digipass, lights: map.lights, signs: map.signs, spawn: map.spawn,
   };
 }
 /* Charge une carte (déjà passée par normalizeMap) dans la scène. editor : rendu pour les Mod Tools. */
@@ -6822,7 +6881,7 @@ function resetPlayer() {
 }
 
 function playerDamage(amount, self = false) {
-  if (player.down || G.state !== 'playing' || G.god) return;
+  if (player.down || G.state !== 'playing' || G.god || G.cheat) return;   // G.cheat : digi pass (immortel)
   player.hp -= amount;
   player.lastHit = G.time;
   player.punch = Math.min(0.12, player.punch + 0.05);
@@ -7335,8 +7394,8 @@ function updateArms(dt) {
   const s = curSlot();
   Arms.bloom = Math.max(0, Arms.bloom - dt * 5);
   if (pressed('KeyR')) startReload();
-  if (pressed('Digit1')) requestSwap(0);
-  if (pressed('Digit2')) requestSwap(1);
+  if (!Keypad.open && pressed('Digit1')) requestSwap(0);     // pendant la saisie, les chiffres vont au digi pass
+  if (!Keypad.open && pressed('Digit2')) requestSwap(1);
   if (Input.wheel !== 0 || pressed('Tab')) requestSwap(1 - Arms.cur);
   if (pressed('KeyV') || pressed('KeyE')) startKnife();
   if (pressed('KeyG')) startThrow();
@@ -7954,7 +8013,7 @@ function pickSpawnPoint() {
    d'atouts, interrupteur du courant, Amplificateur et bonus lâchés par les
    zombies. Chaque élément utilisable s'enregistre comme « interactable ».
    ============================================================================ */
-const Features = { interactables: [], perkMachines: [], box: null, power: null, amp: null, group: null };
+const Features = { interactables: [], perkMachines: [], box: null, power: null, amp: null, digipass: null, group: null };
 const Powerups = { list: [], bag: [], drops: 0, acc: 0, threshold: 2000 };
 const BOX_POOL = Object.keys(WEAPONS).filter((id) => WEAPONS[id].box > 0);
 /* Armes que la boîte peut donner sur la carte en cours. */
@@ -7965,6 +8024,7 @@ function boxPool() {
 }
 
 function trySpend(cost) {
+  if (G.cheat) { Sound.buy(); return true; }                 // digi pass : points infinis
   if (G.points >= cost) {
     G.points -= cost;
     Life.add('spent', cost);
@@ -7987,6 +8047,7 @@ function buildFeatures() {
   if (LAYOUT.boxes.length) buildBox(group);
   if (LAYOUT.power) buildPowerSwitchFeature(group);
   if (LAYOUT.amp) buildAmpFeature(group);
+  if (LAYOUT.digipass) buildDigipass(group);
   buildSigns(group);
   return group;
 }
@@ -8196,6 +8257,201 @@ function buildWallbuys(group) {
       },
     });
   }
+}
+
+/* ------------------------------------------------------------ Digi pass -- */
+/* Clavier à code fixé au mur (Bunker 7 : à droite de la Gewehr 43). F l'ouvre ; le code
+   tapé s'affiche au centre de l'écran, en blanc. Le bon code retire le digi pass de la
+   carte et donne, pour la partie en cours, des points infinis et l'immortalité (G.cheat).
+   Le code n'est pas écrit en clair : le jeu ne garde que son empreinte (FNV-1a 32 bits,
+   salée). Pour le changer : remplacer DIGIPASS_HASH par digipassHash('nouveau code'). */
+const DIGIPASS_HASH = 0xeb382245;
+function digipassHash(code) {
+  let h = 0x811c9dc5;
+  for (const ch of `zs-digipass:${code}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
+}
+const Keypad = { open: false, code: '', state: 'typing', t: 0, skipF: false };
+function rrect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+  g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r);
+  g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y);
+  g.closePath();
+}
+/* Face du clavier : plastron brossé, logement de l'écran, douze touches. */
+function digipassFace() {
+  const W = 256, H = 384, c = makeCanvas(W, H), g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, W, H);
+  grd.addColorStop(0, '#41474a'); grd.addColorStop(1, '#262a2c');
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  const rnd = mulberry32(91);
+  for (let y = 0; y < H; y += 2) { g.fillStyle = `rgba(255, 255, 255, ${rnd() * 0.03})`; g.fillRect(0, y, W, 1); }
+  g.fillStyle = '#0d1011'; rrect(g, 20, 20, W - 40, 80, 8); g.fill();
+  g.fillStyle = '#6f777b'; g.font = `600 15px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('DIGI PASS', W / 2, 112);
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+  const kw = 58, kh = 50, gx = (W - kw * 3) / 4, top = 128, gy = 11;
+  keys.forEach((k, i) => {
+    const x = gx + (i % 3) * (kw + gx), y = top + Math.floor(i / 3) * (kh + gy);
+    g.fillStyle = 'rgba(0, 0, 0, 0.55)'; rrect(g, x + 2, y + 4, kw, kh, 9); g.fill();
+    const kg = g.createLinearGradient(0, y, 0, y + kh);
+    kg.addColorStop(0, '#e2e5e5'); kg.addColorStop(1, '#a3a8aa');
+    g.fillStyle = kg; rrect(g, x, y, kw, kh, 9); g.fill();
+    g.fillStyle = '#15181a'; g.font = `700 32px ${FONT_HUD}`;
+    g.fillText(k, x + kw / 2, y + kh / 2 + 2);
+  });
+  return c;
+}
+/* Écran du clavier : le code en cours, ou un message. */
+function digipassLCD(text, color = '#8dff9a') {
+  const dp = Features.digipass;
+  if (!dp) return;
+  const W = dp.lcd.width, H = dp.lcd.height, g = dp.lcd.getContext('2d');
+  g.fillStyle = '#071209'; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(141, 255, 154, 0.07)';
+  for (let y = 1; y < H; y += 3) g.fillRect(0, y, W, 1);
+  g.font = `700 ${Math.round(H * 0.6)}px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = color; g.fillText(text, W / 2, H / 2 + 2);
+  dp.lcdTex.needsUpdate = true;
+}
+function buildDigipass(group) {
+  const d = LAYOUT.digipass, [cx, cz] = d.cell, [nx, nz] = d.n;
+  const rx = nz, rz = -nx;                                   // vers la droite, vu de la pièce
+  const W = 0.16, H = 0.24, D = 0.04, FW = W - 0.012, FH = H - 0.012;
+  const x = cx + 0.5 + nx * 0.5 + rx * d.off, z = cz + 0.5 + nz * 0.5 + rz * d.off;
+  const root = new THREE.Group();
+  root.position.set(x, d.y, z);
+  root.rotation.y = Math.atan2(nx, nz);                      // l'avant du clavier regarde la pièce
+  const plate = new THREE.Mesh(GEO.box, new THREE.MeshStandardMaterial({ color: 0x1d2022, roughness: 0.7, metalness: 0.3 }));
+  plate.scale.set(W + 0.026, H + 0.026, 0.01); plate.position.z = 0.005;
+  const body = new THREE.Mesh(GEO.box, new THREE.MeshStandardMaterial({ color: 0x5d6366, roughness: 0.42, metalness: 0.65 }));
+  body.scale.set(W, H, D); body.position.z = D / 2;
+  const faceTex = toTex(digipassFace(), { clamp: true });
+  const face = new THREE.Mesh(GEO.plane, new THREE.MeshStandardMaterial({
+    map: faceTex, roughness: 0.55, metalness: 0.2, emissive: 0xffffff, emissiveMap: faceTex, emissiveIntensity: 0.07,
+  }));
+  face.scale.set(FW, FH, 1); face.position.z = D + 0.0008;
+  const lcd = makeCanvas(256, 96), lcdTex = toTex(lcd, { clamp: true });
+  const screen = new THREE.Mesh(GEO.plane, new THREE.MeshBasicMaterial({ map: lcdTex, toneMapped: false }));
+  screen.scale.set(FW * (216 / 256), FH * (80 / 384), 1);
+  screen.position.set(0, FH * (0.5 - 60 / 384), D + 0.0016);
+  const led = new THREE.Mesh(GEO.sph, new THREE.MeshBasicMaterial({ color: 0xff2a2a, toneMapped: false }));
+  led.scale.setScalar(0.0055); led.position.set(FW * 0.4, FH * 0.5 - 0.011, D + 0.003);
+  root.add(plate, body, face, screen, led);
+  group.add(root);
+  const dp = { root, lcd, lcdTex, led, x, z, gone: false, blink: 0, ledCol: null };
+  Features.digipass = dp;
+  digipassLCD('- - - -');
+  Features.interactables.push({
+    kind: 'digipass', x: x + nx * 0.6, z: z + nz * 0.6, r: 1.4,
+    prompt() { return dp.gone || Keypad.open ? null : { text: 'Appuyez sur F pour utiliser le Digi pass' }; },
+    use() { openKeypad(); },
+  });
+}
+function resetDigipass() {
+  closeKeypad();
+  const dp = Features.digipass;
+  if (!dp) return;
+  dp.gone = false;
+  dp.root.visible = true;
+  dp.ledCol = null;
+  digipassLCD('- - - -');
+}
+/* Voyant : rouge qui clignote au repos, orange fixe pendant la saisie, rouge rapide en cas
+   d'erreur, vert quand le code est bon. */
+function updateDigipass(dt) {
+  const dp = Features.digipass;
+  if (!dp || dp.gone) return;
+  dp.blink += dt;
+  const st = Keypad.open ? Keypad.state : 'idle';
+  const col = st === 'ok' ? 0x2aff5a : st === 'typing' || st === 'check' ? 0xffa21a : 0xff2a2a;
+  if (dp.ledCol !== col) { setLin(dp.led.material.color, col); dp.ledCol = col; }
+  dp.led.visible = st === 'idle' ? Math.sin(dp.blink * 3.2) > 0.2 : st === 'error' ? Math.sin(dp.blink * 30) > 0 : true;
+}
+
+/* ---- saisie du code (affichée au centre de l'écran) */
+function renderKeypad() {
+  const slots = $('kp-code').children;
+  for (let i = 0; i < 4; i++) {
+    slots[i].textContent = Keypad.code[i] || '';
+    slots[i].classList.toggle('filled', i < Keypad.code.length);
+  }
+  const box = $('keypad');
+  box.classList.toggle('error', Keypad.state === 'error');
+  box.classList.toggle('ok', Keypad.state === 'ok');
+  $('kp-msg').textContent = Keypad.state === 'error' ? 'Code erroné' : Keypad.state === 'ok' ? 'Code accepté' : 'Tapez le code à 4 chiffres';
+  const lcd = Keypad.state === 'error' ? ['ERREUR', '#ff5a4a'] : Keypad.state === 'ok' ? ['OK', '#8dff9a']
+    : [(Keypad.code + '____').slice(0, 4).split('').join(' '), '#8dff9a'];
+  digipassLCD(lcd[0], lcd[1]);
+}
+function openKeypad() {
+  const dp = Features.digipass;
+  if (Keypad.open || !dp || dp.gone) return;
+  Keypad.open = true;
+  Keypad.code = '';
+  Keypad.state = 'typing';
+  Keypad.t = 0;
+  Keypad.skipF = true;                                       // le F qui vient d'ouvrir ne referme pas
+  $('keypad').hidden = false;
+  HUD.el.hud.classList.add('keypad-on');
+  renderKeypad();
+  Sound.keypad('key');
+}
+function closeKeypad() {
+  if (!Keypad.open) return;
+  Keypad.open = false;
+  $('keypad').hidden = true;
+  HUD.el.hud.classList.remove('keypad-on');
+  const dp = Features.digipass;
+  if (dp && !dp.gone) digipassLCD('- - - -');
+}
+function keypadType(d) {
+  if (Keypad.state !== 'typing' || Keypad.code.length >= 4) return;
+  Keypad.code += d;
+  Sound.keypad('key');
+  if (Keypad.code.length === 4) { Keypad.state = 'check'; Keypad.t = 0.35; }
+  renderKeypad();
+}
+function updateKeypad(dt) {
+  if (!Keypad.open) return;
+  const dp = Features.digipass;
+  if (!dp || dp.gone || player.down || Math.hypot(player.pos.x - dp.x, player.pos.z - dp.z) > 2.4) { closeKeypad(); return; }
+  if (Keypad.state === 'typing') {
+    for (let d = 0; d <= 9; d++) if (pressed(`Digit${d}`) || pressed(`Numpad${d}`)) keypadType(String(d));
+    if (Keypad.state === 'typing' && pressed('Backspace') && Keypad.code) { Keypad.code = Keypad.code.slice(0, -1); Sound.keypad('key'); renderKeypad(); }
+    if (pressed('KeyF') && !Keypad.skipF) { closeKeypad(); return; }
+  } else if ((Keypad.t -= dt) <= 0) {
+    if (Keypad.state === 'check') {
+      if (digipassHash(Keypad.code) === DIGIPASS_HASH) { Keypad.state = 'ok'; Keypad.t = 0.8; Sound.keypad('ok'); }
+      else { Keypad.state = 'error'; Keypad.t = 0.9; Sound.keypad('err'); }
+      renderKeypad();
+    } else if (Keypad.state === 'error') {
+      Keypad.code = ''; Keypad.state = 'typing'; renderKeypad();
+    } else if (Keypad.state === 'ok') unlockDigipass();
+  }
+  Keypad.skipF = false;
+}
+function hideDigipass() {
+  const dp = Features.digipass;
+  if (!dp) return;
+  dp.gone = true;
+  dp.root.visible = false;
+}
+/* Bon code : le digi pass disparaît ; points infinis et immortalité jusqu'à la fin de la partie. */
+function unlockDigipass() {
+  const dp = Features.digipass;
+  closeKeypad();
+  if (!dp || dp.gone) return;
+  hideDigipass();
+  const p = dp.root.position, n = LAYOUT.digipass.n;
+  spawnPuff(p.x + n[0] * 0.2, p.y, p.z + n[1] * 0.2, 0.45, 0.8, 0xc8d4dc, 0.45, 0.3);
+  sparkBurst(p.x + n[0] * 0.05, p.y, p.z + n[1] * 0.05, n[0], 0, n[1], 10);
+  G.cheat = true;
+  player.hp = player.maxHp;
+  HUD.el.points.textContent = '∞';
+  HUD.banner('Code accepté', 'Points infinis · immortel', 'powerup');
 }
 
 /* ------------------------------------------------------------ Atouts --- */
@@ -8635,6 +8891,7 @@ function clearPowerups() {
 
 /* ------------------------------------------------------- Interactions -- */
 function updateInteract(dt) {
+  if (Keypad.open) { HUD.prompt(null); return; }            // F sert alors à refermer le clavier
   let best = null, bestScore = 1e9, bestPrompt = null;
   if (!player.down) {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
@@ -8664,6 +8921,7 @@ function updateFeatures(dt) {
   updateAmp(dt);
   updatePerkMachines(dt);
   updatePowerups(dt);
+  updateDigipass(dt);
 }
 
 function resetFeatures() {
@@ -8707,6 +8965,7 @@ function resetFeatures() {
     setLin(a.tubeMat.color, 0x5a2a7a); a.labelMat.emissiveIntensity = 0.05; a.glow.material.opacity = 0;
   }
   clearPowerups();
+  resetDigipass();
   if (CUR.map && CUR.map.rules.powerOn) powerOnQuiet();
 }
 
@@ -8718,7 +8977,7 @@ const G = {
   round: 0, roundState: 'pre', roundT: 0,
   total: 0, spawned: 0, killed: 0, spawnT: 0, spawnDelay: 2, zombieHp: 150,
   points: 0, grenades: 2, repairPts: 0, power: false, activeZones: new Set([0]),
-  timers: { insta: 0, double: 0 }, events: [], creakT: 10, god: false,
+  timers: { insta: 0, double: 0 }, events: [], creakT: 10, god: false, cheat: false,
   stats: null, save: null, mapId: null, editorSession: false,
 };
 function freshStats() { return { kills: 0, headshots: 0, earned: 0, downs: 0, shots: 0, hits: 0, doors: 0, boxes: 0, time: 0 }; }
@@ -8883,6 +9142,7 @@ function newGame(save) {
   G.repairPts = 0;
   G.activeZones = new Set([LAYOUT.startZone]);
   G.timers.insta = 0; G.timers.double = 0;
+  G.cheat = false;
   G.stats = freshStats();
   resetArms();
   Zombies.flowT = 0;
@@ -8897,7 +9157,7 @@ function serializeGame() {
     slots: Arms.slots.map((s) => s && { id: s.id, up: s.up, mag: s.mag, res: s.res }), cur: Arms.cur,
     perks: [...player.perks], souffleUses: player.souffleUses, power: G.power,
     doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box ? Features.box.cur : -1,
-    stats: Object.assign({}, G.stats),
+    stats: Object.assign({}, G.stats), cheat: G.cheat,
   };
 }
 function restoreSave(s) {
@@ -8922,6 +9182,7 @@ function restoreSave(s) {
     if (Features.box && s.box >= 0 && s.box < Features.box.locs.length) placeBox(s.box);
     G.round = s.round - 1;
     G.stats = Object.assign(freshStats(), s.stats || {});
+    if (s.cheat) { hideDigipass(); G.cheat = true; }
   } catch (e) { /* sauvegarde illisible : partie neuve */ }
 }
 
@@ -8936,7 +9197,7 @@ const HUD = {
   full() {
     this.last = {};
     this.round(false); this.perks(); this.weapon();
-    this.el.points.textContent = G.points;
+    this.el.points.textContent = G.cheat ? '∞' : G.points;
     this.el['points-pops'].textContent = '';
     this.el.banner.hidden = true; this.el.hint.hidden = true; this.el.prompt.hidden = true;
     this.setDowned(false);
@@ -8972,7 +9233,7 @@ const HUD = {
     }
   },
   pointsChanged(delta) {
-    this.el.points.textContent = G.points;
+    this.el.points.textContent = G.cheat ? '∞' : G.points;
     const now = performance.now();
     const pops = this.el['points-pops'];
     if (this.lastPop && now - this.lastPopT < 140 && Math.sign(this.lastPop.v) === Math.sign(delta) && this.lastPop.el.isConnected) {
@@ -9015,7 +9276,8 @@ const HUD = {
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   },
   prompt(p) {
-    const key = p ? p.text + '|' + (p.cost || '') + '|' + (p.cost ? G.points >= p.cost : '') : '';
+    const afford = (c) => G.cheat || G.points >= c;
+    const key = p ? p.text + '|' + (p.cost || '') + '|' + (p.cost ? afford(p.cost) : '') : '';
     if (key === this.last.prompt) return;
     this.last.prompt = key;
     if (!p) { this.el.prompt.hidden = true; return; }
@@ -9023,7 +9285,7 @@ const HUD = {
     this.el.prompt.classList.toggle('disabled', !!p.disabled);
     this.el['prompt-text'].innerHTML = p.text.replace(/ F /, ' <kbd>F</kbd> ');
     const c = this.el['prompt-cost'];
-    if (p.cost) { c.textContent = `Coût : ${p.cost}`; c.hidden = false; c.classList.toggle('short', G.points < p.cost); }
+    if (p.cost) { c.textContent = `Coût : ${p.cost}`; c.hidden = false; c.classList.toggle('short', !afford(p.cost)); }
     else { c.textContent = ''; c.hidden = true; }
     this.el['prompt-sub'].textContent = p.sub || '';
   },
@@ -9159,7 +9421,8 @@ function pauseGame() {
   Life.save();
   Input.lmb = Input.rmb = false;
   for (const k in Input.keys) Input.keys[k] = false;
-  $('pause-stats').textContent = `Manche ${Math.max(1, G.round)} · ${G.stats.kills} éliminations · ${G.points} points`;
+  closeKeypad();
+  $('pause-stats').textContent = `Manche ${Math.max(1, G.round)} · ${G.stats.kills} éliminations · ${G.cheat ? 'points infinis' : `${G.points} points`}`;
   showScreen('pause');
   HUD.el.lockhint.hidden = true;
 }
@@ -9186,6 +9449,7 @@ function quitToMenu() {
 function gameOver() {
   if (G.state !== 'playing') return;
   G.state = 'gameover';
+  closeKeypad();
   Sound.gameOver();
   Sound.setMuffle(true);
   exitLock();
@@ -9347,6 +9611,7 @@ function update(dt) {
   updatePlayer(dt);
   updateArms(dt);
   updateInteract(dt);
+  updateKeypad(dt);
   updateZombies(dt);
   updateRounds(dt);
   updateFeatures(dt);
