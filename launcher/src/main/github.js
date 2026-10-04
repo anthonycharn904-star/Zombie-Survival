@@ -187,7 +187,7 @@ function createClient({ token, apiBase = API_BASE, webBase = WEB_BASE }) {
     onProgress({ step: 'prepare' });
     let rel = await findRelease(repo, tag);
     if (rel && !rel.draft) throw new GitHubError(`La version ${version} est déjà en ligne (${tag}). Publiez un numéro de version plus grand.`);
-    const body = notes.map((n) => String(n).trim()).filter(Boolean).map((n) => `- ${n.replace(/^[-•]\s*/, '')}`).join('\n');
+    const body = releaseBody(notes, fs.readFileSync(path.join(dir, 'latest.json'), 'utf8'));
     if (rel) {
       rel = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { name: `Zombie Survival ${version}`, body, draft: true, target_commitish: branch }, 'reprise du brouillon');
     } else {
@@ -208,4 +208,20 @@ function createClient({ token, apiBase = API_BASE, webBase = WEB_BASE }) {
   return { access, publish, verify, findRelease };
 }
 
-module.exports = { createClient, request, GitHubError, checkToken, API_BASE, WEB_BASE };
+/* Texte de la page de la version : les notes, puis le lien d'installation pour les nouveaux
+   joueurs. Une version qui ne joint pas de launcher annonce celui d'une version précédente :
+   sans ce lien, la page « dernière version » n'aurait aucun installateur à télécharger. */
+function releaseBody(notes, manifestText) {
+  const lines = (notes || []).map((n) => String(n).trim()).filter(Boolean).map((n) => `- ${n.replace(/^[-•]\s*/, '')}`);
+  let launcher = null;
+  try { launcher = JSON.parse(JSON.parse(manifestText).signed).launcher || null; } catch (e) { launcher = null; }
+  if (launcher && /^https?:\/\/[^\s()]+$/.test(launcher.file || '')) {
+    let name = launcher.file.split('/').pop();
+    try { name = decodeURIComponent(name); } catch (e) { /* nom brut */ }
+    if (lines.length) lines.push('');
+    lines.push(`**Nouveau joueur ?** Téléchargez [${name}](${launcher.file}) et lancez-le : il installe le jeu, puis le launcher le garde à jour tout seul.`);
+  }
+  return lines.join('\n');
+}
+
+module.exports = { createClient, request, GitHubError, checkToken, releaseBody, API_BASE, WEB_BASE };

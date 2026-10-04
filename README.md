@@ -3,6 +3,12 @@ Prototype de mon jeu "Zombie Survival", qui j'espère deviendra un grand jeu dan
 
 Survie par manches dans le style du mode Zombies : barricades, armes au mur, boîte mystère, atouts, courant, Amplificateur. Un seul fichier HTML (Three.js r128), sons synthétisés, textures générées au démarrage.
 
+## Installer le jeu (joueurs)
+
+Télécharger l'installateur `Zombie-Survival-Setup-<version>.exe` sur la page de la dernière version : <https://github.com/anthonycharn904-star/Zombie-Survival/releases/latest> (fichier joint, ou lien « Nouveau joueur ? » de la description), puis le lancer. Windows peut afficher « Windows a protégé votre ordinateur » (installateur non signé) : « Informations complémentaires » → « Exécuter quand même ».
+
+C'est le seul passage par GitHub. Ensuite, le launcher installe lui-même chaque nouvelle version du jeu et du launcher, à son démarrage et au retour d'une partie (Réglages : « Installer automatiquement les mises à jour », activé par défaut).
+
 ## Contenu du dépôt
 
 | Dossier | Rôle |
@@ -67,7 +73,7 @@ Prérequis : Node.js 22 ou plus récent. Sous Windows, rien d'autre. Sous Linux,
 cd launcher
 npm install
 npm test            # tests unitaires (signature des mises à jour, paquetage du jeu, publication, atelier des Mod Tools)
-npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable) puis menu du jeu et statistiques (sous Linux : xvfb-run -a npm run test:e2e)
+npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable), menu du jeu et statistiques, publication en un clic contre un faux GitHub (sous Linux : xvfb-run -a npm run test:e2e)
 npm start           # lance le launcher en mode développement
 npm run modtools    # ouvre directement les Mod Tools (il faut la clé de l'auteur sur le PC)
 npm run dist:win    # fabrique dist/Zombie-Survival-Setup-<version>.exe
@@ -88,7 +94,7 @@ Tout se fait depuis le launcher de l'auteur (depuis la version 1.2.3) : ni l'aut
 **À chaque version :**
 1. Dans le launcher : Réglages → « Outil de publication » (ou Mod Tools → Cartes → « Publier une version du jeu… »). Contenu : « Le jeu installé », ou un fichier `zombie-survival.html` plus récent. Numéro de version et notes.
 2. **Publier pour tous les joueurs**, puis confirmer. Le launcher signe la version, la crée sur GitHub en brouillon (invisible des launchers), envoie les fichiers (`latest.json` en dernier), la publie comme dernière version et relit l'adresse fixe pour vérifier. En cas de coupure, rien n'est visible des joueurs : « Réessayer la mise en ligne » reprend le brouillon.
-3. Les launchers des joueurs installent la version seuls, à leur prochain démarrage ou au retour d'une partie. Un nouveau launcher joint à la publication (étape 4) s'installe seul aussi (une tentative par version toutes les 6 heures, sans boucle si l'installation échoue).
+3. Les launchers des joueurs installent la version seuls, à leur prochain démarrage ou au retour d'une partie. Un nouveau launcher joint à la publication (étape 4) s'installe seul aussi (une tentative par version toutes les 6 heures, sans boucle si l'installation échoue). La page de la version sur GitHub donne toujours aux nouveaux joueurs le lien de l'installateur (« Nouveau joueur ? »), même quand la version ne joint pas de nouveau launcher : il pointe alors vers la version qui le contient.
 
 Garde-fous : l'outil propose toujours le jeu installé ; il refuse un fichier dont le jeu est plus ancien que le jeu installé, et un numéro de version plus petit que celui du code publié. « Créer seulement (test sur ce PC) » fabrique la version sans la mettre en ligne (bouton « Tester avec ce launcher »). Sans liaison GitHub, l'ancienne méthode reste possible : créer la publication, puis déposer ses fichiers dans une release `v<version>` marquée « Latest ».
 
@@ -106,6 +112,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **4 octobre 2026 — launcher 1.2.4** : la page de chaque version mise en ligne donne aux nouveaux joueurs le lien de l'installateur (« Nouveau joueur ? »), même quand la version ne joint pas de nouveau launcher : le premier téléchargement se fait toujours depuis la page de la dernière version.
 - **4 octobre 2026 — launcher 1.2.3** : publication en un clic depuis le launcher (« Publier pour tous les joueurs », jeton GitHub chiffré, brouillon puis publication, vérification de l'adresse des mises à jour, reprise après coupure) ; mise à jour automatique du launcher lui-même ; nouvelle vérification au retour d'une partie ; garde-fous contre la republication d'un ancien jeu (incident de la version 1.2.0 du 4 octobre, retirée avant tout téléchargement) et contre un numéro trop petit.
 - **4 octobre 2026 — jeu 1.2.0, launcher 1.2.2** : menu du jeu : sélection de la carte derrière le bouton Jouer (remplace les flèches), bouton et écran Statistiques (compteurs de toute la vie du joueur) ; précision des tirs corrigée (un tir de fusil à pompe ne compte plus plusieurs fois). Le launcher 1.2.2 ne change que le jeu qu'il livre (1.2.0).
 - **4 octobre 2026 — launcher 1.2.1** : Mod Tools : partie de test possible malgré les erreurs de la carte, avec un bandeau qui les rappelle ; départ de secours si le point de départ est hors du sol ; alertes identiques regroupées (×2, ×3…) au lieu de s'empiler. Le jeu ne change pas (1.1.0).

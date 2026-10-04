@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const publisher = require('../src/main/publisher');
 const { verifyManifest } = require('../src/main/updater');
-const { createClient, request } = require('../src/main/github');
+const { createClient, request, releaseBody } = require('../src/main/github');
 const { fakeGitHub } = require('../e2e/fake-github');
 
 const SOURCE = path.join(__dirname, '..', '..', 'game', 'zombie-survival.html');
@@ -100,6 +100,32 @@ test('coupure pendant l’envoi : rien de visible, puis reprise du brouillon', a
     assert.equal(o.verified, true);
     assert.equal(gh.state.releases.filter((x) => x.tag_name === 'v1.3.0').length, 1, 'pas de doublon');
     assert.deepEqual(draft.assets.map((a) => a.name).sort(), ['latest.json', 'zombie-survival-1.3.0.zip']);
+  } finally {
+    await gh.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('page de la version : lien d’installation pour les nouveaux joueurs, même si le launcher vient d’une version précédente', async () => {
+  const gh = await fakeGitHub();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zs-gh-'));
+  try {
+    const { privatePem } = publisher.generateKeyPair();
+    const setup = `${gh.base}/${gh.repo}/releases/download/v1.2.1/Zombie-Survival-Setup-1.2.3.exe`;
+    const r = await publisher.createRelease({
+      source: { htmlPath: SOURCE }, version: '1.4.0', notes: ['Nouvelle carte'], outDir: tmp, privatePem, libsDir: LIBS, repo: gh.repo, webBase: gh.base,
+      previousLauncher: { version: '1.2.3', file: setup, size: 1000, sha256: 'a'.repeat(64), notes: [] },
+    });
+    assert.deepEqual([...r.upload].sort(), ['latest.json', 'zombie-survival-1.4.0.zip'], 'installateur pas renvoyé : il reste dans sa version');
+    await client(gh).publish({ repo: gh.repo, version: r.version, dir: r.dir, files: r.upload, notes: ['Nouvelle carte'] });
+    const rel = gh.state.releases.find((x) => x.tag_name === 'v1.4.0');
+    assert.equal(rel.body, `- Nouvelle carte\n\n**Nouveau joueur ?** Téléchargez [Zombie-Survival-Setup-1.2.3.exe](${setup}) et lancez-le : il installe le jeu, puis le launcher le garde à jour tout seul.`);
+    // sans launcher annoncé, ou manifeste illisible : les notes seules
+    const bare = await makeRelease(gh, '1.4.1', tmp, privatePem);
+    assert.equal(releaseBody(['- a', 'b'], fs.readFileSync(path.join(bare.dir, 'latest.json'), 'utf8')), '- a\n- b');
+    assert.equal(releaseBody(['a'], 'pas du JSON'), '- a');
+    assert.ok(releaseBody([], JSON.stringify({ signed: JSON.stringify({ launcher: { file: setup } }) })).startsWith('**Nouveau joueur ?**'));
+    assert.equal(releaseBody([], JSON.stringify({ signed: JSON.stringify({ launcher: { file: 'Zombie-Survival-Setup-1.2.3.exe' } }) })), '', 'adresse relative : pas de lien');
   } finally {
     await gh.close();
     fs.rmSync(tmp, { recursive: true, force: true });

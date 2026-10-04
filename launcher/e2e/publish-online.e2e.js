@@ -141,7 +141,9 @@ async function waitStatus(launcher, pred, timeoutMs) {
     const v2 = publisher.nextPatch(next);
     const r2 = await publisher.createRelease({ source: { folderPath: path.join(player, 'game', 'versions', next) }, version: v2, notes: ['Nouveau launcher'], outDir, privatePem, libsDir: path.join(ROOT, 'gamelibs'), repo: gh.repo, webBase: gh.base, launcher: { setupPath: fakeSetup, version: '9.9.9', notes: ['Essai'] } });
     const { createClient } = require('../src/main/github');
-    await createClient({ token: TOKEN, apiBase: gh.base, webBase: gh.base }).publish({ repo: gh.repo, version: v2, dir: r2.dir, files: r2.upload });
+    await createClient({ token: TOKEN, apiBase: gh.base, webBase: gh.base }).publish({ repo: gh.repo, version: v2, dir: r2.dir, files: r2.upload, notes: ['Nouveau launcher'] });
+    const rel2 = gh.state.releases.find((r) => r.tag_name === `v${v2}`);
+    ok(rel2 && /^- Nouveau launcher\n\n\*\*Nouveau joueur \?\*\* Téléchargez \[Zombie-Survival-Setup-9\.9\.9\.exe\]\(https?:\/\/[^)]+\/releases\/download\/v[\d.]+\/Zombie-Survival-Setup-9\.9\.9\.exe\)/.test(rel2.body), 'page de la version : lien d’installation pour les nouveaux joueurs', rel2 && rel2.body);
     const logFile = () => { const d = path.join(player, 'logs'); return fs.readdirSync(d).map((n) => fs.readFileSync(path.join(d, n), 'utf8')).join('\n'); };
     ({ app, launcher } = await launch(player, env));
     await waitStatus(launcher, (s) => s.launcherUpdate && s.launcherUpdate.version === '9.9.9' && !['checking', 'starting', 'downloading'].includes(s.phase), 60000);
