@@ -21,8 +21,19 @@ Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, form
 
 - **Bunker 7** est intégré au fichier du jeu.
 - Les autres cartes sont livrées dans le paquet du jeu : `maps/index.json` (ordre du menu) et `maps/<id>.json`. Une carte de ce dossier qui porte l'identifiant `bunker7` remplace celle qui est intégrée.
-- Le menu du jeu propose les cartes avec des flèches quand il y en a plusieurs ; le record est gardé par carte. Une carte qui ne peut pas se jouer (pas de départ, aucun zombie possible…) n'est pas proposée.
+- Le bouton **Jouer** du menu ouvre la **sélection de la carte** (depuis le jeu 1.2.0) : une fiche par carte, avec sa vignette (ou, à défaut, son plan dessiné d'après la grille), sa description, le record et le nombre de parties jouées. Choix à la souris ou aux flèches, Entrée ou double clic pour jouer, Échap pour revenir. La dernière carte jouée est présélectionnée. Le record est gardé par carte. Une carte qui ne peut pas se jouer (pas de départ, aucun zombie possible…) n'est pas proposée.
 - Les images et modèles 3D importés (PNG, JPEG, WebP, `.glb`) sont embarqués dans la carte qui les utilise.
+
+## Statistiques du joueur
+
+Depuis le jeu 1.2.0, le bouton **Statistiques** du menu affiche les compteurs de toute la vie du joueur sur ce poste (enregistrés dans le stockage local du jeu, clé `zs.stats`, pendant les parties ; sauvegardés à la pause, à la fin de partie, à la fermeture de la fenêtre et toutes les 20 s de jeu). Les parties de test des Mod Tools ne comptent pas.
+
+- **Service** : heures de jeu total (temps passé en partie, pauses exclues), parties jouées, manches terminées, meilleure manche (records des cartes compris), points gagnés, points dépensés.
+- **Éliminations** : zombies tués ; dont tirs dans la tête, engins explosifs (grenades, Panzerschreck, munitions explosives), corps-à-corps, armes spéciales (Désintégrateur, Onde de choc), bonus Bombe ; précision des tirs (tirs ayant touché au moins un zombie / tirs).
+- **Défense du bunker** : portes ouvertes, fenêtres totalement barricadées (la dernière planche reclouée par le joueur ; le bonus Charpentier ne compte pas), planches reclouées, courant rétabli, fois à terre.
+- **Arsenal** : armes achetées au mur, tirages de la boîte mystère, atouts bus, armes amplifiées, bonus ramassés.
+
+La précision de l'écran de fin de partie compte aussi un tir de fusil à pompe une seule fois, même si plusieurs plombs touchent.
 
 ## Mod Tools (éditeur de cartes)
 
@@ -56,7 +67,7 @@ Prérequis : Node.js 22 ou plus récent. Sous Windows, rien d'autre. Sous Linux,
 cd launcher
 npm install
 npm test            # tests unitaires (signature des mises à jour, paquetage du jeu, publication, atelier des Mod Tools)
-npm run test:e2e    # essai de bout en bout dans Electron (clé de test jetable ; sous Linux : xvfb-run -a npm run test:e2e)
+npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable) puis menu du jeu et statistiques (sous Linux : xvfb-run -a npm run test:e2e)
 npm start           # lance le launcher en mode développement
 npm run modtools    # ouvre directement les Mod Tools (il faut la clé de l'auteur sur le PC)
 npm run dist:win    # fabrique dist/Zombie-Survival-Setup-<version>.exe
@@ -90,5 +101,6 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **4 octobre 2026 — jeu 1.2.0, launcher 1.2.2** : menu du jeu : sélection de la carte derrière le bouton Jouer (remplace les flèches), bouton et écran Statistiques (compteurs de toute la vie du joueur) ; précision des tirs corrigée (un tir de fusil à pompe ne compte plus plusieurs fois). Le launcher 1.2.2 ne change que le jeu qu'il livre (1.2.0).
 - **4 octobre 2026 — launcher 1.2.1** : Mod Tools : partie de test possible malgré les erreurs de la carte, avec un bandeau qui les rappelle ; départ de secours si le point de départ est hors du sol ; alertes identiques regroupées (×2, ×3…) au lieu de s'empiler. Le jeu ne change pas (1.1.0).
 - **4 octobre 2026 — jeu 1.1.0, launcher 1.2.0** : cartes en données (Bunker 7 converti à l'identique), choix de la carte dans le menu, records par carte, apparitions de zombies au sol, éléments facultatifs (boîte, courant, Amplificateur), prix des armes murales par carte, bibliothèques de textures et d'objets, modèles `.glb` ; Mod Tools réservés à l'auteur dans le launcher ; publication des cartes ; essai de bout en bout `npm run test:e2e`.

@@ -1,7 +1,7 @@
 {
   "name": "zombie-survival-launcher",
   "productName": "Zombie Survival",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Launcher de Zombie Survival : mises à jour signées et lancement du jeu",
   "author": "Anthony",
   "license": "UNLICENSED",
@@ -14,7 +14,7 @@
     "modtools": "node scripts/prepare-game.js && electron . --modtools",
     "configure": "node scripts/configure.js",
     "test": "node --test",
-    "test:e2e": "node scripts/prepare-game.js && node e2e/modtools.e2e.js",
+    "test:e2e": "node scripts/prepare-game.js && node e2e/modtools.e2e.js && node e2e/game-menu.e2e.js",
     "dist:win": "node scripts/prepare-game.js && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
