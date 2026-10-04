@@ -44,8 +44,10 @@ function walk(dir, base = dir, out = []) {
   return out.sort();
 }
 
-/* Liste des fichiers du paquet : [{ name, data }] */
-function collectPackage({ htmlPath, folderPath, version, libsDir, notes = [] }) {
+/* Liste des fichiers du paquet : [{ name, data }]
+   maps (facultatif) : { index: [ids], files: [{ id, data }] } — remplace le dossier maps/
+   du paquet (cartes publiées avec cette version, ordre du menu dans maps/index.json). */
+function collectPackage({ htmlPath, folderPath, version, libsDir, notes = [], maps }) {
   const files = [];
   let finalVersion = version;
   if (htmlPath) {
@@ -57,10 +59,27 @@ function collectPackage({ htmlPath, folderPath, version, libsDir, notes = [] }) 
   } else if (folderPath) {
     const rels = walk(folderPath).filter((r) => r !== 'game.json');
     if (!rels.includes('index.html')) throw new Error('Le dossier doit contenir index.html.');
-    for (const rel of rels) files.push({ name: rel, data: fs.readFileSync(path.join(folderPath, rel)) });
     if (!finalVersion) throw new Error('Indiquez le numéro de version.');
+    for (const rel of rels) {
+      let data = fs.readFileSync(path.join(folderPath, rel));
+      // le numéro affiché par le jeu suit la version publiée
+      if (rel === 'index.html') data = Buffer.from(data.toString('utf8').replace(VERSION_RE, `const GAME_VERSION = '${finalVersion}';`), 'utf8');
+      files.push({ name: rel, data });
+    }
   } else {
     throw new Error('Aucune source de jeu indiquée.');
+  }
+  if (maps) {
+    for (let i = files.length - 1; i >= 0; i--) if (files[i].name.startsWith('maps/')) files.splice(i, 1);
+    const ids = (maps.index || []).filter((id) => /^[a-z0-9_-]{1,40}$/.test(id));
+    const withFile = [];
+    for (const f of maps.files || []) {
+      if (!f.data || !/^[a-z0-9_-]{1,40}$/.test(f.id)) continue;
+      files.push({ name: `maps/${f.id}.json`, data: Buffer.isBuffer(f.data) ? f.data : Buffer.from(String(f.data), 'utf8') });
+      withFile.push(f.id);
+    }
+    // maps : ordre du menu ; files : cartes fournies en fichier (les autres sont intégrées au jeu)
+    files.push({ name: 'maps/index.json', data: Buffer.from(JSON.stringify({ maps: ids, files: withFile }, null, 2), 'utf8') });
   }
   files.push({
     name: 'game.json',

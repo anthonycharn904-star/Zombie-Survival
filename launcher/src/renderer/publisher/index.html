@@ -43,7 +43,12 @@
   <!-- 2. Jeu -->
   <section class="card" id="card-game">
     <h2><span class="n">2</span>Version du jeu</h2>
-    <div class="field">
+    <div class="field" role="radiogroup" aria-label="Contenu du jeu">
+      <span class="label">Contenu du jeu</span>
+      <label class="check radio"><input type="radio" name="game-src" id="src-installed" value="installed"> <span>Le jeu installé <b id="src-inst-version"></b>, avec les cartes de l'atelier · le code du jeu ne change pas</span></label>
+      <label class="check radio"><input type="radio" name="game-src" id="src-html" value="html"> <span>Un fichier du jeu (zombie-survival.html) · nouvelle version du code</span></label>
+    </div>
+    <div class="field" id="html-field">
       <span class="label">Fichier du jeu (zombie-survival.html)</span>
       <div class="pick"><output id="game-path" class="path">Aucun fichier choisi</output><button class="btn" id="game-pick" type="button">Choisir…</button></div>
       <p class="muted" id="game-detected"></p>
@@ -61,9 +66,18 @@
     <label class="check"><input type="checkbox" id="allow-same"> Republier une version déjà publiée (corrige une publication pas encore mise en ligne)</label>
   </section>
 
-  <!-- 3. Launcher -->
+  <!-- 3. Cartes -->
+  <section class="card" id="card-maps">
+    <h2><span class="n">3</span>Cartes du jeu</h2>
+    <p class="muted" id="maps-note"></p>
+    <ol class="files maps" id="maps-list"></ol>
+    <p class="warn" id="maps-missing" hidden></p>
+    <div class="row" id="maps-actions" hidden><button class="btn" id="maps-open" type="button">Modifier dans les Mod Tools</button></div>
+  </section>
+
+  <!-- 4. Launcher -->
   <section class="card" id="card-launcher">
-    <h2><span class="n">3</span>Nouveau launcher <em>facultatif</em></h2>
+    <h2><span class="n">4</span>Nouveau launcher <em>facultatif</em></h2>
     <p class="muted" id="launcher-last"></p>
     <div class="field">
       <span class="label">Installateur (Zombie-Survival-Setup-x.y.z.exe)</span>
@@ -77,7 +91,7 @@
 
   <!-- 4. Hébergement -->
   <section class="card" id="card-host">
-    <h2><span class="n">4</span>Hébergement</h2>
+    <h2><span class="n">5</span>Hébergement</h2>
     <label class="field"><span class="label">Dépôt GitHub (pseudo/depot)</span><input id="repo" type="text" placeholder="mon-pseudo/zombie-survival" autocomplete="off" spellcheck="false"></label>
     <p class="muted" id="repo-url"></p>
     <div class="field">

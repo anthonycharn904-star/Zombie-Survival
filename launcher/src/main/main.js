@@ -3,7 +3,8 @@
    - Fenêtre du launcher (actualités, notes de version, bouton Jouer / Mettre à jour)
    - Fenêtre de jeu : le jeu installé est servi par le protocole zsgame://game/
    - Mises à jour signées du jeu et du launcher (voir updater.js)
-   - Outil de publication pour l'auteur (voir publisher.js) */
+   - Outil de publication pour l'auteur (voir publisher.js)
+   - Mod Tools (éditeur de cartes) pour l'auteur seulement (voir src/modtools/ et workspace.js) */
 const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, Menu, session, safeStorage, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -11,6 +12,7 @@ const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 const { Updater, UpdateError, compareVersions, parseVersion } = require('./updater');
 const publisher = require('./publisher');
+const { Workspace } = require('./workspace');
 const createLog = require('./log');
 
 if (process.env.ZS_USER_DATA) app.setPath('userData', process.env.ZS_USER_DATA);
@@ -23,6 +25,7 @@ const BUNDLE_DIR = path.join(RES, app.isPackaged ? 'game-bundle' : 'game');
 const LIBS_DIR = path.join(RES, 'gamelibs');
 const RENDERER = path.join(__dirname, '..', 'renderer');
 const PRELOAD = path.join(__dirname, '..', 'preload');
+const MODTOOLS_DIR = path.join(__dirname, '..', 'modtools');
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 const APP_ID = 'fr.zombiesurvival.launcher';
 const PLACEHOLDER = 'VOTRE-PSEUDO';
@@ -32,7 +35,10 @@ let log = () => {};
 let updater = null;
 let config = null;
 let settings = { ...DEFAULT_SETTINGS };
-let launcherWin = null, gameWin = null, publisherWin = null;
+let launcherWin = null, gameWin = null, publisherWin = null, modtoolsWin = null;
+let modtoolsEngine = null; // { dir, version, source } : jeu servi aux Mod Tools
+let authorOk = null;       // clé de l'auteur présente (calculé au démarrage et après chaque changement de clé)
+let workspace = null;      // atelier des Mod Tools
 let lastManifest = null;
 let busy = null; // null | 'check' | 'install' | 'repair' | 'launcher'
 let abortCtrl = null;
@@ -41,7 +47,7 @@ let gameCrash = null;
 
 const status = {
   phase: 'starting', launcherVersion: app.getVersion(), installed: null, remote: null, launcherUpdate: null,
-  news: [], progress: null, error: null, settings: null, source: null,
+  news: [], progress: null, error: null, settings: null, source: null, author: false,
   justUpdated: process.argv.includes('--updated') ? app.getVersion() : null,
 };
 
@@ -136,7 +142,7 @@ async function checkForUpdates({ auto = false } = {}) {
     });
     log(`Vérification : en ligne ${m.game.version}, installée ${inst ? inst.version : 'aucune'}`);
     busy = null;
-    if (remoteIsNewer() && auto && settings.autoInstall && !gameWin) await installUpdate();
+    if (remoteIsNewer() && auto && settings.autoInstall && !gameWin && !modtoolsWin) await installUpdate();
   } catch (e) {
     busy = null;
     handleError(e, 'check');
@@ -145,7 +151,7 @@ async function checkForUpdates({ auto = false } = {}) {
 }
 
 async function installUpdate({ force = false } = {}) {
-  if (busy || gameWin || !lastManifest) return status;
+  if (busy || gameWin || modtoolsWin || !lastManifest) return status;
   const g = lastManifest.game;
   if (!force && !remoteIsNewer()) return status;
   if (g.minLauncher && compareVersions(app.getVersion(), g.minLauncher) < 0) {
@@ -247,7 +253,7 @@ function createLauncherWindow() {
   launcherWin.once('ready-to-show', () => launcherWin.show());
   launcherWin.on('closed', () => {
     launcherWin = null;
-    if (!gameWin) app.quit();
+    if (!gameWin && !modtoolsWin) app.quit();
   });
 }
 function play() {
@@ -289,7 +295,7 @@ function play() {
   gameWin.on('closed', () => {
     gameWin = null;
     log('Partie fermée');
-    if (!launcherWin) { app.quit(); return; }
+    if (!launcherWin) { if (!modtoolsWin) app.quit(); return; }
     launcherWin.show();
     launcherWin.focus();
     if (gameCrash) {
@@ -319,20 +325,126 @@ function openPublisher() {
   publisherWin.on('closed', () => { publisherWin = null; });
 }
 
+/* ---------------------------------------------------------- Mod Tools --- */
+/* Réservés à l'auteur : la clé privée de publication présente sur ce PC doit correspondre
+   à la clé publique intégrée au launcher (config/default.json, dans l'application ; un
+   config.json de l'utilisateur ne compte pas). Le code est public : quelqu'un peut se
+   construire son propre launcher et son propre éditeur, mais ne peut rien publier pour
+   les joueurs de ce launcher sans la clé privée. */
+function authorMode(refresh = false) {
+  if (authorOk !== null && !refresh) return authorOk;
+  let ok = false;
+  try {
+    const pem = readPrivateKey();
+    ok = !!pem && !!config.defaultKey && publisher.sameKey(publisher.publicFromPrivate(pem), config.defaultKey);
+  } catch (e) { ok = false; }
+  authorOk = ok;
+  if (status.author !== ok) setStatus({ author: ok });
+  return ok;
+}
+function editorApiOf(dir) {
+  try {
+    const m = /const EDITOR_API = (\d+);/.exec(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'));
+    return m ? parseInt(m[1], 10) : 0;
+  } catch (e) { return 0; }
+}
+/* Jeu servi aux Mod Tools : la version la plus récente (installée ou livrée) qui contient l'éditeur. */
+function editorEngine() {
+  const cands = [];
+  const inst = updater.getInstalled();
+  if (inst) cands.push({ dir: inst.dir, version: inst.version, source: 'installed' });
+  const b = updater.bundledInfo();
+  if (b) cands.push({ dir: BUNDLE_DIR, version: b.version, source: 'bundled' });
+  return cands.filter((c) => editorApiOf(c.dir) >= 1).sort((a, c) => compareVersions(c.version, a.version))[0] || null;
+}
+function getWorkspace() {
+  if (!workspace) workspace = new Workspace(userFile('modtools'));
+  return workspace;
+}
+function openModtools() {
+  if (!authorMode(true)) throw new Error("Les Mod Tools sont réservés à l'auteur du jeu : sa clé de publication n'est pas sur ce PC.");
+  if (modtoolsWin) {
+    if (modtoolsWin.isMinimized()) modtoolsWin.restore();
+    modtoolsWin.show();
+    modtoolsWin.focus();
+    return true;
+  }
+  const eng = editorEngine();
+  if (!eng) throw new Error("Aucune version du jeu sur ce PC ne contient l'éditeur de cartes (jeu 1.1.0 ou plus récent). Utilisez « Réparer le jeu ».");
+  modtoolsEngine = eng;
+  getWorkspace();
+  modtoolsWin = new BrowserWindow({
+    width: 1600, height: 940, minWidth: 1180, minHeight: 700, show: false, backgroundColor: '#0b0d0e',
+    title: 'Mod Tools — Zombie Survival', autoHideMenuBar: true, icon: ICON,
+    webPreferences: {
+      preload: path.join(PRELOAD, 'modtools.js'), contextIsolation: true, sandbox: true, spellcheck: false,
+      backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required',
+    },
+  });
+  const win = modtoolsWin;
+  harden(win, 'zsgame://editor/');
+  // fermeture : la page demande d'abord s'il faut enregistrer (sauf si elle ne répond plus)
+  win.on('close', (e) => {
+    if (win.allowClose) return;
+    e.preventDefault();
+    win.webContents.send('mt:close-request');
+  });
+  win.on('unresponsive', () => { win.allowClose = true; });
+  win.on('responsive', () => { win.allowClose = false; });
+  win.webContents.on('render-process-gone', (e, d) => { log(`Mod Tools arrêtés : ${d.reason}`); win.allowClose = true; });
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') { e.preventDefault(); win.setFullScreen(!win.isFullScreen()); }
+    else if (input.control && input.shift && input.key.toLowerCase() === 'i') win.webContents.toggleDevTools();
+  });
+  win.once('ready-to-show', () => { win.maximize(); win.show(); win.focus(); });
+  win.on('closed', () => {
+    modtoolsWin = null;
+    modtoolsEngine = null;
+    log('Mod Tools fermés');
+    if (!launcherWin && !gameWin) app.quit();
+  });
+  win.loadURL('zsgame://editor/index.html');
+  log(`Mod Tools ouverts (jeu ${eng.version}, ${eng.source === 'installed' ? 'installé' : 'livré'})`);
+  return true;
+}
+
 /* -------------------------------------------- Protocole et permissions --- */
+const MIME = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+function serveFile(root, rel) {
+  const base = path.resolve(root);
+  const file = path.resolve(base, `.${rel}`);
+  if (!file.startsWith(base + path.sep)) return new Response('Interdit', { status: 403 });
+  if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('Introuvable', { status: 404 });
+  return net.fetch(pathToFileURL(file).href);
+}
+/* zsgame://game/   : le jeu installé (fenêtre de jeu)
+   zsgame://editor/ : le jeu servi aux Mod Tools + /modtools/ (fichiers de l'éditeur, dans
+                      l'application) — seulement quand la fenêtre des Mod Tools est ouverte. */
 function registerGameProtocol() {
   protocol.handle('zsgame', (req) => {
     try {
       const u = new URL(req.url);
-      const inst = updater.getInstalled();
-      if (u.hostname !== 'game' || !inst) return new Response('Introuvable', { status: 404 });
       let rel = decodeURIComponent(u.pathname);
       if (!rel || rel === '/') rel = '/index.html';
-      const root = path.resolve(inst.dir);
-      const file = path.resolve(root, `.${rel}`);
-      if (!file.startsWith(root + path.sep)) return new Response('Interdit', { status: 403 });
-      if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response('Introuvable', { status: 404 });
-      return net.fetch(pathToFileURL(file).href);
+      if (u.hostname === 'game') {
+        const inst = updater.getInstalled();
+        if (!inst) return new Response('Introuvable', { status: 404 });
+        return serveFile(inst.dir, rel);
+      }
+      if (u.hostname === 'editor') {
+        if (!modtoolsWin || !modtoolsEngine || !authorMode()) return new Response('Interdit', { status: 403 });
+        if (rel.startsWith('/modtools/')) {
+          const name = rel.slice('/modtools/'.length);
+          if (!/^[a-z0-9_-]+\.(js|css)$/.test(name)) return new Response('Introuvable', { status: 404 });
+          const file = path.join(MODTOOLS_DIR, name);
+          if (!fs.existsSync(file)) return new Response('Introuvable', { status: 404 });
+          // dans l'archive de l'application : lu avec fs (net.fetch ne lit pas l'asar)
+          return new Response(fs.readFileSync(file), { headers: { 'content-type': MIME[path.extname(name)], 'cache-control': 'no-store' } });
+        }
+        return serveFile(modtoolsEngine.dir, rel);
+      }
+      return new Response('Introuvable', { status: 404 });
     } catch (e) {
       return new Response('Erreur', { status: 500 });
     }
@@ -368,8 +480,15 @@ function publisherState() {
   const pem = readPrivateKey();
   const pub = pem ? publisher.publicFromPrivate(pem) : null;
   const ps = readJson(path.join(keyDir(), 'settings.json')) || {};
-  const last = ps.lastGameVersion || (updater.getInstalled() || {}).version || '1.0.0';
+  const inst = updater.getInstalled();
+  const last = ps.lastGameVersion || (inst || {}).version || '1.0.0';
+  let maps = null;
+  try {
+    const plan = getWorkspace().publishPlan(inst && inst.dir);
+    maps = { list: plan.files.map((f) => ({ id: f.id, name: f.name, from: f.from })), missing: plan.missing, custom: !!getWorkspace().getPublishSet() };
+  } catch (e) { maps = { list: [], missing: [], error: e.message }; }
   return {
+    installed: inst ? { version: inst.version, editor: editorApiOf(inst.dir) >= 1 } : null, maps, author: authorMode(),
     hasKey: !!pem, publicKey: pub, fingerprint: pub ? publisher.fingerprint(pub) : null,
     launcherFingerprint: safeFingerprint(config.defaultKey), activeFingerprint: safeFingerprint(config.publicKey),
     keyMatchesLauncher: !!pub && publisher.sameKey(pub, config.defaultKey),
@@ -414,6 +533,7 @@ function setupIpc() {
   handle('launcher:rollback', L, () => rollback());
   handle('launcher:updateLauncher', L, () => installLauncherUpdate());
   handle('launcher:publisher', L, () => { openPublisher(); return true; });
+  handle('launcher:modtools', L, () => openModtools());
   handle('launcher:open', L, (what) => {
     const target = what === 'logs' ? log.dir : what === 'game' && updater.getInstalled() ? updater.getInstalled().dir : app.getPath('userData');
     return shell.openPath(target);
@@ -445,6 +565,64 @@ function setupIpc() {
   ipcMain.on('game:quit', (event) => { if (from(gameWin, event)) gameWin.close(); });
   ipcMain.on('game:fullscreen', (event) => { if (from(gameWin, event)) gameWin.setFullScreen(!gameWin.isFullScreen()); });
 
+  // ---- Mod Tools (réservés à l'auteur : vérifié à chaque appel)
+  const M = () => [modtoolsWin];
+  const mt = (channel, fn) => handle(channel, M, (...args) => {
+    if (!authorMode()) throw new Error("Mod Tools réservés à l'auteur du jeu.");
+    return fn(...args);
+  });
+  mt('mt:info', () => ({ launcherVersion: app.getVersion(), engine: modtoolsEngine ? { version: modtoolsEngine.version, source: modtoolsEngine.source } : null, workspace: getWorkspace().dir }));
+  mt('mt:listMaps', () => getWorkspace().listMaps());
+  mt('mt:readMap', (id) => getWorkspace().readMap(id));
+  mt('mt:saveMap', (id, text) => getWorkspace().saveMap(id, text));
+  mt('mt:deleteMap', (id) => getWorkspace().deleteMap(id));
+  mt('mt:readRecovery', (id) => getWorkspace().readRecovery(id));
+  mt('mt:writeRecovery', (id, text) => getWorkspace().writeRecovery(id, text));
+  mt('mt:listTextures', () => getWorkspace().listTextures());
+  mt('mt:saveTexture', (id, text) => getWorkspace().saveTexture(id, text));
+  mt('mt:deleteTexture', (id) => getWorkspace().deleteTexture(id));
+  mt('mt:listModels', () => getWorkspace().listModels());
+  mt('mt:saveModel', (id, text) => getWorkspace().saveModel(id, text));
+  mt('mt:deleteModel', (id) => getWorkspace().deleteModel(id));
+  mt('mt:importModel', async () => {
+    const r = await dialog.showOpenDialog(modtoolsWin, { title: 'Importer un modèle 3D', properties: ['openFile'], filters: [{ name: 'Modèle glTF binaire', extensions: ['glb'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const f = r.filePaths[0];
+    if (fs.statSync(f).size > 16 * 1024 * 1024) throw new Error('Modèle trop grand (16 Mo au plus). Réduisez ses textures ou son nombre de polygones.');
+    return { name: path.basename(f), dataUrl: `data:model/gltf-binary;base64,${fs.readFileSync(f).toString('base64')}` };
+  });
+  mt('mt:getPublishSet', () => getWorkspace().getPublishSet());
+  mt('mt:setPublishSet', (v) => getWorkspace().setPublishSet(v));
+  mt('mt:importMap', async () => {
+    const r = await dialog.showOpenDialog(modtoolsWin, { title: 'Importer une carte', properties: ['openFile'], filters: [{ name: 'Carte Zombie Survival', extensions: ['json'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const f = r.filePaths[0];
+    if (fs.statSync(f).size > 40 * 1024 * 1024) throw new Error('Fichier trop grand (40 Mo au plus).');
+    return { name: path.basename(f), text: fs.readFileSync(f, 'utf8') };
+  });
+  mt('mt:exportMap', async (id, text) => {
+    if (typeof text !== 'string') throw new Error('Carte vide.');
+    const safe = /^[a-z0-9_-]{1,40}$/.test(id) ? id : 'carte';
+    const r = await dialog.showSaveDialog(modtoolsWin, { title: 'Exporter la carte', defaultPath: path.join(app.getPath('documents'), `${safe}.json`), filters: [{ name: 'Carte Zombie Survival', extensions: ['json'] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, text);
+    return r.filePath;
+  });
+  mt('mt:importImage', async () => {
+    const r = await dialog.showOpenDialog(modtoolsWin, { title: 'Importer une image (texture)', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const f = r.filePaths[0];
+    if (fs.statSync(f).size > 25 * 1024 * 1024) throw new Error('Image trop grande (25 Mo au plus).');
+    const ext = path.extname(f).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    return { name: path.basename(f), dataUrl: `data:${mime};base64,${fs.readFileSync(f).toString('base64')}` };
+  });
+  mt('mt:openPublisher', () => { openPublisher(); return true; });
+  mt('mt:openFolder', () => { fs.mkdirSync(getWorkspace().dir, { recursive: true }); return shell.openPath(getWorkspace().dir); });
+  ipcMain.on('mt:title', (event, t) => { if (from(modtoolsWin, event) && typeof t === 'string') modtoolsWin.setTitle(t.slice(0, 140)); });
+  ipcMain.on('mt:fullscreen', (event) => { if (from(modtoolsWin, event)) modtoolsWin.setFullScreen(!modtoolsWin.isFullScreen()); });
+  ipcMain.on('mt:close', (event) => { if (from(modtoolsWin, event)) { modtoolsWin.allowClose = true; modtoolsWin.close(); } });
+
   // ---- outil de publication
   handle('pub:state', P, () => publisherState());
   handle('pub:generateKey', P, (confirmReplace) => {
@@ -452,6 +630,7 @@ function setupIpc() {
     const kp = publisher.generateKeyPair();
     writePrivateKey(kp.privatePem);
     log(`Nouvelle clé de signature ${publisher.fingerprint(kp.publicPem)}`);
+    authorMode(true);
     return publisherState();
   });
   handle('pub:importKey', P, async () => {
@@ -460,6 +639,7 @@ function setupIpc() {
     const pem = fs.readFileSync(r.filePaths[0], 'utf8');
     publisher.publicFromPrivate(pem);
     writePrivateKey(pem);
+    authorMode(true);
     return publisherState();
   });
   handle('pub:exportKey', P, async () => {
@@ -493,14 +673,20 @@ function setupIpc() {
   handle('pub:create', P, async (form) => {
     const pem = readPrivateKey();
     if (!pem) throw new Error("Générez ou importez d'abord une clé de signature.");
-    if (!form || !form.gameSource || !fs.existsSync(form.gameSource)) throw new Error('Choisissez le fichier du jeu.');
+    const inst = updater.getInstalled();
+    const useInstalled = !!form && form.gameSource === 'installed';
+    if (useInstalled && !inst) throw new Error('Aucun jeu installé à republier.');
+    if (!form || (!useInstalled && (!form.gameSource || !fs.existsSync(form.gameSource)))) throw new Error('Choisissez le fichier du jeu.');
+    const plan = getWorkspace().publishPlan(inst && inst.dir);
+    if (plan.missing.length) throw new Error(`Cartes introuvables : ${plan.missing.join(', ')}. Corrigez la liste dans les Mod Tools (Cartes).`);
     const ps = publisherState();
     if (ps.lastGameVersion && parseVersion(form.version) && compareVersions(form.version, ps.lastGameVersion) <= 0 && !form.allowSame) {
       throw new Error(`La version ${form.version} n'est pas plus récente que la dernière publiée (${ps.lastGameVersion}).`);
     }
     const news = form.newsTitle ? [{ title: form.newsTitle, text: form.newsText || '', date: new Date().toISOString().slice(0, 10) }] : [];
     const result = await publisher.createRelease({
-      source: { htmlPath: form.gameSource }, version: form.version, notes: String(form.notes || '').split('\n'),
+      source: useInstalled ? { folderPath: inst.dir } : { htmlPath: form.gameSource }, version: form.version, notes: String(form.notes || '').split('\n'),
+      maps: { index: plan.index, files: plan.files.filter((f) => f.data) },
       news, outDir: form.outDir || ps.outDir, privatePem: pem, libsDir: LIBS_DIR, repo: form.repo || null,
       launcher: form.setupPath ? { setupPath: form.setupPath, version: form.launcherVersion, notes: String(form.launcherNotes || '').split('\n') } : null,
       previousLauncher: form.setupPath ? null : ps.lastLauncher,
@@ -509,9 +695,10 @@ function setupIpc() {
       repo: form.repo || '', outDir: form.outDir || ps.outDir, gameSource: form.gameSource, lastGameVersion: result.version,
       lastLauncher: result.manifest.launcher ? { ...result.manifest.launcher, localPath: /^https?:/.test(result.manifest.launcher.file) ? undefined : path.join(result.dir, result.manifest.launcher.file) } : ps.lastLauncher,
     });
-    log(`Publication ${result.version} créée dans ${result.dir}`);
+    log(`Publication ${result.version} créée dans ${result.dir} (cartes : ${plan.index.join(', ')})`);
     return { dir: result.dir, version: result.version, upload: result.upload, gameSize: result.manifest.game.size, launcher: result.manifest.launcher || null, repo: form.repo || '' };
   });
+  handle('pub:modtools', P, () => openModtools());
   handle('pub:openDir', P, (dir) => (typeof dir === 'string' && fs.existsSync(dir) ? shell.openPath(dir) : false));
   handle('pub:testLocal', P, async (dir) => {
     const pem = readPrivateKey();
@@ -540,6 +727,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on('second-instance', (e, argv) => {
     if (argv.includes('--publier')) openPublisher();
+    if (argv.includes('--modtools')) { try { openModtools(); } catch (e) { log(e.message); } }
     const w = gameWin || launcherWin;
     if (w) { if (w.isMinimized()) w.restore(); w.show(); w.focus(); }
   });
@@ -554,6 +742,8 @@ if (!app.requestSingleInstanceLock()) {
     setupPermissions();
     registerGameProtocol();
     setupIpc();
+    authorMode(true);
+    log(`Mode auteur : ${authorOk ? 'oui (Mod Tools disponibles)' : 'non'}`);
     try {
       const inst = await updater.ensureBundled();
       setStatus({ installed: pickInstalled(inst) });
@@ -568,6 +758,7 @@ if (!app.requestSingleInstanceLock()) {
     setStatus({ settings: { ...settings } });
     createLauncherWindow();
     if (process.argv.includes('--publier')) openPublisher();
+    if (process.argv.includes('--modtools')) { try { openModtools(); } catch (e) { log(e.message); } }
     launcherWin.webContents.once('did-finish-load', () => {
       if (settings.autoCheck || !updater.getInstalled()) checkForUpdates({ auto: true });
       else setStatus({ phase: idlePhase() });

@@ -58,9 +58,16 @@ function renderKey() {
     : 'Clé enregistrée sans chiffrement sur ce PC. Gardez une sauvegarde hors de ce PC.';
 }
 function renderGame() {
-  $('game-path').textContent = gameSource || 'Aucun fichier choisi';
-  $('game-detected').textContent = detectedVersion ? `Version inscrite dans le fichier : ${detectedVersion}` : '';
-  $('game-last').textContent = st.lastGameVersion ? `Dernière version publiée : ${st.lastGameVersion}` : 'Aucune publication pour l’instant (version livrée : 1.0.0).';
+  const inst = st.installed;
+  const useInst = gameSource === 'installed';
+  $('src-installed').disabled = !inst;
+  $('src-installed').checked = useInst;
+  $('src-html').checked = !useInst;
+  $('src-inst-version').textContent = inst ? `(${inst.version})` : '(aucun)';
+  $('html-field').hidden = useInst;
+  $('game-path').textContent = !useInst && gameSource ? gameSource : 'Aucun fichier choisi';
+  $('game-detected').textContent = !useInst && detectedVersion ? `Version inscrite dans le fichier : ${detectedVersion}` : '';
+  $('game-last').textContent = st.lastGameVersion ? `Dernière version publiée : ${st.lastGameVersion}` : `Aucune publication depuis ce PC pour l’instant${inst ? ` (jeu installé : ${inst.version})` : ''}.`;
   if (!versionTouched) {
     let v = st.suggestedVersion;
     if (detectedVersion && cmp(detectedVersion, v) > 0) v = detectedVersion;
@@ -88,11 +95,32 @@ function renderActive(s) {
   const src = s && s.source;
   $('active-source').textContent = src ? `${src.url || '—'}${src.custom ? ' (test)' : ''}` : '—';
 }
-function renderAll() { renderKey(); renderGame(); renderLauncher(); renderHost(); }
+function renderMaps() {
+  const m = st.maps || { list: [], missing: [] };
+  const list = $('maps-list');
+  list.textContent = '';
+  m.list.forEach((e, i) => {
+    const li = document.createElement('li');
+    const a = document.createElement('span');
+    const b = document.createElement('b'); b.textContent = `${i + 1}. ${e.name}`;
+    a.append(b, ` · ${e.id}`);
+    const c = document.createElement('span'); c.textContent = e.from;
+    li.append(a, c);
+    list.append(li);
+  });
+  $('maps-note').textContent = m.custom
+    ? 'Cartes du menu du jeu dans la prochaine version, dans cet ordre (liste réglée dans les Mod Tools).'
+    : 'Les cartes du jeu installé sont reprises telles quelles. Les Mod Tools permettent d’en ajouter, d’en retirer et de les modifier.';
+  $('maps-missing').hidden = !(m.missing && m.missing.length);
+  if (m.missing && m.missing.length) $('maps-missing').textContent = `Cartes introuvables : ${m.missing.join(', ')}. Corrigez la liste dans les Mod Tools avant de publier.`;
+  $('maps-actions').hidden = !st.author;
+}
+function renderAll() { renderKey(); renderGame(); renderMaps(); renderLauncher(); renderHost(); }
 
 async function refresh() {
   st = await window.pub.state();
   if (!gameSource && st.gameSource) gameSource = st.gameSource;
+  if (!gameSource && st.installed && st.installed.editor) gameSource = 'installed';
   if (!$('repo').value && st.repo) $('repo').value = st.repo;
   renderAll();
 }
@@ -164,6 +192,16 @@ function bind() {
     versionTouched = false;
     renderGame();
   }));
+  for (const id of ['src-installed', 'src-html']) {
+    $(id).addEventListener('change', () => {
+      if ($('src-installed').checked) gameSource = 'installed';
+      else if (gameSource === 'installed') gameSource = st.gameSource && st.gameSource !== 'installed' ? st.gameSource : '';
+      detectedVersion = null;
+      renderGame();
+    });
+  }
+  $('maps-open').addEventListener('click', () => call(() => window.pub.openModtools()));
+  window.addEventListener('focus', () => { refresh().catch(() => {}); });
   $('game-version').addEventListener('input', () => {
     versionTouched = true;
     $('game-version').classList.toggle('invalid', !VERSION_RE.test($('game-version').value.trim()));
@@ -183,7 +221,8 @@ function bind() {
     const version = $('game-version').value.trim();
     const repo = $('repo').value.trim();
     if (!st.hasKey) throw new Error('Étape 1 : générez ou importez une clé de signature.');
-    if (!gameSource) throw new Error('Étape 2 : choisissez le fichier du jeu.');
+    if (!gameSource) throw new Error('Étape 2 : choisissez le contenu du jeu.');
+    if (st.maps && st.maps.missing && st.maps.missing.length) throw new Error(`Étape 3 : cartes introuvables (${st.maps.missing.join(', ')}).`);
     if (!VERSION_RE.test(version)) throw new Error('Étape 2 : numéro de version attendu sous la forme 1.0.1.');
     if (setupPath && !VERSION_RE.test($('launcher-version').value.trim())) throw new Error('Étape 3 : indiquez la version du launcher (forme 1.0.1).');
     if (repo && !REPO_RE.test(repo)) throw new Error('Étape 4 : dépôt GitHub attendu sous la forme pseudo/depot.');

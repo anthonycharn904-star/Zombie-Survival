@@ -209,6 +209,17 @@ button { font: inherit; color: inherit; }
 }
 .icon-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .icon-btn:hover { color: var(--ink); background: var(--paper); border-color: var(--paper); }
+/* Mod Tools : visible seulement chez l'auteur (clé de publication présente) */
+.mod-btn {
+  height: 50px; display: inline-flex; align-items: center; gap: 9px; padding: 0 16px 0 13px; cursor: pointer;
+  font-family: var(--font-hud); font-weight: 700; font-size: 17px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--brass); border: 2px solid rgba(214, 173, 87, 0.55); background: rgba(7, 9, 10, 0.6);
+  clip-path: polygon(0 0, 100% 0, 100% 72%, calc(100% - 9px) 100%, 0 100%); transition: background 0.15s, color 0.15s;
+}
+.mod-btn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mod-btn:hover:not(:disabled) { color: var(--ink); background: var(--brass); }
+.mod-btn:disabled { opacity: 0.5; cursor: default; }
+.mod-btn:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
 .icon-btn:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
 .icon-btn[aria-expanded="true"] { color: var(--ink); background: var(--paper-2); border-color: var(--paper-2); }
 

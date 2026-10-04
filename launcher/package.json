@@ -1,7 +1,7 @@
 {
   "name": "zombie-survival-launcher",
   "productName": "Zombie Survival",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Launcher de Zombie Survival : mises à jour signées et lancement du jeu",
   "author": "Anthony",
   "license": "UNLICENSED",
@@ -11,8 +11,10 @@
     "prepare-game": "node scripts/prepare-game.js",
     "start": "node scripts/prepare-game.js && electron .",
     "publier": "node scripts/prepare-game.js && electron . --publier",
+    "modtools": "node scripts/prepare-game.js && electron . --modtools",
     "configure": "node scripts/configure.js",
     "test": "node --test",
+    "test:e2e": "node scripts/prepare-game.js && node e2e/modtools.e2e.js",
     "dist:win": "node scripts/prepare-game.js && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
@@ -21,14 +23,18 @@
   },
   "devDependencies": {
     "electron": "44.5.1",
-    "electron-builder": "26.15.3"
+    "electron-builder": "26.15.3",
+    "playwright-core": "1.56.1"
   },
   "build": {
     "appId": "fr.zombiesurvival.launcher",
     "productName": "Zombie Survival",
     "copyright": "© 2026 Anthony",
     "compression": "maximum",
-    "electronLanguages": ["fr", "en-US"],
+    "electronLanguages": [
+      "fr",
+      "en-US"
+    ],
     "electronFuses": {
       "runAsNode": false,
       "enableNodeOptionsEnvironmentVariable": false,
@@ -46,12 +52,23 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "game", "to": "game-bundle" },
-      { "from": "gamelibs", "to": "gamelibs" }
+      {
+        "from": "game",
+        "to": "game-bundle"
+      },
+      {
+        "from": "gamelibs",
+        "to": "gamelibs"
+      }
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.ico"
     },

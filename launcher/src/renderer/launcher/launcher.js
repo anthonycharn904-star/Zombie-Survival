@@ -192,6 +192,9 @@ function render(s) {
   $('chip-game').classList.toggle('hot', hasUpdate);
   if (hasUpdate) $('chip-game').textContent = `Jeu ${inst.version} → ${rem.version}`;
 
+  $('btn-modtools').hidden = !s.author;
+  $('btn-modtools').disabled = !inst || ['downloading', 'installing', 'restarting'].includes(s.phase);
+
   renderNotes(s, hasUpdate);
   renderNews(s.news || []);
   renderBanner(s);
@@ -338,6 +341,13 @@ function bind() {
   $('act-logs').addEventListener('click', guard(() => window.zs.open('logs')));
   $('act-reset-source').addEventListener('click', guard(() => window.zs.resetSource()));
   $('act-publisher').addEventListener('click', guard(() => window.zs.openPublisher()));
+  $('btn-modtools').addEventListener('click', async () => {
+    try { await window.zs.openModtools(); } catch (e) {
+      const b = document.createElement('b');
+      b.textContent = String(e && e.message ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      toast([b]);
+    }
+  });
   // Pas de menu contextuel ni de glisser-déposer de fichiers dans le launcher.
   document.addEventListener('dragover', (e) => e.preventDefault());
   document.addEventListener('drop', (e) => e.preventDefault());

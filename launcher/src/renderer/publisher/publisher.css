@@ -65,6 +65,11 @@ input.invalid { border-color: var(--blood-hi); box-shadow: 0 0 0 1px var(--blood
 .pick .path { flex: 1; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--steel); font-size: 15px; cursor: pointer; }
 .check input { accent-color: var(--blood); width: 16px; height: 16px; }
+.check.radio { margin: 6px 0; align-items: flex-start; color: var(--paper-2); }
+.check.radio input { margin-top: 3px; flex: none; }
+.check.radio:has(input:disabled) { opacity: 0.5; cursor: default; }
+.files.maps { counter-reset: none; padding-left: 0; }
+.files.maps li span:first-child b { color: var(--paper); font-family: var(--font-hud); font-size: 16px; letter-spacing: 0.04em; }
 .more { margin: 0 0 12px; }
 .more summary { cursor: pointer; color: var(--brass); font-weight: 600; letter-spacing: 0.04em; margin-bottom: 10px; }
 

@@ -53,11 +53,12 @@ function githubLatestUrl(repo) {
 }
 
 /* opts : { source: { htmlPath | folderPath }, version, notes, news, outDir, privatePem, libsDir,
-            repo?, launcher?: { setupPath, version, notes }, previousLauncher?, minLauncher? } */
+            repo?, launcher?: { setupPath, version, notes }, previousLauncher?, minLauncher?,
+            maps?: { index, files } (cartes du paquet, voir gamepack.collectPackage) } */
 async function createRelease(opts) {
   if (!opts.privatePem) throw new Error("Aucune clé de signature : générez-en une d'abord.");
   const notes = (opts.notes || []).map((n) => String(n).trim()).filter(Boolean);
-  const { files, version } = gamepack.collectPackage({ ...opts.source, version: opts.version, libsDir: opts.libsDir, notes });
+  const { files, version } = gamepack.collectPackage({ ...opts.source, version: opts.version, libsDir: opts.libsDir, notes, maps: opts.maps });
   if (!parseVersion(version)) throw new Error(`Numéro de version invalide : ${version} (format attendu : 1.2.3).`);
   const base = githubBase(opts.repo);
   const ref = (name) => (base ? base.replace('{version}', version) + encodeURIComponent(name) : name);

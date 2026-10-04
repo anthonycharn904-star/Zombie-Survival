@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('pub', {
   testLocal: (dir) => invoke('pub:testLocal', dir),
   openGithub: (repo, version) => invoke('pub:openGithub', repo, version),
   openExternal: (url) => invoke('launcher:external', url),
+  openModtools: () => invoke('pub:modtools'),
   onStatus: (cb) => {
     const fn = (event, status) => cb(status);
     ipcRenderer.on('launcher:status-changed', fn);

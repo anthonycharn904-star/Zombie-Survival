@@ -18,6 +18,8 @@ try {
     htmlPath: source,
     libsDir,
     notes: ['Version livrée avec le launcher'],
+    // liste des cartes du menu (Bunker 7 est intégré au fichier du jeu)
+    maps: { index: ['bunker7'], files: [] },
   });
   gamepack.writeFolder(files, outDir);
   console.log(`Jeu ${version} préparé dans ${path.relative(process.cwd(), outDir) || outDir} (${files.length} fichiers, source : ${source})`);

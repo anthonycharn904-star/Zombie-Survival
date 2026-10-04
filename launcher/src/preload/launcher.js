@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('zs', {
   rollback: () => invoke('launcher:rollback'),
   updateLauncher: () => invoke('launcher:updateLauncher'),
   openPublisher: () => invoke('launcher:publisher'),
+  openModtools: () => invoke('launcher:modtools'),
   open: (what) => invoke('launcher:open', what),
   setSetting: (key, value) => invoke('launcher:setting', key, value),
   resetSource: () => invoke('launcher:resetSource'),
