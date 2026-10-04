@@ -13,7 +13,7 @@
     <p class="eyebrow">Réservé à l'auteur du jeu</p>
     <h1>Publier une mise à jour</h1>
   </div>
-  <p class="lead">Fabrique une version signée du jeu. Une fois mise en ligne, les launchers des joueurs la détectent, la vérifient et l'installent.</p>
+  <p class="lead">Fabrique une version signée du jeu et la met en ligne. Les launchers des joueurs la détectent, la vérifient et l'installent seuls à leur prochain démarrage.</p>
 </header>
 
 <main class="steps">
@@ -52,6 +52,7 @@
       <span class="label">Fichier du jeu (zombie-survival.html)</span>
       <div class="pick"><output id="game-path" class="path">Aucun fichier choisi</output><button class="btn" id="game-pick" type="button">Choisir…</button></div>
       <p class="muted" id="game-detected"></p>
+      <p class="warn" id="game-older" hidden></p>
     </div>
     <div class="grid2">
       <label class="field"><span class="label">Numéro de version</span><input id="game-version" type="text" inputmode="decimal" placeholder="1.0.1" autocomplete="off" spellcheck="false"></label>
@@ -89,9 +90,27 @@
     </div>
   </section>
 
-  <!-- 4. Hébergement -->
+  <!-- 5. Mise en ligne -->
   <section class="card" id="card-host">
-    <h2><span class="n">5</span>Hébergement</h2>
+    <h2><span class="n">5</span>Mise en ligne</h2>
+    <div id="gh-linked" hidden>
+      <p class="ok" id="gh-linked-text"></p>
+      <p class="muted">« Publier pour tous les joueurs » envoie la version sur GitHub, qui sert seulement d'entrepôt : les launchers des joueurs la trouvent, la vérifient et l'installent seuls à leur prochain démarrage. Vous n'avez rien à faire sur le site de GitHub.</p>
+      <div class="row"><button class="btn" id="gh-unlink" type="button">Délier GitHub</button></div>
+    </div>
+    <div id="gh-unlinked" hidden>
+      <p>Reliez <b>une seule fois</b> ce launcher à votre dépôt GitHub. Ensuite, publier se fait en un clic, d'ici.</p>
+      <ol class="howto">
+        <li><button class="btn" id="gh-token-page" type="button">Créer le jeton sur GitHub</button> (connecté à votre compte GitHub).</li>
+        <li>Token name : <code>Zombie Survival launcher</code> · Expiration : la plus longue proposée · Repository access : <b>Only select repositories</b> → <code>Zombie-Survival</code>.</li>
+        <li>Permissions → Repository permissions → <b>Contents : Read and write</b>, puis « Generate token » et copiez le jeton.</li>
+        <li>Collez-le ici. Il reste chiffré par Windows sur ce PC et ne sert qu'à publier. Ne le donnez à personne.</li>
+      </ol>
+      <div class="pick token">
+        <input id="gh-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-label="Jeton GitHub">
+        <button class="btn primary" id="gh-link" type="button">Vérifier et enregistrer</button>
+      </div>
+    </div>
     <label class="field"><span class="label">Dépôt GitHub (pseudo/depot)</span><input id="repo" type="text" placeholder="mon-pseudo/zombie-survival" autocomplete="off" spellcheck="false"></label>
     <p class="muted" id="repo-url"></p>
     <div class="field">
@@ -102,22 +121,34 @@
 
   <div class="create">
     <p class="error" id="form-error" role="alert" hidden></p>
-    <button class="btn big" id="create" type="button">Créer la publication</button>
+    <div class="row">
+      <button class="btn big" id="publish-online" type="button" hidden>Publier pour tous les joueurs</button>
+      <button class="btn big" id="create" type="button">Créer la publication</button>
+    </div>
+    <p class="muted" id="create-note"></p>
   </div>
 
   <!-- Résultat -->
   <section class="card result" id="result" hidden>
-    <h2>Publication <span id="res-version"></span> prête</h2>
+    <h2 id="res-title">Publication<span id="res-version"></span></h2>
     <p class="muted path" id="res-dir"></p>
-    <h3>Fichiers à mettre en ligne</h3>
-    <ul class="files" id="res-files"></ul>
-    <ol class="howto" id="res-howto"></ol>
-    <div class="row">
-      <button class="btn primary" id="res-github" type="button">Ouvrir GitHub</button>
-      <button class="btn" id="res-open" type="button">Ouvrir le dossier</button>
-      <button class="btn" id="res-test" type="button">Tester avec ce launcher</button>
+    <ol class="progress" id="res-progress" hidden></ol>
+    <p class="error" id="res-online-error" hidden></p>
+    <div class="row" id="res-online-actions" hidden>
+      <button class="btn primary" id="res-retry" type="button">Réessayer la mise en ligne</button>
+      <button class="btn" id="res-release" type="button">Voir la version sur GitHub</button>
     </div>
-    <p class="muted" id="res-test-note">« Tester » fait pointer ce launcher vers ce dossier pour vérifier la mise à jour avant de la publier. Retour à la source officielle : Réglages du launcher.</p>
+    <div id="res-manual">
+      <h3>Fichiers à mettre en ligne</h3>
+      <ul class="files" id="res-files"></ul>
+      <ol class="howto" id="res-howto"></ol>
+      <div class="row">
+        <button class="btn primary" id="res-github" type="button">Ouvrir GitHub</button>
+        <button class="btn" id="res-open" type="button">Ouvrir le dossier</button>
+        <button class="btn" id="res-test" type="button">Tester avec ce launcher</button>
+      </div>
+      <p class="muted" id="res-test-note">« Tester » fait pointer ce launcher vers ce dossier pour vérifier la mise à jour avant de la publier. Retour à la source officielle : Réglages du launcher.</p>
+    </div>
   </section>
 </main>
 

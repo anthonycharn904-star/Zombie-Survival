@@ -54,7 +54,7 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 900; font-size: 4
 .grid2 .hint { margin: 0 0 18px; }
 .field { display: block; margin: 0 0 12px; }
 .label { display: block; margin-bottom: 4px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--paper-2); }
-input[type="text"], textarea {
+input[type="text"], input[type="password"], textarea {
   width: 100%; padding: 8px 10px; background: var(--ink); border: 1px solid var(--line); color: var(--paper); border-radius: 0; outline: none;
 }
 textarea { resize: vertical; font-family: var(--font-type); font-size: 14.5px; line-height: 1.45; }
@@ -63,6 +63,7 @@ input:focus, textarea:focus { border-color: var(--brass); box-shadow: 0 0 0 1px 
 input.invalid { border-color: var(--blood-hi); box-shadow: 0 0 0 1px var(--blood-hi); }
 .pick { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 10px; background: var(--ink); border: 1px solid var(--line); min-height: 44px; }
 .pick .path { flex: 1; }
+.pick.token input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 6px 2px; font-family: var(--font-type); font-size: 15px; box-shadow: none; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--steel); font-size: 15px; cursor: pointer; }
 .check input { accent-color: var(--blood); width: 16px; height: 16px; }
 .check.radio { margin: 6px 0; align-items: flex-start; color: var(--paper-2); }
@@ -104,3 +105,22 @@ input.invalid { border-color: var(--blood-hi); box-shadow: 0 0 0 1px var(--blood
 }
 .foot b { font-family: var(--font-type); font-weight: 400; color: var(--paper-2); word-break: break-all; }
 #toast { color: var(--toxic); white-space: nowrap; }
+
+/* mise en ligne en un clic */
+.howto .btn { margin-right: 6px; }
+.create .row { gap: 12px; align-items: center; margin: 0; }
+.btn.big.secondary { background: transparent; border-color: var(--line); color: var(--paper); font-family: var(--font-hud); font-weight: 700; font-size: 17px; letter-spacing: 0.1em; padding: 10px 20px; }
+.btn.big.secondary:hover:not(:disabled) { background: var(--paper); border-color: var(--paper); color: var(--ink); }
+.btn.big.armed { background: var(--brass); border-color: var(--brass); color: var(--ink); }
+.progress { list-style: none; margin: 4px 0 14px; padding: 0; display: grid; gap: 6px; font-size: 16px; }
+.progress li { display: flex; gap: 10px; align-items: baseline; color: var(--steel); }
+.progress li::before { content: "○"; width: 1em; flex: none; text-align: center; }
+.progress li.doing { color: var(--paper); }
+.progress li.doing::before { content: "●"; color: var(--brass); }
+.progress li.done { color: var(--paper-2); }
+.progress li.done::before { content: "✓"; color: var(--toxic); }
+.progress li.fail { color: #ffb4b4; }
+.progress li.fail::before { content: "✕"; color: var(--blood-hi); }
+.progress li em { font-style: normal; color: var(--brass); font-variant-numeric: tabular-nums; margin-left: auto; }
+.result.failed { border-color: rgba(226, 49, 58, 0.45); background: linear-gradient(180deg, rgba(184, 20, 29, 0.08), transparent 40%), var(--ink-2); }
+.result.failed h2 { color: #ffb4b4; }

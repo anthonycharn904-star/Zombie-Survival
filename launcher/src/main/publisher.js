@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const gamepack = require('./gamepack');
 const { parseVersion, compareVersions } = require('./updater');
+const { WEB_BASE } = require('./github');
 
 function generateKeyPair() {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
@@ -41,26 +42,26 @@ function signManifest(manifest, privatePem) {
   const sig = crypto.sign(null, Buffer.from(signed, 'utf8'), key).toString('base64');
   return { format: 1, key: fingerprint(publicFromPrivate(privatePem)), signed, sig };
 }
-function githubBase(repo) {
+function githubBase(repo, webBase = WEB_BASE) {
   if (!repo) return null;
   const m = String(repo).trim().match(/^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/);
   if (!m) throw new Error('Dépôt GitHub attendu sous la forme pseudo/depot.');
-  return `https://github.com/${m[1]}/${m[2]}/releases/download/v{version}/`;
+  return `${webBase}/${m[1]}/${m[2]}/releases/download/v{version}/`;
 }
-function githubLatestUrl(repo) {
+function githubLatestUrl(repo, webBase = WEB_BASE) {
   const m = String(repo || '').trim().match(/^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/);
-  return m ? `https://github.com/${m[1]}/${m[2]}/releases/latest/download/latest.json` : null;
+  return m ? `${webBase}/${m[1]}/${m[2]}/releases/latest/download/latest.json` : null;
 }
 
 /* opts : { source: { htmlPath | folderPath }, version, notes, news, outDir, privatePem, libsDir,
-            repo?, launcher?: { setupPath, version, notes }, previousLauncher?, minLauncher?,
+            repo?, webBase?, launcher?: { setupPath, version, notes }, previousLauncher?, minLauncher?,
             maps?: { index, files } (cartes du paquet, voir gamepack.collectPackage) } */
 async function createRelease(opts) {
   if (!opts.privatePem) throw new Error("Aucune clé de signature : générez-en une d'abord.");
   const notes = (opts.notes || []).map((n) => String(n).trim()).filter(Boolean);
   const { files, version } = gamepack.collectPackage({ ...opts.source, version: opts.version, libsDir: opts.libsDir, notes, maps: opts.maps });
   if (!parseVersion(version)) throw new Error(`Numéro de version invalide : ${version} (format attendu : 1.2.3).`);
-  const base = githubBase(opts.repo);
+  const base = githubBase(opts.repo, opts.webBase);
   const ref = (name) => (base ? base.replace('{version}', version) + encodeURIComponent(name) : name);
   const dir = path.join(opts.outDir, `v${version}`);
   await fsp.rm(dir, { recursive: true, force: true });

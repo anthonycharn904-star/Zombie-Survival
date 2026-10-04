@@ -54,8 +54,8 @@ Atelier de l'auteur : `%APPDATA%\Zombie Survival\modtools\` (`maps/`, `textures/
 ### Publier des cartes
 
 1. Mod Tools → **Cartes** : cocher « Dans le jeu » pour chaque carte à publier et régler l'ordre du menu.
-2. **Publier une version du jeu…** ouvre l'outil de publication. Choisir « Le jeu installé » (le code ne change pas, seules les cartes changent) ou un nouveau fichier du jeu, puis le numéro de version.
-3. Mettre les fichiers produits en ligne comme pour toute version (voir plus bas). Les joueurs reçoivent les cartes avec la mise à jour du jeu ; leur launcher n'a pas besoin de changer.
+2. **Publier une version du jeu…** ouvre l'outil de publication, avec « Le jeu installé » choisi (le code ne change pas, seules les cartes changent) et le numéro suivant proposé.
+3. **Publier pour tous les joueurs** (voir plus bas). Les joueurs reçoivent les cartes avec la mise à jour du jeu, à leur prochain démarrage du launcher.
 
 Limites du moteur : un seul niveau (pas d'étages), murs sur la grille de 1 m, 160 × 160 cases au plus, au-delà de 16 lumières le jeu ralentit sur les petites cartes graphiques. Les modèles `.glb` compressés (Draco, Meshopt, KTX2) ne sont pas lus : les réexporter sans compression.
 
@@ -81,11 +81,16 @@ npm run dist:win    # fabrique dist/Zombie-Survival-Setup-<version>.exe
 
 ## Publier une nouvelle version du jeu
 
-1. Modifier `game/zombie-survival.html`.
-2. Dans le launcher : Réglages → « Outil de publication » (ou `npm run publier`). Choisir le fichier du jeu et le numéro de version. L'outil réécrit `GAME_VERSION`, fabrique le zip et signe `latest.json`.
-3. Sur GitHub, créer une release dont le tag est exactement `v<version>` (par exemple `v1.0.3`), y déposer les fichiers produits, et la marquer « Latest ».
+Tout se fait depuis le launcher de l'auteur (depuis la version 1.2.3) : ni l'auteur ni les joueurs n'ont à passer par le site de GitHub. GitHub sert seulement d'entrepôt public des fichiers de mise à jour, à l'adresse fixe `https://github.com/anthonycharn904-star/zombie-survival/releases/latest/download/latest.json` (le dépôt doit donc rester public).
 
-Les joueurs reçoivent la mise à jour par l'adresse fixe `https://github.com/anthonycharn904-star/zombie-survival/releases/latest/download/latest.json`. Le dépôt qui porte les releases doit donc rester public.
+**Une seule fois : relier le launcher à GitHub.** Outil de publication, étape 5 « Mise en ligne » : « Créer le jeton sur GitHub » ouvre la page des jetons *fine-grained*. Nom libre, expiration la plus longue, *Repository access* : *Only select repositories* → `Zombie-Survival`, *Repository permissions* → *Contents* : *Read and write*. Coller le jeton dans le launcher (pas ailleurs) : « Vérifier et enregistrer » contrôle le dépôt et le droit d'écriture (avec un brouillon de version supprimé aussitôt), puis garde le jeton chiffré par Windows (`%APPDATA%\Zombie Survival\publisher\github-token.bin`). « Délier GitHub » l'efface ; il se révoque aussi sur GitHub.
+
+**À chaque version :**
+1. Dans le launcher : Réglages → « Outil de publication » (ou Mod Tools → Cartes → « Publier une version du jeu… »). Contenu : « Le jeu installé », ou un fichier `zombie-survival.html` plus récent. Numéro de version et notes.
+2. **Publier pour tous les joueurs**, puis confirmer. Le launcher signe la version, la crée sur GitHub en brouillon (invisible des launchers), envoie les fichiers (`latest.json` en dernier), la publie comme dernière version et relit l'adresse fixe pour vérifier. En cas de coupure, rien n'est visible des joueurs : « Réessayer la mise en ligne » reprend le brouillon.
+3. Les launchers des joueurs installent la version seuls, à leur prochain démarrage ou au retour d'une partie. Un nouveau launcher joint à la publication (étape 4) s'installe seul aussi (une tentative par version toutes les 6 heures, sans boucle si l'installation échoue).
+
+Garde-fous : l'outil propose toujours le jeu installé ; il refuse un fichier dont le jeu est plus ancien que le jeu installé, et un numéro de version plus petit que celui du code publié. « Créer seulement (test sur ce PC) » fabrique la version sans la mettre en ligne (bouton « Tester avec ce launcher »). Sans liaison GitHub, l'ancienne méthode reste possible : créer la publication, puis déposer ses fichiers dans une release `v<version>` marquée « Latest ».
 
 ## Sécurité
 
@@ -101,6 +106,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **4 octobre 2026 — launcher 1.2.3** : publication en un clic depuis le launcher (« Publier pour tous les joueurs », jeton GitHub chiffré, brouillon puis publication, vérification de l'adresse des mises à jour, reprise après coupure) ; mise à jour automatique du launcher lui-même ; nouvelle vérification au retour d'une partie ; garde-fous contre la republication d'un ancien jeu (incident de la version 1.2.0 du 4 octobre, retirée avant tout téléchargement) et contre un numéro trop petit.
 - **4 octobre 2026 — jeu 1.2.0, launcher 1.2.2** : menu du jeu : sélection de la carte derrière le bouton Jouer (remplace les flèches), bouton et écran Statistiques (compteurs de toute la vie du joueur) ; précision des tirs corrigée (un tir de fusil à pompe ne compte plus plusieurs fois). Le launcher 1.2.2 ne change que le jeu qu'il livre (1.2.0).
 - **4 octobre 2026 — launcher 1.2.1** : Mod Tools : partie de test possible malgré les erreurs de la carte, avec un bandeau qui les rappelle ; départ de secours si le point de départ est hors du sol ; alertes identiques regroupées (×2, ×3…) au lieu de s'empiler. Le jeu ne change pas (1.1.0).
 - **4 octobre 2026 — jeu 1.1.0, launcher 1.2.0** : cartes en données (Bunker 7 converti à l'identique), choix de la carte dans le menu, records par carte, apparitions de zombies au sol, éléments facultatifs (boîte, courant, Amplificateur), prix des armes murales par carte, bibliothèques de textures et d'objets, modèles `.glb` ; Mod Tools réservés à l'auteur dans le launcher ; publication des cartes ; essai de bout en bout `npm run test:e2e`.

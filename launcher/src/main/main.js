@@ -12,6 +12,8 @@ const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 const { Updater, UpdateError, compareVersions, parseVersion } = require('./updater');
 const publisher = require('./publisher');
+const github = require('./github');
+const { readGameVersion } = require('./gamepack');
 const { Workspace } = require('./workspace');
 const createLog = require('./log');
 
@@ -140,8 +142,11 @@ async function checkForUpdates({ auto = false } = {}) {
       news: m.news || [], launcherUpdate, installed: pickInstalled(inst), checkedAt: Date.now(),
       phase: remoteIsNewer() ? 'update' : 'ready', error: null,
     });
-    log(`Vérification : en ligne ${m.game.version}, installée ${inst ? inst.version : 'aucune'}`);
+    log(`Vérification : en ligne ${m.game.version}, installée ${inst ? inst.version : 'aucune'}${launcherUpdate ? `, launcher ${launcherUpdate.version} annoncé` : ''}`);
     busy = null;
+    // Mises à jour automatiques : d'abord le launcher (il redémarre et reprend la vérification), puis le jeu.
+    const free = auto && settings.autoInstall && !gameWin && !modtoolsWin && !publisherWin;
+    if (free && launcherUpdate && mayAutoUpdateLauncher(launcherUpdate.version)) { await installLauncherUpdate(); return status; }
     if (remoteIsNewer() && auto && settings.autoInstall && !gameWin && !modtoolsWin) await installUpdate();
   } catch (e) {
     busy = null;
@@ -199,6 +204,19 @@ async function rollback() {
     setStatus({ installed: pickInstalled(inst), phase: idlePhase(), error: null });
   } catch (e) { handleError(e, 'rollback'); }
   return status;
+}
+
+/* Installation automatique d'un nouveau launcher : une tentative par version et par
+   tranche de 6 heures, pour ne jamais tourner en boucle si l'installateur échoue. */
+function mayAutoUpdateLauncher(version) {
+  const file = userFile(path.join('cache', 'launcher-autoupdate.json'));
+  const last = readJson(file);
+  if (last && last.version === version && Date.now() - (Date.parse(last.at) || 0) < 6 * 3600 * 1000) {
+    log(`Launcher ${version} : installation automatique déjà tentée (${last.at}), bouton laissé au joueur`);
+    return false;
+  }
+  try { writeJson(file, { version, at: new Date().toISOString() }); } catch (e) { return false; }
+  return true;
 }
 
 async function installLauncherUpdate() {
@@ -304,6 +322,8 @@ function play() {
       setStatus({ phase: 'error', error: { code: 'GAME_CRASH', context: 'game', message: `Le jeu s'est arrêté brutalement (${reason}). Relancez-le ; si cela se répète, utilisez « Réparer le jeu » dans les réglages.` } });
     } else {
       setStatus({ phase: busy === 'check' ? 'checking' : phaseAfterPlay === 'checking' ? idlePhase() : phaseAfterPlay });
+      // retour au launcher : nouvelle vérification, installée seule si une mise à jour est sortie entre-temps
+      if (settings.autoCheck && config.configured) setTimeout(() => { if (!gameWin) checkForUpdates({ auto: true }).catch(() => {}); }, 1500);
     }
   });
   gameWin.loadURL('zsgame://game/index.html');
@@ -476,12 +496,48 @@ function writePrivateKey(pem) {
     fs.writeFileSync(plain, pem, { mode: 0o600 });
   }
 }
+/* Jeton GitHub de l'auteur (mise en ligne en un clic) : chiffré par Windows comme la clé. */
+const tokenFiles = () => ({ enc: path.join(keyDir(), 'github-token.bin'), plain: path.join(keyDir(), 'github-token.txt') });
+function readGithubToken() {
+  const { enc, plain } = tokenFiles();
+  try {
+    if (fs.existsSync(enc) && safeStorage.isEncryptionAvailable()) return safeStorage.decryptString(fs.readFileSync(enc));
+    if (fs.existsSync(plain)) return fs.readFileSync(plain, 'utf8').trim();
+  } catch (e) { log('Lecture du jeton GitHub impossible'); }
+  return null;
+}
+function writeGithubToken(token) {
+  fs.mkdirSync(keyDir(), { recursive: true });
+  const { enc, plain } = tokenFiles();
+  if (safeStorage.isEncryptionAvailable()) {
+    fs.writeFileSync(enc, safeStorage.encryptString(token));
+    fs.rmSync(plain, { force: true });
+  } else {
+    fs.writeFileSync(plain, token, { mode: 0o600 });
+  }
+}
+function forgetGithubToken() {
+  const { enc, plain } = tokenFiles();
+  fs.rmSync(enc, { force: true });
+  fs.rmSync(plain, { force: true });
+}
+/* Version du jeu inscrite dans un fichier HTML (null si illisible). */
+function htmlGameVersion(file) {
+  try { return file && fs.existsSync(file) ? readGameVersion(fs.readFileSync(file, 'utf8')) : null; } catch (e) { return null; }
+}
+
 function publisherState() {
   const pem = readPrivateKey();
   const pub = pem ? publisher.publicFromPrivate(pem) : null;
   const ps = readJson(path.join(keyDir(), 'settings.json')) || {};
   const inst = updater.getInstalled();
+  const fileSource = ps.gameSource && ps.gameSource !== 'installed' ? ps.gameSource : null;
+  const gh = ps.github || null;
+  const linked = !!readGithubToken();
   const last = ps.lastGameVersion || (inst || {}).version || '1.0.0';
+  // numéro proposé : la suite de la dernière publication, ou la version du jeu installé si elle est plus récente
+  let suggested = publisher.nextPatch(last);
+  if (inst && parseVersion(inst.version) && compareVersions(inst.version, last) > 0 && compareVersions(inst.version, suggested) > 0) suggested = inst.version;
   let maps = null;
   try {
     const plan = getWorkspace().publishPlan(inst && inst.dir);
@@ -494,9 +550,77 @@ function publisherState() {
     keyMatchesLauncher: !!pub && publisher.sameKey(pub, config.defaultKey),
     encrypted: safeStorage.isEncryptionAvailable(),
     repo: ps.repo || '', outDir: ps.outDir || path.join(app.getPath('documents'), 'Zombie Survival - Publications'),
-    gameSource: ps.gameSource || '', lastGameVersion: ps.lastGameVersion || null, suggestedVersion: publisher.nextPatch(last),
+    gameSource: ps.gameSource || '', lastGameVersion: ps.lastGameVersion || null, suggestedVersion: suggested, installedVersion: inst ? inst.version : null,
+    gameSourceExists: fileSource ? fs.existsSync(fileSource) : null, gameSourceVersion: htmlGameVersion(fileSource),
     lastLauncher: carriedLauncher(ps), launcherVersion: app.getVersion(), latestUrl: publisher.githubLatestUrl(ps.repo),
+    github: { linked, login: linked && gh ? gh.login || null : null, repo: linked && gh ? gh.repo || null : null, encrypted: safeStorage.isEncryptionAvailable(), tokenUrl: 'https://github.com/settings/personal-access-tokens/new' },
+    lastOnline: ps.lastOnline || null,
   };
+}
+
+/* Fabrique la publication signée (dossier vX.Y.Z) à partir du formulaire de l'outil. */
+async function createPublication(form, repoOverride) {
+  const pem = readPrivateKey();
+  if (!pem) throw new Error("Générez ou importez d'abord une clé de signature.");
+  const inst = updater.getInstalled();
+  const useInstalled = !!form && form.gameSource === 'installed';
+  if (useInstalled && !inst) throw new Error('Aucun jeu installé à republier.');
+  if (!form || (!useInstalled && (!form.gameSource || !fs.existsSync(form.gameSource)))) throw new Error('Choisissez le fichier du jeu.');
+  // garde-fou : ne pas republier par erreur un code plus ancien que le jeu installé
+  if (!useInstalled && inst && !form.allowOlder) {
+    const fv = htmlGameVersion(form.gameSource);
+    if (fv && compareVersions(fv, inst.version) < 0) {
+      throw new Error(`Le fichier choisi contient le jeu ${fv}, plus ancien que le jeu installé (${inst.version}) : ce serait republier un ancien jeu sous un nouveau numéro. Choisissez « Le jeu installé », ou un fichier plus récent.`);
+    }
+  }
+  // le numéro publié ne peut pas être plus petit que la version du code publié
+  const codeVersion = useInstalled ? inst.version : htmlGameVersion(form.gameSource);
+  if (codeVersion && parseVersion(form.version) && compareVersions(form.version, codeVersion) < 0) {
+    throw new Error(`Numéro ${form.version} trop petit : le jeu publié est déjà en version ${codeVersion}. Les launchers qui l'ont ne verraient pas la mise à jour. Choisissez ${codeVersion} ou plus.`);
+  }
+  const plan = getWorkspace().publishPlan(inst && inst.dir);
+  if (plan.missing.length) throw new Error(`Cartes introuvables : ${plan.missing.join(', ')}. Corrigez la liste dans les Mod Tools (Cartes).`);
+  const ps = publisherState();
+  if (ps.lastGameVersion && parseVersion(form.version) && compareVersions(form.version, ps.lastGameVersion) <= 0 && !form.allowSame) {
+    throw new Error(`La version ${form.version} n'est pas plus récente que la dernière publiée (${ps.lastGameVersion}).`);
+  }
+  const repo = repoOverride || form.repo || null;
+  const news = form.newsTitle ? [{ title: form.newsTitle, text: form.newsText || '', date: new Date().toISOString().slice(0, 10) }] : [];
+  const notes = String(form.notes || '').split('\n');
+  const result = await publisher.createRelease({
+    source: useInstalled ? { folderPath: inst.dir } : { htmlPath: form.gameSource }, version: form.version, notes,
+    maps: { index: plan.index, files: plan.files.filter((f) => f.data) },
+    news, outDir: form.outDir || ps.outDir, privatePem: pem, libsDir: LIBS_DIR, repo,
+    launcher: form.setupPath ? { setupPath: form.setupPath, version: form.launcherVersion, notes: String(form.launcherNotes || '').split('\n') } : null,
+    previousLauncher: form.setupPath ? null : ps.lastLauncher,
+  });
+  savePublisherSettings({
+    repo: repo || '', outDir: form.outDir || ps.outDir, gameSource: form.gameSource, lastGameVersion: result.version,
+    lastLauncher: result.manifest.launcher ? { ...result.manifest.launcher, localPath: /^https?:/.test(result.manifest.launcher.file) ? undefined : path.join(result.dir, result.manifest.launcher.file) } : ps.lastLauncher,
+  });
+  log(`Publication ${result.version} créée dans ${result.dir} (cartes : ${plan.index.join(', ')})`);
+  return {
+    dir: result.dir, version: result.version, upload: result.upload, gameSize: result.manifest.game.size, launcher: result.manifest.launcher || null, repo: repo || '',
+    notes: notes.map((n) => n.trim()).filter(Boolean),
+  };
+}
+
+/* Met en ligne le dossier d'une publication déjà créée (premier essai ou reprise). */
+async function uploadPublication({ dir, version, upload, notes }) {
+  const token = readGithubToken();
+  if (!token) throw new Error("Reliez d'abord le launcher à GitHub (étape « Mise en ligne »).");
+  if (typeof dir !== 'string' || !fs.existsSync(path.join(dir, 'latest.json'))) throw new Error('Publication introuvable sur ce PC.');
+  const ps = readJson(path.join(keyDir(), 'settings.json')) || {};
+  const repo = (ps.github && ps.github.repo) || ps.repo;
+  const gh = github.createClient({ token });
+  const access = await gh.access(repo);
+  const send = (p) => { if (publisherWin && !publisherWin.isDestroyed()) publisherWin.webContents.send('pub:progress', p); };
+  log(`Mise en ligne de ${version} sur ${access.repo}…`);
+  send({ step: 'created', version, files: upload });
+  const r = await gh.publish({ repo: access.repo, branch: access.branch, version, dir, files: upload, notes: notes || [], onProgress: send });
+  savePublisherSettings({ lastOnline: { version, at: new Date().toISOString(), release: r.release, verified: r.verified } });
+  log(`Version ${version} en ligne (${r.release}) ; adresse des mises à jour ${r.verified ? 'vérifiée' : `pas encore à jour : ${r.detail}`}`);
+  return r;
 }
 /* Dernier launcher annoncé, repris dans les publications suivantes tant qu'aucun autre n'est joint.
    Abandonné s'il est plus ancien que le launcher qui publie (installateur de test d'une version
@@ -670,33 +794,50 @@ function setupIpc() {
     const r = await dialog.showOpenDialog(publisherWin, { title: 'Dossier des publications', properties: ['openDirectory', 'createDirectory'] });
     return r.canceled ? null : r.filePaths[0] || null;
   });
-  handle('pub:create', P, async (form) => {
-    const pem = readPrivateKey();
-    if (!pem) throw new Error("Générez ou importez d'abord une clé de signature.");
-    const inst = updater.getInstalled();
-    const useInstalled = !!form && form.gameSource === 'installed';
-    if (useInstalled && !inst) throw new Error('Aucun jeu installé à republier.');
-    if (!form || (!useInstalled && (!form.gameSource || !fs.existsSync(form.gameSource)))) throw new Error('Choisissez le fichier du jeu.');
-    const plan = getWorkspace().publishPlan(inst && inst.dir);
-    if (plan.missing.length) throw new Error(`Cartes introuvables : ${plan.missing.join(', ')}. Corrigez la liste dans les Mod Tools (Cartes).`);
-    const ps = publisherState();
-    if (ps.lastGameVersion && parseVersion(form.version) && compareVersions(form.version, ps.lastGameVersion) <= 0 && !form.allowSame) {
-      throw new Error(`La version ${form.version} n'est pas plus récente que la dernière publiée (${ps.lastGameVersion}).`);
-    }
-    const news = form.newsTitle ? [{ title: form.newsTitle, text: form.newsText || '', date: new Date().toISOString().slice(0, 10) }] : [];
-    const result = await publisher.createRelease({
-      source: useInstalled ? { folderPath: inst.dir } : { htmlPath: form.gameSource }, version: form.version, notes: String(form.notes || '').split('\n'),
-      maps: { index: plan.index, files: plan.files.filter((f) => f.data) },
-      news, outDir: form.outDir || ps.outDir, privatePem: pem, libsDir: LIBS_DIR, repo: form.repo || null,
-      launcher: form.setupPath ? { setupPath: form.setupPath, version: form.launcherVersion, notes: String(form.launcherNotes || '').split('\n') } : null,
-      previousLauncher: form.setupPath ? null : ps.lastLauncher,
-    });
-    savePublisherSettings({
-      repo: form.repo || '', outDir: form.outDir || ps.outDir, gameSource: form.gameSource, lastGameVersion: result.version,
-      lastLauncher: result.manifest.launcher ? { ...result.manifest.launcher, localPath: /^https?:/.test(result.manifest.launcher.file) ? undefined : path.join(result.dir, result.manifest.launcher.file) } : ps.lastLauncher,
-    });
-    log(`Publication ${result.version} créée dans ${result.dir} (cartes : ${plan.index.join(', ')})`);
-    return { dir: result.dir, version: result.version, upload: result.upload, gameSize: result.manifest.game.size, launcher: result.manifest.launcher || null, repo: form.repo || '' };
+  handle('pub:create', P, (form) => createPublication(form));
+  // ---- mise en ligne en un clic
+  let onlineBusy = false;
+  handle('pub:githubLink', P, async (token, repo) => {
+    const t = github.checkToken(token);
+    const ps = readJson(path.join(keyDir(), 'settings.json')) || {};
+    const access = await github.createClient({ token: t }).access(String(repo || ps.repo || '').trim(), { probeWrite: true });
+    writeGithubToken(t);
+    savePublisherSettings({ repo: access.repo, github: { repo: access.repo, login: access.login, branch: access.branch, at: new Date().toISOString() } });
+    log(`Launcher relié à GitHub : ${access.repo}${access.login ? ` (compte ${access.login})` : ''}`);
+    return publisherState();
+  });
+  handle('pub:githubUnlink', P, () => {
+    forgetGithubToken();
+    savePublisherSettings({ github: null });
+    log('Launcher délié de GitHub');
+    return publisherState();
+  });
+  handle('pub:publishOnline', P, async (form) => {
+    if (onlineBusy) throw new Error('Une mise en ligne est déjà en cours.');
+    onlineBusy = true;
+    try {
+      const token = readGithubToken();
+      if (!token) throw new Error("Reliez d'abord le launcher à GitHub (étape « Mise en ligne »).");
+      const ps = readJson(path.join(keyDir(), 'settings.json')) || {};
+      // le nom exact du dépôt d'abord : les adresses signées dans latest.json en dépendent
+      const access = await github.createClient({ token }).access((ps.github && ps.github.repo) || ps.repo || form.repo);
+      const created = await createPublication(form, access.repo);
+      try {
+        const online = await uploadPublication(created);
+        return { ...created, online };
+      } catch (e) {
+        return { ...created, onlineError: String(e && e.message ? e.message : e) };
+      }
+    } finally { onlineBusy = false; }
+  });
+  handle('pub:upload', P, async (r) => {
+    if (onlineBusy) throw new Error('Une mise en ligne est déjà en cours.');
+    onlineBusy = true;
+    try { return await uploadPublication(r || {}); } finally { onlineBusy = false; }
+  });
+  handle('pub:openUrl', P, (url) => {
+    if (typeof url === 'string' && /^https:\/\/github\.com\//.test(url)) { shell.openExternal(url); return true; }
+    return false;
   });
   handle('pub:modtools', P, () => openModtools());
   handle('pub:openDir', P, (dir) => (typeof dir === 'string' && fs.existsSync(dir) ? shell.openPath(dir) : false));
