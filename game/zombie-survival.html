@@ -377,7 +377,21 @@ body {
 .md-chip.alt { border-style: dashed; }
 .md-sheet { transform: rotate(0.35deg); }
 .md-name { margin: 0; font-family: var(--font-display); font-weight: 900; font-size: clamp(44px, 5.4vw, 68px); line-height: 0.88; letter-spacing: 0.03em; text-transform: uppercase; }
-.md-alias { margin: 6px 0 0; font-size: 15px; color: rgba(43, 36, 24, 0.68); }
+.md-sheet .stamp { top: -14px; right: 22px; background: rgba(232, 223, 200, 0.92); }
+.md-tagline { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0 0 6px; font-family: var(--font-hud); font-weight: 700; font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; color: #3d4a57; }
+.md-tagline span + span::before { content: '/'; margin: 0 10px; color: rgba(43, 36, 24, 0.4); }
+.md-bars { display: grid; gap: 9px; margin: 18px 0 0; }
+.md-bar { display: grid; grid-template-columns: 74px minmax(0, 1fr) 54px; gap: 12px; align-items: center; }
+.md-bar-label { font-family: var(--font-hud); font-weight: 700; font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(43, 36, 24, 0.75); }
+.md-track { position: relative; height: 14px; background: rgba(43, 36, 24, 0.12); box-shadow: inset 0 0 0 2px var(--paper-ink); }
+.md-track i { display: block; height: 100%; background: #5d7083; box-shadow: inset 0 0 0 2px var(--paper-ink); }
+.md-track::after { content: ''; position: absolute; left: 50%; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--paper-ink); opacity: 0.55; }
+.md-bar b { font-family: var(--font-display); font-weight: 900; font-size: 22px; text-align: right; font-variant-numeric: tabular-nums; }
+.md-ref { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: rgba(43, 36, 24, 0.68); }
+.md-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 18px 6px 4px 0; }
+.md-card { padding: 12px 14px 13px; background: #efe3c8; border: 2px solid var(--paper-ink); box-shadow: 5px 5px 0 #5d7083; }
+.md-card span { display: block; font-family: var(--font-hud); font-weight: 700; font-size: 13px; letter-spacing: 0.15em; text-transform: uppercase; color: #3d4a57; }
+.md-card p { margin: 5px 0 0; font-size: 14.5px; line-height: 1.45; }
 .md-kills { margin: 10px 0 0; font-size: 15px; }
 .md-kills b { font-family: var(--font-hud); font-size: 22px; color: var(--blood); font-variant-numeric: tabular-nums; }
 .md-desc { margin: 12px 0 2px; font-size: 16px; line-height: 1.55; max-width: 62ch; }
@@ -392,6 +406,9 @@ body {
   .report { transform: none; }
   .md-body { grid-template-columns: minmax(0, 1fr); }
   .md-photo { transform: none; width: min(100%, 520px); justify-self: center; box-sizing: border-box; }
+}
+@media (max-width: 560px) {
+  .md-cards { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
   #round .num { font-size: 72px; }
@@ -736,7 +753,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.3.0';
+const GAME_VERSION = '1.4.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 1;
 
@@ -857,93 +874,94 @@ const BUNKER7 = {
 let LAYOUT = { zones: [], doors: {}, wallbuys: [], perks: [], boxes: [], boxStart: 0, power: null, amp: null, lights: [], signs: [], spawn: { pos: [0, 0], yaw: 0 }, startZone: 0 };
 
 /* --------------------------------------------------------------- Armes ---
-   dmg = dégâts par balle (zombie manche 1 = 150 PV) ; head = multiplicateur tête
+   dmg = dégâts par balle (zombie manche 1 = 100 PV) ; tête : multiplicateur du type
+   de zombie touché (ZOMBIE_TYPES, ×2 pour le Fantassin), le même pour toutes les armes
    rpm = cadence ; mag/res = chargeur/réserve ; reload = secondes
    spread/ads = dispersion en degrés hanche/visée ; pen = zombies traversés
    box = poids dans la boîte mystère (0 = absent) ; wall = prix au mur
    up = statistiques après l'Amplificateur                                    */
 const WEAPONS = {
   m1911: {
-    name: 'M1911', kind: 'pistol', auto: false, rpm: 420, dmg: 40, head: 3, mag: 8, res: 80, reload: 1.6,
+    name: 'M1911', kind: 'pistol', auto: false, rpm: 420, dmg: 40, mag: 8, res: 80, reload: 1.6,
     spread: 1.6, ads: 0.4, recoil: 0.018, mobility: 1.0, zoom: 0.85, box: 0, sound: 'pistol',
     up: { name: 'M1911 Ardente', dmg: 90, mag: 12, res: 72, explosive: { r: 2.6, dmg: 1100 } },
   },
   kar98k: {
-    name: 'Kar98k', kind: 'rifle', auto: false, rpm: 52, dmg: 260, head: 4, mag: 5, res: 50, reload: 2.6,
+    name: 'Kar98k', kind: 'rifle', auto: false, rpm: 52, dmg: 260, mag: 5, res: 50, reload: 2.6,
     spread: 2.0, ads: 0.05, recoil: 0.05, mobility: 0.95, zoom: 0.6, pen: 2, box: 1, wall: 200, sound: 'rifle', bolt: true,
     up: { name: 'Kar98k Faucheuse', dmg: 1100, mag: 8, res: 64, rpm: 70 },
   },
   g43: {
-    name: 'Gewehr 43', kind: 'rifle', auto: false, rpm: 330, dmg: 120, head: 3, mag: 10, res: 120, reload: 2.5,
+    name: 'Gewehr 43', kind: 'rifle', auto: false, rpm: 330, dmg: 120, mag: 10, res: 120, reload: 2.5,
     spread: 1.8, ads: 0.15, recoil: 0.03, mobility: 0.95, zoom: 0.65, pen: 1, box: 1, wall: 600, sound: 'rifle',
     up: { name: 'G43 Exécutrice', dmg: 320, mag: 16, res: 192, rpm: 380 },
   },
   mp40: {
-    name: 'MP40', kind: 'smg', auto: true, rpm: 550, dmg: 55, head: 3, mag: 32, res: 192, reload: 2.3,
+    name: 'MP40', kind: 'smg', auto: true, rpm: 550, dmg: 55, mag: 32, res: 192, reload: 2.3,
     spread: 2.8, ads: 0.9, recoil: 0.012, mobility: 1.0, zoom: 0.8, box: 1, wall: 1000, sound: 'smg',
     up: { name: 'MP40 Brûleur', dmg: 140, mag: 64, res: 384, rpm: 620 },
   },
   thompson: {
-    name: 'Thompson', kind: 'smg', auto: true, rpm: 700, dmg: 55, head: 3, mag: 30, res: 180, reload: 2.7,
+    name: 'Thompson', kind: 'smg', auto: true, rpm: 700, dmg: 55, mag: 30, res: 180, reload: 2.7,
     spread: 3.0, ads: 1.0, recoil: 0.013, mobility: 0.98, zoom: 0.8, box: 1, wall: 1200, sound: 'smg',
     up: { name: 'Thompson Chicago Rouge', dmg: 140, mag: 50, res: 300, rpm: 760 },
   },
   trench: {
-    name: 'M1897 Trench', kind: 'shotgun', auto: false, rpm: 75, dmg: 60, pellets: 8, head: 1.5, mag: 6, res: 60,
+    name: 'M1897 Trench', kind: 'shotgun', auto: false, rpm: 75, dmg: 60, pellets: 8, mag: 6, res: 60,
     reload: 3.0, spread: 5.5, ads: 4.0, recoil: 0.06, mobility: 0.95, zoom: 0.85, falloff: [5, 16, 0.35],
     box: 1, wall: 1500, sound: 'shotgun', pump: true,
     up: { name: 'Gueule de Fer', dmg: 160, pellets: 10, mag: 10, res: 80 },
   },
   dbarrel: {
-    name: 'Double canon', kind: 'shotgun', auto: false, rpm: 260, dmg: 70, pellets: 8, head: 1.5, mag: 2, res: 60,
+    name: 'Double canon', kind: 'shotgun', auto: false, rpm: 260, dmg: 70, pellets: 8, mag: 2, res: 60,
     reload: 2.4, spread: 7, ads: 5, recoil: 0.08, mobility: 0.97, zoom: 0.85, falloff: [4, 13, 0.3],
     box: 1, wall: 1200, sound: 'shotgun',
     up: { name: 'Double Enfer', dmg: 190, mag: 4, res: 96 },
   },
   stg44: {
-    name: 'STG-44', kind: 'ar', auto: true, rpm: 600, dmg: 80, head: 3, mag: 30, res: 180, reload: 2.4,
+    name: 'STG-44', kind: 'ar', auto: true, rpm: 600, dmg: 80, mag: 30, res: 180, reload: 2.4,
     spread: 2.4, ads: 0.5, recoil: 0.016, mobility: 0.95, zoom: 0.72, pen: 1, box: 1.2, wall: 1200, sound: 'rifle',
     up: { name: 'STG-44 Tempête', dmg: 190, mag: 45, res: 270, rpm: 660 },
   },
   bar: {
-    name: 'BAR', kind: 'ar', auto: true, rpm: 480, dmg: 115, head: 3, mag: 20, res: 160, reload: 2.8,
+    name: 'BAR', kind: 'ar', auto: true, rpm: 480, dmg: 115, mag: 20, res: 160, reload: 2.8,
     spread: 2.2, ads: 0.4, recoil: 0.022, mobility: 0.9, zoom: 0.7, pen: 2, box: 1.2, wall: 1800, sound: 'rifle',
     up: { name: 'BAR Démolisseur', dmg: 270, mag: 30, res: 240, rpm: 520 },
   },
   ppsh: {
-    name: 'PPSh-41', kind: 'smg', auto: true, rpm: 950, dmg: 50, head: 3, mag: 71, res: 284, reload: 3.0,
+    name: 'PPSh-41', kind: 'smg', auto: true, rpm: 950, dmg: 50, mag: 71, res: 284, reload: 3.0,
     spread: 3.2, ads: 1.1, recoil: 0.01, mobility: 0.97, zoom: 0.8, box: 1.5, sound: 'smg',
     up: { name: 'PPSh Tornade', dmg: 125, mag: 115, res: 460, rpm: 1000 },
   },
   type100: {
-    name: 'Type 100', kind: 'smg', auto: true, rpm: 750, dmg: 50, head: 3, mag: 30, res: 240, reload: 2.1,
+    name: 'Type 100', kind: 'smg', auto: true, rpm: 750, dmg: 50, mag: 30, res: 240, reload: 2.1,
     spread: 2.6, ads: 0.9, recoil: 0.011, mobility: 1.0, zoom: 0.8, box: 1.5, sound: 'smg',
     up: { name: 'Type 100 Frelon', dmg: 130, mag: 60, res: 420, rpm: 800 },
   },
   fg42: {
-    name: 'FG42', kind: 'ar', auto: true, rpm: 720, dmg: 100, head: 3, mag: 20, res: 200, reload: 2.3,
+    name: 'FG42', kind: 'ar', auto: true, rpm: 720, dmg: 100, mag: 20, res: 200, reload: 2.3,
     spread: 2.5, ads: 0.5, recoil: 0.02, mobility: 0.94, zoom: 0.68, pen: 1, box: 1.5, sound: 'rifle',
     up: { name: 'FG42 Éclair', dmg: 240, mag: 32, res: 320, rpm: 780 },
   },
   mg42: {
-    name: 'MG42', kind: 'lmg', auto: true, rpm: 1100, dmg: 90, head: 2.5, mag: 125, res: 500, reload: 5.0,
+    name: 'MG42', kind: 'lmg', auto: true, rpm: 1100, dmg: 90, mag: 125, res: 500, reload: 5.0,
     spread: 3.6, ads: 1.4, recoil: 0.014, mobility: 0.82, zoom: 0.75, pen: 2, box: 1.5, sound: 'lmg',
     up: { name: "MG42 Scie d'acier", dmg: 220, mag: 150, res: 750, rpm: 1150 },
   },
   panzer: {
-    name: 'Panzerschreck', kind: 'launcher', auto: false, rpm: 40, dmg: 0, head: 1, mag: 1, res: 15, reload: 2.8,
+    name: 'Panzerschreck', kind: 'launcher', auto: false, rpm: 40, dmg: 0, mag: 1, res: 15, reload: 2.8,
     spread: 0.8, ads: 0.2, recoil: 0.07, mobility: 0.85, zoom: 0.8, box: 1.2, sound: 'launcher',
     proj: { speed: 32, r: 5, dmg: 2600, direct: 800, self: 45, color: 0xffa040, type: 'rocket' },
     up: { name: 'Panzer Apocalypse', mag: 3, res: 30, proj: { speed: 40, r: 6, dmg: 7000, direct: 2000, self: 30, color: 0xff5030, type: 'rocket' } },
   },
   raygun: {
-    name: 'Désintégrateur', kind: 'raygun', auto: false, rpm: 230, dmg: 0, head: 1, mag: 20, res: 160, reload: 3.0,
+    name: 'Désintégrateur', kind: 'raygun', auto: false, rpm: 230, dmg: 0, mag: 20, res: 160, reload: 3.0,
     spread: 0.6, ads: 0.2, recoil: 0.025, mobility: 1.0, zoom: 0.85, box: 0.6, wonder: true, sound: 'ray',
     proj: { speed: 48, r: 2.6, dmg: 1500, direct: 1500, self: 25, color: 0x5dff7a, type: 'plasma' },
     up: { name: 'Désintégrateur Ω', mag: 40, res: 200, rpm: 280, proj: { speed: 55, r: 3.2, dmg: 3000, direct: 3500, self: 15, color: 0xff3b58, type: 'plasma' } },
   },
   blaster: {
-    name: 'Onde de choc', kind: 'blaster', auto: false, rpm: 70, dmg: 0, head: 1, mag: 2, res: 12, reload: 3.0,
+    name: 'Onde de choc', kind: 'blaster', auto: false, rpm: 70, dmg: 0, mag: 2, res: 12, reload: 3.0,
     spread: 0, ads: 0, recoil: 0.12, mobility: 0.95, zoom: 0.9, box: 0.45, wonder: true, sound: 'blast',
     blast: { range: 12, cone: 0.55 },
     up: { name: 'Onde de choc Max', mag: 4, res: 24, blast: { range: 16, cone: 0.65 } },
@@ -974,7 +992,10 @@ const POWERUPS = {
 const RULES = {
   startPoints: 500,
   maxAlive: 24,
-  playerHp: 100, cuirasseHp: 250, zombieHit: 50,
+  playerHp: 100, cuirasseHp: 250, zombieHit: 30,
+  // points de vie du zombie de référence (×1 du bestiaire) : base, +step par manche
+  // jusqu'à la manche until, puis ×growth par manche
+  zombieHp: { base: 100, step: 50, until: 9, growth: 1.1 },
   boxCost: 950, ampCost: 5000, ampAmmoCost: 4500,
   pointsHit: 10, pointsKill: 50, pointsHead: 100, pointsKnife: 130, pointsBoard: 10, repairCap: 500,
   nukePoints: 400, carpenterPoints: 200,
@@ -992,20 +1013,23 @@ function zombiesForRound(r) {
   else if (r < 6) max = Math.floor(max * 0.9);
   return max;
 }
-/* Points de vie : 150, +100 par manche jusqu'à la 9, puis ×1,1 */
+/* Points de vie du zombie de référence : 100, +50 par manche jusqu'à la 9, puis ×1,1
+   dès la 10 (RULES.zombieHp). Chaque type les multiplie par son mult.hp. */
 function zombieHpForRound(r) {
-  let hp = 150;
-  for (let i = 2; i <= r; i++) hp = i < 10 ? hp + 100 : hp * 1.1;
+  const H = RULES.zombieHp;
+  let hp = H.base;
+  for (let i = 2; i <= r; i++) hp = i <= H.until ? hp + H.step : hp * H.growth;
   return Math.round(hp);
 }
-/* Proportion de marcheurs / trottineurs / coureurs */
+/* Proportion de marcheurs / trottineurs / sprinteurs : marche seule jusqu'à la manche 3,
+   trot dès la 4, sprint dès la 8 (capacité « Horde » du Fantassin). */
 function speedMixForRound(r) {
-  if (r <= 2) return [1, 0, 0];
-  if (r === 3) return [0.8, 0.2, 0];
-  if (r <= 5) return [0.45, 0.5, 0.05];
-  if (r <= 8) return [0.15, 0.6, 0.25];
-  if (r <= 12) return [0.05, 0.4, 0.55];
-  return [0, 0.2, 0.8];
+  if (r <= 3) return [1, 0, 0];
+  if (r <= 5) return [0.7, 0.3, 0];
+  if (r <= 7) return [0.4, 0.6, 0];
+  if (r <= 9) return [0.2, 0.6, 0.2];
+  if (r <= 12) return [0.1, 0.45, 0.45];
+  return [0, 0.25, 0.75];
 }
 
 /* --------------------------------------------- Types de zombies (Modèles) --
@@ -1016,12 +1040,17 @@ function speedMixForRound(r) {
    calculées d'après les règles du jeu pour rester exactes. */
 const ZOMBIE_TYPES = [
   {
-    id: 'zombie', name: 'Zombie', alias: 'Mort-vivant ordinaire', model: 'standard', facts: 'standard', maps: null,
-    desc: "Le mort-vivant le plus répandu. Il sort de terre derrière les fenêtres, arrache les planches une à une, "
-      + "enjambe l'ouverture puis traque le survivant de pièce en pièce. Il marche au début de la nuit ; au fil des manches, "
-      + 'il trottine, puis court, et encaisse de plus en plus de balles. Un tir dans la tête reste le plus sûr moyen de l’arrêter.',
+    id: 'fantassin', name: 'Le Fantassin', cls: 'Zombie standard', from: 1, model: 'fantassin', facts: 'standard', maps: null,
+    desc: 'Un soldat tombé au front et relevé par l’infection. Seul, il est lent et prévisible\u00a0; en horde, il submerge.',
+    // ×1 : la référence du bestiaire (points de vie, vitesse et dégâts des règles générales)
+    mult: { hp: 1, speed: 1, damage: 1 },
+    headMult: 2,        // faiblesse : la tête, dégâts ×2 quelle que soit l'arme
+    helmet: true,       // le casque encaisse le premier tir à la tête, puis tombe
+    ability: 'Horde',   // accélère au fil des manches (speedMixForRound)
   },
 ];
+/* Type des zombies qui sortent de terre (le seul pour l'instant). */
+const BASE_TYPE = ZOMBIE_TYPES[0];
 
 /* -------------------------------------------------------------- Cartes ---
    Une carte est un objet de données (fichier .json dans les Mod Tools).
@@ -1671,6 +1700,13 @@ const Sound = (() => {
     src.start(t); lfo.start(t);
     src.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
   }
+  function helmet(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.55, 5); if (!o) return;
+    const t = ctx.currentTime;
+    bell(t, rand(1180, 1420), 0.3, o, 0.6);
+    noiseHit(t, 0.05, 0.7, 'highpass', 2400, null, 1, o);
+  }
   function rise(pos) {
     if (!ctx) return;
     const o = out(pos, 0.3, 4); if (!o) return;
@@ -1958,7 +1994,7 @@ const Sound = (() => {
   return {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
-    zombie, rise, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
+    zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, door, drink, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say,
   };
@@ -4445,8 +4481,8 @@ function buildMaterials() {
   // une légère émission garde les silhouettes lisibles dans le noir, derrière les fenêtres
   MAT.zSkin = std({ map: TEX.zskin, vertexColors: true, roughness: 0.78, emissive: 0x2c3528, emissiveIntensity: 1 });
   MAT.zCloth = std({ map: TEX.zcloth, vertexColors: true, roughness: 0.95, emissive: 0x20241c, emissiveIntensity: 1 });
-  MAT.zEyes = new THREE.MeshBasicMaterial({ color: 0xffe066, fog: false });
-  MAT.zHelmet = std({ color: 0xffffff, roughness: 0.5, metalness: 0.35, vertexColors: true, emissive: 0x0e100e });
+  MAT.zEyes = new THREE.MeshBasicMaterial({ color: 0xffcf3f, fog: false });
+  MAT.zHelmet = std({ color: 0xffffff, roughness: 0.58, metalness: 0.4, vertexColors: true, emissive: 0x0e100e, side: THREE.DoubleSide });
   // bonus
   MAT.powerup = std({ color: 0x9dff7a, emissive: 0x2fdc40, emissiveIntensity: 0.9, roughness: 0.4, metalness: 0.2 });
   MAT.powerupDark = std({ color: 0x14361a, emissive: 0x0a3010, emissiveIntensity: 0.6, roughness: 0.6 });
@@ -5990,45 +6026,224 @@ function propMatrix(pr) {
 /* ------------------------------------------------------ Zombies (rendu) -- */
 const ZR = { N: 48, free: [], parts: [] };
 const ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
+/* Proportions du Fantassin (1,80 m casque compris) : os du squelette invisible (mètres).
+   hips : bassin au-dessus du sol · neck, shoulderY : au-dessus du bassin · upper : bras ·
+   thigh : cuisse · head : centre du crâne au-dessus du cou. */
+const ZRIG = { hips: 0.88, neck: 0.57, shoulderX: 0.248, shoulderY: 0.5, upper: 0.31, hipX: 0.1, thigh: 0.44, head: 0.165 };
 let ZGEO = null;
-/* Géométries des membres, partagées par la horde et par l'écran « Modèles ». */
+/* Géométries du Fantassin, partagées par la horde et par l'écran « Modèles ». Chaque pièce
+   suit un os ; les couleurs de la fiche sont dans les sommets, la teinte de l'instance ne
+   fait que les nuancer d'un zombie à l'autre. */
 function zombieGeometries() {
   if (ZGEO) return ZGEO;
-  const box = (w, h, d, x, y, z, color) => ({ geo: GEO.box, matrix: mtx(x, y, z, 0, 0, 0, w, h, d), color });
-  const cyl = (rt, rb, h, x, y, z, color, sx = 1, sz = 1) => ({ geo: new THREE.CylinderGeometry(rt, rb, h, 9), matrix: mtx(x, y, z, 0, 0, 0, sx, 1, sz), color });
-  const sph = (r, x, y, z, sx, sy, sz, color) => ({ geo: new THREE.SphereGeometry(r, 12, 9), matrix: mtx(x, y, z, 0, 0, 0, sx, sy, sz), color });
+  // couleurs de la fiche (sRGB → linéaire), éclaircies : les textures assombrissent d'un quart
+  const C = (hex, k = 1.3) => { const c = new THREE.Color(hex).convertSRGBToLinear(); return [c.r * k, c.g * k, c.b * k]; };
+  const K = {
+    uni: C(0x4b5146), low: C(0x454a40), flap: C(0x3f443b), collar: C(0x353a32), strap: C(0x2b241e),
+    belt: C(0x1f1a16), pouch: C(0x1d1814), metal: C(0x7d8078, 0.95), metalD: C(0x6a6c64, 0.9), boot: C(0x1c1814), sole: C(0x110e0b),
+    skin: C(0x7c8574, 1.0), skinD: C(0x4c5245, 1.0), blood: C(0x6e1a14), bloodD: C(0x3e0f0b), wound: C(0x2a1512), cheek: C(0x4e1612, 1.1),
+    bone: C(0xcfc6ad), teeth: C(0xc9bf9f), mouth: C(0x140c0a), socket: C(0x0d0f0b), canister: C(0x4e5547),
+    rib: C(0x3d4238), wood: C(0x6e5236), steel: C(0x4a4f45), claw: C(0x141210),
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const box = (w, h, d, x, y, z, color, rx = 0, ry = 0, rz = 0) => ({ geo: GEO.box, matrix: mtx(x, y, z, rx, ry, rz, w, h, d), color });
+  const cyl = (rt, rb, h, x, y, z, color, sz = 1, rx = 0, ry = 0, rz = 0, n = 10) =>
+    ({ geo: new THREE.CylinderGeometry(rt, rb, h, n), matrix: mtx(x, y, z, rx, ry, rz, 1, 1, sz), color });
+  const ell = (a, b, c, x, y, z, color, rx = 0, ry = 0, rz = 0, ws = 10, hs = 7) =>
+    ({ geo: new THREE.SphereGeometry(1, ws, hs), matrix: mtx(x, y, z, rx, ry, rz, a, b, c), color });
+  // pièce tendue de a à b : sangle plate (w × t) ou cylindre (rayons rt → rb)
+  const seg = (a, b, color, w, t, round = false, rb = w) => {
+    const dir = b.clone().sub(a), len = dir.length();
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), dir.normalize());
+    const m = new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, round ? V(1, len, 1) : V(w, len, t));
+    return { geo: round ? new THREE.CylinderGeometry(rb, w, 1, 8) : GEO.box, matrix: m, color };
+  };
+
+  /* ---- tunique, ceinturon, équipement (os du bassin) */
+  const T = [];
+  const chestR = (y) => lerp(0.2, 0.22, clamp((y - 0.06) / 0.42, 0, 1)), BELT = 0.209;
+  // point de la surface de la tunique : profondeur et orientation (ry) à la hauteur y
+  const on = (x, y, rx = chestR(y), depth = 0.6, out = 0) => {
+    const rz = rx * depth, u = clamp(x / rx, -0.97, 0.97), z = rz * Math.sqrt(1 - u * u);
+    const ry = Math.atan2(x / (rx * rx), z / (rz * rz));
+    return { x: x + Math.sin(ry) * out, z: z + Math.cos(ry) * out, ry };
+  };
+  T.push(
+    cyl(0.22, 0.2, 0.42, 0, 0.27, 0, K.uni, 0.6, 0, 0, 0, 14),            // buste
+    ell(0.24, 0.088, 0.135, 0, 0.45, 0, K.uni, 0, 0, 0, 14, 8),           // épaules
+    cyl(0.2, 0.218, 0.18, 0, -0.06, 0, K.low, 0.64, 0, 0, 0, 14),         // pans de la tunique
+    cyl(BELT, BELT, 0.055, 0, 0.035, 0, K.belt, 0.645, 0, 0, 0, 16),      // ceinturon
+    cyl(0.074, 0.088, 0.07, 0, 0.505, 0.005, K.collar, 0.92),             // col
+  );
+  for (const side of [-1, 1]) T.push(box(0.05, 0.034, 0.012, side * 0.036, 0.505, 0.078, K.collar, -0.25, side * 0.45, 0));
+  { const p = on(0, 0.27); T.push(box(0.012, 0.4, 0.008, 0, 0.27, p.z + 0.002, K.flap)); }
+  for (const y of [0.44, 0.37, 0.3, 0.23, 0.16, 0.09]) { const p = on(0, y); T.push(ell(0.012, 0.012, 0.007, 0, y, p.z + 0.005, K.metal, 0, 0, 0, 6, 4)); }
+  for (const side of [-1, 1]) {
+    // poches de poitrine à rabat boutonné
+    const p = on(side * 0.088, 0.33, chestR(0.33), 0.6, 0.004);
+    T.push(box(0.095, 0.1, 0.012, p.x, 0.33, p.z, K.uni, 0, p.ry, 0));
+    const f = on(side * 0.088, 0.39, chestR(0.39), 0.6, 0.009);
+    T.push(box(0.105, 0.034, 0.016, f.x, 0.39, f.z, K.flap, 0, f.ry, 0));
+    T.push(ell(0.009, 0.009, 0.006, f.x + Math.sin(f.ry) * 0.009, 0.383, f.z + Math.cos(f.ry) * 0.009, K.metal, 0, 0, 0, 6, 4));
+    // poches basses, sous le ceinturon
+    const lp = on(side * 0.1, -0.07, 0.21, 0.64, 0.004);
+    T.push(box(0.105, 0.08, 0.01, lp.x, -0.07, lp.z, K.low, 0, lp.ry, 0));
+    const lf = on(side * 0.1, -0.017, 0.203, 0.64, 0.008);
+    T.push(box(0.115, 0.032, 0.014, lf.x, -0.017, lf.z, K.flap, 0, lf.ry, 0));
+    // pattes d'épaule
+    T.push(box(0.1, 0.014, 0.05, side * 0.16, 0.515, 0, K.flap, 0, 0, -side * 0.3));
+    // cartouchières : trois de chaque côté de la boucle
+    for (let k = 0; k < 3; k++) {
+      const c = on(side * (0.064 + k * 0.047), 0.02, BELT, 0.645, 0.016);
+      T.push(box(0.04, 0.072, 0.032, c.x, 0.02, c.z, K.pouch, 0, c.ry, 0));
+      T.push(box(0.043, 0.012, 0.034, c.x, 0.05, c.z + 0.001, K.strap, 0, c.ry, 0));
+    }
+    // bretelles en Y : devant, par-dessus l'épaule, dans le dos
+    const a = on(side * 0.1, 0.46, chestR(0.46), 0.6, 0.008), b = on(side * 0.076, 0.075, BELT, 0.645, 0.014);
+    T.push(seg(V(a.x, 0.46, a.z), V(b.x, 0.075, b.z), K.strap, 0.026, 0.01));
+    T.push(seg(V(a.x, 0.46, a.z), V(side * 0.11, 0.545, 0.0), K.strap, 0.026, 0.01));
+    T.push(seg(V(side * 0.11, 0.545, 0.0), V(side * 0.1, 0.42, -0.124), K.strap, 0.026, 0.01));
+    T.push(seg(V(side * 0.1, 0.42, -0.124), V(side * 0.082, 0.075, -0.137), K.strap, 0.026, 0.01));
+  }
+  // boucle du ceinturon
+  { const p = on(0, 0.035, BELT, 0.645, 0.006); T.push(box(0.068, 0.052, 0.014, 0, 0.035, p.z, K.metal), cyl(0.016, 0.016, 0.006, 0, 0.035, p.z + 0.009, K.metalD, 1, Math.PI / 2)); }
+  // grenade à manche glissée dans le ceinturon (côté gauche)
+  { const h = on(0.09, 0.11, chestR(0.11), 0.6, 0.03), e = on(0.162, -0.15, 0.216, 0.64, 0.022);
+    T.push(seg(V(0.08, 0.15, h.z), V(0.094, 0.078, h.z), K.steel, 0.028, 0, true, 0.028));
+    T.push(seg(V(0.096, 0.075, h.z - 0.004), V(e.x, -0.15, e.z), K.wood, 0.013, 0, true, 0.013));
+    T.push(seg(V(e.x, -0.15, e.z), V(e.x + 0.004, -0.17, e.z), K.steel, 0.016, 0, true, 0.016)); }
+  // boîte du masque à gaz, pendue à la hanche droite
+  T.push(cyl(0.04, 0.04, 0.3, -0.262, -0.19, -0.035, K.canister), cyl(0.043, 0.043, 0.022, -0.262, -0.03, -0.035, K.rib));
+  for (const y of [-0.09, -0.16, -0.23, -0.3]) T.push(cyl(0.0425, 0.0425, 0.01, -0.262, y, -0.035, K.rib));
+  T.push(seg(V(-0.262, -0.02, -0.035), V(-0.2, 0.05, -0.055), K.strap, 0.02, 0.008));
+  // plaie ouverte sur les côtes (côté gauche)
+  { const p = on(0.14, 0.2, chestR(0.2), 0.6, 0.002);
+    T.push(ell(0.05, 0.066, 0.01, p.x, 0.2, p.z - Math.cos(p.ry) * 0.002, K.blood, 0, p.ry, 0.3));
+    T.push(ell(0.043, 0.056, 0.012, p.x, 0.2, p.z, K.wound, 0, p.ry, 0));
+    T.push(ell(0.022, 0.03, 0.012, p.x + 0.012, 0.15, p.z - 0.004, K.wound, 0, p.ry, -0.4));
+    for (const [y, rz] of [[0.232, 0.12], [0.2, 0.08], [0.168, 0.05]]) {
+      const q = on(0.14, y, chestR(y), 0.6, 0.009);
+      T.push(box(0.056, 0.009, 0.01, q.x, y, q.z, K.bone, 0, q.ry, rz));
+    } }
+  // impacts de balles (côté droit) et sang au col
+  for (const [x, y] of [[-0.15, 0.19], [-0.088, 0.14], [-0.17, 0.09]]) {
+    const p = on(x, y, chestR(y), 0.6, 0.003), q = on(x, y, chestR(y), 0.6, 0.007);
+    T.push(ell(0.02, 0.02, 0.006, p.x, y, p.z, K.blood, 0, p.ry, 0, 7, 5));
+    T.push(ell(0.009, 0.009, 0.005, q.x, y, q.z, K.mouth, 0, q.ry, 0, 6, 4));
+    T.push(box(0.007, 0.045, 0.005, p.x, y - 0.035, p.z + 0.001, K.blood, 0, p.ry, 0));
+  }
+  { const p = on(0.0, 0.47, chestR(0.47), 0.6, 0.004);
+    T.push(ell(0.022, 0.016, 0.006, -0.004, 0.475, p.z, K.bloodD, 0, 0, 0.3, 7, 5), ell(0.012, 0.01, 0.006, 0.016, 0.462, p.z, K.bloodD, 0, 0, 0, 6, 4));
+    T.push(box(0.006, 0.07, 0.005, -0.006, 0.43, p.z + 0.001, K.bloodD), box(0.005, 0.045, 0.005, 0.012, 0.436, p.z, K.bloodD)); }
+
+  /* ---- tête (os du cou) : crâne émacié, mâchoire ouverte, joue arrachée */
+  const H = ZRIG.head;
+  const head = [
+    cyl(0.05, 0.058, 0.13, 0, 0.02, 0, K.skin),
+    ell(0.096, 0.118, 0.106, 0, H, 0.004, K.skin, 0, 0, 0, 14, 10),
+    ell(0.07, 0.034, 0.066, 0, H - 0.11, 0.028, K.skin, 0.28),                 // mâchoire tombante
+    ell(0.042, 0.03, 0.014, 0, H - 0.08, 0.086, K.mouth),                       // bouche ouverte
+    ell(0.031, 0.023, 0.016, -0.04, H - 0.004, 0.096, K.socket),                // orbites
+    ell(0.031, 0.023, 0.016, 0.04, H - 0.004, 0.096, K.socket),
+    box(0.017, 0.026, 0.012, 0, H - 0.034, 0.103, K.mouth, -0.2),              // nez creusé
+    ell(0.019, 0.026, 0.012, 0.07, H - 0.066, 0.068, K.cheek, 0, 0.8, 0.35),   // joue arrachée
+    ell(0.011, 0.014, 0.012, 0.078, H - 0.044, 0.062, K.cheek, 0, 0.8, 0),
+    box(0.018, 0.0035, 0.005, 0.075, H - 0.058, 0.077, K.teeth, 0, 0.8, 0),
+    box(0.018, 0.0035, 0.005, 0.075, H - 0.073, 0.077, K.teeth, 0, 0.8, 0),
+    box(0.007, 0.05, 0.006, -0.01, H - 0.122, 0.09, K.blood, 0.25),            // sang qui coule
+    box(0.006, 0.075, 0.006, 0.012, H - 0.135, 0.083, K.blood, 0.25),
+    ell(0.022, 0.016, 0.006, -0.06, H - 0.055, 0.082, K.skinD, 0, -0.55, 0),   // marbrures
+    ell(0.012, 0.028, 0.02, -0.097, H - 0.012, -0.01, K.skin), ell(0.012, 0.028, 0.02, 0.097, H - 0.012, -0.01, K.skin),
+  ];
+  for (let i = 0; i < 5; i++) {
+    const x = (i - 2) * 0.0115;
+    head.push(box(0.0098, 0.016, 0.008, x, H - 0.064, 0.097 - Math.abs(x) * 0.25, K.teeth));
+    head.push(box(0.0098, 0.014, 0.008, x * 0.92, H - 0.096, 0.094 - Math.abs(x) * 0.25, K.teeth, 0.2));
+  }
+
+  /* ---- casque (os du cou, maille à part : il peut tomber) : dôme, jupe évasée, visière courte */
+  const prof = [[0.0005, 0.305], [0.045, 0.302], [0.08, 0.292], [0.104, 0.276], [0.121, 0.252], [0.131, 0.226],
+    [0.136, 0.2], [0.139, 0.178], [0.145, 0.158], [0.155, 0.138], [0.167, 0.121], [0.174, 0.112]].map(([r, y]) => new THREE.Vector2(r, y));
+  const shell = new THREE.LatheGeometry(prof, 30, Math.PI);
+  const sp = shell.attributes.position;
+  const dents = [[0.95, 0.262, 0.035], [-2.3, 0.23, 0.04], [2.6, 0.27, 0.03]];
+  for (let i = 0; i < sp.count; i++) {
+    let x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i);
+    const r = Math.hypot(x, z) || 1e-6, cf = z / r, ang = Math.atan2(x, z);
+    if (y < 0.2) {
+      const k = (0.2 - y) / 0.09;
+      const front = smooth(clamp((cf - 0.2) / 0.65, 0, 1)), back = smooth(clamp((-cf - 0.15) / 0.65, 0, 1));
+      y += (0.2 - y) * 0.7 * front;               // visière courte devant
+      y -= 0.022 * k * back;                      // jupe plus basse derrière
+      const shrink = 1 - 0.1 * k * front;          // visière moins évasée que les côtés
+      x *= shrink; z *= shrink;
+    }
+    let dent = 0;                                 // acier cabossé
+    for (const [a, dy, rad] of dents) {
+      const da = Math.atan2(Math.sin(ang - a), Math.cos(ang - a)) * 0.13, d = Math.hypot(da, y - dy);
+      if (d < rad) dent += (1 - d / rad) * 0.009;
+    }
+    const s = 1 - dent / Math.max(0.05, r);
+    sp.setXYZ(i, x * s, y, z * s * 1.07 - 0.008);
+  }
+  shell.computeVertexNormals();
+  // coiffe de cuir à l'intérieur (visible quand le casque tombe)
+  const liner = new THREE.LatheGeometry(prof.slice(2, 9).map((v) => new THREE.Vector2(v.x * 0.9, v.y - 0.006)), 24, Math.PI);
+  liner.scale(1, 1, 1.07);
+  liner.translate(0, 0, -0.008);
+  const helmet = [{ geo: shell, matrix: new THREE.Matrix4(), color: [1, 1, 1] }, { geo: liner, matrix: new THREE.Matrix4(), color: [0.3, 0.24, 0.19] }];
+  for (const side of [-1, 1]) helmet.push(ell(0.0085, 0.0085, 0.006, side * 0.136, 0.212, -0.02, [0.72, 0.74, 0.7], 0, side * Math.PI / 2, 0, 6, 4));
+  for (const [x, y, z, ry, rz] of [[0.062, 0.272, 0.088, 0.6, 0.5], [-0.07, 0.25, 0.098, -0.62, -0.4], [-0.058, 0.237, 0.11, -0.5, 0.35]]) {
+    helmet.push(box(0.026, 0.003, 0.003, x, y, z, [1.55, 1.62, 1.5], 0, ry, rz));
+  }
+
+  /* ---- bras : manche (épaule) ; avant-bras nu à la manche déchirée et main griffue (coude) ;
+     manche intacte de l'avant-bras droit (coude droit seulement) */
+  const fore = [
+    cyl(0.053, 0.05, 0.04, 0, -0.015, 0, K.low),                               // reste de manche déchirée
+    cyl(0.044, 0.035, 0.25, 0, -0.14, 0, K.skin),
+    ell(0.016, 0.03, 0.01, 0.03, -0.12, 0.014, K.skinD),
+    box(0.004, 0.035, 0.004, 0.036, -0.15, 0.004, K.blood, 0, 0, 0.4), box(0.004, 0.03, 0.004, 0.03, -0.17, 0.012, K.blood, 0, 0, 0.4),
+    box(0.06, 0.075, 0.026, 0, -0.3, 0.004, K.skin),
+  ];
+  for (let i = 0; i < 4; i++) {                                                // doigts écartés, griffes
+    const x = -0.022 + i * 0.0147, a = V(x, -0.333, 0.008), b = V(x * 1.35, -0.405, 0.03 + Math.abs(x) * 0.2);
+    fore.push(seg(a, b, K.skin, 0.0085, 0, true, 0.0085));
+    fore.push(seg(b, b.clone().add(V(x * 0.2, -0.02, 0.012)), K.claw, 0.006, 0, true, 0.001));
+  }
+  { const a = V(0.03, -0.278, 0.012), b = V(0.05, -0.33, 0.032);
+    fore.push(seg(a, b, K.skin, 0.0095, 0, true, 0.0095), seg(b, b.clone().add(V(0.006, -0.018, 0.01)), K.claw, 0.0065, 0, true, 0.001)); }
+
   ZGEO = {
-    torso: mergeGeometries([
-      cyl(0.23, 0.185, 0.42, 0, 0.36, 0, [1, 1, 1], 1, 0.62),
-      sph(0.25, 0, 0.52, 0, 1, 0.34, 0.56, [0.95, 0.95, 0.95]),
-      cyl(0.18, 0.17, 0.2, 0, 0.06, 0, [0.82, 0.8, 0.76], 1, 0.66),
+    torso: mergeGeometries(T),
+    head: mergeGeometries(head),
+    eyes: mergeGeometries([ell(0.017, 0.0095, 0.007, -0.04, H - 0.004, 0.106, null, 0, 0, 0, 7, 5), ell(0.017, 0.0095, 0.007, 0.04, H - 0.004, 0.106, null, 0, 0, 0, 10, 6)]),
+    helmet: mergeGeometries(helmet),
+    upper: mergeGeometries([
+      ell(0.072, 0.068, 0.072, 0, -0.005, 0, K.uni), cyl(0.066, 0.055, 0.31, 0, -0.155, 0, K.uni), cyl(0.056, 0.056, 0.03, 0, -0.3, 0, K.low),
     ]),
-    head: mergeGeometries([
-      cyl(0.058, 0.066, 0.13, 0, 0.02, 0, [0.82, 0.8, 0.78]),
-      sph(0.13, 0, 0.17, 0.005, 1, 1.12, 1.05, [1, 1, 1]),
-      box(0.15, 0.06, 0.13, 0, 0.05, 0.05, [0.55, 0.42, 0.42]),
-      box(0.035, 0.05, 0.04, 0, 0.15, 0.135, [0.9, 0.84, 0.82]),
-      box(0.2, 0.03, 0.05, 0, 0.21, 0.108, [0.78, 0.76, 0.72]),
+    fore: mergeGeometries(fore),
+    cuff: mergeGeometries([cyl(0.057, 0.051, 0.235, 0, -0.118, 0, K.uni), cyl(0.053, 0.053, 0.025, 0, -0.232, 0, K.flap)]),
+    thigh: mergeGeometries([
+      cyl(0.094, 0.07, 0.44, 0, -0.22, 0, K.low), ell(0.1, 0.13, 0.094, 0, -0.13, 0, K.low),
     ]),
-    eyes: mergeGeometries([box(0.042, 0.022, 0.02, -0.05, 0.182, 0.126), box(0.042, 0.022, 0.02, 0.05, 0.182, 0.126)]),
-    helmet: mergeGeometries([sph(0.155, 0, 0.25, -0.005, 1, 0.74, 1.08), box(0.33, 0.018, 0.36, 0, 0.215, -0.01)]),
-    upper: mergeGeometries([sph(0.07, 0, -0.005, 0, 1, 1, 1), cyl(0.064, 0.054, 0.36, 0, -0.17, 0)]),
-    fore: mergeGeometries([
-      cyl(0.052, 0.042, 0.3, 0, -0.15, 0, [1, 1, 1]),
-      box(0.075, 0.1, 0.04, 0, -0.34, 0, [0.86, 0.8, 0.76]),
-      box(0.068, 0.075, 0.028, 0, -0.42, 0.016, [0.78, 0.7, 0.68]),
+    shin: mergeGeometries([
+      cyl(0.074, 0.071, 0.04, 0, -0.01, 0, K.low),                              // pantalon tassé sur la botte
+      cyl(0.075, 0.075, 0.018, 0, -0.032, 0, K.sole),                           // haut de la tige
+      cyl(0.071, 0.061, 0.33, 0, -0.2, 0, K.boot),                              // botte de cuir
+      box(0.105, 0.08, 0.24, 0, -0.39, 0.045, K.boot),
+      ell(0.053, 0.04, 0.05, 0, -0.395, 0.162, K.boot),
+      box(0.11, 0.02, 0.27, 0, -0.43, 0.05, K.sole), box(0.1, 0.03, 0.075, 0, -0.415, -0.055, K.sole),
     ]),
-    thigh: mergeGeometries([cyl(0.09, 0.07, 0.47, 0, -0.23, 0)]),
-    shin: mergeGeometries([cyl(0.068, 0.055, 0.42, 0, -0.21, 0, [1, 1, 1]), box(0.13, 0.1, 0.27, 0, -0.43, 0.04, [0.25, 0.22, 0.19])]),
   };
   return ZGEO;
 }
-/* Jeu d'instances R pour n zombies : 8 appels de dessin, couleur et matrice par instance
-   (la horde du jeu : ZR ; l'écran « Modèles » a le sien). */
+/* Jeu d'instances R pour n zombies : un appel de dessin par pièce, couleur et matrice par
+   instance (la horde du jeu : ZR ; l'écran « Modèles » a le sien). */
 function zombieInstances(R, n) {
   const geos = zombieGeometries();
   const defs = [
-    ['torso', MAT.zCloth, 1], ['head', MAT.zSkin, 1], ['eyes', MAT.zEyes, 1], ['helmet', MAT.zHelmet, 1],
+    ['torso', MAT.zCloth, 1], ['head', MAT.zSkin, 1], ['eyes', MAT.zEyes, 1], ['helmet', MAT.zHelmet, 1], ['cuff', MAT.zCloth, 1],
     ['upper', MAT.zCloth, 2], ['fore', MAT.zSkin, 2], ['thigh', MAT.zCloth, 2], ['shin', MAT.zCloth, 2],
   ];
   const group = new THREE.Group();
@@ -6037,6 +6252,7 @@ function zombieInstances(R, n) {
   R.parts = [];
   for (const [name, mat, mul] of defs) {
     const m = new THREE.InstancedMesh(geos[name], mat, n * mul);
+    m.userData.mul = mul;
     m.frustumCulled = false;
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let i = 0; i < n * mul; i++) { m.setMatrixAt(i, ZERO_M); m.setColorAt(i, white); }
@@ -6054,40 +6270,36 @@ function buildZombieRenderer() {
 function makeRig() {
   const o = () => new THREE.Object3D();
   const r = { root: o(), body: o(), hips: o(), neck: o(), shL: o(), shR: o(), elL: o(), elR: o(), hipL: o(), hipR: o(), knL: o(), knR: o() };
-  r.root.add(r.body); r.body.add(r.hips); r.hips.position.y = 0.92;
-  r.hips.add(r.neck); r.neck.position.y = 0.6;
-  r.hips.add(r.shL, r.shR); r.shL.position.set(0.29, 0.54, 0); r.shR.position.set(-0.29, 0.54, 0);
-  r.shL.add(r.elL); r.shR.add(r.elR); r.elL.position.y = -0.34; r.elR.position.y = -0.34;
-  r.hips.add(r.hipL, r.hipR); r.hipL.position.set(0.11, 0, 0); r.hipR.position.set(-0.11, 0, 0);
-  r.hipL.add(r.knL); r.hipR.add(r.knR); r.knL.position.y = -0.46; r.knR.position.y = -0.46;
+  r.root.add(r.body); r.body.add(r.hips); r.hips.position.y = ZRIG.hips;
+  r.hips.add(r.neck); r.neck.position.y = ZRIG.neck;
+  r.hips.add(r.shL, r.shR); r.shL.position.set(ZRIG.shoulderX, ZRIG.shoulderY, 0); r.shR.position.set(-ZRIG.shoulderX, ZRIG.shoulderY, 0);
+  r.shL.add(r.elL); r.shR.add(r.elR); r.elL.position.y = -ZRIG.upper; r.elR.position.y = -ZRIG.upper;
+  r.hips.add(r.hipL, r.hipR); r.hipL.position.set(ZRIG.hipX, 0, 0); r.hipR.position.set(-ZRIG.hipX, 0, 0);
+  r.hipL.add(r.knL); r.hipR.add(r.knR); r.knL.position.y = -ZRIG.thigh; r.knR.position.y = -ZRIG.thigh;
   return r;
 }
-const _skinTones = [0x9aa58e, 0x8c9a86, 0xa8a48e, 0x7f8c7a, 0xb0a894, 0x96a29a];
-const _shirts = [0x5a6050, 0x4d5543, 0x6a5f4a, 0x3e4652, 0x5c4a3c, 0x707066, 0x4a3e36];
-const _pants = [0x3a3e34, 0x4a4436, 0x2e3238, 0x433a30, 0x3c4038];
-const _helmets = [0x4a5244, 0x3c4238, 0x55574e];
-const ZLOOK = { helmet: 0.3, orangeEyes: 0.15 };
+/* Nuances d'un Fantassin à l'autre (la fiche fixe les couleurs ; ces teintes les modulent). */
+const _skinTints = [0xffffff, 0xf0fae8, 0xfff2e4, 0xe2eae0, 0xf6f4ee];
+const _clothTints = [0xffffff, 0xf0f5e8, 0xfbf4e6, 0xe4e8e0];
+const _helmets = [0x3b403a, 0x42473e, 0x353a34];
 function paintZombieSlot(s, look, R = ZR) {
   const c = new THREE.Color();
   const L = (hex) => c.setHex(hex).convertSRGBToLinear();
-  R.torso.setColorAt(s, L(look.shirt));
+  R.torso.setColorAt(s, L(look.cloth));
+  R.cuff.setColorAt(s, L(look.cloth));
   R.head.setColorAt(s, L(look.skin));
   R.eyes.setColorAt(s, c.setHex(look.eyes));
   R.helmet.setColorAt(s, L(look.helmetColor));
   for (const k of [0, 1]) {
-    R.upper.setColorAt(s * 2 + k, L(look.shirt).multiplyScalar(0.92));
+    R.upper.setColorAt(s * 2 + k, L(look.cloth));
     R.fore.setColorAt(s * 2 + k, L(look.skin));
-    R.thigh.setColorAt(s * 2 + k, L(look.pants));
-    R.shin.setColorAt(s * 2 + k, L(look.pants));
+    R.thigh.setColorAt(s * 2 + k, L(look.cloth));
+    R.shin.setColorAt(s * 2 + k, L(look.cloth));
   }
   for (const m of R.parts) m.instanceColor.needsUpdate = true;
 }
 function randomZombieLook() {
-  return {
-    skin: pick(_skinTones), shirt: pick(_shirts), pants: pick(_pants),
-    eyes: Math.random() < ZLOOK.orangeEyes ? 0xff5a2a : 0xffd34a,
-    helmet: Math.random() < ZLOOK.helmet, helmetColor: pick(_helmets),
-  };
+  return { skin: pick(_skinTints), cloth: pick(_clothTints), eyes: 0xffffff, helmet: true, helmetColor: pick(_helmets) };
 }
 function writeZombieMatrices(z) {
   const R = z.R || ZR, r = z.rig, s = z.slot;
@@ -6097,44 +6309,72 @@ function writeZombieMatrices(z) {
   else {
     R.head.setMatrixAt(s, r.neck.matrixWorld);
     R.eyes.setMatrixAt(s, r.neck.matrixWorld);
-    R.helmet.setMatrixAt(s, z.look.helmet ? r.neck.matrixWorld : ZERO_M);
+    R.helmet.setMatrixAt(s, z.look.helmet && z.helmetOn !== false ? r.neck.matrixWorld : ZERO_M);
   }
   R.upper.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.shL.matrixWorld);
   R.upper.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.shR.matrixWorld);
   R.fore.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.elL.matrixWorld);
   R.fore.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.elR.matrixWorld);
+  R.cuff.setMatrixAt(s, z.gib & 2 ? ZERO_M : r.elR.matrixWorld);
   R.thigh.setMatrixAt(s * 2, r.hipL.matrixWorld);
   R.thigh.setMatrixAt(s * 2 + 1, r.hipR.matrixWorld);
   R.shin.setMatrixAt(s * 2, r.knL.matrixWorld);
   R.shin.setMatrixAt(s * 2 + 1, r.knR.matrixWorld);
 }
 function hideZombieSlot(s, R = ZR) {
-  for (const name of ['torso', 'head', 'eyes', 'helmet']) R[name].setMatrixAt(s, ZERO_M);
+  for (const name of ['torso', 'head', 'eyes', 'helmet', 'cuff']) R[name].setMatrixAt(s, ZERO_M);
   for (const name of ['upper', 'fore', 'thigh', 'shin']) { R[name].setMatrixAt(s * 2, ZERO_M); R[name].setMatrixAt(s * 2 + 1, ZERO_M); }
 }
+/* Seuls les emplacements occupés sont dessinés (les places libres sont prises par le bas). */
 function flushZombieMatrices(R = ZR) {
-  for (const m of R.parts) m.instanceMatrix.needsUpdate = true;
+  let used = R.N;
+  if (R === ZR) { used = 0; for (const z of Zombies.list) if (!z.removed && z.slot >= used) used = z.slot + 1; }
+  for (const m of R.parts) { m.count = used * m.userData.mul; m.instanceMatrix.needsUpdate = true; }
 }
 
 /* Modèles de l'écran « Modèles » (un par type de ZOMBIE_TYPES). make() crée un
-   spécimen à poser dans une scène : { root, restyle(), pose(anim, t, dt, yaw) }.
-   anims : animations proposées, dans l'ordre des boutons (MODEL_ANIMS). Le
-   zombie standard est dessiné et animé exactement comme dans le jeu. */
+   spécimen à poser dans une scène : { root, restyle(), pose(anim, t, dt, yaw), knockHelmet() }.
+   anims : animations proposées, dans l'ordre des boutons (MODEL_ANIMS). Le Fantassin
+   est dessiné et animé exactement comme dans le jeu. */
 const SPECIMEN_MODELS = {
-  standard: {
+  fantassin: {
     anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'],
+    helmet: true,
     make() {
       const R = {};
       const root = zombieInstances(R, 1);
       for (const m of R.parts) m.castShadow = true;
       const z = {
-        id: 3, slot: 0, R, rig: makeRig(), look: randomZombieLook(), alive: true, state: 'idle', t: 0,
+        id: 3, slot: 0, R, rig: makeRig(), look: randomZombieLook(), helmetOn: true, alive: true, state: 'idle', t: 0,
         pos: new THREE.Vector3(), yaw: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false,
       };
       paintZombieSlot(0, z.look, R);
+      // casque arraché par un tir (démonstration de la faiblesse) : il tombe, puis revient
+      const hg = zombieGeometries().helmet.clone();
+      hg.translate(0, -0.2, 0);
+      const loose = new THREE.Mesh(hg, MAT.zHelmet.clone());
+      loose.castShadow = true;
+      loose.visible = false;
+      root.add(loose);
+      const fall = { t: 0, v: new THREE.Vector3(), spin: new THREE.Vector3() };
+      const _p = new THREE.Vector3();
       return {
         root,
         restyle() { z.look = randomZombieLook(); paintZombieSlot(0, z.look, R); },
+        knockHelmet() {
+          if (!z.helmetOn) return false;
+          z.helmetOn = false;
+          _p.set(0, ZRIG.head + 0.04, 0).applyMatrix4(z.rig.neck.matrixWorld);
+          setLin(loose.material.color, z.look.helmetColor);
+          loose.position.copy(_p);
+          loose.rotation.set(0, z.yaw, 0);
+          fall.v.set(0.85, 2.6, 0.75);   // vers l'avant de la photo, pour qu'on le voie au sol
+          fall.spin.set(rand(-8, -5), rand(-3, 3), rand(-6, 6));
+          fall.t = 0;
+          loose.visible = true;
+          z.flinch = 0.45;
+          return true;
+        },
         pose(anim, t, dt, yaw) {
           z.yaw = yaw; z.pos.y = 0; z.moving = 0; z.state = 'idle'; z.speedType = 'walk'; z.t = t;
           if (anim === 'walk' || anim === 'jog' || anim === 'run') {
@@ -6149,6 +6389,20 @@ const SPECIMEN_MODELS = {
               z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1)));
             } else z.t = k;
           }
+          z.flinch = damp(z.flinch, 0, 6, dt);
+          if (loose.visible) {
+            // le casque rebondit puis roule au sol ; il revient sur la tête au bout de 4 s
+            fall.t += dt;
+            fall.v.y -= 12 * dt;
+            loose.position.addScaledVector(fall.v, dt);
+            loose.rotation.x += fall.spin.x * dt; loose.rotation.y += fall.spin.y * dt; loose.rotation.z += fall.spin.z * dt;
+            if (loose.position.y < 0.08) {
+              loose.position.y = 0.08;
+              fall.v.y = Math.abs(fall.v.y) > 1 ? Math.abs(fall.v.y) * 0.3 : 0;
+              fall.v.x *= 0.55; fall.v.z *= 0.55; fall.spin.multiplyScalar(0.45);
+            }
+            if (fall.t > 4) { loose.visible = false; z.helmetOn = true; }
+          }
           animateZombie(z, dt);
           flushZombieMatrices(R);
         },
@@ -6162,7 +6416,7 @@ const SPECIMEN_MODELS = {
    explosions et projectiles (roquettes, plasma).
    ============================================================================ */
 const FX = {
-  decals: [], decalIdx: 0, debris: [], sprites: [], projectiles: [], grenades: [],
+  decals: [], decalIdx: 0, debris: [], helmets: [], sprites: [], projectiles: [], grenades: [],
   shake: 0, muzzleLight: null, boomLight: null, boomT: 0,
 };
 
@@ -6237,6 +6491,15 @@ function buildFX() {
     FX.debris.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0, sy: 0.1 });
     group.add(m);
   }
+  // casques tombés (géométrie du casque des zombies, recentrée)
+  const hg = zombieGeometries().helmet.clone();
+  hg.translate(0, -0.2, 0);
+  for (let i = 0; i < 10; i++) {
+    const m = new THREE.Mesh(hg, MAT.zHelmet.clone());
+    m.visible = false;
+    FX.helmets.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 });
+    group.add(m);
+  }
   for (let i = 0; i < 40; i++) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.smoke, transparent: true, depthWrite: false, opacity: 0 }));
     s.visible = false;
@@ -6280,6 +6543,18 @@ function spawnDebris(mat, sx, sy, sz, x, y, z, vx, vy, vz, life = 3) {
   d.vx = vx; d.vy = vy; d.vz = vz; d.ax = rand(-8, 8); d.ay = rand(-8, 8); d.az = rand(-8, 8);
   d.life = life; d.sy = Math.min(sx, sy, sz) / 2; d.scale = [sx, sy, sz];
   return d;
+}
+function spawnHelmet(color, x, y, z, yaw, vx, vy, vz) {
+  const h = FX.helmets.find((e) => e.life <= 0) || FX.helmets[randInt(0, FX.helmets.length - 1)];
+  setLin(h.mesh.material.color, color);
+  h.mesh.position.set(x, y, z);
+  h.mesh.rotation.set(rand(-0.3, 0.3), yaw, rand(-0.3, 0.3));
+  h.mesh.scale.set(1, 1, 1);
+  h.mesh.visible = true;
+  h.vx = vx; h.vy = vy; h.vz = vz;
+  h.ax = rand(-9, 9); h.ay = rand(-4, 4); h.az = rand(-9, 9);
+  h.life = 9;
+  return h;
 }
 function spawnPuff(x, y, z, size, life, color = 0x8a8478, opacity = 0.5, vy = 0.4, additive = false, tex = TEX.smoke) {
   let p = FX.sprites.find((e) => e.life <= 0);
@@ -6465,6 +6740,25 @@ function updateFX(dt) {
     }
     if (d.life < 0.6) { const k = d.life / 0.6; m.scale.set(d.scale[0] * k, d.scale[1] * k, d.scale[2] * k); }
   }
+  // casques tombés : ils rebondissent, roulent un peu puis restent au sol quelques secondes
+  for (const h of FX.helmets) {
+    if (h.life <= 0) continue;
+    h.life -= dt;
+    const m = h.mesh;
+    if (h.life <= 0) { m.visible = false; continue; }
+    h.vy -= 12 * dt;
+    let nx = m.position.x + h.vx * dt, nz = m.position.z + h.vz * dt;
+    if (blockedAt(nx, m.position.z) && interior[idx(Math.floor(m.position.x), Math.floor(m.position.z))]) { h.vx *= -0.35; nx = m.position.x; }
+    if (blockedAt(m.position.x, nz) && interior[idx(Math.floor(m.position.x), Math.floor(m.position.z))]) { h.vz *= -0.35; nz = m.position.z; }
+    m.position.x = nx; m.position.z = nz; m.position.y += h.vy * dt;
+    m.rotation.x += h.ax * dt; m.rotation.y += h.ay * dt; m.rotation.z += h.az * dt;
+    if (m.position.y < 0.08) {
+      m.position.y = 0.08;
+      h.vy = Math.abs(h.vy) > 1 ? Math.abs(h.vy) * 0.3 : 0;
+      h.vx *= 0.55; h.vz *= 0.55; h.ax *= 0.45; h.ay *= 0.6; h.az *= 0.45;
+    }
+    if (h.life < 0.6) m.scale.setScalar(h.life / 0.6);
+  }
   for (const p of FX.sprites) {
     if (p.life <= 0) continue;
     p.life -= dt;
@@ -6492,6 +6786,7 @@ function clearFX() {
   FX.projectiles.length = 0; FX.grenades.length = 0;
   for (const d of FX.decals) d.visible = false;
   for (const d of FX.debris) { d.life = 0; d.mesh.visible = false; }
+  for (const h of FX.helmets) { h.life = 0; h.mesh.visible = false; }
   for (const p of FX.sprites) { p.life = 0; p.s.visible = false; }
 }
 
@@ -6930,15 +7225,26 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
   }
   _hits.sort((a, b) => a.t - b.t);
   let dmg = wstat(s, 'dmg') * (player.perks.has('detente') ? 1.5 : 1);
-  const pen = wstat(s, 'pen') || 0, fall = def.falloff, headMult = wstat(s, 'head') || 2;
+  const pen = wstat(s, 'pen') || 0, fall = def.falloff;
   const boom = wstat(s, 'explosive');
   let endT = wallT, stopped = false;
   for (let k = 0; k < _hits.length; k++) {
     const h = _hits[k];
+    const hx = ox + dx * h.t, hy = oy + dy * h.t, hz = oz + dz * h.t;
+    // le casque encaisse le premier tir à la tête, puis tombe (sauf Mort instantanée)
+    if (h.head && h.z.helmetOn && G.timers.insta <= 0) {
+      popHelmet(h.z, dx, dz);
+      sparkBurst(hx, hy, hz, -dx, 0, -dz, 6);
+      Arms.shotHit = true;
+      addPoints(RULES.pointsHit);
+      HUD.hitmarker(false);
+      if (k >= pen) { endT = h.t; stopped = true; break; }
+      dmg *= 0.7;
+      continue;
+    }
     let d = dmg;
     if (fall) d *= h.t <= fall[0] ? 1 : h.t >= fall[1] ? fall[2] : lerp(1, fall[2], (h.t - fall[0]) / (fall[1] - fall[0]));
-    if (h.head) d *= headMult;
-    const hx = ox + dx * h.t, hy = oy + dy * h.t, hz = oz + dz * h.t;
+    if (h.head) d *= (h.z.type || BASE_TYPE).headMult;
     bloodBurst(hx, hy, hz, dx, dz, h.head ? 7 : 4, 1);
     Arms.shotHit = true;
     const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5 });
@@ -7200,7 +7506,7 @@ function rollSpeedType(round) {
 /* Délai entre deux planches arrachées (s), avant la part de hasard. */
 function tearBase(round) { return clamp(1.35 - round * 0.04, 0.6, 1.35); }
 function tearInterval() { return tearBase(G.round) * rand(0.85, 1.15); }
-function zombieHead(z, out) { return out.set(0, 0.17, 0.02).applyMatrix4(z.rig.neck.matrixWorld); }
+function zombieHead(z, out) { return out.set(0, ZRIG.head, 0.02).applyMatrix4(z.rig.neck.matrixWorld); }
 
 /* Rayon contre zombie : sphère pour la tête, cylindre vertical pour le corps. */
 function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
@@ -7256,10 +7562,12 @@ function spawnZombie(sp, hp) {
     removeZombie(corpse);
   }
   const slot = ZR.free.pop();
+  const type = BASE_TYPE;
   const look = randomZombieLook();
   paintZombieSlot(slot, look);
+  hp *= type.mult.hp;
   const z = {
-    id: ++Zombies.seq, slot, rig: makeRig(), look, alive: true, outside: true,
+    id: ++Zombies.seq, slot, type, rig: makeRig(), look, helmetOn: !!type.helmet, alive: true, outside: true,
     state: 'rise', t: 0, hp, maxHp: hp, pos: new THREE.Vector3(), yaw: 0, vx: 0, vz: 0, moving: 0,
     speedType: rollSpeedType(G.round), speed: 1, win: sp.riser ? null : sp, phase: rand(0, TAU),
     attackHit: false, winAttack: false, groanT: rand(1.5, 6), gib: 0, headless: false,
@@ -7267,7 +7575,7 @@ function spawnZombie(sp, hp) {
     stuckT: 4, stuck: 0, lastX: 0, lastZ: 0, farT: 0, tearT: 1, climbFrom: null,
     deathKind: null, fallDir: 1, flingVY: 0, nukeT: 0,
   };
-  z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]);
+  z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]) * type.mult.speed;
   if (sp.riser) {
     z.outside = false;
     z.pos.set(sp.x + rand(-0.25, 0.25), -1.7, sp.z + rand(-0.25, 0.25));
@@ -7340,6 +7648,7 @@ function killZombie(z, info) {
   Life.kill(info);
   if (info.head && info.kind === 'bullet') {
     G.stats.headshots++;
+    if (z.helmetOn) popHelmet(z, info.dx || 0, info.dz || 0);
     z.headless = true;
     Sound.headshot();
     zombieHead(z, _zh);
@@ -7354,12 +7663,24 @@ function killZombie(z, info) {
     z.vx = dx * f; z.vz = dz * f;
     z.flingVY = info.kind === 'blast' ? rand(3, 6) : rand(1.5, 3.5);
     if (Math.random() < 0.55) z.gib = randInt(1, 3);
+    if (z.helmetOn && Math.random() < 0.75) popHelmet(z, dx, dz, 1.5);
     bloodBurst(z.pos.x, 1.1, z.pos.z, dx, dz, 14, 1.5);
     for (let i = 0; i < (z.gib ? 4 : 2); i++) spawnDebris(MAT.gib, rand(0.06, 0.14), rand(0.06, 0.2), rand(0.06, 0.12), z.pos.x, 1.0, z.pos.z, dx * rand(2, 5) + rand(-1.5, 1.5), rand(2, 5), dz * rand(2, 5) + rand(-1.5, 1.5), 3);
   }
   if (!z.outside || zoneAt(z.pos.x, z.pos.z) >= 0) addDecal('blood', z.pos.x - dx * 0.6, 0.002, z.pos.z - dz * 0.6, 0, 1, 0, rand(0.9, 1.5));
   else addDecal('blood', z.pos.x, 0.002, z.pos.z, 0, 1, 0, rand(0.8, 1.3));
   onZombieKilled(z, info);
+}
+
+/* Le casque tombe (premier tir à la tête, explosion) : il quitte la tête et roule au sol. */
+const _hp = new THREE.Vector3();
+function popHelmet(z, dx = 0, dz = 0, force = 1) {
+  if (!z.helmetOn) return;
+  z.helmetOn = false;
+  _hp.set(0, ZRIG.head + 0.04, 0).applyMatrix4(z.rig.neck.matrixWorld);
+  spawnHelmet(z.look.helmetColor, _hp.x, _hp.y, _hp.z, z.yaw,
+    dx * 2.2 * force + rand(-0.6, 0.6), rand(2, 3.2) * Math.min(force, 1.3), dz * 2.2 * force + rand(-0.6, 0.6));
+  Sound.helmet(_hp);
 }
 
 function updateZombies(dt) {
@@ -7507,7 +7828,7 @@ function attack(z, dt) {
   }
   if (!z.attackHit && z.t >= 0.42) {
     z.attackHit = true;
-    if (d < (z.winAttack ? 2.05 : 1.6) && !player.down) playerDamage(RULES.zombieHit);
+    if (d < (z.winAttack ? 2.05 : 1.6) && !player.down) playerDamage(RULES.zombieHit * (z.type || BASE_TYPE).mult.damage);
   }
   if (z.t >= 0.95) {
     z.state = z.winAttack ? 'tear' : 'chase';
@@ -7533,30 +7854,44 @@ function updateCorpse(z, dt) {
 
 function animateZombie(z, dt) {
   const r = z.rig;
-  const run = z.speedType === 'run', jog = z.speedType === 'jog';
+  const run = z.speedType === 'run', jog = z.speedType === 'jog', walk = !run && !jog;
   const mv = z.moving || 0;
-  z.phase += mv * dt * (run ? 2.2 : jog ? 2.6 : 3.4);
+  z.phase += mv * dt * (run ? 2.2 : jog ? 2.6 : 3.1);
   const s = Math.sin(z.phase), c = Math.cos(z.phase);
   const amp = run ? 0.95 : jog ? 0.7 : 0.45;
   const mk = clamp(mv, 0, 1);
-  let lean = run ? 0.35 : jog ? 0.2 : 0.08;
-  let shL = -1.45 + s * 0.12, shR = -1.4 - s * 0.12, elL = -0.15, elR = -0.2, sdL = 0.12, sdR = -0.12;
+  let lean = run ? 0.35 : jog ? 0.2 : 0.1;
+  // Le Fantassin : bras droit tendu vers sa proie, bras gauche ballant
+  let shR = -1.22 + s * 0.06 * mk, elR = -0.18, sdR = -0.34;
+  let shL = -0.1 - s * 0.32 * mk, elL = -0.28, sdL = 0.1;
+  if (jog) { shL = -0.25 - s * 0.6 * mk; elL = -0.5; }
   if (run) { shL = -0.5 - s * 0.9 * mk; shR = -0.5 + s * 0.9 * mk; elL = elR = -1.3; sdL = 0.25; sdR = -0.25; }
   let hipL = s * amp * mk, hipR = -s * amp * mk;
   let knL = Math.max(0, -c) * amp * 1.3 * mk + 0.05, knR = Math.max(0, c) * amp * 1.3 * mk + 0.05;
+  let roll = s * 0.05 * mk, twist = 0;
+  let hipsY = ZRIG.hips - Math.abs(c) * 0.03 * mk;
+  if (walk) {
+    // démarche traînante : la jambe gauche suit, raide, et son pied racle le sol
+    hipL = (0.1 + s * 0.6) * amp * mk;
+    knL = 0.03 + Math.max(0, -c) * 0.12 * mk;
+    hipR = -s * amp * 1.1 * mk;
+    knR = Math.max(0, c) * amp * 1.45 * mk + 0.05;
+    roll = (0.035 + s * 0.06) * mk;
+    twist = (-0.06 + s * 0.05) * mk;
+    hipsY = ZRIG.hips - (0.012 + Math.max(0, s) * 0.03) * mk;
+  }
   let bodyX = 0;
   let neckX = 0.15 + Math.sin(z.t * 0.9 + z.id) * 0.1, neckZ = Math.sin(z.t * 0.6 + z.id * 2) * 0.25;
-  const hipsY = 0.92 - Math.abs(c) * 0.03 * mk;
   switch (z.state) {
     case 'rise': {
       const k = clamp(z.t / 1.3, 0, 1);
-      shL = -2.7 + Math.sin(z.t * 9) * 0.3; shR = -2.6 - Math.sin(z.t * 9) * 0.3;
+      shL = -2.7 + Math.sin(z.t * 9) * 0.3; shR = -2.6 - Math.sin(z.t * 9) * 0.3; sdL = 0.12; sdR = -0.12; elL = -0.15; elR = -0.2;
       lean = -0.2 + k * 0.3;
       break;
     }
     case 'tear': {
       const w = Math.sin(z.t * 6.5);
-      shL = -1.65 + w * 0.45; shR = -1.65 - w * 0.45;
+      shL = -1.65 + w * 0.45; shR = -1.65 - w * 0.45; sdL = 0.12; sdR = -0.12;
       elL = -0.4 - Math.max(0, w) * 0.5; elR = -0.4 - Math.max(0, -w) * 0.5;
       lean = 0.3;
       break;
@@ -7564,21 +7899,21 @@ function animateZombie(z, dt) {
     case 'climb': {
       const k = Math.sin(clamp(z.t / 1.1, 0, 1) * Math.PI);
       lean = 0.9 * k + 0.1; hipL = -1.2 * k; knL = 1.4 * k; hipR = -0.6 * k; knR = 0.8 * k;
-      shL = shR = -1.9;
+      shL = shR = -1.9; sdL = 0.12; sdR = -0.12;
       break;
     }
     case 'attack': {
       const k = z.t / 0.95;
       shR = k < 0.4 ? lerp(-1.4, -2.9, k / 0.4) : k < 0.55 ? lerp(-2.9, -0.5, (k - 0.4) / 0.15) : lerp(-0.5, -1.4, clamp((k - 0.55) / 0.45, 0, 1));
-      shL = -1.5; elR = -0.3;
+      shL = -0.9; elL = -0.6; elR = -0.3; sdR = -0.12;
       lean = 0.15 + (k > 0.4 && k < 0.6 ? 0.25 : 0);
       break;
     }
     case 'dead': {
       const k = smooth(clamp(z.t / 0.55, 0, 1));
       bodyX = -z.fallDir * 1.5 * k;
-      shL = shR = lerp(-1.4, -2.8, k); elL = elR = -0.2;
-      hipL = hipR = 0; knL = knR = 0.1; lean = 0; neckX = 0.4 * k; neckZ = 0;
+      shL = shR = lerp(-1.4, -2.8, k); elL = elR = -0.2; sdL = 0.12; sdR = -0.12;
+      hipL = hipR = 0; knL = knR = 0.1; lean = 0; neckX = 0.4 * k; neckZ = 0; roll = twist = 0;
       break;
     }
     default: break;
@@ -7587,7 +7922,7 @@ function animateZombie(z, dt) {
   r.root.rotation.y = z.yaw;
   r.body.rotation.x = bodyX;
   r.hips.position.y = hipsY;
-  r.hips.rotation.set(lean - z.flinch, 0, s * 0.05 * mk);
+  r.hips.rotation.set(lean - z.flinch, twist, roll);
   r.neck.rotation.set(neckX - z.flinch * 0.5, 0, neckZ);
   r.shL.rotation.set(shL, 0, sdL); r.shR.rotation.set(shR, 0, sdR);
   r.elL.rotation.x = elL; r.elR.rotation.x = elR;
@@ -9298,7 +9633,7 @@ function openStats() {
 /* Fiches des types de zombies (ZOMBIE_TYPES) : le modèle animé, photographié devant
    une toise, et ses caractéristiques tirées des règles du jeu. L'aperçu a son propre
    rendu 3D (petit canevas), dessiné seulement quand l'écran est ouvert. */
-const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trottine', run: 'Course', attack: 'Attaque', tear: 'Barricade', rise: 'Sortie de terre' };
+const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', attack: 'Attaque', tear: 'Barricade', rise: 'Sortie de terre' };
 const MODEL_VIEW = { yaw: -0.5, distMin: 1.9, distMax: 3.8 };
 const Models = {
   open: false, sel: null, anim: 'idle', at: 0, yaw: MODEL_VIEW.yaw, dist: MODEL_VIEW.distMax, idleT: 0, drag: null,
@@ -9306,36 +9641,39 @@ const Models = {
 };
 // espace insécable ordinaire entre les milliers (l'espace fine manque à certaines polices)
 const fmtNum = (n, digits = 2) => n.toLocaleString('fr-FR', { maximumFractionDigits: digits }).replace(/\u202f/g, '\u00a0');
-/* Éliminations par type : pour l'instant, tous les zombies tués sont des zombies ordinaires.
+/* Éliminations par type : pour l'instant, tous les zombies tués sont des Fantassins.
    (Un nouveau type aura son propre compteur dans les statistiques du joueur.) */
-function specimenKills(type) { return type.id === 'zombie' && Life.data ? Math.round(Life.data.kills) : 0; }
-const specimenNum = (i) => `N° ${String(i + 1).padStart(2, '0')}`;
-/* Rubriques chiffrées des fiches : [titre, lignes de ledgerList]. */
+function specimenKills(type) { return type === BASE_TYPE && Life.data ? Math.round(Life.data.kills) : 0; }
+const specimenNum = (i) => `N°${String(i).padStart(2, '0')}`;
+const fmtMult = (m) => `×${m.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+/* Contenu chiffré des fiches, calculé d'après les règles du jeu :
+   bars : [libellé, multiplicateur] (×1 = référence du bestiaire) · ref : la référence ·
+   cards : [titre, texte] (capacité, faiblesse) · details : lignes de ledgerList. */
 const SPECIMEN_FACTS = {
   standard(type) {
-    const hp = (r) => fmtNum(zombieHpForRound(r), 0);
-    const sp = (k) => `${fmtNum(SPEEDS[k][0])} à ${fmtNum(SPEEDS[k][1])}\u00a0m/s`;
+    const m = type.mult, H = RULES.zombieHp, hit = RULES.zombieHit * m.damage;
+    const hp = (r) => fmtNum(Math.round(zombieHpForRound(r) * m.hp), 0);
+    const sp = (k) => `${fmtNum(SPEEDS[k][0] * m.speed)} à ${fmtNum(SPEEDS[k][1] * m.speed)}`;
     const from = (i) => { for (let r = 1; r < 100; r++) if (speedMixForRound(r)[i] > 0) return r; return 0; };
-    // multiplicateur tête des armes à balles (les explosifs et armes spéciales n'en ont pas)
-    const heads = Object.values(WEAPONS).map((w) => w.head || 2).filter((h) => h > 1);
     let fast = 1;
     while (fast < 100 && tearBase(fast) > tearBase(1000)) fast++;
     const maps = MAPS.list.filter((id) => !type.maps || type.maps.includes(id)).map((id) => MAPS.byId[id].name);
-    const looks = _skinTones.length * _shirts.length * _pants.length * (1 + _helmets.length) * 2;
-    return [
-      ['Caractéristiques', [
-        ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20 : +100 par manche jusqu’à la 9, puis +10\u00a0% par manche'],
-        ['Vitesse', `${fmtNum(SPEEDS.walk[0])} à ${fmtNum(SPEEDS.run[1])}\u00a0m/s`, '', `Marche ${sp('walk')} · trottine ${sp('jog')} dès la manche ${from(1)} · court ${sp('run')} dès la manche ${from(2)}`],
-        ['Coup', `${RULES.zombieHit}\u00a0dégâts`, '', `${Math.ceil(RULES.playerHp / RULES.zombieHit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / RULES.zombieHit)} avec Cuirasse`],
-        ['Point faible', 'la tête', '', `Dégâts ×${fmtNum(Math.min(...heads))} à ×${fmtNum(Math.max(...heads))} selon l’arme à balles`],
-        ['Barricades', `1 planche / ${fmtNum(tearBase(1), 1)}\u00a0s`, '', `De plus en plus vite : ${fmtNum(tearBase(1000), 1)}\u00a0s dès la manche ${fast}`],
-      ]],
-      ['Sur le terrain', [
+    return {
+      bars: [['PV', m.hp], ['Vitesse', m.speed], ['Dégâts', m.damage]],
+      ref: `Référence ×1 du bestiaire : ${fmtNum(H.base, 0)} PV (+${fmtNum(H.step, 0)} par manche, puis ×${fmtNum(H.growth)} dès la manche ${H.until + 1}), ${fmtNum(RULES.zombieHit, 0)} dégâts par coup.`,
+      cards: [
+        [`Capacité · ${type.ability}`, `Accélère au fil des manches : marche, trot dès la ${from(1)}, sprint dès la ${from(2)}.`],
+        ['Faiblesse', `La tête : dégâts ×${fmtNum(type.headMult)}.${type.helmet ? ' Le casque encaisse le premier tir à la tête, puis tombe.' : ''}`],
+      ],
+      details: [
+        ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20'],
+        ['Vitesse', `${fmtNum(SPEEDS.walk[0] * m.speed)} à ${fmtNum(SPEEDS.run[1] * m.speed)} m/s`, '', `Marche ${sp('walk')} · trot ${sp('jog')} · sprint ${sp('run')} m/s`],
+        ['Coup', `${fmtNum(hit, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / hit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / hit)} avec Cuirasse`],
+        ['Barricades', `1 planche / ${fmtNum(tearBase(1), 1)} s`, '', `De plus en plus vite : ${fmtNum(tearBase(1000), 1)} s dès la manche ${fast}`],
         ['Cartes', type.maps ? maps.join(', ') || '–' : 'toutes', '', type.maps ? '' : maps.join(' · ')],
         ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
-        ['Apparences', fmtNum(looks, 0), '', `${_skinTones.length} teintes de peau, ${_shirts.length} chemises, ${_pants.length} pantalons · casque ${Math.round(ZLOOK.helmet * 100)}\u00a0% · yeux orange ${Math.round(ZLOOK.orangeEyes * 100)}\u00a0%`],
-      ]],
-    ];
+      ],
+    };
   },
 };
 
@@ -9392,7 +9730,7 @@ function setupModelViewer() {
   floor.position.z = 1.4;
   floor.receiveShadow = true;
   // projecteur de face, en hauteur : un halo sur la toise, l'ombre portée derrière le spécimen
-  const key = new THREE.SpotLight(0xfff0d8, 3.2, 0, 0.34, 0.9);
+  const key = new THREE.SpotLight(0xfff0d8, 2.8, 0, 0.34, 0.9);
   key.position.set(-2.3, 3.7, 3.5);
   key.target.position.set(0.15, 0.95, -0.9);
   key.castShadow = true;
@@ -9404,6 +9742,17 @@ function setupModelViewer() {
   const rim = new THREE.DirectionalLight(0x9cbcff, 1.5);
   rim.position.set(2.7, 2.3, -2.4);
   sc.add(wall, floor, new THREE.HemisphereLight(0xb7c3d6, 0x2a221a, 0.55), key, key.target, rim);
+  // brume au sol, qui dérive lentement autour des pieds
+  Models.mist = [];
+  for (let i = 0; i < 9; i++) {
+    const mat = new THREE.SpriteMaterial({ map: TEX.smoke, transparent: true, depthWrite: false, opacity: 0 });
+    setLin(mat.color, 0xa4b2c0);
+    const sprite = new THREE.Sprite(mat);
+    const m = { s: sprite, x: rand(-1.3, 1.3), z: rand(-0.7, 0.9), y: rand(0.04, 0.22), size: rand(0.9, 1.6), v: rand(0.05, 0.12) * (Math.random() < 0.5 ? -1 : 1), ph: rand(0, TAU), rot: rand(-0.15, 0.15) };
+    sprite.scale.set(m.size * 1.6, m.size * 0.55, 1);
+    Models.mist.push(m);
+    sc.add(sprite);
+  }
   Models.renderer = r;
   Models.scene = sc;
   Models.camera = new THREE.PerspectiveCamera(30, 0.8, 0.1, 30);
@@ -9461,7 +9810,7 @@ function openModels() {
 function selectSpecimen(id) {
   const i = Math.max(0, ZOMBIE_TYPES.findIndex((t) => t.id === id));
   const type = ZOMBIE_TYPES[i];
-  const model = SPECIMEN_MODELS[type.model] || SPECIMEN_MODELS.standard;
+  const model = SPECIMEN_MODELS[type.model] || SPECIMEN_MODELS.fantassin;
   Models.sel = type.id;
   for (const b of $('md-tabs').children) {
     const on = b.dataset.id === type.id;
@@ -9471,14 +9820,37 @@ function selectSpecimen(id) {
   // fiche
   const sheet = $('md-sheet');
   sheet.textContent = '';
-  sheet.append(el('span', 'stamp', `Spécimen ${specimenNum(i).toLowerCase()}`), el('p', 'md-name', type.name));
-  if (type.alias) sheet.append(el('p', 'md-alias', type.alias));
-  const kills = el('p', 'md-kills', 'Éliminés par vous : ');
+  sheet.append(el('span', 'stamp', `Spécimen ${specimenNum(i).toLowerCase()}`));
+  const tag = el('p', 'md-tagline');
+  for (const part of [specimenNum(i), type.cls, type.from ? `Dès la manche ${type.from}` : null].filter(Boolean)) tag.append(el('span', '', part));
+  sheet.append(tag, el('p', 'md-name', type.name));
+  const kills = el('p', 'md-kills', 'Éliminés par vous\u00a0: ');
   kills.append(el('b', '', fmtNum(specimenKills(type), 0)));
   sheet.append(kills);
   if (type.desc) sheet.append(el('p', 'md-desc', type.desc));
-  const facts = SPECIMEN_FACTS[type.facts];
-  if (facts) for (const [title, rows] of facts(type)) sheet.append(el('h3', '', title), ledgerList(rows));
+  const facts = SPECIMEN_FACTS[type.facts] ? SPECIMEN_FACTS[type.facts](type) : null;
+  if (facts) {
+    // jauges : ×1 au milieu (la référence), ×2 au bout
+    const bars = el('div', 'md-bars');
+    for (const [label, mult] of facts.bars) {
+      const row = el('div', 'md-bar');
+      const track = el('span', 'md-track'), fill = el('i');
+      fill.style.width = `${clamp(mult / 2, 0, 1) * 100}%`;
+      track.append(fill);
+      track.setAttribute('role', 'img');
+      track.setAttribute('aria-label', `${label} ${fmtMult(mult)} de la référence`);
+      row.append(el('span', 'md-bar-label', label), track, el('b', '', fmtMult(mult)));
+      bars.append(row);
+    }
+    sheet.append(bars, el('p', 'md-ref', facts.ref));
+    const cards = el('div', 'md-cards');
+    for (const [title, text] of facts.cards) {
+      const card = el('div', 'md-card');
+      card.append(el('span', '', title), el('p', '', text));
+      cards.append(card);
+    }
+    sheet.append(cards, el('h3', '', 'Détails'), ledgerList(facts.details));
+  }
   $('md-plate-num').textContent = `Spécimen ${specimenNum(i).toLowerCase()}`;
   $('md-plate-name').textContent = type.name;
   $('md-canvas').setAttribute('aria-label', `Modèle 3D : ${type.name}. Glisser pour le faire tourner, molette pour zoomer.`);
@@ -9504,6 +9876,16 @@ function selectSpecimen(id) {
   alt.type = 'button';
   alt.addEventListener('click', () => { Sound.ui(); if (Models.spec) Models.spec.restyle(); });
   box.append(alt);
+  if (model.helmet) {
+    const shot = el('button', 'md-chip alt', 'Tir dans le casque');
+    shot.type = 'button';
+    shot.dataset.action = 'helmet';
+    shot.addEventListener('click', () => {
+      Sound.init();
+      if (Models.spec && Models.spec.knockHelmet()) Sound.helmet(null);
+    });
+    box.append(shot);
+  }
   Models.at = 0;
 }
 function setModelAnim(k) {
@@ -9537,6 +9919,16 @@ function renderModels(dt) {
     if (M.idleT > 2) M.yaw += dt * 0.32 * Math.min(1, (M.idleT - 2) / 1.5);
   }
   M.spec.pose(M.anim, M.at, dt, M.yaw);
+  if (M.mist) {
+    for (const m of M.mist) {
+      m.x += m.v * dt;
+      if (m.x > 1.5) m.x = -1.5; else if (m.x < -1.5) m.x = 1.5;
+      m.ph += dt * 0.4;
+      m.s.position.set(m.x, m.y + Math.sin(m.ph) * 0.02, m.z);
+      m.s.material.opacity = 0.16 + Math.sin(m.ph * 0.7) * 0.05;
+      m.s.material.rotation += m.rot * dt;
+    }
+  }
   // en zoomant, la visée remonte du corps entier vers le visage
   const k = (MODEL_VIEW.distMax - M.dist) / (MODEL_VIEW.distMax - MODEL_VIEW.distMin);
   const ty = lerp(0.93, 1.5, smooth(clamp(k, 0, 1)));

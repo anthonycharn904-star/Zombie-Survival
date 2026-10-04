@@ -45,10 +45,18 @@ La précision de l'écran de fin de partie compte aussi un tir de fusil à pompe
 
 Depuis le jeu 1.3.0, le bouton **Modèles** du menu (à côté de Statistiques) ouvre une fiche par type de zombie :
 
-- le modèle 3D animé, photographié devant une toise : glisser pour le faire tourner, molette pour zoomer, double clic pour recadrer ; animations Repos, Marche, Trottine, Course, Attaque, Barricade, Sortie de terre ; « Autre apparence » tire une autre tenue au hasard. Le modèle est dessiné et animé exactement comme en partie ;
-- la description, le nombre de zombies de ce type éliminés par le joueur, et des caractéristiques calculées d'après les règles du jeu (points de vie, vitesse, coup, point faible, barricades, cartes, points rapportés, apparences) : elles restent exactes si les règles changent.
+- le modèle 3D animé, photographié devant une toise : glisser pour le faire tourner, molette pour zoomer, double clic pour recadrer ; animations Repos, Marche, Trot, Sprint, Attaque, Barricade, Sortie de terre ; « Autre apparence » ; « Tir dans le casque » (le casque tombe, puis revient). Le modèle est dessiné et animé exactement comme en partie ;
+- l'en-tête (numéro, catégorie, première manche), le nom, la description, le nombre de zombies de ce type éliminés par le joueur, des jauges PV, Vitesse et Dégâts par rapport à la référence ×1 du bestiaire, la capacité, la faiblesse et des détails chiffrés. Tout ce qui est chiffré est calculé d'après les règles du jeu : la fiche reste exacte si les règles changent.
 
-Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : nom, sous-titre, description, cartes où il apparaît), son modèle dans `SPECIMEN_MODELS` (section 05) et, si ses règles diffèrent, ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
+### N°00 · Le Fantassin (zombie standard, dès la manche 1)
+
+Depuis le jeu 1.4.0, le zombie de base est **Le Fantassin** : « Un soldat tombé au front et relevé par l'infection. Seul, il est lent et prévisible ; en horde, il submerge. » Uniforme feldgrau, casque d'acier (maille à part), ceinturon et cartouchières, bretelles en Y, grenade à manche, boîte du masque à gaz, plaies, bottes, mains griffues, yeux jaunes ; 1,80 m casque compris. Démarche traînante : bras droit tendu, bras gauche ballant, pied gauche qui racle le sol.
+
+- Référence ×1 du bestiaire : 100 PV à la manche 1, +50 par manche, puis ×1,1 dès la manche 10 (`RULES.zombieHp`) ; 30 dégâts par coup (`RULES.zombieHit`).
+- Capacité « Horde » : marche seule jusqu'à la manche 3, trot dès la 4, sprint dès la 8 (`speedMixForRound`).
+- Faiblesse : la tête, dégâts ×2 quelle que soit l'arme. Le casque encaisse le premier tir à la tête (0 dégât, +10 points), puis tombe et roule au sol ; sous Mort instantanée, il saute sans rien encaisser. Les explosions peuvent aussi l'arracher.
+
+Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : nom, catégorie, première manche, description, multiplicateurs `mult` des PV, de la vitesse et des dégâts par rapport au Fantassin, multiplicateur de la tête, casque, capacité, cartes où il apparaît), son modèle dans `SPECIMEN_MODELS` (section 05) et ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
 
 ## Mod Tools (éditeur de cartes)
 
@@ -121,6 +129,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **4 octobre 2026 — jeu 1.4.0** : le zombie de base devient **Le Fantassin** (fiche d'Anthony) : nouveau modèle, démarche traînante, casque qui tombe ; règles de la fiche (100 PV +50 par manche puis ×1,1 dès la 10, 30 dégâts, trot dès la manche 4, sprint dès la 8, tête ×2 pour toutes les armes au lieu de ×1,5 à ×4 selon l'arme, casque qui encaisse le premier tir à la tête). Écran Modèles : fiche au format de la sienne (en-tête, jauges ×1, capacité, faiblesse), démonstration du casque, brume au sol. Seuls les zombies présents sont dessinés (le modèle est plus détaillé).
 - **4 octobre 2026 — jeu 1.3.0** : écran **Modèles** dans le menu (fiche et modèle 3D animé de chaque type de zombie, caractéristiques tirées des règles du jeu, éliminations du joueur).
 - **Launcher 1.2.5 (en préparation, pas encore compilé)** : aide de l'étape « Mise en ligne » adaptée à la nouvelle page des jetons GitHub (« Add permissions », puis *Read-only* → *Read and write*).
 - **4 octobre 2026, 21 h 10 — en ligne : jeu 1.2.1 et launcher 1.2.4** (release `v1.2.1`), première publication faite en un clic depuis le launcher. Le jeu 1.2.1 est le code du jeu 1.2.0, republié sous un numéro plus grand que la release 1.2.0 retirée. Vérifié : signature, contenu identique au dépôt, mise à jour d'un launcher 1.1.0 simulée (jeu installé, launcher 1.2.4 proposé et vérifié).
