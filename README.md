@@ -41,6 +41,15 @@ Depuis le jeu 1.2.0, le bouton **Statistiques** du menu affiche les compteurs de
 
 La précision de l'écran de fin de partie compte aussi un tir de fusil à pompe une seule fois, même si plusieurs plombs touchent.
 
+## Modèles (fiches des zombies)
+
+Depuis le jeu 1.3.0, le bouton **Modèles** du menu (à côté de Statistiques) ouvre une fiche par type de zombie :
+
+- le modèle 3D animé, photographié devant une toise : glisser pour le faire tourner, molette pour zoomer, double clic pour recadrer ; animations Repos, Marche, Trottine, Course, Attaque, Barricade, Sortie de terre ; « Autre apparence » tire une autre tenue au hasard. Le modèle est dessiné et animé exactement comme en partie ;
+- la description, le nombre de zombies de ce type éliminés par le joueur, et des caractéristiques calculées d'après les règles du jeu (points de vie, vitesse, coup, point faible, barricades, cartes, points rapportés, apparences) : elles restent exactes si les règles changent.
+
+Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : nom, sous-titre, description, cartes où il apparaît), son modèle dans `SPECIMEN_MODELS` (section 05) et, si ses règles diffèrent, ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
+
 ## Mod Tools (éditeur de cartes)
 
 **Réservés à l'auteur.** Le bouton « Mod Tools » n'apparaît dans le launcher que sur un PC qui possède la clé privée de publication correspondant à la clé publique intégrée au launcher. Le code est public : quelqu'un peut compiler son propre launcher avec sa propre clé et son propre éditeur, mais il ne peut rien publier pour les joueurs de ce launcher sans la clé privée. La protection réelle, c'est la signature des mises à jour.
@@ -112,6 +121,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **4 octobre 2026 — jeu 1.3.0** : écran **Modèles** dans le menu (fiche et modèle 3D animé de chaque type de zombie, caractéristiques tirées des règles du jeu, éliminations du joueur).
 - **Launcher 1.2.5 (en préparation, pas encore compilé)** : aide de l'étape « Mise en ligne » adaptée à la nouvelle page des jetons GitHub (« Add permissions », puis *Read-only* → *Read and write*).
 - **4 octobre 2026, 21 h 10 — en ligne : jeu 1.2.1 et launcher 1.2.4** (release `v1.2.1`), première publication faite en un clic depuis le launcher. Le jeu 1.2.1 est le code du jeu 1.2.0, republié sous un numéro plus grand que la release 1.2.0 retirée. Vérifié : signature, contenu identique au dépôt, mise à jour d'un launcher 1.1.0 simulée (jeu installé, launcher 1.2.4 proposé et vérifié).
 - **4 octobre 2026 — launcher 1.2.4** : la page de chaque version mise en ligne donne aux nouveaux joueurs le lien de l'installateur (« Nouveau joueur ? »), même quand la version ne joint pas de nouveau launcher : le premier téléchargement se fait toujours depuis la page de la dernière version.

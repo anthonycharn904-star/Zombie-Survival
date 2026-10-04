@@ -1,6 +1,7 @@
 'use strict';
 /* Essai de bout en bout du jeu dans la fenêtre du launcher : menu, sélection de la carte,
-   statistiques enregistrées à la fermeture de la fenêtre et retrouvées à l'ouverture suivante.
+   statistiques enregistrées à la fermeture de la fenêtre et retrouvées à l'ouverture suivante,
+   écran « Modèles » (fiche du zombie, modèle 3D dessiné, animations).
      xvfb-run -a node e2e/game-menu.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -9,6 +10,7 @@ const { _electron: electron } = require('playwright-core');
 
 const ROOT = path.join(__dirname, '..');
 const EXE = require('electron');
+const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'utf8')).version;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'zs-e2e-jeu-'));
 const USER = path.join(TMP, 'joueur');
 let failures = 0;
@@ -29,7 +31,7 @@ async function openGame() {
   fs.mkdirSync(USER, { recursive: true });
   try {
     let { app, game } = await openGame();
-    ok(await game.evaluate(() => document.getElementById('btn-stats').textContent === 'Statistiques' && ZS.version === '1.2.0'), 'jeu 1.2.0 dans le launcher : bouton Statistiques');
+    ok(await game.evaluate((v) => document.getElementById('btn-stats').textContent === 'Statistiques' && ZS.version === v, GAME), `jeu ${GAME} dans le launcher : bouton Statistiques`);
     await game.click('#btn-play');
     await game.waitForFunction(() => !document.getElementById('mapsel').hidden);
     ok(await game.evaluate(() => document.querySelectorAll('#ms-grid .ms-card').length >= 1), 'Jouer ouvre la sélection de la carte');
@@ -55,6 +57,28 @@ async function openGame() {
     await game.waitForFunction(() => !document.getElementById('stats').hidden);
     const row = await game.evaluate(() => [...document.querySelectorAll('#stats-report .ledger > div')].find((d) => d.querySelector('dt').firstChild.textContent === 'Zombies tués au corps-à-corps').querySelector('dd').textContent);
     ok(/1$/.test(row), 'écran Statistiques : corps-à-corps = 1', row);
+    // écran Modèles : fiche du zombie, modèle dessiné, animations, retour par Échap
+    await game.click('#btn-stats-back');
+    await game.click('#btn-models');
+    await game.waitForFunction(() => !document.getElementById('models').hidden);
+    await new Promise((r) => setTimeout(r, 800));
+    const md = await game.evaluate(() => ({
+      tabs: document.querySelectorAll('#md-tabs .md-tab').length, types: ZOMBIE_TYPES.length,
+      name: document.querySelector('#md-sheet .md-name').textContent,
+      kills: document.querySelector('#md-sheet .md-kills b').textContent,
+      chips: [...document.querySelectorAll('#md-anims .md-chip')].map((b) => b.textContent),
+      probe: __zs.modelProbe(),
+    }));
+    ok(md.tabs === md.types && md.name === 'Zombie' && md.kills === '1', 'écran Modèles : fiche du zombie et ses éliminations', { tabs: md.tabs, name: md.name, kills: md.kills });
+    ok(['Repos', 'Marche', 'Course', 'Attaque', 'Sortie de terre', 'Autre apparence'].every((t) => md.chips.includes(t)), 'écran Modèles : animations proposées', md.chips);
+    ok(md.probe && md.probe.changed > 0.03 && md.probe.w > 100, 'écran Modèles : modèle 3D dessiné', md.probe);
+    await game.click('#md-anims [data-anim="attack"]');
+    await new Promise((r) => setTimeout(r, 400));
+    const atk = await game.evaluate(() => ({ anim: Models.anim, pressed: document.querySelector('#md-anims [data-anim="attack"]').getAttribute('aria-pressed'), probe: __zs.modelProbe() }));
+    ok(atk.anim === 'attack' && atk.pressed === 'true' && atk.probe.changed > 0.03, 'écran Modèles : animation Attaque', atk);
+    await game.keyboard.press('Escape');
+    await game.waitForFunction(() => !document.getElementById('menu').hidden);
+    ok(await game.evaluate(() => !Models.open && document.getElementById('models').hidden), 'écran Modèles : Échap ramène au menu et arrête l’aperçu');
     await app.close().catch(() => {});
   } catch (e) {
     failures++;

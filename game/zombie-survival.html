@@ -329,6 +329,58 @@ body {
 .ledger dd { margin: 0; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ledger dd small { font-weight: 400; color: rgba(43, 36, 24, 0.6); margin-right: 8px; }
 .report-note { margin: 16px 0 0; font-size: 12px; color: rgba(43, 36, 24, 0.62); }
+/* Modèles : une fiche par type de zombie, avec sa photo d'identification (rendu 3D
+   devant une toise) agrafée au dossier. */
+.md-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: -10px; }
+.md-tab {
+  display: flex; align-items: baseline; gap: 10px; padding: 7px 16px 9px; border: 0; cursor: pointer;
+  font-family: var(--font-type); font-size: 14px; color: var(--paper-2); background: rgba(232, 223, 200, 0.1);
+  box-shadow: inset 0 0 0 1px var(--line); clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 0 100%);
+}
+.md-tab b { font-family: var(--font-display); font-weight: 900; font-size: 20px; letter-spacing: 0.06em; text-transform: uppercase; }
+.md-tab:hover { background: rgba(232, 223, 200, 0.2); color: var(--paper); }
+.md-tab[aria-selected="true"] { background: var(--paper); color: var(--paper-ink); box-shadow: none; }
+.md-tab:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
+.md-body { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: clamp(22px, 3.5vw, 48px); align-items: start; }
+.md-photo {
+  position: relative; margin: 0; padding: 12px 12px 10px; color: var(--paper-ink); font-family: var(--font-type);
+  background-color: var(--paper); background-image: radial-gradient(circle at 12% 96%, rgba(150, 110, 50, 0.2), transparent 40%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(120, 90, 40, 0.22); transform: rotate(-0.8deg);
+}
+.md-photo::before {
+  content: ''; position: absolute; z-index: 1; top: -14px; left: 34px; width: 16px; height: 46px; border-radius: 9px;
+  border: 3px solid #9aa3a0; border-bottom-color: transparent; box-shadow: 0 2px 3px rgba(0, 0, 0, 0.45); transform: rotate(-8deg);
+}
+.md-stage {
+  position: relative; height: clamp(300px, calc(100vh - 400px), 640px); background: #0d1112; overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(43, 36, 24, 0.5); cursor: grab; touch-action: none;
+}
+.md-stage::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(0, 0, 0, 0.42) 100%); }
+.md-stage.dragging { cursor: grabbing; }
+.md-stage canvas { display: block; width: 100%; height: 100%; outline: none; }
+.md-stage:has(canvas:focus-visible)::before { box-shadow: inset 0 0 0 3px var(--brass); }
+.md-stage.nogl { cursor: default; }
+.md-stage.nogl::after {
+  content: 'Aperçu 3D indisponible : WebGL est désactivé sur cet ordinateur.'; position: absolute; inset: 0; display: grid; place-items: center;
+  padding: 24px; text-align: center; color: var(--paper-2); font-size: 16px;
+}
+.md-plate { display: flex; justify-content: space-between; gap: 10px; margin: 9px 2px 1px; font-size: 14px; letter-spacing: 0.05em; text-transform: uppercase; }
+.md-hint { margin: 0 2px 8px; font-size: 12px; color: rgba(43, 36, 24, 0.62); }
+.md-anims { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 9px; border-top: 1px dashed rgba(43, 36, 24, 0.35); }
+.md-chip {
+  font-family: var(--font-hud); font-weight: 700; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 5px 11px; border: 2px solid rgba(43, 36, 24, 0.6); background: transparent; color: var(--paper-ink); cursor: pointer;
+}
+.md-chip:hover { background: rgba(43, 36, 24, 0.12); }
+.md-chip[aria-pressed="true"] { background: var(--paper-ink); border-color: var(--paper-ink); color: var(--paper); }
+.md-chip:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
+.md-chip.alt { border-style: dashed; }
+.md-sheet { transform: rotate(0.35deg); }
+.md-name { margin: 0; font-family: var(--font-display); font-weight: 900; font-size: clamp(44px, 5.4vw, 68px); line-height: 0.88; letter-spacing: 0.03em; text-transform: uppercase; }
+.md-alias { margin: 6px 0 0; font-size: 15px; color: rgba(43, 36, 24, 0.68); }
+.md-kills { margin: 10px 0 0; font-size: 15px; }
+.md-kills b { font-family: var(--font-hud); font-size: 22px; color: var(--blood); font-variant-numeric: tabular-nums; }
+.md-desc { margin: 12px 0 2px; font-size: 16px; line-height: 1.55; max-width: 62ch; }
 #loading, #nogl { display: grid; place-items: center; text-align: center; font-family: var(--font-type); color: var(--paper-2); font-size: 20px; background: var(--ink); }
 #nogl p { max-width: 40ch; line-height: 1.5; }
 @media (max-width: 860px) {
@@ -338,6 +390,8 @@ body {
   .btn-narrow { display: inline-block; }
   .report-grid { grid-template-columns: minmax(0, 1fr); }
   .report { transform: none; }
+  .md-body { grid-template-columns: minmax(0, 1fr); }
+  .md-photo { transform: none; width: min(100%, 520px); justify-self: center; box-sizing: border-box; }
 }
 @media (max-width: 640px) {
   #round .num { font-size: 72px; }
@@ -395,6 +449,7 @@ body {
         <button class="btn primary" id="btn-play" type="button">Jouer</button>
         <button class="btn" id="btn-resume-save" type="button" hidden>Reprendre</button>
         <button class="btn" id="btn-stats" type="button">Statistiques</button>
+        <button class="btn" id="btn-models" type="button">Modèles</button>
         <button class="btn" id="btn-options" type="button">Options</button>
         <button class="btn btn-narrow" id="btn-controls" type="button">Commandes</button>
         <button class="btn" id="btn-exit" type="button" hidden>Quitter</button>
@@ -504,6 +559,30 @@ body {
     <article class="report" id="stats-report" aria-labelledby="stats-title"></article>
     <div class="sheet-actions">
       <button class="btn primary" id="btn-stats-back" type="button">Retour</button>
+    </div>
+  </div>
+</section>
+
+<section id="models" class="screen sheet-screen" hidden aria-labelledby="models-title">
+  <div class="sheet">
+    <header class="sheet-head">
+      <p class="eyebrow">Rapport d'incident · fiches des spécimens</p>
+      <h2 class="sheet-title" id="models-title">Modèles</h2>
+    </header>
+    <div class="md-tabs" id="md-tabs" role="tablist" aria-label="Types de zombies"></div>
+    <div class="md-body">
+      <figure class="md-photo">
+        <div class="md-stage" id="md-stage">
+          <canvas id="md-canvas" tabindex="0" role="img" aria-label="Modèle 3D du zombie : glisser pour le faire tourner, molette pour zoomer"></canvas>
+        </div>
+        <figcaption class="md-plate"><span id="md-plate-num"></span><span id="md-plate-name"></span></figcaption>
+        <p class="md-hint">Glisser pour tourner · molette pour zoomer · double clic pour recadrer</p>
+        <div class="md-anims" id="md-anims" role="group" aria-label="Animation"></div>
+      </figure>
+      <article class="report md-sheet" id="md-sheet" role="tabpanel" aria-labelledby="models-title"></article>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn primary" id="btn-models-back" type="button">Retour</button>
     </div>
   </div>
 </section>
@@ -657,7 +736,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.2.0';
+const GAME_VERSION = '1.3.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 1;
 
@@ -928,6 +1007,21 @@ function speedMixForRound(r) {
   if (r <= 12) return [0.05, 0.4, 0.55];
   return [0, 0.2, 0.8];
 }
+
+/* --------------------------------------------- Types de zombies (Modèles) --
+   Une fiche par type dans l'écran « Modèles » du menu, dans cet ordre.
+   name, alias : nom et sous-titre · desc : description · model : modèle 3D
+   (SPECIMEN_MODELS, section 05) · maps : identifiants des cartes où il apparaît
+   (null : toutes) · facts : rubriques chiffrées (SPECIMEN_FACTS, section 11),
+   calculées d'après les règles du jeu pour rester exactes. */
+const ZOMBIE_TYPES = [
+  {
+    id: 'zombie', name: 'Zombie', alias: 'Mort-vivant ordinaire', model: 'standard', facts: 'standard', maps: null,
+    desc: "Le mort-vivant le plus répandu. Il sort de terre derrière les fenêtres, arrache les planches une à une, "
+      + "enjambe l'ouverture puis traque le survivant de pièce en pièce. Il marche au début de la nuit ; au fil des manches, "
+      + 'il trottine, puis court, et encaisse de plus en plus de balles. Un tir dans la tête reste le plus sûr moyen de l’arrêter.',
+  },
+];
 
 /* -------------------------------------------------------------- Cartes ---
    Une carte est un objet de données (fichier .json dans les Mod Tools).
@@ -5896,11 +5990,14 @@ function propMatrix(pr) {
 /* ------------------------------------------------------ Zombies (rendu) -- */
 const ZR = { N: 48, free: [], parts: [] };
 const ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
-function buildZombieRenderer() {
+let ZGEO = null;
+/* Géométries des membres, partagées par la horde et par l'écran « Modèles ». */
+function zombieGeometries() {
+  if (ZGEO) return ZGEO;
   const box = (w, h, d, x, y, z, color) => ({ geo: GEO.box, matrix: mtx(x, y, z, 0, 0, 0, w, h, d), color });
   const cyl = (rt, rb, h, x, y, z, color, sx = 1, sz = 1) => ({ geo: new THREE.CylinderGeometry(rt, rb, h, 9), matrix: mtx(x, y, z, 0, 0, 0, sx, 1, sz), color });
   const sph = (r, x, y, z, sx, sy, sz, color) => ({ geo: new THREE.SphereGeometry(r, 12, 9), matrix: mtx(x, y, z, 0, 0, 0, sx, sy, sz), color });
-  const geos = {
+  ZGEO = {
     torso: mergeGeometries([
       cyl(0.23, 0.185, 0.42, 0, 0.36, 0, [1, 1, 1], 1, 0.62),
       sph(0.25, 0, 0.52, 0, 1, 0.34, 0.56, [0.95, 0.95, 0.95]),
@@ -5924,21 +6021,33 @@ function buildZombieRenderer() {
     thigh: mergeGeometries([cyl(0.09, 0.07, 0.47, 0, -0.23, 0)]),
     shin: mergeGeometries([cyl(0.068, 0.055, 0.42, 0, -0.21, 0, [1, 1, 1]), box(0.13, 0.1, 0.27, 0, -0.43, 0.04, [0.25, 0.22, 0.19])]),
   };
+  return ZGEO;
+}
+/* Jeu d'instances R pour n zombies : 8 appels de dessin, couleur et matrice par instance
+   (la horde du jeu : ZR ; l'écran « Modèles » a le sien). */
+function zombieInstances(R, n) {
+  const geos = zombieGeometries();
   const defs = [
     ['torso', MAT.zCloth, 1], ['head', MAT.zSkin, 1], ['eyes', MAT.zEyes, 1], ['helmet', MAT.zHelmet, 1],
     ['upper', MAT.zCloth, 2], ['fore', MAT.zSkin, 2], ['thigh', MAT.zCloth, 2], ['shin', MAT.zCloth, 2],
   ];
   const group = new THREE.Group();
   const white = new THREE.Color(1, 1, 1);
+  R.N = n;
+  R.parts = [];
   for (const [name, mat, mul] of defs) {
-    const m = new THREE.InstancedMesh(geos[name], mat, ZR.N * mul);
+    const m = new THREE.InstancedMesh(geos[name], mat, n * mul);
     m.frustumCulled = false;
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    for (let i = 0; i < ZR.N * mul; i++) { m.setMatrixAt(i, ZERO_M); m.setColorAt(i, white); }
-    ZR[name] = m;
-    ZR.parts.push(m);
+    for (let i = 0; i < n * mul; i++) { m.setMatrixAt(i, ZERO_M); m.setColorAt(i, white); }
+    R[name] = m;
+    R.parts.push(m);
     group.add(m);
   }
+  return group;
+}
+function buildZombieRenderer() {
+  const group = zombieInstances(ZR, ZR.N);
   for (let i = ZR.N - 1; i >= 0; i--) ZR.free.push(i);
   return group;
 }
@@ -5956,54 +6065,97 @@ function makeRig() {
 const _skinTones = [0x9aa58e, 0x8c9a86, 0xa8a48e, 0x7f8c7a, 0xb0a894, 0x96a29a];
 const _shirts = [0x5a6050, 0x4d5543, 0x6a5f4a, 0x3e4652, 0x5c4a3c, 0x707066, 0x4a3e36];
 const _pants = [0x3a3e34, 0x4a4436, 0x2e3238, 0x433a30, 0x3c4038];
-function paintZombieSlot(s, look) {
+const _helmets = [0x4a5244, 0x3c4238, 0x55574e];
+const ZLOOK = { helmet: 0.3, orangeEyes: 0.15 };
+function paintZombieSlot(s, look, R = ZR) {
   const c = new THREE.Color();
   const L = (hex) => c.setHex(hex).convertSRGBToLinear();
-  ZR.torso.setColorAt(s, L(look.shirt));
-  ZR.head.setColorAt(s, L(look.skin));
-  ZR.eyes.setColorAt(s, c.setHex(look.eyes));
-  ZR.helmet.setColorAt(s, L(look.helmetColor));
+  R.torso.setColorAt(s, L(look.shirt));
+  R.head.setColorAt(s, L(look.skin));
+  R.eyes.setColorAt(s, c.setHex(look.eyes));
+  R.helmet.setColorAt(s, L(look.helmetColor));
   for (const k of [0, 1]) {
-    ZR.upper.setColorAt(s * 2 + k, L(look.shirt).multiplyScalar(0.92));
-    ZR.fore.setColorAt(s * 2 + k, L(look.skin));
-    ZR.thigh.setColorAt(s * 2 + k, L(look.pants));
-    ZR.shin.setColorAt(s * 2 + k, L(look.pants));
+    R.upper.setColorAt(s * 2 + k, L(look.shirt).multiplyScalar(0.92));
+    R.fore.setColorAt(s * 2 + k, L(look.skin));
+    R.thigh.setColorAt(s * 2 + k, L(look.pants));
+    R.shin.setColorAt(s * 2 + k, L(look.pants));
   }
-  for (const m of ZR.parts) m.instanceColor.needsUpdate = true;
+  for (const m of R.parts) m.instanceColor.needsUpdate = true;
 }
 function randomZombieLook() {
   return {
     skin: pick(_skinTones), shirt: pick(_shirts), pants: pick(_pants),
-    eyes: Math.random() < 0.85 ? 0xffd34a : 0xff5a2a,
-    helmet: Math.random() < 0.3, helmetColor: pick([0x4a5244, 0x3c4238, 0x55574e]),
+    eyes: Math.random() < ZLOOK.orangeEyes ? 0xff5a2a : 0xffd34a,
+    helmet: Math.random() < ZLOOK.helmet, helmetColor: pick(_helmets),
   };
 }
 function writeZombieMatrices(z) {
-  const r = z.rig, s = z.slot;
+  const R = z.R || ZR, r = z.rig, s = z.slot;
   r.root.updateMatrixWorld(true);
-  ZR.torso.setMatrixAt(s, r.hips.matrixWorld);
-  if (z.headless) { ZR.head.setMatrixAt(s, ZERO_M); ZR.eyes.setMatrixAt(s, ZERO_M); ZR.helmet.setMatrixAt(s, ZERO_M); }
+  R.torso.setMatrixAt(s, r.hips.matrixWorld);
+  if (z.headless) { R.head.setMatrixAt(s, ZERO_M); R.eyes.setMatrixAt(s, ZERO_M); R.helmet.setMatrixAt(s, ZERO_M); }
   else {
-    ZR.head.setMatrixAt(s, r.neck.matrixWorld);
-    ZR.eyes.setMatrixAt(s, r.neck.matrixWorld);
-    ZR.helmet.setMatrixAt(s, z.look.helmet ? r.neck.matrixWorld : ZERO_M);
+    R.head.setMatrixAt(s, r.neck.matrixWorld);
+    R.eyes.setMatrixAt(s, r.neck.matrixWorld);
+    R.helmet.setMatrixAt(s, z.look.helmet ? r.neck.matrixWorld : ZERO_M);
   }
-  ZR.upper.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.shL.matrixWorld);
-  ZR.upper.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.shR.matrixWorld);
-  ZR.fore.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.elL.matrixWorld);
-  ZR.fore.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.elR.matrixWorld);
-  ZR.thigh.setMatrixAt(s * 2, r.hipL.matrixWorld);
-  ZR.thigh.setMatrixAt(s * 2 + 1, r.hipR.matrixWorld);
-  ZR.shin.setMatrixAt(s * 2, r.knL.matrixWorld);
-  ZR.shin.setMatrixAt(s * 2 + 1, r.knR.matrixWorld);
+  R.upper.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.shL.matrixWorld);
+  R.upper.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.shR.matrixWorld);
+  R.fore.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.elL.matrixWorld);
+  R.fore.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.elR.matrixWorld);
+  R.thigh.setMatrixAt(s * 2, r.hipL.matrixWorld);
+  R.thigh.setMatrixAt(s * 2 + 1, r.hipR.matrixWorld);
+  R.shin.setMatrixAt(s * 2, r.knL.matrixWorld);
+  R.shin.setMatrixAt(s * 2 + 1, r.knR.matrixWorld);
 }
-function hideZombieSlot(s) {
-  for (const name of ['torso', 'head', 'eyes', 'helmet']) ZR[name].setMatrixAt(s, ZERO_M);
-  for (const name of ['upper', 'fore', 'thigh', 'shin']) { ZR[name].setMatrixAt(s * 2, ZERO_M); ZR[name].setMatrixAt(s * 2 + 1, ZERO_M); }
+function hideZombieSlot(s, R = ZR) {
+  for (const name of ['torso', 'head', 'eyes', 'helmet']) R[name].setMatrixAt(s, ZERO_M);
+  for (const name of ['upper', 'fore', 'thigh', 'shin']) { R[name].setMatrixAt(s * 2, ZERO_M); R[name].setMatrixAt(s * 2 + 1, ZERO_M); }
 }
-function flushZombieMatrices() {
-  for (const m of ZR.parts) m.instanceMatrix.needsUpdate = true;
+function flushZombieMatrices(R = ZR) {
+  for (const m of R.parts) m.instanceMatrix.needsUpdate = true;
 }
+
+/* Modèles de l'écran « Modèles » (un par type de ZOMBIE_TYPES). make() crée un
+   spécimen à poser dans une scène : { root, restyle(), pose(anim, t, dt, yaw) }.
+   anims : animations proposées, dans l'ordre des boutons (MODEL_ANIMS). Le
+   zombie standard est dessiné et animé exactement comme dans le jeu. */
+const SPECIMEN_MODELS = {
+  standard: {
+    anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'],
+    make() {
+      const R = {};
+      const root = zombieInstances(R, 1);
+      for (const m of R.parts) m.castShadow = true;
+      const z = {
+        id: 3, slot: 0, R, rig: makeRig(), look: randomZombieLook(), alive: true, state: 'idle', t: 0,
+        pos: new THREE.Vector3(), yaw: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false,
+      };
+      paintZombieSlot(0, z.look, R);
+      return {
+        root,
+        restyle() { z.look = randomZombieLook(); paintZombieSlot(0, z.look, R); },
+        pose(anim, t, dt, yaw) {
+          z.yaw = yaw; z.pos.y = 0; z.moving = 0; z.state = 'idle'; z.speedType = 'walk'; z.t = t;
+          if (anim === 'walk' || anim === 'jog' || anim === 'run') {
+            z.state = 'chase'; z.speedType = anim; z.moving = (SPEEDS[anim][0] + SPEEDS[anim][1]) / 2;
+          } else if (anim === 'attack') { z.state = 'attack'; z.t = t % 1.4; }
+          else if (anim === 'tear') z.state = 'tear';
+          else if (anim === 'rise') {
+            // sous terre 0,4 s, sortie en 1,3 s (comme en partie), puis repos avant la suivante
+            const k = t % 3.6;
+            if (k < 1.7) {
+              z.state = 'rise'; z.t = Math.max(0, k - 0.4);
+              z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1)));
+            } else z.t = k;
+          }
+          animateZombie(z, dt);
+          flushZombieMatrices(R);
+        },
+      };
+    },
+  },
+};
 
 /* ================================================================= 06 EFFETS ==
    Particules (sang, étincelles, terre), impacts, débris, traçantes,
@@ -7045,7 +7197,9 @@ function rollSpeedType(round) {
   const x = Math.random();
   return x < w ? 'walk' : x < w + j ? 'jog' : 'run';
 }
-function tearInterval() { return clamp(1.35 - G.round * 0.04, 0.6, 1.35) * rand(0.85, 1.15); }
+/* Délai entre deux planches arrachées (s), avant la part de hasard. */
+function tearBase(round) { return clamp(1.35 - round * 0.04, 0.6, 1.35); }
+function tearInterval() { return tearBase(G.round) * rand(0.85, 1.15); }
 function zombieHead(z, out) { return out.set(0, 0.17, 0.02).applyMatrix4(z.rig.neck.matrixWorld); }
 
 /* Rayon contre zombie : sphère pour la tête, cylindre vertical pour le corps. */
@@ -8603,10 +8757,11 @@ function tallySVG(n) {
 
 /* ------------------------------------------------------------ Écrans --- */
 function showScreen(id) {
-  for (const s of ['menu', 'mapsel', 'stats', 'pause', 'options', 'gameover', 'loading', 'nogl']) {
+  for (const s of ['menu', 'mapsel', 'stats', 'models', 'pause', 'options', 'gameover', 'loading', 'nogl']) {
     const el = $(s);
     if (el) el.hidden = s !== id;
   }
+  Models.open = id === 'models';
   if (id) {
     const first = $(id).querySelector('button:not([hidden]), input, select');
     if (first) setTimeout(() => first.focus({ preventScroll: true }), 30);
@@ -8637,7 +8792,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 document.addEventListener('pointerlockerror', () => setFallback(true));
 function onGlobalKey(e) {
-  if (G.state === 'menu' && e.code === 'Escape' && (!$('mapsel').hidden || !$('stats').hidden)) {
+  if (G.state === 'menu' && e.code === 'Escape' && (!$('mapsel').hidden || !$('stats').hidden || !$('models').hidden)) {
     e.preventDefault();
     showScreen('menu');
     return;
@@ -8746,6 +8901,17 @@ function bindUI() {
   click('btn-resume-save', () => { const s = G.save; G.save = null; startGame(s); });
   click('btn-stats', openStats);
   click('btn-stats-back', () => showScreen('menu'));
+  click('btn-models', openModels);
+  click('btn-models-back', () => showScreen('menu'));
+  $('md-tabs').addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const i = ZOMBIE_TYPES.findIndex((t) => t.id === Models.sel);
+    const next = ZOMBIE_TYPES[clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, ZOMBIE_TYPES.length - 1)];
+    if (next.id !== Models.sel) { Sound.ui(); selectSpecimen(next.id); }
+    const tab = [...$('md-tabs').children].find((b) => b.dataset.id === next.id);
+    if (tab) tab.focus();
+  });
   click('btn-ms-back', () => showScreen('menu'));
   $('btn-ms-play').addEventListener('click', playSelectedMap);
   $('ms-grid').addEventListener('keydown', (e) => {
@@ -8903,6 +9069,7 @@ function frame(now) {
   }
   endFrameInput();
   render();
+  if (Models.open) { try { renderModels(dt); } catch (err) { console.error(err); } }
 }
 
 /* ------------------------------------------------- Catalogue des cartes -- */
@@ -9057,6 +9224,21 @@ function fmtPlayTime(sec) {
   const h = Math.floor(mins / 60), m = mins % 60;
   return h ? `${h.toLocaleString('fr-FR')} h ${String(m).padStart(2, '0')} min` : `${m} min`;
 }
+/* Lignes « libellé ........ valeur » d'un rapport : [libellé, valeur, note, précision]. */
+function ledgerList(rows) {
+  const dl = el('dl', 'ledger');
+  for (const [label, value, note, hint] of rows) {
+    const row = el('div');
+    const dt = el('dt', '', label);
+    if (hint) dt.append(el('small', '', hint));
+    const dd = el('dd');
+    if (note) dd.append(el('small', '', note));
+    dd.append(value);
+    row.append(dt, el('span', 'dots'), dd);
+    dl.append(row);
+  }
+  return dl;
+}
 function openStats() {
   const d = Life.data;
   const n = (k) => Math.round(d[k]).toLocaleString('fr-FR');
@@ -9101,18 +9283,7 @@ function openStats() {
   const grid = el('div', 'report-grid');
   for (const [title, rows] of sections) {
     const sec = el('section');
-    const dl = el('dl', 'ledger');
-    for (const [label, value, note, hint] of rows) {
-      const row = el('div');
-      const dt = el('dt', '', label);
-      if (hint) dt.append(el('small', '', hint));
-      const dd = el('dd');
-      if (note) dd.append(el('small', '', note));
-      dd.append(value);
-      row.append(dt, el('span', 'dots'), dd);
-      dl.append(row);
-    }
-    sec.append(el('h3', '', title), dl);
+    sec.append(el('h3', '', title), ledgerList(rows));
     grid.append(sec);
   }
   report.append(grid);
@@ -9121,6 +9292,257 @@ function openStats() {
     ? `Relevés tenus depuis le ${since.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}.`
     : 'Aucune partie enregistrée pour le moment : les relevés commencent à votre première partie.'));
   showScreen('stats');
+}
+
+/* -------------------------------------------------------------- Modèles -- */
+/* Fiches des types de zombies (ZOMBIE_TYPES) : le modèle animé, photographié devant
+   une toise, et ses caractéristiques tirées des règles du jeu. L'aperçu a son propre
+   rendu 3D (petit canevas), dessiné seulement quand l'écran est ouvert. */
+const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trottine', run: 'Course', attack: 'Attaque', tear: 'Barricade', rise: 'Sortie de terre' };
+const MODEL_VIEW = { yaw: -0.5, distMin: 1.9, distMax: 3.8 };
+const Models = {
+  open: false, sel: null, anim: 'idle', at: 0, yaw: MODEL_VIEW.yaw, dist: MODEL_VIEW.distMax, idleT: 0, drag: null,
+  renderer: null, scene: null, camera: null, specs: Object.create(null), spec: null, w: 0, h: 0, failed: false,
+};
+// espace insécable ordinaire entre les milliers (l'espace fine manque à certaines polices)
+const fmtNum = (n, digits = 2) => n.toLocaleString('fr-FR', { maximumFractionDigits: digits }).replace(/\u202f/g, '\u00a0');
+/* Éliminations par type : pour l'instant, tous les zombies tués sont des zombies ordinaires.
+   (Un nouveau type aura son propre compteur dans les statistiques du joueur.) */
+function specimenKills(type) { return type.id === 'zombie' && Life.data ? Math.round(Life.data.kills) : 0; }
+const specimenNum = (i) => `N° ${String(i + 1).padStart(2, '0')}`;
+/* Rubriques chiffrées des fiches : [titre, lignes de ledgerList]. */
+const SPECIMEN_FACTS = {
+  standard(type) {
+    const hp = (r) => fmtNum(zombieHpForRound(r), 0);
+    const sp = (k) => `${fmtNum(SPEEDS[k][0])} à ${fmtNum(SPEEDS[k][1])}\u00a0m/s`;
+    const from = (i) => { for (let r = 1; r < 100; r++) if (speedMixForRound(r)[i] > 0) return r; return 0; };
+    // multiplicateur tête des armes à balles (les explosifs et armes spéciales n'en ont pas)
+    const heads = Object.values(WEAPONS).map((w) => w.head || 2).filter((h) => h > 1);
+    let fast = 1;
+    while (fast < 100 && tearBase(fast) > tearBase(1000)) fast++;
+    const maps = MAPS.list.filter((id) => !type.maps || type.maps.includes(id)).map((id) => MAPS.byId[id].name);
+    const looks = _skinTones.length * _shirts.length * _pants.length * (1 + _helmets.length) * 2;
+    return [
+      ['Caractéristiques', [
+        ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20 : +100 par manche jusqu’à la 9, puis +10\u00a0% par manche'],
+        ['Vitesse', `${fmtNum(SPEEDS.walk[0])} à ${fmtNum(SPEEDS.run[1])}\u00a0m/s`, '', `Marche ${sp('walk')} · trottine ${sp('jog')} dès la manche ${from(1)} · court ${sp('run')} dès la manche ${from(2)}`],
+        ['Coup', `${RULES.zombieHit}\u00a0dégâts`, '', `${Math.ceil(RULES.playerHp / RULES.zombieHit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / RULES.zombieHit)} avec Cuirasse`],
+        ['Point faible', 'la tête', '', `Dégâts ×${fmtNum(Math.min(...heads))} à ×${fmtNum(Math.max(...heads))} selon l’arme à balles`],
+        ['Barricades', `1 planche / ${fmtNum(tearBase(1), 1)}\u00a0s`, '', `De plus en plus vite : ${fmtNum(tearBase(1000), 1)}\u00a0s dès la manche ${fast}`],
+      ]],
+      ['Sur le terrain', [
+        ['Cartes', type.maps ? maps.join(', ') || '–' : 'toutes', '', type.maps ? '' : maps.join(' · ')],
+        ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
+        ['Apparences', fmtNum(looks, 0), '', `${_skinTones.length} teintes de peau, ${_shirts.length} chemises, ${_pants.length} pantalons · casque ${Math.round(ZLOOK.helmet * 100)}\u00a0% · yeux orange ${Math.round(ZLOOK.orangeEyes * 100)}\u00a0%`],
+      ]],
+    ];
+  },
+};
+
+/* Toise peinte sur le mur du fond : 4 m × 3 m, un trait tous les 10 cm. */
+function heightChart() {
+  const W = 1024, H = 768, ppm = 256;
+  const c = el('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = '#222b27';
+  g.fillRect(0, 0, W, H);
+  const rnd = mulberry32(14);
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = rnd() < 0.5 ? `rgba(0, 0, 0, ${rnd() * 0.08})` : `rgba(255, 250, 235, ${rnd() * 0.045})`;
+    const s = 1 + rnd() * 4;
+    g.fillRect(rnd() * W, rnd() * H, s, s);
+  }
+  g.textBaseline = 'bottom';
+  g.font = `28px ${FONT_TYPE}`;
+  for (let cm = 10; cm < 300; cm += 10) {
+    const y = H - (cm / 100) * ppm, major = cm % 50 === 0;
+    g.fillStyle = major ? 'rgba(232, 223, 200, 0.5)' : 'rgba(232, 223, 200, 0.17)';
+    g.fillRect(0, y - (major ? 1.5 : 0.75), W, major ? 3 : 1.5);
+    if (!major) continue;
+    const label = `${fmtNum(cm / 100, 1)} m`;
+    g.fillStyle = 'rgba(232, 223, 200, 0.72)';
+    // graduations à 0,9 m de part et d'autre du centre : visibles même dans un cadre étroit
+    g.textAlign = 'left'; g.fillText(label, W / 2 - ppm * 0.9, y - 7);
+    g.textAlign = 'right'; g.fillText(label, W / 2 + ppm * 0.9, y - 7);
+  }
+  return c;
+}
+function setupModelViewer() {
+  if (Models.renderer || Models.failed) return !!Models.renderer;
+  const canvas = $('md-canvas');
+  let r = null;
+  try { r = new THREE.WebGLRenderer({ canvas, antialias: true }); } catch (e) { r = null; }
+  if (!r) { Models.failed = true; $('md-stage').classList.add('nogl'); return false; }
+  r.outputEncoding = THREE.sRGBEncoding;
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  r.toneMappingExposure = 1.18;
+  r.shadowMap.enabled = true;
+  r.shadowMap.type = THREE.PCFSoftShadowMap;
+  r.setClearColor(0x0d1112, 1);
+  const sc = new THREE.Scene();
+  const wallTex = new THREE.CanvasTexture(heightChart());
+  wallTex.encoding = THREE.sRGBEncoding;
+  wallTex.anisotropy = 4;
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.95 }));
+  wall.position.set(0, 1.5, -1.05);
+  wall.receiveShadow = true;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 7), linearize(new THREE.MeshStandardMaterial({ color: 0x1b1f1c, roughness: 1 })));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.z = 1.4;
+  floor.receiveShadow = true;
+  // projecteur de face, en hauteur : un halo sur la toise, l'ombre portée derrière le spécimen
+  const key = new THREE.SpotLight(0xfff0d8, 3.2, 0, 0.34, 0.9);
+  key.position.set(-2.3, 3.7, 3.5);
+  key.target.position.set(0.15, 0.95, -0.9);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.near = 1;
+  key.shadow.camera.far = 14;
+  key.shadow.bias = -0.0004;
+  key.shadow.normalBias = 0.02;
+  const rim = new THREE.DirectionalLight(0x9cbcff, 1.5);
+  rim.position.set(2.7, 2.3, -2.4);
+  sc.add(wall, floor, new THREE.HemisphereLight(0xb7c3d6, 0x2a221a, 0.55), key, key.target, rim);
+  Models.renderer = r;
+  Models.scene = sc;
+  Models.camera = new THREE.PerspectiveCamera(30, 0.8, 0.1, 30);
+  // rotation à la souris (ou au doigt), zoom à la molette, recadrage au double clic
+  const stage = $('md-stage');
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    Models.drag = { id: e.pointerId, x: e.clientX };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* rien */ }
+    stage.classList.add('dragging');
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const d = Models.drag;
+    if (!d || d.id !== e.pointerId) return;
+    Models.yaw += (e.clientX - d.x) * 0.011;
+    d.x = e.clientX;
+    Models.idleT = 0;
+  });
+  const release = (e) => { if (Models.drag && Models.drag.id === e.pointerId) { Models.drag = null; stage.classList.remove('dragging'); } };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomModel(e.deltaY > 0 ? 0.3 : -0.3); }, { passive: false });
+  canvas.addEventListener('dblclick', () => { Models.yaw = MODEL_VIEW.yaw; Models.dist = MODEL_VIEW.distMax; Models.idleT = 0; });
+  canvas.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); Models.yaw += e.key === 'ArrowLeft' ? -0.25 : 0.25; Models.idleT = 0; }
+    else if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp') { e.preventDefault(); zoomModel(-0.3); }
+    else if (e.key === '-' || e.key === 'ArrowDown') { e.preventDefault(); zoomModel(0.3); }
+  });
+  return true;
+}
+function zoomModel(step) {
+  Models.dist = clamp(Models.dist + step, MODEL_VIEW.distMin, MODEL_VIEW.distMax);
+  Models.idleT = 0;
+}
+function openModels() {
+  const tabs = $('md-tabs');
+  tabs.textContent = '';
+  ZOMBIE_TYPES.forEach((type, i) => {
+    const b = el('button', 'md-tab');
+    b.type = 'button';
+    b.dataset.id = type.id;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-controls', 'md-sheet');
+    b.append(el('span', '', specimenNum(i)), el('b', '', type.name));
+    b.addEventListener('click', () => { if (Models.sel !== type.id) Sound.ui(); selectSpecimen(type.id); });
+    tabs.append(b);
+  });
+  setupModelViewer();
+  Models.yaw = MODEL_VIEW.yaw;
+  Models.dist = MODEL_VIEW.distMax;
+  Models.idleT = 0;
+  selectSpecimen(ZOMBIE_TYPES.some((t) => t.id === Models.sel) ? Models.sel : ZOMBIE_TYPES[0].id);
+  showScreen('models');
+}
+function selectSpecimen(id) {
+  const i = Math.max(0, ZOMBIE_TYPES.findIndex((t) => t.id === id));
+  const type = ZOMBIE_TYPES[i];
+  const model = SPECIMEN_MODELS[type.model] || SPECIMEN_MODELS.standard;
+  Models.sel = type.id;
+  for (const b of $('md-tabs').children) {
+    const on = b.dataset.id === type.id;
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.tabIndex = on ? 0 : -1;
+  }
+  // fiche
+  const sheet = $('md-sheet');
+  sheet.textContent = '';
+  sheet.append(el('span', 'stamp', `Spécimen ${specimenNum(i).toLowerCase()}`), el('p', 'md-name', type.name));
+  if (type.alias) sheet.append(el('p', 'md-alias', type.alias));
+  const kills = el('p', 'md-kills', 'Éliminés par vous : ');
+  kills.append(el('b', '', fmtNum(specimenKills(type), 0)));
+  sheet.append(kills);
+  if (type.desc) sheet.append(el('p', 'md-desc', type.desc));
+  const facts = SPECIMEN_FACTS[type.facts];
+  if (facts) for (const [title, rows] of facts(type)) sheet.append(el('h3', '', title), ledgerList(rows));
+  $('md-plate-num').textContent = `Spécimen ${specimenNum(i).toLowerCase()}`;
+  $('md-plate-name').textContent = type.name;
+  $('md-canvas').setAttribute('aria-label', `Modèle 3D : ${type.name}. Glisser pour le faire tourner, molette pour zoomer.`);
+  // modèle (créé une fois par type)
+  if (Models.renderer) {
+    if (Models.spec) Models.scene.remove(Models.spec.root);
+    Models.spec = Models.specs[type.id] || (Models.specs[type.id] = model.make());
+    Models.scene.add(Models.spec.root);
+  }
+  // animations proposées par ce modèle
+  if (!model.anims.includes(Models.anim)) Models.anim = model.anims[0];
+  const box = $('md-anims');
+  box.textContent = '';
+  for (const k of model.anims) {
+    const b = el('button', 'md-chip', MODEL_ANIMS[k] || k);
+    b.type = 'button';
+    b.dataset.anim = k;
+    b.setAttribute('aria-pressed', k === Models.anim ? 'true' : 'false');
+    b.addEventListener('click', () => setModelAnim(k));
+    box.append(b);
+  }
+  const alt = el('button', 'md-chip alt', 'Autre apparence');
+  alt.type = 'button';
+  alt.addEventListener('click', () => { Sound.ui(); if (Models.spec) Models.spec.restyle(); });
+  box.append(alt);
+  Models.at = 0;
+}
+function setModelAnim(k) {
+  Models.anim = k;
+  Models.at = 0;
+  for (const b of $('md-anims').children) if (b.dataset.anim) b.setAttribute('aria-pressed', b.dataset.anim === k ? 'true' : 'false');
+  // le cri qui va avec (le son démarre au premier geste du joueur)
+  Sound.init();
+  if (k === 'attack') Sound.zombie(null, 'attack');
+  else if (k === 'rise') Sound.rise(null);
+  else if (k !== 'idle') Sound.zombie(null, 'groan');
+  else Sound.ui();
+}
+/* Une image de l'aperçu (appelée par la boucle quand l'écran est ouvert). */
+function renderModels(dt) {
+  const M = Models;
+  if (!M.renderer || !M.spec) return;
+  const c = M.renderer.domElement, w = c.clientWidth, h = c.clientHeight;
+  if (!w || !h) return;
+  if (w !== M.w || h !== M.h) {
+    M.w = w; M.h = h;
+    const dpr = window.devicePixelRatio || 1;
+    M.renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(dpr, 2));
+    M.renderer.setSize(w, h, false);
+    M.camera.aspect = w / h;
+    M.camera.updateProjectionMatrix();
+  }
+  M.at += dt;
+  if (!M.drag) {
+    M.idleT += dt;
+    if (M.idleT > 2) M.yaw += dt * 0.32 * Math.min(1, (M.idleT - 2) / 1.5);
+  }
+  M.spec.pose(M.anim, M.at, dt, M.yaw);
+  // en zoomant, la visée remonte du corps entier vers le visage
+  const k = (MODEL_VIEW.distMax - M.dist) / (MODEL_VIEW.distMax - MODEL_VIEW.distMin);
+  const ty = lerp(0.93, 1.5, smooth(clamp(k, 0, 1)));
+  M.camera.position.set(0, ty + 0.14, M.dist);
+  M.camera.lookAt(0, ty, 0);
+  M.renderer.render(M.scene, M.camera);
 }
 
 /* ---------------------------------------------------------- Démarrage -- */
@@ -9278,6 +9700,24 @@ window.__zs = {
   start() { startGame(null); },
   map(id) { const m = MAPS.byId[id]; if (m) { loadMap(m); refreshMenu(); } return !!m; },
   load(raw) { const m = normalizeMap(raw); loadMap(m); refreshMenu(); return validateMap(m); },
+  /* Écran « Modèles » : part des pixels de l'aperçu qui changent quand le spécimen est
+     masqué (0 : rien n'est dessiné). */
+  modelProbe() {
+    if (!Models.renderer || !Models.spec) return null;
+    const shot = (visible) => {
+      Models.spec.root.visible = visible;
+      renderModels(0);
+      const c = document.createElement('canvas');
+      c.width = 80; c.height = 100;
+      const g = c.getContext('2d');
+      g.drawImage(Models.renderer.domElement, 0, 0, c.width, c.height);
+      return g.getImageData(0, 0, c.width, c.height).data;
+    };
+    const a = shot(false), b = shot(true);
+    let n = 0;
+    for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 24) n++;
+    return { changed: n / (a.length / 4), w: Models.renderer.domElement.width, h: Models.renderer.domElement.height };
+  },
 };
 
 (function start() {
