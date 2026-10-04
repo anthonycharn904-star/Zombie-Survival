@@ -61,13 +61,33 @@
   UI.icon = icon;
 
   /* ------------------------------------------------------------ toasts -- */
+  /* Une alerte identique à une alerte encore affichée ne s'empile pas : elle est
+     relancée, avec un compteur (×2, ×3…). */
   MT.on('toast', (msg, tone) => {
     const box = $('mt-toasts');
     if (!box) return;
-    const t = h('div', { class: `mt-toast ${tone || ''}`, role: 'status' }, msg);
+    tone = tone || '';
+    const life = tone === 'error' ? 6000 : 2600;
+    const arm = (t) => {
+      clearTimeout(t._life);
+      t._life = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, life);
+    };
+    const same = [...box.children].find((t) => t._msg === msg && t._tone === tone && !t.classList.contains('out'));
+    if (same) {
+      same._count += 1;
+      same.querySelector('.mt-toast-n').textContent = `×${same._count}`;
+      box.append(same);
+      same.classList.remove('bump');
+      void same.offsetWidth;
+      same.classList.add('bump');
+      arm(same);
+      return;
+    }
+    const t = h('div', { class: `mt-toast ${tone}`, role: 'status' }, h('span', null, msg), h('i', { class: 'mt-toast-n' }));
+    t._msg = msg; t._tone = tone; t._count = 1;
     box.append(t);
     while (box.children.length > 4) box.firstChild.remove();
-    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, tone === 'error' ? 6000 : 2600);
+    arm(t);
   });
 
   /* ------------------------------------------------- champs de formulaire -- */
@@ -1042,7 +1062,7 @@
 
   /* ------------------------------------------------- panneau problèmes -- */
   function issuesPanel() {
-    return [h('div', { class: 'p-head' }, icon('warn'), h('div', null, h('h2', null, 'Problèmes'), h('p', null, 'Les erreurs empêchent de jouer la carte ; les avertissements sont des conseils.'))), h('div', { id: 'mt-issues' })];
+    return [h('div', { class: 'p-head' }, icon('warn'), h('div', null, h('h2', null, 'Problèmes'), h('p', null, 'Les erreurs empêchent de publier la carte pour les joueurs (la partie de test reste possible) ; les conseils n’empêchent rien.'))), h('div', { id: 'mt-issues' })];
   }
   function refreshIssues() {
     const { errors, warnings } = S.issues;

@@ -154,7 +154,7 @@
         h('p', { class: 'mm-sub' }, `${e.id}${map ? ` · ${map.w} × ${map.h} · ${map.props.length} objets · ${map.lights.length} lumières` : ''}`),
         map && map.description ? h('p', { class: 'mm-desc' }, map.description) : null,
         h('p', { class: 'mm-src' }, e.ws ? (e.game ? 'Dans votre atelier · remplace la version du jeu à la prochaine publication' : 'Dans votre atelier') : e.builtin ? 'Carte intégrée au jeu (pas encore modifiée)' : 'Carte du jeu installé (pas encore modifiée)'),
-        v ? h('p', { class: v.errors.length ? 'p-bad' : 'p-ok' }, v.errors.length ? `${v.errors.length} erreur${v.errors.length > 1 ? 's' : ''} : ${v.errors[0].msg}` : `Jouable${v.warnings.length ? ` · ${v.warnings.length} conseil${v.warnings.length > 1 ? 's' : ''}` : ''}`) : null,
+        v ? h('p', { class: v.errors.length ? 'p-bad' : 'p-ok' }, v.errors.length ? `${v.errors.length} erreur${v.errors.length > 1 ? 's' : ''} : ${v.errors[0].msg}` : `Publiable${v.warnings.length ? ` · ${v.warnings.length} conseil${v.warnings.length > 1 ? 's' : ''}` : ''}`) : null,
         h('div', { class: 'p-actions' },
           UI.f.btn(e.id === S.id ? 'Déjà ouverte' : 'Ouvrir', async () => { if (e.id === S.id) { close(); return; } if (await MT.confirmLeave()) { close(); await openAny(e.id); } }, { kind: 'primary', disabled: e.id === S.id && !MT.isDirty() && false }),
           UI.f.btn('Dupliquer…', () => duplicate(e, map), { ic: 'copy', disabled: !map }),
@@ -164,7 +164,7 @@
           const c = h('input', { type: 'checkbox', checked: inPub });
           c.addEventListener('change', async () => {
             if (c.checked) {
-              if (v && v.errors.length) { c.checked = false; MT.toast(`Carte pas jouable : ${v.errors[0].msg}`, 'error'); return; }
+              if (v && v.errors.length) { c.checked = false; MT.toast(`Carte pas publiable : ${v.errors[0].msg}`, 'error'); return; }
               if (!e.ws && !e.game) { c.checked = false; return; }
               await MT.savePublishSet([...S.publish.maps, e.id]);
             } else {
@@ -268,22 +268,79 @@
       if (test) { if (!(id in saved)) saved[id] = b.textContent; b.textContent = 'Retour aux Mod Tools'; } else if (id in saved) b.textContent = saved[id];
     }
   }
+  /* Case de sol (dans une pièce) la plus proche de (x, z), ou null si la carte n'a aucun sol. */
+  function nearestFloor(A, x, z) {
+    let best = null, bd = Infinity;
+    for (let cz = 0; cz < A.H; cz++) {
+      for (let cx = 0; cx < A.W; cx++) {
+        const i = A.ix(cx, cz);
+        if (A.g[i] !== 1 || A.zoneOf[i] < 0) continue;
+        const d = (cx + 0.5 - x) ** 2 + (cz + 0.5 - z) ** 2;
+        if (d < bd) { bd = d; best = [cx, cz]; }
+      }
+    }
+    return best;
+  }
+
+  /* Bandeau de la partie de test : les erreurs de la carte restent visibles pendant
+     qu'on la joue. Détaillé au départ et en pause, réduit à une ligne sinon. */
+  let testBar = null, testBarTimer = 0;
+  function showTestBar(errors, notes) {
+    hideTestBar();
+    if (!errors.length && !notes.length) return;
+    const n = errors.length;
+    testBar = h('div', { class: `mt-testbar${n ? '' : ' info'}`, role: 'status', 'aria-live': 'polite' },
+      h('b', null, n ? `Partie de test · ${n} erreur${n > 1 ? 's' : ''}` : 'Partie de test',
+        n ? h('span', { class: 'mt-tb-long' }, ' : carte pas encore publiable') : null,
+        h('span', { class: 'mt-tb-more' }, ' · Échap : détail')),
+      h('ul', null, errors.map((e) => h('li', { class: 'err' }, e.msg)), notes.map((t) => h('li', null, t))));
+    document.body.append(testBar);
+    const t0 = performance.now();
+    testBarTimer = setInterval(() => {
+      if (testBar) testBar.classList.toggle('compact', ZS.G.state !== 'paused' && performance.now() - t0 > 8000);
+    }, 250);
+  }
+  function hideTestBar() {
+    clearInterval(testBarTimer);
+    if (testBar) testBar.remove();
+    testBar = null;
+  }
+
+  /* Partie de test. Les erreurs ne l'empêchent pas (elles empêchent seulement de publier
+     la carte) : elles restent affichées dans le bandeau. Seule une carte illisible ou
+     sans aucun sol ne peut pas se tester. */
   MT.test = (fromCam = false) => {
     if (!S.map || ZS.G.state !== 'editor') return;
     if (S.pending) MT.commit();
     MT.validateNow();
-    if (S.issues.errors.length) {
+    let copy, v;
+    try {
+      copy = ZS.normalizeMap(JSON.parse(JSON.stringify(MT.exportMapObject(deep(S.map)))));
+      v = ZS.validateMap(copy);
+    } catch (e) {
+      console.error(e);
       UI.setTab('issues');
-      MT.toast(`Impossible de tester : ${S.issues.errors[0].msg}`, 'error');
+      MT.toast(`Test impossible : carte illisible (${e.message}).`, 'error');
       return;
     }
-    const copy = ZS.normalizeMap(JSON.parse(JSON.stringify(MT.exportMapObject(deep(S.map)))));
+    const notes = [];
     let at = null;
     if (fromCam) {
       const c = MT.v3.cam.position;
       if (MT.tileAt(Math.floor(c.x), Math.floor(c.z)) === '.') at = [c.x, c.z, MT.v3.yaw];
-      else MT.toast('La caméra n’est pas au-dessus d’un sol : départ normal.', 'warn');
+      else notes.push('La caméra n’est pas au-dessus d’un sol : départ normal.');
     }
+    if (!at && v.analysis.startZone < 0) {
+      const p = nearestFloor(v.analysis, copy.spawn.pos[0], copy.spawn.pos[1]);
+      if (!p) {
+        UI.setTab('issues');
+        MT.toast('Test impossible : la carte n’a aucune case de sol où démarrer.', 'error');
+        return;
+      }
+      copy.spawn.pos = [p[0] + 0.5, p[1] + 0.5];
+      notes.push(`Départ hors du sol : la partie commence sur le sol le plus proche (x ${p[0]} · z ${p[1]}).`);
+    }
+    if (v.errors.length) UI.setTab('issues');
     MT.v3.setActive(false);
     $('mt').hidden = true;
     document.body.classList.remove('mt-on');
@@ -291,6 +348,7 @@
     ZS.setRenderEnabled(true);
     ZS.setViewport(null);
     setGameButtons(true);
+    showTestBar(v.errors, notes);
     try {
       ZS.playTest(copy, { at });
     } catch (e) {
@@ -300,6 +358,7 @@
     }
   };
   function backToEditor() {
+    hideTestBar();
     setGameButtons(false);
     try { ZS.Sound.suspend(); } catch (e) { /* rien */ }
     ZS.exitLock();

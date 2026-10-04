@@ -8,7 +8,8 @@
 
    Vérifie : bouton Mod Tools visible seulement avec la clé de l'auteur, ouverture
    de l'éditeur, enregistrement d'une carte et d'une image dans l'atelier, liste de
-   publication, partie de test et retour, demande d'enregistrement à la fermeture,
+   publication, partie de test et retour, partie de test d'une carte avec une erreur,
+   demande d'enregistrement à la fermeture,
    publication du jeu installé avec les cartes de l'atelier. */
 const fs = require('fs');
 const os = require('os');
@@ -89,6 +90,22 @@ async function author(userData) {
     await mt.click('#btn-quit');
     await mt.waitForFunction(() => ZS.G.state === 'editor' && !document.getElementById('mt').hidden, null, { timeout: 20000 });
     ok(true, 'retour aux Mod Tools après la partie de test');
+    // carte avec une erreur : la partie de test se lance quand même, l'erreur reste affichée
+    await mt.evaluate(() => {
+      const m = ZS.blankMap(30, 20, 'Erreur E2E');
+      m.grid = m.grid.map((r) => (typeof r === 'string' ? r.replace(/W/g, '#') : r.map((c) => (c === 'W' ? '#' : c))));
+      m.risers = [];
+      MT.openMap(ZS.normalizeMap(m), { id: 'erreur-e2e', source: 'new' });
+    });
+    await mt.keyboard.press('F5');
+    await mt.waitForFunction(() => ZS.G.state === 'playing' && !!document.querySelector('.mt-testbar'), null, { timeout: 30000 });
+    ok(/Aucune fenêtre ni apparition/.test(await mt.evaluate(() => document.querySelector('.mt-testbar').textContent)), 'carte avec une erreur : partie de test lancée, erreur affichée');
+    await mt.evaluate(() => { if (document.pointerLockElement) document.exitPointerLock(); });
+    await mt.waitForTimeout(400);
+    if (await mt.evaluate(() => ZS.G.state === 'playing')) await mt.keyboard.press('Escape');
+    await mt.waitForFunction(() => ZS.G.state === 'paused', null, { timeout: 10000 });
+    await mt.click('#btn-quit');
+    await mt.waitForFunction(() => ZS.G.state === 'editor' && !document.querySelector('.mt-testbar'), null, { timeout: 20000 });
     // fermeture avec des modifications : la page demande
     await mt.evaluate(() => { MT.edit('Nom', (m) => { m.name = 'Carte E2E bis'; }, 'settings'); });
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith('zsgame://editor')); if (w) w.close(); });

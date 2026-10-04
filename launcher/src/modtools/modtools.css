@@ -213,7 +213,24 @@ code { font: 400 13px var(--font-type); color: #d8cfb6; background: #0a0d0e; pad
 .mt-toast.warn { border-left-color: var(--mt-warn); }
 .mt-toast.error { border-left-color: var(--mt-err); background: rgba(40, 14, 14, 0.97); }
 .mt-toast.out { opacity: 0; transform: translateY(6px); transition: 0.25s; }
+.mt-toast-n { font-style: normal; font-weight: 700; margin-left: 10px; color: var(--mt-brass-hi); }
+.mt-toast-n:empty { display: none; }
+.mt-toast.bump { animation: mt-bump 0.28s ease-out; }
 @keyframes mt-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes mt-bump { 35% { transform: scale(1.035); } }
+
+/* ---------- partie de test : bandeau des problèmes (hors de .mt, au-dessus du jeu et de la pause) ---------- */
+.mt-testbar { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); z-index: 25; max-width: min(460px, calc(100vw - 32px)); padding: 9px 14px 10px; background: rgba(40, 14, 14, 0.9); border: 1px solid rgba(255, 90, 82, 0.4); border-left: 3px solid #ff5a52; color: var(--paper, #ece4cf); font: 500 14px/1.35 var(--font-hud, sans-serif); pointer-events: none; user-select: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.mt-testbar.info { background: rgba(16, 20, 21, 0.9); border-color: rgba(232, 223, 200, 0.22); border-left-color: #d6ad57; }
+.mt-testbar b { display: block; font-weight: 700; letter-spacing: 0.03em; }
+.mt-testbar ul { margin: 6px 0 0; padding: 0 0 0 18px; }
+.mt-testbar li { margin: 3px 0; }
+.mt-testbar li.err { color: #ffd2cd; }
+.mt-tb-more { display: none; font-weight: 500; color: rgba(236, 228, 207, 0.7); }
+.mt-testbar.compact { padding: 6px 12px; opacity: 0.88; }
+.mt-testbar.compact ul { display: none; }
+.mt-testbar.compact .mt-tb-more { display: inline; }
+.mt-testbar.compact .mt-tb-long { display: none; }
 
 /* ---------- fenêtres ---------- */
 .mt-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(4, 6, 6, 0.72); backdrop-filter: blur(2px); font: 500 15px/1.35 var(--font-hud); color: var(--paper); }

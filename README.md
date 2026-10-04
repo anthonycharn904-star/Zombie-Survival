@@ -34,8 +34,8 @@ Ouvrir : bouton **Mod Tools** du launcher (ou `npm run modtools` en développeme
 - **Outils** : Sélection (V), Construire (B : pinceau, ligne, rectangle, pièce entière, remplissage), Textures (T : sol, murs, plafond ou ciel ouvert, case par case ou pièce entière), Objets (O), Éléments de jeu (G).
 - **Bibliothèques** : 141 textures en 11 catégories et 181 objets en 11 catégories (stockage, mobilier, hôpital, bureau et labo, industriel, militaire, rue, nature, éclairage, horreur, décals), plus vos propres images et modèles `.glb`.
 - **Carte** : nom, description, taille (8 à 160 cases), textures par défaut, ambiance (ciel, brouillard, lumière, hauteur des murs…), règles (points et arme de départ, courant allumé, armes de la boîte), caméra et vignette du menu.
-- **Tester** (F5) : partie de test sur la carte en cours, sans record ; Échap puis « Retour aux Mod Tools ».
-- **Problèmes** : ce qui empêche de jouer (erreurs) et les conseils, avec la position sur le plan.
+- **Tester** (F5) : partie de test sur la carte en cours, sans record ; Échap puis « Retour aux Mod Tools ». Le test se lance même si la carte a des erreurs : un bandeau en haut à droite les rappelle pendant la partie (détaillé au départ et en pause). Un départ posé hors du sol est remplacé, pour le test seulement, par la case de sol la plus proche. Seule une carte sans aucune case de sol ne peut pas se tester.
+- **Problèmes** : les erreurs (une carte qui en a ne peut pas être publiée pour les joueurs) et les conseils, avec la position sur le plan.
 - Annuler / rétablir (Ctrl+Z / Ctrl+Y), copie de secours toutes les 40 s, 5 versions précédentes de chaque carte gardées. Aide complète : F1.
 
 Atelier de l'auteur : `%APPDATA%\Zombie Survival\modtools\` (`maps/`, `textures/`, `models/`, `publish.json`, `recovery/`, `versions/`, `corbeille/`).
@@ -90,4 +90,5 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **4 octobre 2026 — launcher 1.2.1** : Mod Tools : partie de test possible malgré les erreurs de la carte, avec un bandeau qui les rappelle ; départ de secours si le point de départ est hors du sol ; alertes identiques regroupées (×2, ×3…) au lieu de s'empiler. Le jeu ne change pas (1.1.0).
 - **4 octobre 2026 — jeu 1.1.0, launcher 1.2.0** : cartes en données (Bunker 7 converti à l'identique), choix de la carte dans le menu, records par carte, apparitions de zombies au sol, éléments facultatifs (boîte, courant, Amplificateur), prix des armes murales par carte, bibliothèques de textures et d'objets, modèles `.glb` ; Mod Tools réservés à l'auteur dans le launcher ; publication des cartes ; essai de bout en bout `npm run test:e2e`.
