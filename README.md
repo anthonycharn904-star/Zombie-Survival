@@ -68,6 +68,20 @@ Depuis le jeu 1.4.0, le zombie de base est **Le Fantassin** : « Un soldat tomb�
 
 Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : nom, catégorie, première manche, description, multiplicateurs `mult` des PV, de la vitesse et des dégâts par rapport au Fantassin, multiplicateur de la tête, casque, capacité, cartes où il apparaît), son modèle dans `SPECIMEN_MODELS` (section 05) et ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
 
+## Rang : niveaux et prestiges
+
+Depuis le jeu 1.5.0, le joueur a un rang : niveaux 1 à 55 et 20 prestiges, gardés dans le stockage local du jeu (clé `zs.rank` : prestige, niveau, XP du niveau en cours, XP totale). Les règles sont dans `RANK_RULES` (section 01).
+
+- **Niveaux** : le joueur commence au niveau 1. Passer au niveau 2 demande 500 XP, et chaque niveau demande deux fois plus que le précédent : 1 000 XP du niveau 2 au 3, 2 000 du 3 au 4… environ 4,5 × 10¹⁸ du 54 au 55.
+- **Éliminations** : une élimination rapporte une part de ce que demande le niveau en cours (au prestige 1) : 1,1 % pour une élimination normale (balle dans le corps, Désintégrateur, Onde de choc), 1,5 % pour un tir dans la tête, 1,2 % pour un explosif (grenade, Panzerschreck, munitions explosives), 2 % au couteau. Chaque niveau demande donc le même nombre d'éliminations : 91 normales, 67 dans la tête, 84 à l'explosif ou 50 au couteau.
+- **Bombe** (bonus Bombe atomique) : 50 XP par manche (manche 1 : 50 XP, manche 10 : 500 XP). Les zombies qu'elle tue ne rapportent rien de plus.
+- **Prestige** : au niveau 55, l'XP ne s'accumule plus. Le bouton **Prestige** du menu Ranking (avec confirmation) fait passer au prestige suivant, au niveau 1. Au prestige n, chaque niveau demande n fois plus d'XP : le prestige 2 est deux fois plus long que le prestige 1, le prestige 3 trois fois, etc. Un prestige complet (54 niveaux) représente environ 4 900 éliminations normales au prestige 1 et 98 300 au prestige 20. Avant le premier prestige, les niveaux durent comme au prestige 1.
+- **Pas d'XP** dans les parties de test des Mod Tools, ni après le digi pass (à partir du bon code, jusqu'à la fin de la partie).
+- **Annonce** : quand le joueur gagne un ou plusieurs niveaux, un bandeau apparaît en haut de l'écran, par-dessus le jeu et les menus : l'ancien grade (insigne au-dessus, numéro en dessous) se fait barrer d'une croix rouge, puis le nouveau grade arrive à côté, avec son nom (« +3 niveaux » si plusieurs d'un coup). Le passage d'un prestige s'annonce de la même façon.
+- **Emblèmes**, dessinés par le jeu : 55 insignes de niveau en 11 grades de 5 niveaux (Recrue, Soldat, Caporal, Sergent, Sergent-chef, Adjudant, Lieutenant, Capitaine, Commandant, Colonel, Général : écusson, plaque, médaillon ou octogone ; chevrons, galons, losange, barrettes, feuille, ailes, étoiles ; bronze, argent puis or), avec des traits qui marquent le niveau dans le grade ; 20 emblèmes de prestige (Casque, Plaque, Grenade, Pelles, Masque à gaz, Barricade, Crâne, Boîte mystère, Courant, Griffes, Atout, Tireur d'élite, Roquette, Atome, Bunker, Barbelés, Œil jaune, Sablier, Brasier, Maître) : médaille, écusson, insigne à lauriers, étoile, ailes, puis le Maître ; bronze, cuivre, argent, or, platine. Dès le prestige 1, l'emblème du prestige est épinglé sur l'insigne de niveau. Ils reprennent le principe des emblèmes de Call of Duty (un insigne par niveau, un emblème par prestige) sans en copier aucun.
+- **Menu Ranking** (bouton à côté de Statistiques et Modèles) : la fiche du grade (insigne, niveau, nom du grade, XP du niveau et barre, éliminations restantes, bouton Prestige) ; l'onglet **Prestiges**, avec les 20 prestiges (emblème, nom, durée, état : Obtenu, En cours, Disponible, Verrouillé) et à côté de chacun une armoire à récompenses « Verrouillé - Arrivera lors d'une prochaine mise à jour » ; l'onglet **Niveaux**, avec les 55 insignes et l'XP de chaque niveau au prestige en cours. Le menu principal affiche le grade, l'écran de fin de partie l'XP gagnée et les niveaux pris.
+- Les quantités d'XP s'écrivent en chiffres jusqu'au million, puis en M (millions), Md (milliards) et puissances de dix.
+
 ## Digi pass (Bunker 7)
 
 Depuis le jeu 1.4.0, un digi pass (clavier à code) est fixé au mur de la Gewehr 43, à sa droite, à hauteur de main.
@@ -112,7 +126,7 @@ Prérequis : Node.js 22 ou plus récent. Sous Windows, rien d'autre. Sous Linux,
 cd launcher
 npm install
 npm test            # tests unitaires (signature des mises à jour, paquetage du jeu, publication, atelier des Mod Tools)
-npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable, étages et escaliers compris), menu du jeu et statistiques, publication en un clic contre un faux GitHub, zombies et joueur dans les escaliers d'une carte à trois niveaux (sous Linux : xvfb-run -a npm run test:e2e)
+npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable, étages et escaliers compris), menu du jeu, statistiques et rang, publication en un clic contre un faux GitHub, zombies et joueur dans les escaliers d'une carte à trois niveaux (sous Linux : xvfb-run -a npm run test:e2e)
 npm start           # lance le launcher en mode développement
 npm run modtools    # ouvre directement les Mod Tools (il faut la clé de l'auteur sur le PC)
 npm run dist:win    # fabrique dist/Zombie-Survival-Setup-<version>.exe
@@ -151,6 +165,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **5 octobre 2026 — jeu 1.5.0, rang** : niveaux 1 à 55 et 20 prestiges ; XP par élimination (normale, tête, explosif, couteau) et par bombe ; annonce des niveaux gagnés en haut de l'écran (ancien grade barré, nouveau grade) ; menu **Ranking** (fiche du grade, 20 prestiges avec leur armoire à récompenses verrouillée, 55 niveaux, bouton Prestige) ; grade dans le menu principal, XP gagnée en fin de partie.
 - **5 octobre 2026 — jeu 1.4.0, étages** : cartes sur plusieurs niveaux (étages et sous-sols) reliées par des escaliers de quatre formes et neuf matériaux, que zombies et joueur montent et descendent ; trémies et garde-corps automatiques ; lumière, tirs, explosions et sons limités à leur étage. Bunker 7 inchangé.
 - **4 octobre 2026 — jeu 1.4.0** : le zombie de base devient **Le Fantassin** (fiche d'Anthony) : nouveau modèle, démarche traînante, casque qui tombe ; règles de la fiche (100 PV +50 par manche puis ×1,1 dès la 10, 30 dégâts, trot dès la manche 4, sprint dès la 8, tête ×2 pour toutes les armes au lieu de ×1,5 à ×4 selon l'arme, casque qui encaisse le premier tir à la tête). Écran Modèles : fiche au format de la sienne (en-tête, jauges ×1, capacité, faiblesse), démonstration du casque, brume au sol. Seuls les zombies présents sont dessinés (le modèle est plus détaillé). **Digi pass** sur le mur de la Gewehr 43 (Bunker 7) : code à 4 chiffres tapé au centre de l'écran ; le bon code retire le clavier et donne, pour la partie, points infinis et immortalité.
 - **4 octobre 2026 — jeu 1.3.0** : écran **Modèles** dans le menu (fiche et modèle 3D animé de chaque type de zombie, caractéristiques tirées des règles du jeu, éliminations du joueur).

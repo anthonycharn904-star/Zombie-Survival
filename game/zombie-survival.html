@@ -362,6 +362,7 @@ body {
 /* Modèles : une fiche par type de zombie, avec sa photo d'identification (rendu 3D
    devant une toise) agrafée au dossier. */
 .md-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: -10px; }
+#rk-tabs { margin-bottom: 0; }
 .md-tab {
   display: flex; align-items: baseline; gap: 10px; padding: 7px 16px 9px; border: 0; cursor: pointer;
   font-family: var(--font-type); font-size: 14px; color: var(--paper-2); background: rgba(232, 223, 200, 0.1);
@@ -425,6 +426,114 @@ body {
 .md-kills { margin: 10px 0 0; font-size: 15px; }
 .md-kills b { font-family: var(--font-hud); font-size: 22px; color: var(--blood); font-variant-numeric: tabular-nums; }
 .md-desc { margin: 12px 0 2px; font-size: 16px; line-height: 1.55; max-width: 62ch; }
+/* Rang : insigne (au-dessus) et niveau (en dessous) ; à partir du prestige 1,
+   l'emblème du prestige en médaillon sur l'insigne. */
+.emb { display: block; width: 100%; height: 100%; overflow: visible; }
+.rk-ins { position: relative; display: block; width: 100%; height: 100%; }
+.rk-pin { position: absolute; right: -14%; bottom: -10%; width: 50%; height: 50%; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.7)); }
+/* Bandeau de montée de niveau, en haut de l'écran (au-dessus du jeu et des menus) */
+#rankup {
+  position: fixed; z-index: 30; left: 50%; top: calc(10px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  width: 360px; max-width: calc(100vw - 32px); box-sizing: border-box; pointer-events: none; user-select: none; text-align: center;
+  padding: 9px 0 11px; background: linear-gradient(180deg, rgba(5, 7, 6, 0.9), rgba(5, 7, 6, 0.82));
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+#rankup.prestige { border-color: rgba(255, 215, 106, 0.45); }
+#rankup.play { animation: ruin 0.45s ease-out both; }
+#rankup.out { opacity: 0; transform: translate(-50%, -16px); transition: opacity 0.5s, transform 0.5s; }
+@keyframes ruin { from { opacity: 0; transform: translate(-50%, -18px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ru-head { margin: 0 0 4px; font-weight: 700; font-size: 15px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--brass); text-shadow: 0 1px 0 #000; }
+#rankup.prestige .ru-head { color: #ffd76a; }
+.ru-row { position: relative; height: 128px; }
+.ru-rank { position: absolute; left: 50%; top: 0; width: 96px; margin: 0 0 0 -48px; display: flex; flex-direction: column; align-items: center; }
+.ru-img { position: relative; width: 84px; height: 84px; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.75)); }
+.ru-num { margin-top: 4px; font-family: var(--font-display); font-weight: 900; font-size: 34px; line-height: 1; color: var(--paper); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.8); font-variant-numeric: tabular-nums; }
+.ru-x { position: absolute; left: 50%; top: -4px; width: 100px; height: 128px; margin-left: -50px; overflow: visible; }
+.ru-x path { fill: none; stroke: var(--blood-hi); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 134; stroke-dashoffset: 134; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.7)); }
+#rankup.play .ru-x path:nth-child(1) { animation: rux 0.2s 0.5s ease-in forwards; }
+#rankup.play .ru-x path:nth-child(2) { animation: rux 0.2s 0.7s ease-in forwards; }
+@keyframes rux { to { stroke-dashoffset: 0; } }
+#rankup.play .ru-old { animation: ruold 0.5s 1.05s ease-in-out both; }
+@keyframes ruold { from { transform: none; opacity: 1; } to { transform: translateX(-78px) scale(0.78); opacity: 0.6; } }
+#rankup.play .ru-new { animation: runew 0.55s 1.25s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+@keyframes runew { from { transform: translateX(78px) scale(0.3); opacity: 0; } to { transform: translateX(78px) scale(1); opacity: 1; } }
+#rankup.play .ru-new .ru-img { animation: ruglow 1.6s 1.5s ease-out; }
+@keyframes ruglow { 0% { filter: drop-shadow(0 0 0 rgba(255, 215, 106, 0)); } 30% { filter: drop-shadow(0 0 22px rgba(255, 215, 106, 0.95)); } 100% { filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.75)); } }
+#rankup .ru-new.bump .ru-img { animation: rubump 0.5s ease-out; }
+@keyframes rubump { 40% { transform: scale(1.18); filter: drop-shadow(0 0 18px rgba(255, 215, 106, 0.9)); } }
+.ru-name { margin: 2px 0 0; min-height: 1.2em; font-weight: 700; font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--paper); text-shadow: 0 1px 0 #000; }
+#rankup.play .ru-name { animation: runame 0.4s 1.5s ease-out both; }
+@keyframes runame { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+#hud.rankup-on #banner { top: 31%; }
+/* Ligne du grade dans le menu principal */
+.rank-line { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; font-family: var(--font-type); font-size: 15px; color: var(--paper-2); }
+.rank-line > .rk-ins { width: 34px; height: 34px; flex: none; }
+.rank-line .rk-pin { right: -22%; bottom: -16%; width: 56%; height: 56%; }
+/* Écran Ranking */
+.rk-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(18px, 3vw, 40px); align-items: center; transform: rotate(-0.3deg); }
+.rk-badge {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px 26px 12px; min-width: 170px;
+  background: radial-gradient(ellipse at 50% 38%, #2b322d, #0c0f0e 76%); box-shadow: inset 0 0 0 2px rgba(43, 36, 24, 0.65), 0 10px 22px rgba(0, 0, 0, 0.35);
+}
+.rk-badge > .rk-ins { width: 150px; height: 150px; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6)); }
+.rk-badge-num { font-family: var(--font-display); font-weight: 900; font-size: 58px; line-height: 0.95; color: var(--paper); text-shadow: 0 3px 0 rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; }
+.rk-info { min-width: 0; }
+.rk-info .md-tagline { margin-bottom: 4px; }
+.rk-card .rk-title { margin: 0; padding: 0; border: 0; font-family: var(--font-display); font-weight: 900; font-size: clamp(34px, 4.4vw, 56px); line-height: 0.92; letter-spacing: 0.03em; text-transform: uppercase; }
+.rk-bar { margin: 14px 0 0; }
+.rk-xp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; margin: 0 0 6px; font-family: var(--font-hud); font-size: 18px; font-variant-numeric: tabular-nums; }
+.rk-xp b { font-size: 22px; }
+.rk-track { position: relative; height: 18px; background: rgba(43, 36, 24, 0.12); box-shadow: inset 0 0 0 2px var(--paper-ink); }
+.rk-track i { display: block; height: 100%; min-width: 2px; background: linear-gradient(180deg, #e6c35c, #9a7019); box-shadow: inset 0 0 0 2px var(--paper-ink); }
+.rk-next { margin: 7px 0 0; font-size: 14px; color: rgba(43, 36, 24, 0.8); }
+.rk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 18px 0 0; }
+.rk-actions .btn:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.6); }
+.rk-actions .btn:disabled:hover { background: var(--blood); border-color: var(--blood); color: #fff3ec; }
+.rk-hint { font-size: 14px; color: rgba(43, 36, 24, 0.75); }
+.rk-confirm { margin: 14px 0 0; padding: 12px 14px; background: #efe3c8; border: 2px solid var(--paper-ink); box-shadow: 5px 5px 0 var(--blood); }
+.rk-confirm p { margin: 0 0 10px; font-size: 15px; line-height: 1.45; }
+.rk-confirm-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.rk-confirm .btn { font-size: 17px; padding: 8px 18px; }
+.rk-confirm .btn:not(.primary) { border-color: var(--paper-ink); color: var(--paper-ink); }
+.rk-confirm .btn:not(.primary):hover { background: var(--paper-ink); color: var(--paper); }
+.rk-rules { margin: 16px 0 0; font-size: 12.5px; line-height: 1.5; color: rgba(43, 36, 24, 0.66); max-width: 78ch; }
+.rk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 12px 16px; }
+.rk-pcard {
+  display: grid; grid-template-columns: 86px minmax(0, 1fr) minmax(0, 214px); gap: 14px; align-items: center; padding: 12px 14px;
+  background: linear-gradient(180deg, #1b211e, #0d1110); border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.rk-pemb { width: 86px; height: 86px; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6)); }
+.rk-pcard.locked .rk-pemb { filter: grayscale(1) brightness(0.62) contrast(0.95) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6)); }
+.rk-pcard.current { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass), 0 0 26px rgba(214, 173, 87, 0.16); }
+.rk-ptext { min-width: 0; }
+.rk-ptext p { margin: 0; }
+.rk-pnum { font-family: var(--font-display); font-weight: 900; font-size: 24px; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1; }
+.rk-pname { font-family: var(--font-type); font-size: 16px; color: var(--paper-2); margin-top: 3px !important; }
+.rk-pmeta { font-size: 14px; color: var(--steel); letter-spacing: 0.04em; margin-top: 5px !important; }
+.rk-state { display: inline-block; margin-top: 7px !important; padding: 1px 8px; font-weight: 700; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; border: 1px solid currentColor; }
+.rk-state.done { color: var(--toxic); }
+.rk-state.current { color: var(--brass); }
+.rk-state.locked { color: var(--steel); }
+.rk-cab { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 10px 6px 6px; background: rgba(0, 0, 0, 0.32); border: 1px dashed rgba(232, 223, 200, 0.2); }
+.rk-cab-img { width: 60px; height: 72px; opacity: 0.9; }
+.rk-cab-text { margin: 0; font-size: 13.5px; line-height: 1.25; color: var(--paper-2); }
+.rk-cab-text b { display: block; color: var(--paper); letter-spacing: 0.06em; text-transform: uppercase; font-size: 13px; }
+.rk-levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.rk-ltile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 4px 8px; background: linear-gradient(180deg, #1b211e, #0d1110); border: 1px solid var(--line); text-align: center; }
+.rk-limg { width: 58px; height: 58px; margin-bottom: 3px; }
+.rk-ltile b { font-family: var(--font-display); font-weight: 900; font-size: 24px; line-height: 1; }
+.rk-ltile span { font-size: 13px; color: var(--paper-2); }
+.rk-ltile small { font-size: 12px; color: var(--steel); font-variant-numeric: tabular-nums; }
+.rk-ltile.future { opacity: 0.5; }
+.rk-ltile.current { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass); }
+.rk-levels-note { margin: 12px 0 0; font-family: var(--font-type); font-size: 13px; color: var(--paper-2); }
+@media (max-width: 760px) {
+  .rk-card { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .rk-info { justify-self: stretch; }
+  .rk-pcard { grid-template-columns: 70px minmax(0, 1fr); }
+  .rk-pemb { width: 70px; height: 70px; }
+  .rk-cab { grid-column: 1 / -1; }
+}
 #loading, #nogl { display: grid; place-items: center; text-align: center; font-family: var(--font-type); color: var(--paper-2); font-size: 20px; background: var(--ink); }
 #nogl p { max-width: 40ch; line-height: 1.5; }
 @media (max-width: 860px) {
@@ -492,6 +601,16 @@ body {
   <div id="lockhint" hidden>Souris libre : cliquez dans le jeu pour la capturer. Les flèches permettent aussi de tourner.</div>
 </div>
 
+<div id="rankup" hidden aria-live="polite">
+  <p class="ru-head">Niveau supérieur</p>
+  <div class="ru-row">
+    <div class="ru-rank ru-old"><span class="ru-img"></span><span class="ru-num"></span>
+      <svg class="ru-x" viewBox="0 0 100 130" preserveAspectRatio="none" aria-hidden="true"><path d="M14 10 L86 118"/><path d="M86 10 L14 118"/></svg></div>
+    <div class="ru-rank ru-new"><span class="ru-img"></span><span class="ru-num"></span></div>
+  </div>
+  <p class="ru-name"></p>
+</div>
+
 <section id="menu" class="screen" hidden aria-labelledby="menu-title">
   <div class="menu-grid">
     <div class="intro">
@@ -503,10 +622,12 @@ body {
         <button class="btn" id="btn-resume-save" type="button" hidden>Reprendre</button>
         <button class="btn" id="btn-stats" type="button">Statistiques</button>
         <button class="btn" id="btn-models" type="button">Modèles</button>
+        <button class="btn" id="btn-ranking" type="button">Ranking</button>
         <button class="btn" id="btn-options" type="button">Options</button>
         <button class="btn btn-narrow" id="btn-controls" type="button">Commandes</button>
         <button class="btn" id="btn-exit" type="button" hidden>Quitter</button>
       </div>
+      <p class="rank-line" id="menu-rank"></p>
       <p class="best" id="best"></p>
       <p class="version" id="game-version"></p>
       <p class="touch-note" id="touch-note" hidden>Ce jeu se joue au clavier et à la souris.</p>
@@ -636,6 +757,24 @@ body {
     </div>
     <div class="sheet-actions">
       <button class="btn primary" id="btn-models-back" type="button">Retour</button>
+    </div>
+  </div>
+</section>
+
+<section id="ranking" class="screen sheet-screen" hidden aria-labelledby="ranking-title">
+  <div class="sheet">
+    <header class="sheet-head">
+      <p class="eyebrow">Rapport d'incident · registre des grades</p>
+      <h2 class="sheet-title" id="ranking-title">Ranking</h2>
+    </header>
+    <article class="report rk-card" id="rk-card" aria-label="Grade actuel"></article>
+    <div class="md-tabs" id="rk-tabs" role="tablist" aria-label="Ranking">
+      <button class="md-tab" type="button" role="tab" data-tab="prestiges" aria-controls="rk-panel"><b>Prestiges</b> 20</button>
+      <button class="md-tab" type="button" role="tab" data-tab="levels" aria-controls="rk-panel"><b>Niveaux</b> 55</button>
+    </div>
+    <div class="rk-panel" id="rk-panel" role="tabpanel" aria-labelledby="ranking-title"></div>
+    <div class="sheet-actions">
+      <button class="btn primary" id="btn-ranking-back" type="button">Retour</button>
     </div>
   </div>
 </section>
@@ -789,7 +928,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.4.0';
+const GAME_VERSION = '1.5.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 2;
 
@@ -1039,6 +1178,23 @@ const RULES = {
   nukePoints: 400, carpenterPoints: 200,
   maxGrenades: 4,
 };
+/* --------------------------------------------------------------- Rang ---
+   Niveaux 1 à 55 et 20 prestiges (règles d'Anthony, 5 octobre 2026). Passer du
+   niveau n au suivant demande base × croissance^(n−1) XP (500, 1 000, 2 000…),
+   multiplié par le numéro du prestige : le prestige 2 est 2 fois plus long que le
+   prestige 1, le prestige 3 3 fois plus long ; le premier cycle (sans prestige)
+   dure comme le prestige 1. Une élimination rapporte une part du besoin du niveau
+   en cours au prestige 1 (même nombre d'éliminations par niveau à tout niveau) ;
+   la Bombe rapporte une quantité fixe par manche. */
+const RANK_RULES = {
+  levels: 55, prestiges: 20,
+  base: 500, growth: 2,
+  kill: { normal: 0.011, head: 0.015, explosive: 0.012, melee: 0.02 },   // tête : arme à feu ; explosif : grenade, Panzerschreck, munitions explosives
+  nukePerRound: 50,
+};
+const rankFactor = (p) => Math.max(1, p);
+const xpBase = (lv) => RANK_RULES.base * Math.pow(RANK_RULES.growth, lv - 1);
+const xpNeed = (lv, p) => xpBase(lv) * rankFactor(p);
 /* Nombre de zombies par manche (solo) : 6, 8, 13, 18, 24, 27, 28… */
 function zombiesForRound(r) {
   let mult = Math.max(1, r / 5);
@@ -2241,6 +2397,27 @@ const Sound = (() => {
     const t = ctx.currentTime, o = out(null, 0.12);
     tone('square', 1100, 900, t, 0.035, 0.4, o);
   }
+  /* Rang : coup de tampon (la croix sur l'ancien grade), fanfare du nouveau grade, accord du prestige. */
+  function rankStamp() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.7, 4, musicBus);
+    noiseHit(t, 0.16, 0.9, 'lowpass', 2400, 300, 0.8, o, 0.002);
+    tone('sine', 150, 55, t, 0.2, 0.8, o, 0.003);
+  }
+  function rankUp(small) {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, small ? 0.35 : 0.6, 4, musicBus);
+    const notes = small ? [[0, 784], [0.08, 1046.5]] : [[0, 392], [0.11, 523.3], [0.22, 659.3], [0.36, 784], [0.36, 523.3]];
+    for (const [dt, f] of notes) { tone('sawtooth', f, f, t + dt, small ? 0.25 : 0.55, 0.1, o, 0.01); tone('triangle', f, f, t + dt, small ? 0.3 : 0.7, 0.26, o, 0.006); }
+    if (!small) bell(t + 0.36, 1568, 0.18, o, 1.6);
+  }
+  function prestige() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.8, 4, musicBus);
+    [[0, 196], [0, 293.66], [0, 392], [0.5, 220], [0.5, 329.6], [0.5, 440], [1, 261.6], [1, 392], [1, 523.3]]
+      .forEach(([dt, f]) => { tone('sawtooth', f, f, t + dt, 1.6, 0.08, o, 0.05); tone('triangle', f, f, t + dt, 1.8, 0.18, o, 0.03); });
+    bell(t + 1, 1046.5, 0.25, o, 3);
+  }
   function ampWork(pos) {
     if (!ctx) return;
     const o = out(pos, 0.6, 6); if (!o) return;
@@ -2300,7 +2477,7 @@ const Sound = (() => {
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
     zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, keypad, door, drink, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
-    boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say,
+    boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say, rankStamp, rankUp, prestige,
   };
 })();
 
@@ -8701,6 +8878,7 @@ function killZombie(z, info) {
   if (pts) addPoints(pts);
   G.stats.kills++;
   Life.kill(info);
+  Rank.kill(info);
   if (info.head && info.kind === 'bullet') {
     G.stats.headshots++;
     if (z.helmetOn) popHelmet(z, info.dx || 0, info.dz || 0);
@@ -9910,6 +10088,7 @@ function applyPowerup(type) {
       HUD.flash();
       for (const z of Zombies.list) if (z.alive) z.nukeT = rand(0.15, 1.3);
       addPoints(RULES.nukePoints, true);
+      Rank.nuke(G.round);
       break;
     case 'carpenter':
       repairAllWindows();
@@ -10015,7 +10194,7 @@ const G = {
   timers: { insta: 0, double: 0 }, events: [], creakT: 10, god: false, cheat: false,
   stats: null, save: null, mapId: null, editorSession: false,
 };
-function freshStats() { return { kills: 0, headshots: 0, earned: 0, downs: 0, shots: 0, hits: 0, doors: 0, boxes: 0, time: 0 }; }
+function freshStats() { return { kills: 0, headshots: 0, earned: 0, downs: 0, shots: 0, hits: 0, doors: 0, boxes: 0, time: 0, xp: 0 }; }
 G.stats = freshStats();
 
 /* ------------------------------------------------ Statistiques du joueur ---
@@ -10081,6 +10260,7 @@ const Life = {
     if (this.saveT >= 20) { this.saveT = 0; this.save(); }
   },
   save() {
+    Rank.save();
     if (!this.data || !this.dirty) return;
     store.set(LIFE_KEY, this.data);
     this.dirty = false;
@@ -10097,6 +10277,77 @@ const Life = {
     return best;
   },
 };
+/* ------------------------------------------------------------------- Rang ---
+   Niveau (1 à 55) et prestige (0 à 20) du joueur, gardés dans localStorage
+   « zs.rank » ; règles dans RANK_RULES (section 01). L'XP ne compte pas dans les
+   parties de test des Mod Tools ni après le digi pass (points infinis, immortel).
+   Au niveau 55, l'XP ne s'accumule plus : le bouton Prestige du menu Ranking
+   ramène au niveau 1 du prestige suivant. */
+const RANK_KEY = 'zs.rank';
+const Rank = {
+  data: null, dirty: false,
+  load() {
+    const raw = store.get(RANK_KEY, null);
+    const d = { v: 1, p: 0, lv: 1, xp: 0, total: 0, since: null };
+    if (raw && typeof raw === 'object') {
+      if (Number.isInteger(raw.p)) d.p = clamp(raw.p, 0, RANK_RULES.prestiges);
+      if (Number.isInteger(raw.lv)) d.lv = clamp(raw.lv, 1, RANK_RULES.levels);
+      if (Number.isFinite(raw.xp) && raw.xp > 0) d.xp = Math.min(raw.xp, d.lv >= RANK_RULES.levels ? 0 : xpNeed(d.lv, d.p) * 0.999999);
+      if (Number.isFinite(raw.total) && raw.total > 0) d.total = raw.total;
+      if (typeof raw.since === 'string') d.since = raw.since;
+    }
+    this.data = d;
+  },
+  save() {
+    if (!this.data || !this.dirty) return;
+    store.set(RANK_KEY, this.data);
+    this.dirty = false;
+  },
+  /* L'XP compte-t-elle en ce moment ? (raison sinon) */
+  get off() { return !this.data ? 'indisponible' : G.editorSession ? 'partie de test' : G.cheat ? 'digi pass' : null; },
+  get maxed() { return this.data.lv >= RANK_RULES.levels; },
+  need() { return this.maxed ? 0 : xpNeed(this.data.lv, this.data.p); },
+  progress() { return this.maxed ? 1 : clamp(this.data.xp / this.need(), 0, 1); },
+  canPrestige() { return !!this.data && this.maxed && this.data.p < RANK_RULES.prestiges; },
+  gain(xp) {
+    if (this.off || !(xp > 0) || this.maxed) return 0;
+    const d = this.data, from = { p: d.p, lv: d.lv };
+    if (!d.since) d.since = new Date().toISOString().slice(0, 10);
+    d.xp += xp; d.total += xp;
+    if (G.stats) G.stats.xp = (G.stats.xp || 0) + xp;
+    for (let need = xpNeed(d.lv, d.p); d.lv < RANK_RULES.levels && d.xp >= need; need = xpNeed(d.lv, d.p)) { d.xp -= need; d.lv++; }
+    if (this.maxed) d.xp = 0;
+    this.dirty = true;
+    if (d.lv !== from.lv) { this.save(); RankUp.show(from, { p: d.p, lv: d.lv }); }
+    return xp;
+  },
+  /* Une élimination : part du besoin du niveau en cours (au prestige 1) selon ce qui l'a causée. */
+  kill(info) {
+    if (this.off || this.maxed || info.kind === 'nuke') return 0;
+    const K = RANK_RULES.kill, k = info.kind;
+    const share = k === 'knife' ? K.melee : k === 'explosive' && info.src !== 'plasma' ? K.explosive : k === 'bullet' && info.head ? K.head : K.normal;
+    return this.gain(share * xpBase(this.data.lv));
+  },
+  nuke(round) { return this.gain(RANK_RULES.nukePerRound * Math.max(1, round)); },
+  prestige() {
+    if (!this.canPrestige()) return false;
+    const d = this.data;
+    d.p++; d.lv = 1; d.xp = 0;
+    this.dirty = true;
+    this.save();
+    return true;
+  },
+};
+/* Quantités d'XP : chiffres entiers jusqu'au million, puis M, Md et puissances de dix. */
+const SUPERSCRIPT = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+function fmtXp(n) {
+  n = Math.max(0, Math.floor(n));
+  if (n < 1e6) return fmtNum(n, 0);
+  if (n < 1e9) return `${fmtNum(n / 1e6, n < 1e7 ? 2 : 1)} M`;
+  if (n < 1e12) return `${fmtNum(n / 1e9, n < 1e10 ? 2 : 1)} Md`;
+  const e = Math.floor(Math.log10(n));
+  return `${fmtNum(n / 10 ** e, 2)} × 10${String(e).split('').map((c) => SUPERSCRIPT[+c]).join('')}`;
+}
 /* Un tir qui touche au moins un zombie (une seule fois par tir, même au fusil à pompe). */
 function countHit() {
   G.stats.hits++;
@@ -10193,7 +10444,7 @@ function serializeGame() {
     slots: Arms.slots.map((s) => s && { id: s.id, up: s.up, mag: s.mag, res: s.res }), cur: Arms.cur,
     perks: [...player.perks], souffleUses: player.souffleUses, power: G.power,
     doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box ? Features.box.cur : -1,
-    stats: Object.assign({}, G.stats), cheat: G.cheat,
+    stats: Object.assign({}, G.stats), cheat: G.cheat, rank: G.rankStart,
   };
 }
 function restoreSave(s) {
@@ -10390,7 +10641,7 @@ function tallySVG(n) {
 
 /* ------------------------------------------------------------ Écrans --- */
 function showScreen(id) {
-  for (const s of ['menu', 'mapsel', 'stats', 'models', 'pause', 'options', 'gameover', 'loading', 'nogl']) {
+  for (const s of ['menu', 'mapsel', 'stats', 'models', 'ranking', 'pause', 'options', 'gameover', 'loading', 'nogl']) {
     const el = $(s);
     if (el) el.hidden = s !== id;
   }
@@ -10425,7 +10676,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 document.addEventListener('pointerlockerror', () => setFallback(true));
 function onGlobalKey(e) {
-  if (G.state === 'menu' && e.code === 'Escape' && (!$('mapsel').hidden || !$('stats').hidden || !$('models').hidden)) {
+  if (G.state === 'menu' && e.code === 'Escape' && (!$('mapsel').hidden || !$('stats').hidden || !$('models').hidden || !$('ranking').hidden)) {
     e.preventDefault();
     showScreen('menu');
     return;
@@ -10444,6 +10695,9 @@ function startGame(save) {
   Sound.setHum(false);
   newGame(save);
   if (!save) { Life.add('games'); Life.mapGame(G.mapId); }
+  // grade au début de la partie (repris d'une partie rechargée en cours de jeu s'il est cohérent)
+  const rd = Rank.data, rs = save && save.rank;
+  G.rankStart = !rd ? null : rs && rs.p === rd.p && Number.isInteger(rs.lv) && rs.lv >= 1 && rs.lv <= rd.lv ? { p: rs.p, lv: rs.lv } : { p: rd.p, lv: rd.lv };
   G.state = 'playing';
   showScreen(null);
   HUD.el.hud.hidden = false;
@@ -10502,10 +10756,14 @@ function gameOver() {
   $('go-record').hidden = !record;
   const st = G.stats;
   const mins = Math.floor(G.time / 60), secs = Math.floor(G.time % 60);
+  const rk = Rank.data, rs = G.rankStart;
+  const lvTxt = !rk ? '–' : rs && rs.p === rk.p && rs.lv !== rk.lv ? `${rs.lv} → ${rk.lv}` : String(rk.lv);
   $('go-stats').innerHTML = [
     ['Éliminations', st.kills], ['Tirs à la tête', st.headshots], ['Points gagnés', st.earned],
     ['Portes ouvertes', st.doors], ['Précision', st.shots ? `${Math.round((st.hits / st.shots) * 100)} %` : '–'],
     ['Temps de survie', `${mins} min ${String(secs).padStart(2, '0')} s`],
+    ['XP gagnée', Rank.off && !st.xp ? `– <small>(${Rank.off})</small>` : `+${fmtXp(st.xp || 0)}`],
+    ['Niveau', `${lvTxt}${rk && rk.p ? ` <small>· prestige ${rk.p}</small>` : ''}`],
   ].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
   setTimeout(() => { if (G.state === 'gameover') { HUD.el.hud.hidden = true; showScreen('gameover'); } }, 1600);
 }
@@ -10526,6 +10784,7 @@ function refreshMenu() {
       : map.rules.powerOn ? `Le courant est déjà rétabli : ${map.amp ? "atouts et Amplificateur sont" : 'les atouts sont'} disponibles.`
       : `Rétablissez le courant pour ${map.amp ? "les atouts et l'Amplificateur" : 'les atouts'}.`;
   }
+  refreshMenuRank();
   const resume = $('btn-resume-save');
   if (G.save && G.save.round) { resume.hidden = false; resume.textContent = `Reprendre à la manche ${G.save.round}`; }
   else resume.hidden = true;
@@ -10538,6 +10797,19 @@ function bindUI() {
   click('btn-stats-back', () => showScreen('menu'));
   click('btn-models', openModels);
   click('btn-models-back', () => showScreen('menu'));
+  click('btn-ranking', openRanking);
+  click('btn-ranking-back', () => { refreshMenuRank(); showScreen('menu'); });
+  const rkTabs = $('rk-tabs');
+  for (const b of rkTabs.children) b.addEventListener('click', () => { if (Ranking.tab !== b.dataset.tab) { Sound.ui(); Ranking.tab = b.dataset.tab; Ranking.confirm = false; renderRanking(); } });
+  rkTabs.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    Ranking.tab = Ranking.tab === 'levels' ? 'prestiges' : 'levels';
+    Sound.ui();
+    renderRanking();
+    const t = [...rkTabs.children].find((b) => b.dataset.tab === Ranking.tab);
+    if (t) t.focus();
+  });
   $('md-tabs').addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
@@ -11239,6 +11511,512 @@ function renderModels(dt) {
   M.renderer.render(M.scene, M.camera);
 }
 
+/* ------------------------------------------------------- Emblèmes du rang --
+   Dessins originaux en SVG (boîte 100 × 100). Insignes de niveau : 11 grades de
+   5 niveaux, inspirés des insignes militaires (chevrons, barrettes, feuille,
+   ailes, étoiles), un à cinq traits sous l'insigne pour le niveau dans le grade.
+   Emblèmes de prestige : un médaillon par prestige, plus orné de palier en palier,
+   avec un motif tiré du jeu. Aucun dessin n'est repris d'un autre jeu. */
+let EMB_UID = 0;
+const EMB_METAL = {
+  bronze: ['#ffdcae', '#c98a46', '#5e3410'],
+  copper: ['#ffcfae', '#c56d3c', '#55220c'],
+  silver: ['#ffffff', '#b6bfc7', '#454e56'],
+  gold: ['#fff5b8', '#e3b33c', '#6e4a0c'],
+  platinum: ['#ffffff', '#d8e2ee', '#5d6b7d'],
+};
+const EMB_FIELD = {
+  olive: ['#76804a', '#262c12'], olive2: ['#5f6a3e', '#191e0b'], navy: ['#35557f', '#0d1626'],
+  crimson: ['#992a30', '#300709'], black: ['#3d3a36', '#080808'],
+};
+const RANK_TIERS = [
+  { name: 'Recrue', plate: 'shield', field: 'olive', metal: 'bronze', mark: 'ch1' },
+  { name: 'Soldat', plate: 'shield', field: 'olive', metal: 'bronze', mark: 'ch2' },
+  { name: 'Caporal', plate: 'shield', field: 'olive', metal: 'bronze', mark: 'ch3' },
+  { name: 'Sergent', plate: 'shield', field: 'olive2', metal: 'silver', mark: 'ch3r1' },
+  { name: 'Sergent-chef', plate: 'shield', field: 'olive2', metal: 'silver', mark: 'ch3r2' },
+  { name: 'Adjudant', plate: 'shield', field: 'olive2', metal: 'silver', mark: 'ch3r2d' },
+  { name: 'Lieutenant', plate: 'plaque', field: 'navy', metal: 'silver', mark: 'bar1' },
+  { name: 'Capitaine', plate: 'plaque', field: 'navy', metal: 'silver', mark: 'bar2' },
+  { name: 'Commandant', plate: 'plaque', field: 'navy', metal: 'gold', mark: 'leaf' },
+  { name: 'Colonel', plate: 'round', field: 'crimson', metal: 'gold', mark: 'wings' },
+  { name: 'Général', plate: 'octagon', field: 'black', metal: 'gold', mark: 'stars' },
+];
+const rankTier = (level) => RANK_TIERS[Math.min(RANK_TIERS.length - 1, Math.max(0, Math.floor((level - 1) / 5)))];
+
+/* --- petites briques --- */
+const embStar = (cx, cy, r, ri = r * 0.42, spikes = 5, rot = -90) => {
+  let d = '';
+  for (let i = 0; i < spikes * 2; i++) {
+    const a = ((rot + (i * 180) / spikes) * Math.PI) / 180, rr = i % 2 ? ri : r;
+    d += `${i ? 'L' : 'M'}${(cx + Math.cos(a) * rr).toFixed(2)} ${(cy + Math.sin(a) * rr).toFixed(2)}`;
+  }
+  return `${d}Z`;
+};
+const embPoly = (cx, cy, r, n, rot = -90) => {
+  let d = '';
+  for (let i = 0; i < n; i++) { const a = ((rot + (i * 360) / n) * Math.PI) / 180; d += `${i ? 'L' : 'M'}${(cx + Math.cos(a) * r).toFixed(2)} ${(cy + Math.sin(a) * r).toFixed(2)}`; }
+  return `${d}Z`;
+};
+const embGrad = (id, [l, m, d], angle = 'tl') => {
+  const [x1, y1, x2, y2] = angle === 'v' ? [0, 0, 0, 1] : [0.15, 0, 0.75, 1];
+  return `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="${l}"/><stop offset="0.48" stop-color="${m}"/><stop offset="1" stop-color="${d}"/></linearGradient>`;
+};
+const embRadial = (id, [l, d], cy = 0.32) => `<radialGradient id="${id}" cx="0.5" cy="${cy}" r="0.78"><stop offset="0" stop-color="${l}"/><stop offset="1" stop-color="${d}"/></radialGradient>`;
+/* forme pleine avec ombre portée, remplissage métal et liseré sombre */
+const embMetal = (d, fill, dark, sw = 1.3, extra = '') => `<path d="${d}" fill="#000" opacity="0.42" transform="translate(0 1.8)"${extra}/><path d="${d}" fill="${fill}" stroke="${dark}" stroke-width="${sw}" stroke-linejoin="round"${extra}/>`;
+const embSvg = (inner, defs, cls = '') => `<svg class="emb ${cls}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><defs>${defs}</defs>${inner}</svg>`;
+
+/* --- insignes de niveau --- */
+const PLATES = {
+  shield: { d: 'M50 4 L90 14 V47 C90 72 73 88 50 97 C27 88 10 72 10 47 V14 Z', area: [23, 12, 77, 71], pip: [75, 84] },
+  plaque: { d: 'M21 7 H79 L93 21 V79 L79 93 H21 L7 79 V21 Z', area: [17, 14, 83, 72], pip: [76, 86] },
+  round: { d: 'M50 3 A47 47 0 1 1 49.99 3 Z', area: [13, 16, 87, 70], pip: [73, 82] },
+  octagon: { d: embPoly(50, 50, 48, 8, -112.5), area: [12, 12, 88, 88], pip: null },
+};
+const chevron = (y, h = 8, w = 30, a = 17) => `M${50 - w} ${y + a} L50 ${y} L${50 + w} ${y + a} L${50 + w} ${y + a + h} L50 ${y + h} L${50 - w} ${y + a + h} Z`;
+const rocker = (y, h = 7, w = 30, sag = 13) => `M${50 - w} ${y} Q50 ${y + sag * 2} ${50 + w} ${y} L${50 + w} ${y + h} Q50 ${y + h + sag * 2} ${50 - w} ${y + h} Z`;
+/* Marques des grades : tracés (boîte nominale 0-100) et leur encombrement [x0, y0, x1, y1]. */
+const mirrorX = (d) => d.replace(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g, (m, x, y) => `${+(100 - parseFloat(x)).toFixed(2)} ${y}`);
+const LEAF = 'M50 14 C57 21 64 21 63 30 C71 30 74 38 67 43 C75 46 74 55 66 57 C71 64 66 71 58 69 C59 76 54 80 51.5 77 L52 90 H48 L48.5 77 C46 80 41 76 42 69 C34 71 29 64 34 57 C26 55 25 46 33 43 C26 38 29 30 37 30 C36 21 43 21 50 14 Z';
+const WING = ['M45 45 C35 32 18 27 2 29 C10 35 20 40 31 43 Z', 'M45 50 C34 41 19 38 5 41 C14 46 23 49 33 51 Z', 'M45 55 C35 50 22 49 10 53 C19 57 27 58 36 59 Z'];
+const MARKS = {
+  ch1: () => ({ d: [chevron(38)], b: [20, 38, 80, 63] }),
+  ch2: () => ({ d: [chevron(29), chevron(44)], b: [20, 29, 80, 69] }),
+  ch3: () => ({ d: [chevron(21), chevron(35), chevron(49)], b: [20, 21, 80, 74] }),
+  ch3r1: () => ({ d: [chevron(16, 7), chevron(28, 7), chevron(40, 7), rocker(65)], b: [20, 16, 80, 85] }),
+  ch3r2: () => ({ d: [chevron(13, 7), chevron(24, 7), chevron(35, 7), rocker(59, 6.5), rocker(70, 6.5)], b: [20, 13, 80, 89.5] }),
+  ch3r2d: () => ({ d: [chevron(13, 7), chevron(24, 7), chevron(35, 7), rocker(59, 6.5), rocker(70, 6.5), 'M50 43.5 L57 50.5 L50 57.5 L43 50.5 Z'], b: [20, 13, 80, 89.5] }),
+  bar1: () => ({ d: ['M41 16 H59 V84 H41 Z'], b: [41, 16, 59, 84], bevel: [[44, 19, 12, 62]] }),
+  bar2: () => ({ d: ['M28 16 H46 V84 H28 Z', 'M54 16 H72 V84 H54 Z'], b: [28, 16, 72, 84], bevel: [[31, 19, 12, 62], [57, 19, 12, 62]] }),
+  leaf: () => ({ d: [LEAF], b: [25, 14, 75, 90], vein: 'M50 22 V80 M50 34 L41 28 M50 34 L59 28 M50 46 L38 42 M50 46 L62 42 M50 58 L39 56 M50 58 L61 56 M50 68 L43 68 M50 68 L57 68' }),
+  wings: () => ({ d: [...WING, ...WING.map(mirrorX), 'M50 38 A12 12 0 1 1 49.99 38 Z', embStar(50, 50, 9, 3.8)], b: [2, 27, 98, 62] }),
+};
+const STAR_LAYOUT = {
+  1: [[50, 50, 21]],
+  2: [[33, 50, 15], [67, 50, 15]],
+  3: [[25, 54, 12.5], [50, 44, 12.5], [75, 54, 12.5]],
+  4: [[50, 28, 11.5], [28, 50, 11.5], [72, 50, 11.5], [50, 72, 11.5]],
+  5: [[50, 26, 11], [27, 43, 11], [73, 43, 11], [36, 70, 11], [64, 70, 11]],
+};
+/* Insigne du niveau (1 à 55). */
+function rankInsigniaSVG(level, cls = '') {
+  level = Math.max(1, Math.min(55, Math.round(level) || 1));
+  const t = rankTier(level), sub = ((level - 1) % 5) + 1, id = `ze${++EMB_UID}`;
+  const metal = EMB_METAL[t.metal], plate = PLATES[t.plate];
+  const defs = embGrad(`${id}m`, metal) + embRadial(`${id}f`, EMB_FIELD[t.field]) +
+    `<linearGradient id="${id}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.32"/><stop offset="0.45" stop-color="#fff" stop-opacity="0"/></linearGradient>`;
+  const inset = 'translate(50 50) scale(0.87) translate(-50 -50)';
+  let s = `<path d="${plate.d}" fill="#000" opacity="0.5" transform="translate(0 2.5)"/>`;
+  s += `<path d="${plate.d}" fill="url(#${id}m)" stroke="${metal[2]}" stroke-width="1.4"/>`;
+  s += `<path d="${plate.d}" fill="url(#${id}f)" transform="${inset}" stroke="#000" stroke-opacity="0.5" stroke-width="1.6"/>`;
+  if (t.plate === 'octagon') s += `<path d="${embPoly(50, 50, 39.5, 8, -112.5)}" fill="none" stroke="${metal[1]}" stroke-opacity="0.5" stroke-width="0.8"/>`;
+  const mk = t.mark === 'stars' ? { d: STAR_LAYOUT[sub].map(([x, y, r]) => embStar(x, y, r, r * 0.42)), b: [12, 12, 88, 88] } : MARKS[t.mark]();
+  // la marque remplit la zone de la plaque, proportions gardées
+  const [ax0, ay0, ax1, ay1] = plate.area, [bx0, by0, bx1, by1] = mk.b;
+  const k = Math.min((ax1 - ax0) / (bx1 - bx0), (ay1 - ay0) / (by1 - by0), 1.15);
+  const tx = (ax0 + ax1) / 2 - ((bx0 + bx1) / 2) * k, ty = (ay0 + ay1) / 2 - ((by0 + by1) / 2) * k;
+  let g = mk.d.map((d) => embMetal(d, `url(#${id}m)`, metal[2])).join('');
+  if (mk.bevel) g += mk.bevel.map(([x, y, w, h]) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#fff" stroke-opacity="0.45" stroke-width="1"/>`).join('');
+  if (mk.vein) g += `<path d="${mk.vein}" fill="none" stroke="${metal[2]}" stroke-opacity="0.7" stroke-width="1.3" stroke-linecap="round"/>`;
+  s += `<g transform="translate(${tx.toFixed(2)} ${ty.toFixed(2)}) scale(${k.toFixed(3)})">${g}</g>`;
+  // niveau dans le grade : un à cinq traits (comme le compte des manches)
+  if (plate.pip) {
+    const [y0, y1] = plate.pip, gap = 6.6, x0 = 50 - ((sub - 1) * gap) / 2;
+    for (let i = 0; i < sub; i++) s += embMetal(`M${(x0 + i * gap - 1.8).toFixed(2)} ${y0} h3.6 V${y1} h-3.6 Z`, metal[0], metal[2], 0.9);
+  }
+  s += `<path d="${plate.d}" fill="url(#${id}h)" transform="${inset}"/>`;
+  return embSvg(s, defs, cls);
+}
+
+/* --- emblèmes de prestige --- */
+const PRESTIGES = [
+  { name: 'Casque', motif: 'helmet', field: ['#5a6670', '#161b1f'], metal: 'bronze' },
+  { name: 'Plaque', motif: 'dogtag', field: ['#66703f', '#1a1d0c'], metal: 'bronze' },
+  { name: 'Grenade', motif: 'grenade', field: ['#7a4a2a', '#22120a'], metal: 'copper' },
+  { name: 'Pelles', motif: 'shovels', field: ['#3f6a46', '#0f1d12'], metal: 'copper' },
+  { name: 'Masque à gaz', motif: 'gasmask', field: ['#3b5579', '#0c1424'], metal: 'silver' },
+  { name: 'Barricade', motif: 'barricade', field: ['#7b5a3a', '#21150a'], metal: 'silver' },
+  { name: 'Crâne', motif: 'skull', field: ['#45484c', '#0b0c0d'], metal: 'silver' },
+  { name: 'Boîte mystère', motif: 'box', field: ['#2f6f73', '#08191b'], metal: 'silver' },
+  { name: 'Courant', motif: 'bolt', field: ['#2c63b8', '#071433'], metal: 'gold' },
+  { name: 'Griffes', motif: 'claws', field: ['#a3242b', '#2a0507'], metal: 'gold' },
+  { name: 'Atout', motif: 'bottle', field: ['#6a3c9a', '#170a26'], metal: 'gold' },
+  { name: 'Tireur d’élite', motif: 'target', field: ['#2f6b3a', '#07170b'], metal: 'gold' },
+  { name: 'Roquette', motif: 'rocket', field: ['#b4531f', '#2c0f04'], metal: 'gold' },
+  { name: 'Atome', motif: 'atom', field: ['#4f7d1c', '#112104'], metal: 'gold' },
+  { name: 'Bunker', motif: 'hatch', field: ['#4b6b88', '#0e1824'], metal: 'platinum' },
+  { name: 'Barbelés', motif: 'wire', field: ['#8e1f2c', '#24050a'], metal: 'platinum' },
+  { name: 'Œil jaune', motif: 'eye', field: ['#2d2b28', '#050505'], metal: 'gold' },
+  { name: 'Sablier', motif: 'hourglass', field: ['#26386b', '#060b1c'], metal: 'platinum' },
+  { name: 'Brasier', motif: 'flame', field: ['#4a1410', '#0b0202'], metal: 'gold' },
+  { name: 'Maître', motif: 'kingskull', field: ['#4a1d6b', '#0c0414'], metal: 'gold' },
+];
+/* Motifs (centrés en 50, 50, environ 40 × 40). m : remplissage métal, d : trait sombre, l : clair. */
+const MOTIFS = {
+  helmet: (m, d) => embMetal('M28 60 C28 41 37 31 50 31 C63 31 72 41 72 60 Z', m, d) + embMetal('M20 60 H80 C80 65 77 68 72 68 H28 C23 68 20 65 20 60 Z', m, d)
+    + `<path d="M34 46 C38 39 44 36 50 36" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="2.4" stroke-linecap="round"/><path d="M33 68 C38 78 62 78 67 68" fill="none" stroke="${d}" stroke-width="2.4"/>`,
+  dogtag: (m, d) => `<g transform="rotate(-14 50 50)">${embMetal('M38 30 H62 C66 30 68 33 68 37 V63 C68 67 66 70 62 70 H38 C34 70 32 67 32 63 V37 C32 33 34 30 38 30 Z', m, d)}<circle cx="50" cy="36" r="2.6" fill="${d}"/>`
+    + `${[44, 50, 56, 62].map((y, i) => `<path d="M38 ${y} H${i % 2 ? 56 : 62}" stroke="${d}" stroke-width="2" stroke-linecap="round" opacity="0.75"/>`).join('')}</g>`
+    + [0, 1, 2, 3, 4, 5].map((i) => `<circle cx="${44 - i * 3.4}" cy="${32 - i * 3.6 + i * i * 0.35}" r="1.5" fill="none" stroke="${d === '#000' ? '#888' : '#d8d2c4'}" stroke-width="1.1"/>`).join(''),
+  grenade: (m, d) => embMetal('M37 50 C37 40 43 36 50 36 C57 36 63 40 63 50 V62 C63 71 57 76 50 76 C43 76 37 71 37 62 Z', m, d)
+    + `<path d="M37 52 H63 M37 63 H63 M50 37 V75" stroke="${d}" stroke-width="1.6" opacity="0.7"/>` + embMetal('M45 29 H55 V37 H45 Z', m, d)
+    + embMetal('M55 31 C62 31 66 36 66 44 L63 47 C63 41 61 36 55 35 Z', m, d) + `<circle cx="40" cy="30" r="4.6" fill="none" stroke="${d}" stroke-width="2.4"/><circle cx="40" cy="30" r="4.6" fill="none" stroke="#e8e0cc" stroke-width="1.2"/>`,
+  shovels: (m, d) => {
+    const one = `<path d="M32 30 L66 64" stroke="${d}" stroke-width="5.4" stroke-linecap="round"/><path d="M32 30 L66 64" stroke="#b98a5a" stroke-width="3.2" stroke-linecap="round"/>`
+      + embMetal('M60 58 L71 55 L78 70 C80 76 76 80 70 78 L55 71 L58 60 Z', m, d) + embMetal('M25 27 L31 21 L37 27 L31 33 Z', m, d);
+    return one + `<g transform="translate(100 0) scale(-1 1)">${one}</g>`;
+  },
+  gasmask: (m, d) => embMetal('M30 38 C30 28 40 24 50 24 C60 24 70 28 70 38 V52 C70 62 62 70 50 72 C38 70 30 62 30 52 Z', m, d)
+    + `<circle cx="41" cy="44" r="7.4" fill="${d}"/><circle cx="59" cy="44" r="7.4" fill="${d}"/><circle cx="41" cy="44" r="5" fill="#6fc2c7" opacity="0.85"/><circle cx="59" cy="44" r="5" fill="#6fc2c7" opacity="0.85"/>`
+    + embMetal('M42 62 H58 V76 C58 79 56 81 53 81 H47 C44 81 42 79 42 76 Z', m, d) + `<path d="M42 67 H58 M42 72 H58 M42 77 H58" stroke="${d}" stroke-width="1.4" opacity="0.7"/>`,
+  barricade: (m, d) => {
+    const plank = (rot) => `<g transform="rotate(${rot} 50 52)">${embMetal('M22 46 H78 V58 H22 Z', '#9b7048', '#3b230e')}<path d="M24 50 H76 M24 54 H70" stroke="#5c3a1c" stroke-width="0.9" opacity="0.6"/><circle cx="27" cy="52" r="1.6" fill="${m}" stroke="${d}" stroke-width="0.6"/><circle cx="73" cy="52" r="1.6" fill="${m}" stroke="${d}" stroke-width="0.6"/></g>`;
+    return plank(28) + plank(-28) + plank(0);
+  },
+  skull: (m, d) => embMetal('M30 48 C30 32 39 24 50 24 C61 24 70 32 70 48 C70 56 67 59 63 62 V72 H37 V62 C33 59 30 56 30 48 Z', m, d)
+    + `<path d="M35 47 C35 41 45 40 46 47 C46 53 35 54 35 47 Z M54 47 C55 40 65 41 65 47 C65 54 54 53 54 47 Z" fill="${d}"/><path d="M50 52 L54 59 H46 Z" fill="${d}"/>`
+    + `<path d="M41 64 V72 M45.5 64 V72 M50 64 V72 M54.5 64 V72 M59 64 V72" stroke="${d}" stroke-width="1.6"/>`,
+  box: (m, d) => embMetal('M28 40 H72 V72 H28 Z', '#5a3a1e', '#24140a') + embMetal('M26 34 H74 V42 H26 Z', '#704a26', '#24140a')
+    + `<path d="M28 56 H72" stroke="${m}" stroke-width="2.4"/><path d="M34 40 V72 M66 40 V72" stroke="${m}" stroke-width="1.8" opacity="0.8"/>`
+    + `<text x="50" y="68" text-anchor="middle" font-family="'Big Shoulders Stencil Display', Impact, sans-serif" font-weight="900" font-size="30" fill="#8ee7ff" stroke="#0b2c38" stroke-width="1.2">?</text>`,
+  bolt: (m, d) => embMetal('M56 20 L33 54 H48 L41 80 L68 42 H53 L61 20 Z', m, d),
+  claws: (m, d) => [[-12, 0], [0, -3], [12, 0]].map(([dx, dy]) => embMetal(`M${42 + dx} ${26 + dy} C${50 + dx} ${42 + dy} ${51 + dx} ${58 + dy} ${46 + dx} ${76 + dy} C${55 + dx} ${60 + dy} ${56 + dx} ${42 + dy} ${46 + dx} ${26 + dy} Z`, '#e9e2cf', '#5a0c10', 1.1)).join(''),
+  bottle: (m, d) => embMetal('M45 22 H55 V32 C55 36 62 38 62 46 V74 C62 77 60 79 57 79 H43 C40 79 38 77 38 74 V46 C38 38 45 36 45 32 Z', '#3c8f62', '#0b2a19')
+    + embMetal('M44 18 H56 V24 H44 Z', m, d) + embMetal('M38 52 H62 V66 H38 Z', m, d)
+    + `<path d="${embStar(50, 59, 5.5, 2.4)}" fill="#a11d24"/><path d="M43 42 C43 38 46 36 47 34" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="2" stroke-linecap="round"/>`,
+  target: (m, d) => `<circle cx="50" cy="50" r="22" fill="none" stroke="${d}" stroke-width="6.4"/><circle cx="50" cy="50" r="22" fill="none" stroke="${m}" stroke-width="4"/>`
+    + `<circle cx="50" cy="50" r="9" fill="none" stroke="${d}" stroke-width="5"/><circle cx="50" cy="50" r="9" fill="none" stroke="${m}" stroke-width="3"/>`
+    + ['M50 20 V36', 'M50 64 V80', 'M20 50 H36', 'M64 50 H80'].map((p) => `<path d="${p}" stroke="${d}" stroke-width="5.6" stroke-linecap="round"/><path d="${p}" stroke="${m}" stroke-width="3.2" stroke-linecap="round"/>`).join('')
+    + `<circle cx="50" cy="50" r="2.4" fill="#e2313a"/>`,
+  rocket: (m, d) => `<g transform="rotate(45 50 50)"><path d="M44 70 C46 80 50 86 50 86 C50 86 54 80 56 70 Z" fill="#ffb347"/><path d="M47 70 C48 77 50 81 50 81 C50 81 52 77 53 70 Z" fill="#fff3a0"/>`
+    + embMetal('M43 36 C43 26 50 16 50 16 C50 16 57 26 57 36 V70 H43 Z', m, d) + embMetal('M43 56 L35 70 V74 L43 68 Z', '#a11d24', '#3a0a0c') + embMetal('M57 56 L65 70 V74 L57 68 Z', '#a11d24', '#3a0a0c')
+    + `<path d="M43 34 H57" stroke="${d}" stroke-width="1.6"/><circle cx="50" cy="44" r="3.4" fill="${d}"/></g>`,
+  atom: (m, d) => {
+    const blade = (a) => { const r1 = 9, r2 = 25, a0 = ((a - 30) * Math.PI) / 180, a1 = ((a + 30) * Math.PI) / 180, p = (r, t) => `${(50 + Math.cos(t) * r).toFixed(2)} ${(50 + Math.sin(t) * r).toFixed(2)}`;
+      return `M${p(r1, a0)} L${p(r2, a0)} A${r2} ${r2} 0 0 1 ${p(r2, a1)} L${p(r1, a1)} A${r1} ${r1} 0 0 0 ${p(r1, a0)} Z`; };
+    return `<circle cx="50" cy="50" r="29" fill="#f2c522" stroke="${d}" stroke-width="1.6"/>` + [-90, 30, 150].map((a) => `<path d="${blade(a)}" fill="#141414"/>`).join('') + '<circle cx="50" cy="50" r="5.5" fill="#141414"/>';
+  },
+  hatch: (m, d) => `<circle cx="50" cy="50" r="27" fill="${m}" stroke="${d}" stroke-width="1.6"/><circle cx="50" cy="50" r="21" fill="none" stroke="${d}" stroke-width="1.4" opacity="0.6"/>`
+    + [...Array(8)].map((_, i) => { const a = (i * Math.PI) / 4; return `<circle cx="${(50 + Math.cos(a) * 24).toFixed(2)}" cy="${(50 + Math.sin(a) * 24).toFixed(2)}" r="1.9" fill="${d}"/>`; }).join('')
+    + `<circle cx="50" cy="50" r="12" fill="none" stroke="${d}" stroke-width="5.4"/><circle cx="50" cy="50" r="12" fill="none" stroke="#c9372f" stroke-width="3.4"/>`
+    + ['M50 38 V62', 'M38 50 H62'].map((p) => `<path d="${p}" stroke="${d}" stroke-width="4.4" stroke-linecap="round"/><path d="${p}" stroke="#c9372f" stroke-width="2.4" stroke-linecap="round"/>`).join('') + `<circle cx="50" cy="50" r="3.6" fill="${m}" stroke="${d}"/>`,
+  wire: (m, d) => {
+    let s = `<circle cx="50" cy="50" r="22" fill="none" stroke="${d}" stroke-width="5"/><circle cx="50" cy="50" r="22" fill="none" stroke="${m}" stroke-width="2.6" stroke-dasharray="7 2.2"/>`;
+    for (let i = 0; i < 10; i++) {
+      const a = (i * Math.PI) / 5, x = 50 + Math.cos(a) * 22, y = 50 + Math.sin(a) * 22;
+      s += `<path d="M${(x - 4.5).toFixed(1)} ${(y - 4.5).toFixed(1)} L${(x + 4.5).toFixed(1)} ${(y + 4.5).toFixed(1)} M${(x + 4.5).toFixed(1)} ${(y - 4.5).toFixed(1)} L${(x - 4.5).toFixed(1)} ${(y + 4.5).toFixed(1)}" stroke="${d}" stroke-width="3.2" stroke-linecap="round"/><path d="M${(x - 4).toFixed(1)} ${(y - 4).toFixed(1)} L${(x + 4).toFixed(1)} ${(y + 4).toFixed(1)} M${(x + 4).toFixed(1)} ${(y - 4).toFixed(1)} L${(x - 4).toFixed(1)} ${(y + 4).toFixed(1)}" stroke="${m}" stroke-width="1.6" stroke-linecap="round"/>`;
+    }
+    return s + `<path d="${embStar(50, 50, 10, 4.2)}" fill="#c9372f" stroke="#3a0a0c" stroke-width="1"/>`;
+  },
+  eye: (m, d, id) => embMetal('M22 50 C34 32 66 32 78 50 C66 68 34 68 22 50 Z', '#e7dfc8', d)
+    + `<circle cx="50" cy="50" r="13" fill="#f2c41b" stroke="#6b4b05" stroke-width="1.4"/><circle cx="50" cy="50" r="13" fill="url(#${id}e)" opacity="0.55"/>`
+    + '<ellipse cx="50" cy="50" rx="3.2" ry="11" fill="#0d0d0d"/><circle cx="45" cy="45" r="2.4" fill="#fff" opacity="0.85"/>',
+  hourglass: (m, d) => embMetal('M30 22 H70 V28 H30 Z', m, d) + embMetal('M30 72 H70 V78 H30 Z', m, d)
+    + `<path d="M35 28 C35 42 47 46 47 50 C47 54 35 58 35 72 H65 C65 58 53 54 53 50 C53 46 65 42 65 28 Z" fill="#cfe3ea" fill-opacity="0.35" stroke="${d}" stroke-width="1.6"/>`
+    + '<path d="M40 36 H60 C58 42 52 45 50 47 C48 45 42 42 40 36 Z" fill="#e8c06a"/><path d="M38 71 C40 63 47 60 50 59 C53 60 60 63 62 71 Z" fill="#e8c06a"/><path d="M50 47 V59" stroke="#e8c06a" stroke-width="1.4"/>'
+    + embMetal('M31 28 H35 V72 H31 Z', m, d, 1) + embMetal('M65 28 H69 V72 H65 Z', m, d, 1),
+  flame: (m, d, id) => '<path d="M50 16 C58 30 72 36 70 56 C69 70 60 80 50 82 C40 80 31 70 30 57 C29 46 36 40 38 32 C42 40 44 44 47 45 C47 34 46 26 50 16 Z" fill="#000" opacity="0.42" transform="translate(0 1.8)"/>'
+    + `<path d="M50 16 C58 30 72 36 70 56 C69 70 60 80 50 82 C40 80 31 70 30 57 C29 46 36 40 38 32 C42 40 44 44 47 45 C47 34 46 26 50 16 Z" fill="url(#${id}fl)" stroke="#5a1404" stroke-width="1.3"/>`
+    + '<path d="M50 44 C55 52 62 56 60 66 C59 73 55 77 50 78 C45 77 41 73 40 66 C39 60 44 56 46 50 C47 55 49 56 50 56 Z" fill="#fff3a0" opacity="0.9"/>',
+  kingskull: (m, d) => embMetal('M30 50 C30 34 39 26 50 26 C61 26 70 34 70 50 C70 58 67 61 63 64 V74 H37 V64 C33 61 30 58 30 50 Z', '#ece4cf', '#3a2c12')
+    + '<path d="M35 49 C35 43 45 42 46 49 C46 55 35 56 35 49 Z M54 49 C55 42 65 43 65 49 C65 56 54 55 54 49 Z" fill="#1a1206"/><circle cx="40.5" cy="49" r="2.6" fill="#ffd52a"/><circle cx="59.5" cy="49" r="2.6" fill="#ffd52a"/>'
+    + '<path d="M50 54 L54 61 H46 Z" fill="#1a1206"/><path d="M41 66 V74 M45.5 66 V74 M50 66 V74 M54.5 66 V74 M59 66 V74" stroke="#3a2c12" stroke-width="1.6"/>'
+    + embMetal('M33 30 L31 16 L41 23 L50 12 L59 23 L69 16 L67 30 Z', m, d, 1) + '<circle cx="50" cy="22" r="2.2" fill="#c4162a"/>',
+  crown: (m, d) => embMetal('M26 66 L22 34 L37 48 L50 24 L63 48 L78 34 L74 66 Z', m, d) + embMetal('M25 66 H75 V76 H25 Z', m, d)
+    + ['<circle cx="22" cy="33" r="3.4"/>', '<circle cx="50" cy="23" r="3.8"/>', '<circle cx="78" cy="33" r="3.4"/>'].map((c) => c.replace('/>', ` fill="${m}" stroke="${d}" stroke-width="1"/>`)).join('')
+    + '<path d="M50 52 L55 58 L50 64 L45 58 Z" fill="#c4162a" stroke="#3a050b" stroke-width="1"/><circle cx="34" cy="71" r="2.6" fill="#1f6fd1" stroke="#06203f" stroke-width="0.8"/><circle cx="66" cy="71" r="2.6" fill="#1f6fd1" stroke="#06203f" stroke-width="0.8"/><circle cx="50" cy="71" r="2.6" fill="#c4162a" stroke="#3a050b" stroke-width="0.8"/>',
+};
+/* couronne de laurier : deux branches qui montent du bas */
+function embLaurel(r, color, dark, n = 7, top = 52) {
+  let s = '';
+  for (const side of [-1, 1]) {
+    // tige, puis les feuilles le long de la tige, pointées vers le haut et un peu vers l'extérieur
+    const a0 = ((90 + side * 14) * Math.PI) / 180, a1 = ((90 + side * (14 + top + 70)) * Math.PI) / 180;
+    s += `<path d="M${(50 + Math.cos(a0) * r).toFixed(2)} ${(50 + Math.sin(a0) * r).toFixed(2)} A${r} ${r} 0 0 ${side > 0 ? 1 : 0} ${(50 + Math.cos(a1) * r).toFixed(2)} ${(50 + Math.sin(a1) * r).toFixed(2)}" fill="none" stroke="${dark}" stroke-width="1.6"/>`;
+    for (let i = 0; i < n; i++) {
+      const deg = 90 + side * (20 + (i * (top + 64)) / n), a = (deg * Math.PI) / 180;
+      for (const off of [-1, 1]) {
+        const rr = r + off * 2.6, x = 50 + Math.cos(a) * rr, y = 50 + Math.sin(a) * rr;
+        const rot = deg + (side > 0 ? 180 : 0) + off * 32;
+        s += `<path d="M0 -6.5 C2.8 -3 2.8 3 0 6.5 C-2.8 3 -2.8 -3 0 -6.5 Z" transform="translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${rot.toFixed(1)})" fill="${color}" stroke="${dark}" stroke-width="0.7"/>`;
+      }
+    }
+  }
+  return s;
+}
+function embWings(fill, dark) {
+  const feathers = ['M38 40 C28 26 12 20 0 22 C6 30 16 36 30 41 Z', 'M38 47 C26 37 11 33 1 36 C8 43 18 47 31 50 Z', 'M38 54 C27 47 14 46 4 50 C11 56 21 58 32 58 Z', 'M38 61 C30 57 20 58 11 63 C18 67 26 67 34 65 Z'];
+  const left = feathers.map((d) => embMetal(d, fill, dark, 1)).join('');
+  return left + `<g transform="translate(100 0) scale(-1 1)">${left}</g>`;
+}
+/* Emblème du prestige p (1 à 20). */
+function prestigeEmblemSVG(p, cls = '') {
+  p = Math.max(1, Math.min(20, Math.round(p) || 1));
+  const P = PRESTIGES[p - 1], id = `zp${++EMB_UID}`, metal = EMB_METAL[P.metal];
+  const M = `url(#${id}m)`, F = `url(#${id}f)`, D = metal[2];
+  let defs = embGrad(`${id}m`, metal) + embRadial(`${id}f`, P.field, 0.35);
+  if (P.motif === 'eye') defs += `<radialGradient id="${id}e" cx="0.5" cy="0.5" r="0.5"><stop offset="0.35" stop-color="#fff6a0"/><stop offset="1" stop-color="#b8640a"/></radialGradient>`;
+  if (P.motif === 'flame') defs += `<linearGradient id="${id}fl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd257"/><stop offset="0.55" stop-color="#ff6a1a"/><stop offset="1" stop-color="#b3120c"/></linearGradient>`;
+  const tier = p <= 4 ? 'medal' : p <= 8 ? 'shield' : p <= 12 ? 'badge' : p <= 16 ? 'star' : p <= 19 ? 'winged' : 'master';
+  let s = '', motifScale = 0.82, motifY = 50;
+  if (tier === 'winged' || tier === 'master') s += embWings(M, D);
+  if (tier === 'star' || tier === 'master') {
+    const burst = tier === 'master' ? embStar(50, 52, 42, 32, 8, -90) : embStar(50, 50, 48, 36, 8, -90);
+    s += embMetal(burst, M, D, 1.2) + `<path d="${burst}" fill="none" stroke="#fff" stroke-opacity="0.25" stroke-width="0.8" transform="translate(50 50) scale(0.9) translate(-50 -50)"/>`;
+  }
+  if (tier === 'medal') {
+    s += `<circle cx="50" cy="51.5" r="47" fill="#000" opacity="0.45"/><circle cx="50" cy="50" r="47" fill="${M}" stroke="${D}" stroke-width="1.3"/>`;
+    s += `<circle cx="50" cy="50" r="43.5" fill="none" stroke="${D}" stroke-width="2.2" stroke-dasharray="1.6 2.2" opacity="0.8"/>`;
+    s += `<circle cx="50" cy="50" r="38" fill="${F}" stroke="#000" stroke-opacity="0.55" stroke-width="1.6"/><circle cx="50" cy="50" r="34.5" fill="none" stroke="${metal[1]}" stroke-opacity="0.55" stroke-width="1"/>`;
+    motifScale = 0.78;
+  } else if (tier === 'shield') {
+    const sh = 'M50 3 L92 13 V48 C92 74 74 89 50 98 C26 89 8 74 8 48 V13 Z';
+    s += embMetal(sh, M, D, 1.4) + `<path d="${sh}" fill="${F}" transform="translate(50 50) scale(0.86) translate(-50 -50)" stroke="#000" stroke-opacity="0.55" stroke-width="1.6"/>`;
+    s += `<path d="M15 15 L50 7 L85 15 V24 H15 Z" fill="${M}" opacity="0.92" transform="translate(50 50) scale(0.86) translate(-50 -50)"/>`;
+    for (const x of [26, 50, 74]) s += `<circle cx="${x}" cy="${x === 50 ? 15 : 18}" r="2" fill="${D}"/>`;
+    motifScale = 0.72; motifY = 55;
+  } else if (tier === 'badge') {
+    s += embLaurel(44, M, D, 8, 60);
+    const oc = embPoly(50, 49, 40, 8, -112.5);
+    s += embMetal(oc, M, D, 1.4) + `<path d="${embPoly(50, 49, 33, 8, -112.5)}" fill="${F}" stroke="#000" stroke-opacity="0.55" stroke-width="1.5"/>`;
+    for (let i = 0; i < 8; i++) { const a = ((-112.5 + i * 45) * Math.PI) / 180; s += `<circle cx="${(50 + Math.cos(a) * 36.5).toFixed(2)}" cy="${(49 + Math.sin(a) * 36.5).toFixed(2)}" r="1.5" fill="${D}"/>`; }
+    motifScale = 0.68; motifY = 49;
+  } else {
+    s += `<circle cx="50" cy="51.5" r="31" fill="#000" opacity="0.45"/><circle cx="50" cy="50" r="31" fill="${M}" stroke="${D}" stroke-width="1.3"/><circle cx="50" cy="50" r="26.5" fill="${F}" stroke="#000" stroke-opacity="0.55" stroke-width="1.5"/>`;
+    motifScale = 0.6;
+    if (tier === 'winged') s += embMetal(embStar(50, 10, 7, 3), M, D, 1);
+  }
+  if (tier === 'master') {
+    s += embMetal('M30 22 L27 4 L39 13 L50 0 L61 13 L73 4 L70 22 Z', M, D, 1.1) + '<circle cx="50" cy="15" r="2.6" fill="#c4162a" stroke="#3a050b" stroke-width="0.6"/>';
+  }
+  const motif = MOTIFS[P.motif](M, D, id);
+  s += `<g transform="translate(50 ${motifY}) scale(${motifScale}) translate(-50 -50)">${motif}</g>`;
+  if (tier === 'medal' || tier === 'shield') s += `<path d="M18 38 C24 20 42 10 60 12" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="3" stroke-linecap="round"/>`;
+  return embSvg(s, defs, cls);
+}
+/* Armoire à récompenses (fermée, cadenas). */
+function cabinetSVG(cls = '') {
+  const id = `zc${++EMB_UID}`;
+  const defs = `<linearGradient id="${id}b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b4246"/><stop offset="0.5" stop-color="#5d666b"/><stop offset="1" stop-color="#30363a"/></linearGradient>`
+    + `<linearGradient id="${id}l" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6c35c"/><stop offset="1" stop-color="#8a6416"/></linearGradient>`;
+  let s = '<rect x="20" y="9" width="60" height="86" rx="2" fill="#000" opacity="0.45" transform="translate(0 2)"/>';
+  s += `<rect x="20" y="8" width="60" height="86" rx="2" fill="url(#${id}b)" stroke="#15191b" stroke-width="1.4"/>`;
+  s += '<rect x="24" y="12" width="25" height="78" fill="#4a5256" stroke="#1d2224" stroke-width="1"/><rect x="51" y="12" width="25" height="78" fill="#4f575b" stroke="#1d2224" stroke-width="1"/>';
+  for (let i = 0; i < 4; i++) s += `<rect x="28" y="${17 + i * 4}" width="17" height="1.8" rx="0.9" fill="#1d2224"/><rect x="55" y="${17 + i * 4}" width="17" height="1.8" rx="0.9" fill="#1d2224"/>`;
+  s += '<rect x="44" y="46" width="3" height="12" rx="1.2" fill="#9aa3a7"/><rect x="53" y="46" width="3" height="12" rx="1.2" fill="#9aa3a7"/>';
+  s += '<path d="M44 52 H56" stroke="#2a2f31" stroke-width="2.2"/>';
+  s += `<path d="M46 58 V53 C46 48 54 48 54 53 V58" fill="none" stroke="#b9c0c3" stroke-width="2.6"/><rect x="42.5" y="57" width="15" height="13" rx="2" fill="url(#${id}l)" stroke="#5a3f08" stroke-width="1"/><circle cx="50" cy="62.5" r="1.6" fill="#3d2a05"/><path d="M50 63 V66.5" stroke="#3d2a05" stroke-width="1.2"/>`;
+  s += '<rect x="22" y="92" width="6" height="4" fill="#1d2224"/><rect x="72" y="92" width="6" height="4" fill="#1d2224"/>';
+  return embSvg(s, defs, cls);
+}
+
+/* ------------------------------------------- Montée de niveau et prestige ---
+   En haut de l'écran : l'ancien grade (insigne au-dessus, niveau en dessous) se
+   fait barrer d'une croix, puis le nouveau grade apparaît à côté. Plusieurs
+   niveaux d'affilée : de l'ancien grade au dernier (« +3 niveaux »). Le même
+   bandeau annonce un prestige (emblèmes de prestige). Au-dessus des menus aussi. */
+const RankUp = {
+  from: null, to: null, kind: 'level', timers: [], outT: 0,
+  clear() { for (const t of this.timers) clearTimeout(t); this.timers = []; clearTimeout(this.outT); },
+  fill(side, r, kind) {
+    const box = $('rankup').querySelector(`.ru-${side}`);
+    const img = box.querySelector('.ru-img'), num = box.querySelector('.ru-num');
+    if (kind === 'prestige' && r.p >= 1) { img.innerHTML = prestigeEmblemSVG(r.p); num.textContent = `P${r.p}`; }
+    else { img.innerHTML = rankBadgeSVG(r.p, r.lv); num.textContent = String(r.lv); }
+  },
+  caption(kind) {
+    const el = $('rankup'), to = this.to, from = this.from;
+    el.querySelector('.ru-head').textContent = kind === 'prestige' ? 'Prestige' : 'Niveau supérieur';
+    const n = to.lv - from.lv;
+    el.querySelector('.ru-name').textContent = kind === 'prestige'
+      ? `Prestige ${to.p} · ${PRESTIGES[to.p - 1].name}`
+      : `${rankTier(to.lv).name}${n > 1 ? ` · +${n} niveaux` : ''}`;
+  },
+  show(from, to, kind = 'level') {
+    const el = $('rankup');
+    if (!el) return;
+    if (!el.hidden && this.kind === kind && kind === 'level' && this.from && this.from.p === to.p && !el.classList.contains('out')) {
+      // encore affiché : l'ancien grade reste barré, le nouveau devient le dernier atteint
+      this.to = to;
+      this.fill('new', to, kind);
+      this.caption(kind);
+      const nb = el.querySelector('.ru-new');
+      nb.classList.remove('bump'); void nb.offsetWidth; nb.classList.add('bump');
+      Sound.rankUp(true);
+      this.hideLater(2600);
+      return;
+    }
+    this.clear();
+    this.from = from; this.to = to; this.kind = kind;
+    this.fill('old', from, kind); this.fill('new', to, kind);
+    this.caption(kind);
+    el.classList.toggle('prestige', kind === 'prestige');
+    el.hidden = false;
+    el.classList.remove('play', 'out');
+    void el.offsetWidth;
+    el.classList.add('play');
+    if (HUD.el.hud) HUD.el.hud.classList.add('rankup-on');
+    this.timers.push(setTimeout(() => Sound.rankStamp(), 620));
+    this.timers.push(setTimeout(() => (kind === 'prestige' ? Sound.prestige() : Sound.rankUp(false)), 1350));
+    this.hideLater(kind === 'prestige' ? 5200 : 4400);
+  },
+  hideLater(ms) {
+    clearTimeout(this.outT);
+    this.outT = setTimeout(() => {
+      const el = $('rankup');
+      el.classList.add('out');
+      this.timers.push(setTimeout(() => { el.hidden = true; el.classList.remove('play', 'out'); if (HUD.el.hud) HUD.el.hud.classList.remove('rankup-on'); this.from = null; }, 600));
+    }, ms);
+  },
+};
+/* Insigne du niveau, avec en médaillon l'emblème du prestige (à partir du prestige 1). */
+function rankBadgeSVG(p, lv) {
+  return `<span class="rk-ins">${rankInsigniaSVG(lv)}${p >= 1 ? `<span class="rk-pin">${prestigeEmblemSVG(p)}</span>` : ''}</span>`;
+}
+
+/* ---------------------------------------------------------------- Ranking ---
+   Fiche du grade (insigne, niveau, barre d'XP, bouton Prestige), les 20 prestiges
+   avec leur emblème, leur durée, leur état et l'armoire à récompenses (fermée
+   pour l'instant), et le tableau des 55 niveaux. */
+const Ranking = { tab: 'prestiges', confirm: false };
+const CABINET_NOTE = 'Arrivera lors d’une prochaine mise à jour';
+const KILLS_PER_LEVEL = Math.ceil(1 / RANK_RULES.kill.normal);
+function openRanking() {
+  Ranking.confirm = false;
+  renderRanking();
+  showScreen('ranking');
+}
+function renderRanking() {
+  renderRankCard();
+  const tabs = $('rk-tabs');
+  for (const b of tabs.children) {
+    const on = b.dataset.tab === Ranking.tab;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+  }
+  const panel = $('rk-panel');
+  panel.textContent = '';
+  if (Ranking.tab === 'levels') renderRankLevels(panel); else renderRankPrestiges(panel);
+}
+function renderRankCard() {
+  const d = Rank.data, card = $('rk-card');
+  card.textContent = '';
+  const tier = rankTier(d.lv);
+  const badge = el('div', 'rk-badge');
+  badge.innerHTML = rankBadgeSVG(d.p, d.lv);
+  badge.append(el('span', 'rk-badge-num', String(d.lv)));
+  const info = el('div', 'rk-info');
+  info.append(el('p', 'md-tagline', ''));
+  const tag = info.lastChild;
+  tag.append(el('span', '', d.p ? `Prestige ${d.p}` : 'Sans prestige'), el('span', '', d.p ? PRESTIGES[d.p - 1].name : 'Premier cycle'),
+    el('span', '', d.p ? `Durée ×${rankFactor(d.p)}` : 'Durée ×1'));
+  info.append(el('h3', 'rk-title', `Niveau ${d.lv} · ${tier.name}`));
+  const bar = el('div', 'rk-bar');
+  const track = el('div', 'rk-track');
+  const fill = el('i');
+  fill.style.width = `${(Rank.progress() * 100).toFixed(2)}%`;
+  track.append(fill);
+  bar.append(track);
+  const xpLine = el('p', 'rk-xp');
+  if (Rank.maxed) xpLine.textContent = d.p >= RANK_RULES.prestiges ? 'Niveau 55 du dernier prestige : rang maximal atteint.' : 'Niveau maximal : le prestige suivant est disponible.';
+  else {
+    const need = Rank.need(), left = need - d.xp;
+    xpLine.append(el('b', '', `${fmtXp(d.xp)} / ${fmtXp(need)} XP`), el('span', '', ` · ${Math.floor(Rank.progress() * 100)} %`));
+    const kills = Math.ceil(left / (RANK_RULES.kill.normal * xpBase(d.lv)));
+    bar.append(el('p', 'rk-next', `Niveau ${d.lv + 1} : encore ${fmtXp(left)} XP, environ ${fmtNum(kills, 0)} élimination${kills > 1 ? 's' : ''} (moins à la tête ou au couteau).`));
+  }
+  bar.prepend(xpLine);
+  info.append(bar);
+  // prestige
+  const act = el('div', 'rk-actions');
+  const btn = el('button', 'btn primary', d.p >= RANK_RULES.prestiges ? 'Prestige maximal' : `Prestige ${Math.min(RANK_RULES.prestiges, d.p + 1)}`);
+  btn.type = 'button'; btn.id = 'btn-prestige';
+  btn.disabled = !Rank.canPrestige();
+  btn.addEventListener('click', () => { Sound.ui(); Ranking.confirm = true; renderRankCard(); const c = $('btn-prestige-ok'); if (c) c.focus(); });
+  act.append(btn);
+  act.append(el('span', 'rk-hint', Rank.canPrestige() ? 'Le niveau repartira à 1.' : d.p >= RANK_RULES.prestiges ? 'Les 20 prestiges sont faits.' : `Disponible au niveau ${RANK_RULES.levels}.`));
+  info.append(act);
+  if (Ranking.confirm && Rank.canPrestige()) {
+    const n = d.p + 1, box = el('div', 'rk-confirm');
+    box.setAttribute('role', 'alertdialog');
+    box.setAttribute('aria-label', `Passer au prestige ${n}`);
+    box.append(el('p', '', `Passer au prestige ${n} « ${PRESTIGES[n - 1].name} » ? Le niveau repart à 1 et chaque niveau demandera ${rankFactor(n)} fois l’XP du prestige 1.`));
+    const ok = el('button', 'btn primary', `Passer au prestige ${n}`); ok.type = 'button'; ok.id = 'btn-prestige-ok';
+    const no = el('button', 'btn', 'Annuler'); no.type = 'button';
+    ok.addEventListener('click', doPrestige);
+    no.addEventListener('click', () => { Sound.ui(); Ranking.confirm = false; renderRankCard(); $('btn-prestige').focus(); });
+    const row = el('div', 'rk-confirm-actions');
+    row.append(ok, no);
+    box.append(row);
+    info.append(box);
+  }
+  const K = RANK_RULES.kill, pct = (v) => `${fmtNum(v * 100, 1)} %`;
+  info.append(el('p', 'rk-rules', `XP d’une élimination : ${pct(K.normal)} d’un niveau du prestige 1 · tête ${pct(K.head)} · explosif ${pct(K.explosive)} · couteau ${pct(K.melee)}. Bombe : ${RANK_RULES.nukePerRound} XP × la manche. Le niveau suivant demande ${RANK_RULES.growth} fois plus d’XP ; le prestige n est n fois plus long que le prestige 1. Pas d’XP en partie de test ni avec le digi pass.`));
+  card.append(badge, info);
+}
+function doPrestige() {
+  const d = Rank.data, from = { p: d.p, lv: d.lv };
+  if (!Rank.prestige()) return;
+  Ranking.confirm = false;
+  Life.save();
+  renderRanking();
+  refreshMenuRank();
+  RankUp.show(from, { p: d.p, lv: d.lv }, 'prestige');
+  const b = $('btn-prestige');
+  if (b) b.focus();
+}
+function renderRankPrestiges(panel) {
+  const d = Rank.data, grid = el('div', 'rk-grid');
+  grid.setAttribute('role', 'list');
+  PRESTIGES.forEach((P, i) => {
+    const n = i + 1, state = n < d.p ? 'done' : n === d.p ? 'current' : 'locked';
+    const card = el('article', `rk-pcard ${state}`);
+    card.setAttribute('role', 'listitem');
+    const em = el('div', 'rk-pemb');
+    em.innerHTML = prestigeEmblemSVG(n);
+    const txt = el('div', 'rk-ptext');
+    txt.append(el('p', 'rk-pnum', `Prestige ${n}`), el('p', 'rk-pname', P.name));
+    const kills = KILLS_PER_LEVEL * (RANK_RULES.levels - 1) * rankFactor(n);
+    txt.append(el('p', 'rk-pmeta', `Durée ×${rankFactor(n)} · environ ${fmtNum(Math.round(kills / 100) * 100, 0)} éliminations`));
+    txt.append(el('p', `rk-state ${state}`, state === 'done' ? 'Obtenu' : state === 'current' ? 'En cours' : n === d.p + 1 && Rank.canPrestige() ? 'Disponible' : 'Verrouillé'));
+    const cab = el('div', 'rk-cab');
+    cab.title = `Armoire à récompenses du prestige ${n} : verrouillée, elle arrivera lors d’une prochaine mise à jour.`;
+    const ci = el('div', 'rk-cab-img');
+    ci.innerHTML = cabinetSVG();
+    const ct = el('p', 'rk-cab-text');
+    ct.append(el('b', '', 'Verrouillé'), document.createTextNode(` - ${CABINET_NOTE}`));
+    cab.append(ci, ct);
+    card.append(em, txt, cab);
+    grid.append(card);
+  });
+  panel.append(grid);
+}
+function renderRankLevels(panel) {
+  const d = Rank.data, grid = el('div', 'rk-levels');
+  grid.setAttribute('role', 'list');
+  for (let lv = 1; lv <= RANK_RULES.levels; lv++) {
+    const state = lv < d.lv ? 'done' : lv === d.lv ? 'current' : 'future';
+    const t = el('div', `rk-ltile ${state}`);
+    t.setAttribute('role', 'listitem');
+    const img = el('div', 'rk-limg');
+    img.innerHTML = rankInsigniaSVG(lv);
+    t.append(img, el('b', '', String(lv)), el('span', '', rankTier(lv).name));
+    t.append(el('small', '', lv < RANK_RULES.levels ? `${fmtXp(xpNeed(lv, d.p))} XP` : 'Niveau max'));
+    grid.append(t);
+  }
+  panel.append(grid);
+  const per = KILLS_PER_LEVEL * rankFactor(d.p);
+  panel.append(el('p', 'rk-levels-note', `XP à gagner à chaque niveau pour passer au suivant, ${d.p ? `au prestige ${d.p}` : 'sans prestige'} : environ ${per} éliminations par niveau${d.p > 1 ? ` (${KILLS_PER_LEVEL} au prestige 1)` : ''}, moins à la tête ou au couteau.`));
+}
+/* Ligne du menu principal : grade actuel. */
+function refreshMenuRank() {
+  const line = $('menu-rank');
+  if (!line || !Rank.data) return;
+  const d = Rank.data;
+  line.innerHTML = `${rankBadgeSVG(d.p, d.lv)}<span>Niveau ${d.lv} · ${rankTier(d.lv).name}${d.p ? ` · Prestige ${d.p}` : ''}${Rank.canPrestige() ? ' · prestige disponible' : ''}</span>`;
+}
+
 /* ---------------------------------------------------------- Démarrage -- */
 async function boot(data) {
   try {
@@ -11269,6 +12047,7 @@ async function boot(data) {
   linearizeTree(vmScene);
   HUD.init();
   Life.load();
+  Rank.load();
   // les statistiques en cours de partie ne doivent pas se perdre à la fermeture de la fenêtre
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') Life.save(); });
   window.addEventListener('pagehide', () => Life.save());
@@ -11398,6 +12177,10 @@ window.__zs = {
   start() { startGame(null); },
   map(id) { const m = MAPS.byId[id]; if (m) { loadMap(m); refreshMenu(); } return !!m; },
   load(raw) { const m = normalizeMap(raw); loadMap(m); refreshMenu(); return validateMap(m); },
+  /* Rang : xp(n) ajoute de l'XP ; rank(niveau, prestige) fixe le grade. */
+  xp(n) { return Rank.gain(n); },
+  rank(lv, p = Rank.data.p) { Rank.data.lv = clamp(Math.round(lv), 1, RANK_RULES.levels); Rank.data.p = clamp(Math.round(p), 0, RANK_RULES.prestiges); Rank.data.xp = 0; Rank.dirty = true; Rank.save(); refreshMenuRank(); },
+  Rank,
   /* Écran « Modèles » : part des pixels de l'aperçu qui changent quand le spécimen est
      masqué (0 : rien n'est dessiné). */
   modelProbe() {

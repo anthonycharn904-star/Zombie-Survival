@@ -3,7 +3,8 @@
    statistiques enregistrées à la fermeture de la fenêtre et retrouvées à l'ouverture suivante,
    écran « Modèles » (fiche du Fantassin, modèle 3D dessiné, animations), règles du Fantassin
    (casque qui encaisse le premier tir à la tête, tête ×2, points de vie et dégâts), digi pass
-   (code tapé au clavier, mauvais code refusé, bon code : points infinis et immortalité).
+   (code tapé au clavier, mauvais code refusé, bon code : points infinis et immortalité), rang
+   (XP des éliminations, montée de niveau annoncée en haut de l'écran, menu Ranking, prestige).
      xvfb-run -a node e2e/game-menu.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -64,6 +65,16 @@ async function openGame() {
     });
     ok(rules.hp0 === 100 && rules.helmet0 && rules.hp1 === 100 && !rules.helmet1 && rules.loose, 'Fantassin : le casque encaisse le premier tir à la tête puis tombe', rules);
     ok(rules.hp2 === 100 - rules.dmg * 2 && rules.hit === 30 && rules.r10 === 550 && rules.trot && rules.sprint, 'Fantassin : tête ×2, 30 dégâts, 550 PV à la manche 10, trot dès la 4, sprint dès la 8', rules);
+    // rang : le couteau a rapporté 2 % du niveau 1 (10 XP) ; 490 XP de plus font passer au niveau 2
+    const xp0 = await game.evaluate(() => ({ total: __zs.Rank.data.total, lv: __zs.Rank.data.lv, game: G.stats.xp }));
+    ok(xp0.total === 10 && xp0.lv === 1 && xp0.game === 10, 'rang : élimination au couteau = 2 % du niveau 1 (10 XP)', xp0);
+    const up = await game.evaluate(() => {
+      __zs.xp(490);
+      const el = document.getElementById('rankup');
+      return { lv: __zs.Rank.data.lv, shown: !el.hidden && el.classList.contains('play'), old: el.querySelector('.ru-old .ru-num').textContent, now: el.querySelector('.ru-new .ru-num').textContent,
+        img: !!el.querySelector('.ru-old .ru-img svg') && !!el.querySelector('.ru-new .ru-img svg'), cross: el.querySelectorAll('.ru-x path').length, top: Math.round(el.getBoundingClientRect().top), name: el.querySelector('.ru-name').textContent };
+    });
+    ok(up.lv === 2 && up.shown && up.old === '1' && up.now === '2' && up.img && up.cross === 2 && up.top < 40, 'rang : niveau 2, annoncé en haut de l’écran (ancien grade barré, nouveau grade)', up);
     // Digi pass (Bunker 7, à droite de la Gewehr 43) : vraies touches, mauvais code puis le bon.
     // Le jeu ne garde que l'empreinte du code : l'essai retrouve le code par les 10 000 essais
     // possibles (et vérifie qu'un seul code convient), pour ne pas l'écrire en clair ici.
@@ -108,8 +119,9 @@ async function openGame() {
     await new Promise((r) => setTimeout(r, 1500));
     await app.close().catch(() => {});
     ({ app, game } = await openGame());
-    const back = await game.evaluate(() => ({ games: Life.data.games, kills: Life.data.kills, melee: Life.data.killsMelee, time: Life.data.time }));
+    const back = await game.evaluate(() => ({ games: Life.data.games, kills: Life.data.kills, melee: Life.data.killsMelee, time: Life.data.time, lv: __zs.Rank.data.lv, menu: document.getElementById('menu-rank').textContent }));
     ok(back.games === 1 && back.kills === 1 && back.melee === 1 && back.time >= 2.9, 'fenêtre fermée en pleine partie : statistiques retrouvées', back);
+    ok(back.lv === 2 && /Niveau 2 · Recrue/.test(back.menu), 'rang retrouvé à la réouverture, affiché dans le menu', back);
     await game.click('#btn-stats');
     await game.waitForFunction(() => !document.getElementById('stats').hidden);
     const row = await game.evaluate(() => [...document.querySelectorAll('#stats-report .ledger > div')].find((d) => d.querySelector('dt').firstChild.textContent === 'Zombies tués au corps-à-corps').querySelector('dd').textContent);
@@ -138,6 +150,34 @@ async function openGame() {
     await game.keyboard.press('Escape');
     await game.waitForFunction(() => !document.getElementById('menu').hidden);
     ok(await game.evaluate(() => !Models.open && document.getElementById('models').hidden), 'écran Modèles : Échap ramène au menu et arrête l’aperçu');
+    // menu Ranking : à côté de Statistiques et Modèles ; 20 prestiges, chacun avec son armoire verrouillée
+    const order = await game.evaluate(() => [...document.querySelectorAll('#menu .actions .btn')].filter((b) => !b.hidden).map((b) => b.id));
+    ok(order.indexOf('btn-ranking') === order.indexOf('btn-models') + 1 && order.indexOf('btn-models') === order.indexOf('btn-stats') + 1, 'bouton Ranking à côté de Statistiques et Modèles', order);
+    await game.click('#btn-ranking');
+    await game.waitForFunction(() => !document.getElementById('ranking').hidden);
+    const rk = await game.evaluate(() => ({
+      cards: document.querySelectorAll('#rk-panel .rk-pcard').length,
+      cabs: [...document.querySelectorAll('#rk-panel .rk-cab-text')].map((c) => c.textContent),
+      emb: document.querySelectorAll('#rk-panel .rk-pemb svg').length,
+      btn: document.getElementById('btn-prestige').disabled, title: document.querySelector('#rk-card .rk-title').textContent,
+    }));
+    ok(rk.cards === 20 && rk.emb === 20 && rk.cabs.length === 20 && rk.cabs.every((t) => t === 'Verrouillé - Arrivera lors d’une prochaine mise à jour'), 'Ranking : 20 prestiges avec emblème et armoire « Verrouillé - Arrivera lors d’une prochaine mise à jour »', { cards: rk.cards, cab: rk.cabs[0] });
+    ok(rk.btn && rk.title === 'Niveau 2 · Recrue', 'Ranking : bouton Prestige inactif avant le niveau 55', rk);
+    await game.click('#rk-tabs [data-tab="levels"]');
+    ok(await game.evaluate(() => document.querySelectorAll('#rk-panel .rk-ltile').length === 55 && document.querySelector('#rk-panel .rk-ltile.current b').textContent === '2'), 'Ranking : les 55 niveaux, le niveau en cours repéré');
+    await game.evaluate(() => { __zs.rank(55, 0); Ranking.tab = 'prestiges'; openRanking(); });
+    ok(await game.evaluate(() => !document.getElementById('btn-prestige').disabled), 'Ranking : bouton Prestige actif au niveau 55');
+    await game.click('#btn-prestige');
+    await game.click('#btn-prestige-ok');
+    const pr = await game.evaluate(() => {
+      const el = document.getElementById('rankup');
+      return { p: __zs.Rank.data.p, lv: __zs.Rank.data.lv, saved: JSON.parse(localStorage.getItem('zs.rank')).p, banner: !el.hidden && el.classList.contains('prestige'), name: el.querySelector('.ru-name').textContent,
+        current: document.querySelector('#rk-panel .rk-pcard.current .rk-pnum').textContent, btn: document.getElementById('btn-prestige').disabled };
+    });
+    ok(pr.p === 1 && pr.lv === 1 && pr.saved === 1 && pr.banner && pr.name === 'Prestige 1 · Casque' && pr.current === 'Prestige 1' && pr.btn, 'Ranking : prestige 1 (niveau 1, enregistré, annoncé)', pr);
+    await game.keyboard.press('Escape');
+    await game.waitForFunction(() => !document.getElementById('menu').hidden);
+    ok(await game.evaluate(() => /Prestige 1/.test(document.getElementById('menu-rank').textContent)), 'Ranking : Échap ramène au menu, qui affiche le prestige');
     await app.close().catch(() => {});
   } catch (e) {
     failures++;
