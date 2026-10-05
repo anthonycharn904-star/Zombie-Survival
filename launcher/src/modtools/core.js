@@ -147,13 +147,14 @@
   /* ------------------------------------------------------------- état -- */
   const S = (MT.state = {
     map: null, id: null, source: null, rev: 0, savedRev: 0,
-    tool: 'select', sel: null,
+    tool: 'select', sel: null, level: 0,
     undo: [], redo: [], pending: null,
     issues: { errors: [], warnings: [] }, analysis: null, analysisRev: -1,
     opts: {
       build: { tile: '#', shape: 'brush', size: 1 },
       paint: { layer: 'floor', tex: 'concrete_stained', shape: 'brush', size: 1 },
       props: { model: 'crate_medium', snap: 0.25, rot: 0, rotStep: 15, randomRot: false, randomScale: 0, scale: 1, tint: null, solid: 'auto' },
+      stairs: { shape: 'straight', mat: 'wood', w: 1, n: 5, n2: 3, turn: 1, dir: [0, -1] },
       elements: {
         kind: 'light', weapon: 'mp40', perk: 'cuirasse', sign: 'ENTREPÔT', boxVertical: false,
         light: { color: '#ffc78f', intensity: 1.8, range: 12, flicker: 0.1, fixture: 'lamp', powered: null },
@@ -209,6 +210,7 @@
   function restore(snapshot, sel) {
     S.map = snapshot;
     S.sel = sel;
+    if (!MT.hasLevel(S.level)) { S.level = 0; MT.emit('level', 0); }
     S.rev++;
     MT.emit('change', 'all', { history: true });
     MT.emit('selection');
@@ -237,18 +239,53 @@
   const PAL = () => ZS.PAL_CHARS;
   const inb = (x, z) => !!S.map && x >= 0 && z >= 0 && x < S.map.w && z < S.map.h;
   MT.inb = inb;
-  MT.tileAt = (x, z) => (inb(x, z) ? S.map.grid[z][x] : ' ');
+  MT.wallHeight = () => (S.map ? S.map.ambiance.wallHeight : 3.5);
+
+  /* ---------------------------------------------------------- niveaux --
+     Jeu 1.4.0 (interface 2) : grid et layers forment le rez-de-chaussée (niveau 0),
+     floors[] les étages (1, 2…) et sous-sols (-1, -2…). Les éléments portent lv
+     (absent = 0). Les outils travaillent sur le niveau affiché, S.level.        */
+  MT.multiOk = () => (ZS.editorApi || 1) >= 2 && typeof ZS.stairPlan === 'function';
+  const floorOf = (m, lv) => (!m ? null : (lv | 0) === 0 ? m : (m.floors || []).find((f) => f.lv === lv) || null);
+  MT.levels = (m = S.map) => (m ? [0, ...(m.floors || []).map((f) => f.lv)].sort((a, b) => a - b) : [0]);
+  MT.hasLevel = (lv, m = S.map) => !!floorOf(m, lv);
+  MT.gridOf = (lv = S.level, m = S.map) => { const f = floorOf(m, lv); return f ? f.grid : null; };
+  /* Grille du niveau affiché (le rez-de-chaussée si ce niveau n'existe plus). */
+  MT.grid = (lv = S.level, m = S.map) => MT.gridOf(lv, m) || (m ? m.grid : null);
+  MT.layersOf = (lv = S.level, m = S.map) => {
+    const f = floorOf(m, lv);
+    if (!f) return null;
+    if (!f.layers) f.layers = {};
+    for (const L of ['floor', 'ceil', 'wall']) if (!Array.isArray(f.layers[L]) || f.layers[L].length !== m.h) f.layers[L] = Array.from({ length: m.h }, () => '.'.repeat(m.w));
+    return f.layers;
+  };
+  MT.levelY = (lv = S.level) => lv * (MT.wallHeight() + (ZS.SLAB || 0.3));
+  MT.lvOf = (e) => (Array.isArray(e) ? e[2] | 0 : e ? e.lv | 0 : 0);
+  MT.here = (e) => MT.lvOf(e) === S.level;
+  /* Range le niveau dans un élément (lv absent au rez-de-chaussée). */
+  MT.tagLv = (o, lv = S.level) => { if (lv) o.lv = lv; else delete o.lv; return o; };
+  MT.levelName = (lv) => (lv > 0 ? `Étage ${lv}` : lv < 0 ? `Sous-sol ${-lv}` : 'Rez-de-chaussée');
+  MT.tileAt = (x, z, lv = S.level) => { const g = MT.gridOf(lv); return inb(x, z) && g ? g[z][x] : ' '; };
   const isFloor = (ch) => ch === '.';
   const fillable = (ch) => ch === '.' || ch === 'x' || ch === 'P' || ch === 'm';
   MT.isFloor = isFloor;
   MT.fillable = fillable;
-  function setRow(m, x, z, ch) {
-    const r = m.grid[z];
+  function setRow(m, x, z, ch, lv = S.level) {
+    const rows = MT.gridOf(lv, m);
+    if (!rows) return false;
+    const r = rows[z];
     if (r[x] === ch) return false;
-    m.grid[z] = r.slice(0, x) + ch + r.slice(x + 1);
+    rows[z] = r.slice(0, x) + ch + r.slice(x + 1);
     return true;
   }
-  MT.wallHeight = () => (S.map ? S.map.ambiance.wallHeight : 3.5);
+  MT.setLevel = (lv) => {
+    if (!S.map || !MT.hasLevel(lv) || lv === S.level) return;
+    if (MT.tools && MT.tools.cancel) MT.tools.cancel();
+    S.level = lv;
+    S.sel = null;
+    MT.emit('level', lv);
+    MT.emit('selection');
+  };
 
   /* Analyse (pièces, fenêtres, portes) de la carte en cours, recalculée au besoin. */
   MT.analysis = () => {
@@ -256,45 +293,54 @@
     if (S.analysisRev !== S.rev) { S.analysis = ZS.analyzeMap(S.map); S.analysisRev = S.rev; }
     return S.analysis;
   };
-  MT.zoneIndexAt = (x, z) => { const A = MT.analysis(); return A && A.ok(x, z) ? A.zoneOf[A.ix(x, z)] : -1; };
+  MT.zoneIndexAt = (x, z, lv = S.level) => {
+    const A = MT.analysis();
+    if (!A || !A.ok(x, z)) return -1;
+    if (!A.zoneAll) return lv === 0 ? A.zoneOf[A.ix(x, z)] : -1;
+    const li = A.liOf.get(lv);
+    return li === undefined ? -1 : A.zoneAll[A.K(li, x, z)];
+  };
   /* Définition (m.zones) correspondant à une pièce de l'analyse, -1 si pièce automatique. */
   MT.zoneDefOf = (zi) => {
     const A = MT.analysis();
     const z = A && A.zones[zi];
     if (!z || z.auto) return -1;
-    return S.map.zones.findIndex((d) => d.seed[0] === z.seed[0] && d.seed[1] === z.seed[1]);
+    return S.map.zones.findIndex((d) => d.seed[0] === z.seed[0] && d.seed[1] === z.seed[1] && (d.lv | 0) === (z.lv | 0));
   };
 
   /* Portes : chaque groupe de cases D voisines forme une porte (16 cases au plus) ;
      un groupe garde le prix et le type de la porte qui occupait déjà une de ses cases. */
   function reconcileDoors(m) {
-    const W = m.w, H = m.h, seen = new Uint8Array(W * H), old = m.doors;
+    const W = m.w, H = m.h, old = m.doors;
     const ownerOld = new Map();
-    old.forEach((d, i) => d.cells.forEach(([x, z]) => ownerOld.set(z * W + x, i)));
+    old.forEach((d, i) => d.cells.forEach(([x, z]) => ownerOld.set(`${d.lv | 0}:${z * W + x}`, i)));
     const used = new Set(), out = [];
-    for (let z = 0; z < H; z++) {
-      for (let x = 0; x < W; x++) {
-        if (m.grid[z][x] !== 'D' || seen[z * W + x]) continue;
-        const cells = [], stack = [[x, z]];
-        seen[z * W + x] = 1;
-        while (stack.length) {
-          const [cx, cz] = stack.pop();
-          cells.push([cx, cz]);
-          for (const [dx, dz] of DIRS) {
-            const nx = cx + dx, nz = cz + dz;
-            if (nx >= 0 && nz >= 0 && nx < W && nz < H && !seen[nz * W + nx] && m.grid[nz][nx] === 'D') { seen[nz * W + nx] = 1; stack.push([nx, nz]); }
+    for (const lv of MT.levels(m)) {
+      const G = MT.gridOf(lv, m), seen = new Uint8Array(W * H);
+      for (let z = 0; z < H; z++) {
+        for (let x = 0; x < W; x++) {
+          if (G[z][x] !== 'D' || seen[z * W + x]) continue;
+          const cells = [], stack = [[x, z]];
+          seen[z * W + x] = 1;
+          while (stack.length) {
+            const [cx, cz] = stack.pop();
+            cells.push([cx, cz]);
+            for (const [dx, dz] of DIRS) {
+              const nx = cx + dx, nz = cz + dz;
+              if (nx >= 0 && nz >= 0 && nx < W && nz < H && !seen[nz * W + nx] && G[nz][nx] === 'D') { seen[nz * W + nx] = 1; stack.push([nx, nz]); }
+            }
           }
-        }
-        let src = null;
-        for (const [cx, cz] of cells) {
-          const k = ownerOld.get(cz * W + cx);
-          if (k !== undefined && !used.has(k)) { src = old[k]; used.add(k); break; }
-        }
-        const def = S.opts.elements.door;
-        cells.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-        for (let i = 0; i < cells.length; i += 16) {
-          const type = src ? src.type : def.type;
-          out.push({ cells: cells.slice(i, i + 16), cost: src ? src.cost : def.cost, type, verb: src ? src.verb : ZS.DOOR_VERBS[type] });
+          let src = null;
+          for (const [cx, cz] of cells) {
+            const k = ownerOld.get(`${lv}:${cz * W + cx}`);
+            if (k !== undefined && !used.has(k)) { src = old[k]; used.add(k); break; }
+          }
+          const def = S.opts.elements.door;
+          cells.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+          for (let i = 0; i < cells.length; i += 16) {
+            const type = src ? src.type : def.type;
+            out.push(MT.tagLv({ cells: cells.slice(i, i + 16), cost: src ? src.cost : def.cost, type, verb: src ? src.verb : ZS.DOOR_VERBS[type] }, lv));
+          }
         }
       }
     }
@@ -304,40 +350,47 @@
 
   /* Une pièce nommée garde son nom si on repeint la case qui la définissait. */
   function fixZoneSeeds(m) {
-    const taken = new Set(m.zones.map((z) => `${z.seed}`));
+    const key = (z, c) => `${z.lv | 0}:${c}`;
+    const inM = (x, z) => x >= 0 && z >= 0 && x < m.w && z < m.h;
+    const taken = new Set(m.zones.map((z) => key(z, z.seed)));
     for (const z of m.zones) {
-      const [sx, sz] = z.seed;
-      if (inb(sx, sz) && fillable(m.grid[sz][sx])) continue;
+      const [sx, sz] = z.seed, G = MT.gridOf(z.lv | 0, m);
+      if (!G) continue;
+      if (inM(sx, sz) && fillable(G[sz][sx])) continue;
       let best = null;
       for (let r = 1; r <= 10 && !best; r++) {
         for (let dz = -r; dz <= r && !best; dz++) {
           for (let dx = -r; dx <= r; dx++) {
             if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
             const x = sx + dx, zz = sz + dz;
-            if (inb(x, zz) && fillable(m.grid[zz][x]) && !taken.has(`${x},${zz}`)) { best = [x, zz]; break; }
+            if (inM(x, zz) && fillable(G[zz][x]) && !taken.has(key(z, [x, zz]))) { best = [x, zz]; break; }
           }
         }
       }
-      if (best) { taken.delete(`${z.seed}`); z.seed = best; taken.add(`${best}`); }
+      if (best) { taken.delete(key(z, z.seed)); z.seed = best; taken.add(key(z, best)); }
     }
   }
 
   /* Éléments devenus impossibles après un changement de cases (arme murale sans mur…). */
-  function cleanElements(m, changed) {
-    const hit = new Set(changed.map(([x, z]) => `${x},${z}`));
-    const at = (c) => hit.has(`${c[0]},${c[1]}`);
-    const tile = (c) => MT.tileAt(c[0], c[1]);
+  function cleanElements(m, changed, lv = S.level) {
+    const hit = new Set(changed.map(([x, z]) => `${lv}:${x},${z}`));
+    let cur = 0;
+    // at(c) : la case c (du niveau de l'élément en cours d'examen) a-t-elle changé ?
+    const at = (c) => hit.has(`${cur}:${c[0]},${c[1]}`);
+    const keepLv = (arr, ok, label) => arr.filter((e) => { cur = MT.lvOf(e); if (cur !== lv || ok(e)) return true; removed.push(label(e)); return false; });
+    const tile = (c) => MT.tileAt(c[0], c[1], lv);
     const removed = [];
-    const keep = (arr, ok, label) => arr.filter((e) => { if (ok(e)) return true; removed.push(label(e)); return false; });
+    const keep = keepLv;
     m.wallbuys = keep(m.wallbuys, (w) => !at(w.cell) || tile(w.cell) === '#', (w) => `arme murale ${ZS.WEAPONS[w.w].name}`);
     m.perks = keep(m.perks, (p) => !at(p.cell) || tile(p.cell) === '.', (p) => `distributeur ${ZS.PERKS[p.p].name}`);
     const before = m.boxes.length;
     m.boxes = keep(m.boxes, (b) => !b.cells.some(at) || b.cells.every((c) => tile(c) === '.'), () => 'emplacement de boîte mystère');
     if (m.boxes.length !== before) m.boxStart = clamp(m.boxStart, 0, Math.max(0, m.boxes.length - 1));
     m.risers = keep(m.risers, (r) => !at(r) || tile(r) === '.', () => 'apparition de zombies');
-    if (m.power && at(m.power.cell) && tile(m.power.cell) !== '#') { m.power = null; removed.push('interrupteur du courant'); }
-    if (m.amp && m.amp.cells.some(at) && !m.amp.cells.every((c) => tile(c) === '.')) { m.amp = null; removed.push('Amplificateur'); }
-    if (m.digipass && at(m.digipass.cell) && tile(m.digipass.cell) !== '#') { m.digipass = null; removed.push('digi pass'); }
+    const one = (e) => { cur = MT.lvOf(e); return cur === lv; };
+    if (m.power && one(m.power) && at(m.power.cell) && tile(m.power.cell) !== '#') { m.power = null; removed.push('interrupteur du courant'); }
+    if (m.amp && one(m.amp) && m.amp.cells.some(at) && !m.amp.cells.every((c) => tile(c) === '.')) { m.amp = null; removed.push('Amplificateur'); }
+    if (m.digipass && one(m.digipass) && at(m.digipass.cell) && tile(m.digipass.cell) !== '#') { m.digipass = null; removed.push('digi pass'); }
     return removed;
   }
 
@@ -372,10 +425,11 @@
   };
 
   /* ---------------------------------------------- textures des calques -- */
+  const allLayers = (m) => [m.layers, ...(m.floors || []).map((f) => f.layers || {})];
   function compactPalette(m) {
     const map = new Map(), pal = [];
-    for (const L of ['floor', 'ceil', 'wall']) {
-      for (const row of m.layers[L]) {
+    for (const LS of allLayers(m)) for (const L of ['floor', 'ceil', 'wall']) {
+      for (const row of LS[L] || []) {
         for (const ch of row) {
           if (ch === '.' || map.has(ch)) continue;
           const id = m.palette[PAL().indexOf(ch)];
@@ -386,7 +440,7 @@
         }
       }
     }
-    for (const L of ['floor', 'ceil', 'wall']) m.layers[L] = m.layers[L].map((row) => row.replace(/[^.]/g, (ch) => map.get(ch) || '.'));
+    for (const LS of allLayers(m)) for (const L of ['floor', 'ceil', 'wall']) if (LS[L]) LS[L] = LS[L].map((row) => row.replace(/[^.]/g, (ch) => map.get(ch) || '.'));
     m.palette = pal;
   }
   MT.compactPalette = compactPalette;
@@ -406,7 +460,7 @@
   MT.cellTexture = (x, z, layer) => {
     const m = S.map;
     if (!inb(x, z)) return null;
-    const ch = m.layers[layer][z][x];
+    const ch = MT.layersOf()[layer][z][x];
     if (ch !== '.') { const id = m.palette[PAL().indexOf(ch)]; if (id) return id; }
     const zi = MT.zoneIndexAt(x, z);
     const A = MT.analysis();
@@ -418,7 +472,7 @@
     const m = S.map;
     const ch = id ? palChar(m, id) : '.';
     let n = 0;
-    const rows = m.layers[layer];
+    const rows = MT.layersOf()[layer];
     const changed = [];
     for (const [x, z] of cells) {
       if (!inb(x, z) || rows[z][x] === ch) continue;
@@ -431,7 +485,7 @@
   };
   MT.usedTextures = (m = S.map) => {
     const used = new Set(Object.values(m.textures));
-    for (const L of ['floor', 'ceil', 'wall']) for (const row of m.layers[L]) for (const ch of row) if (ch !== '.') { const id = m.palette[PAL().indexOf(ch)]; if (id) used.add(id); }
+    for (const LS of allLayers(m)) for (const L of ['floor', 'ceil', 'wall']) for (const row of LS[L] || []) for (const ch of row) if (ch !== '.') { const id = m.palette[PAL().indexOf(ch)]; if (id) used.add(id); }
     for (const z of m.zones) for (const L of ['floor', 'wall', 'ceil']) if (z[L]) used.add(z[L]);
     used.delete('none');
     return used;
@@ -529,7 +583,7 @@
     if (o.tint) pr.c = ZS.parseColor(o.tint, 0xffffff);
     if (o.solid === 'yes') pr.solid = true;
     else if (o.solid === 'no') pr.solid = false;
-    return pr;
+    return MT.tagLv(pr);
   };
   MT.pushRecent = (kind, id) => {
     const list = S.recent[kind];
@@ -584,18 +638,20 @@
 
   /* Éléments présents sur une case (sélection dans le plan). */
   MT.elementsAt = (x, z) => {
-    const m = S.map, out = [];
+    const m = S.map, out = [], H = MT.here;
     const same = (c) => c[0] === x && c[1] === z;
-    m.lights.forEach((l, i) => { if (Math.floor(l.pos[0]) === x && Math.floor(l.pos[2]) === z) out.push({ kind: 'light', i }); });
-    m.perks.forEach((p, i) => { if (same(p.cell)) out.push({ kind: 'perk', i }); });
-    m.boxes.forEach((b, i) => { if (b.cells.some(same)) out.push({ kind: 'box', i }); });
-    if (m.amp && m.amp.cells.some(same)) out.push({ kind: 'amp' });
-    m.wallbuys.forEach((w, i) => { if (same(w.cell)) out.push({ kind: 'wallbuy', i }); });
-    if (m.power && same(m.power.cell)) out.push({ kind: 'power' });
-    m.signs.forEach((s, i) => { if (same(MT.signCell(s))) out.push({ kind: 'sign', i }); });
-    m.risers.forEach((r, i) => { if (same(r)) out.push({ kind: 'riser', i }); });
-    if (Math.floor(m.spawn.pos[0]) === x && Math.floor(m.spawn.pos[1]) === z) out.push({ kind: 'spawn' });
-    m.doors.forEach((d, i) => { if (d.cells.some(same)) out.push({ kind: 'door', i }); });
+    m.lights.forEach((l, i) => { if (H(l) && Math.floor(l.pos[0]) === x && Math.floor(l.pos[2]) === z) out.push({ kind: 'light', i }); });
+    m.perks.forEach((p, i) => { if (H(p) && same(p.cell)) out.push({ kind: 'perk', i }); });
+    m.boxes.forEach((b, i) => { if (H(b) && b.cells.some(same)) out.push({ kind: 'box', i }); });
+    if (m.amp && H(m.amp) && m.amp.cells.some(same)) out.push({ kind: 'amp' });
+    m.wallbuys.forEach((w, i) => { if (H(w) && same(w.cell)) out.push({ kind: 'wallbuy', i }); });
+    if (m.power && H(m.power) && same(m.power.cell)) out.push({ kind: 'power' });
+    m.signs.forEach((s, i) => { if (H(s) && same(MT.signCell(s))) out.push({ kind: 'sign', i }); });
+    m.risers.forEach((r, i) => { if (H(r) && same(r)) out.push({ kind: 'riser', i }); });
+    if (H(m.spawn) && Math.floor(m.spawn.pos[0]) === x && Math.floor(m.spawn.pos[1]) === z) out.push({ kind: 'spawn' });
+    m.doors.forEach((d, i) => { if (H(d) && d.cells.some(same)) out.push({ kind: 'door', i }); });
+    const si = MT.stairAt(x, z);
+    if (si >= 0) out.push({ kind: 'stair', i: si });
     return out;
   };
 
@@ -607,7 +663,7 @@
   MT.fixSelection = () => {
     const s = S.sel, m = S.map;
     if (!s || !m) return;
-    const arr = { light: m.lights, wallbuy: m.wallbuys, perk: m.perks, box: m.boxes, sign: m.signs, riser: m.risers, door: m.doors, zone: m.zones }[s.kind];
+    const arr = { light: m.lights, wallbuy: m.wallbuys, perk: m.perks, box: m.boxes, sign: m.signs, riser: m.risers, door: m.doors, zone: m.zones, stair: m.stairs || [] }[s.kind];
     let ok = true;
     if (s.kind === 'prop') { s.list = s.list.filter((i) => i < m.props.length); ok = s.list.length > 0; }
     else if (arr) ok = s.i < arr.length;
@@ -616,7 +672,7 @@
     else if (s.kind === 'cell') ok = inb(s.x, s.z);
     if (!ok) { S.sel = null; MT.emit('selection'); }
   };
-  const KIND_OF = { prop: 'props', light: 'lights', door: 'all', wallbuy: 'elements', perk: 'elements', box: 'elements', power: 'elements', amp: 'elements', sign: 'elements', riser: 'elements', zone: 'all', spawn: 'elements' };
+  const KIND_OF = { prop: 'props', light: 'lights', door: 'all', wallbuy: 'elements', perk: 'elements', box: 'elements', power: 'elements', amp: 'elements', sign: 'elements', riser: 'elements', zone: 'all', spawn: 'elements', stair: 'all' };
   MT.changeKindOf = (sel) => KIND_OF[sel && sel.kind] || 'all';
 
   MT.deleteSelection = () => {
@@ -636,8 +692,16 @@
         case 'zone': m.zones.splice(s.i, 1); break;
         case 'door': {
           // une porte supprimée redevient un mur
-          for (const [x, z] of m.doors[s.i].cells) setRow(m, x, z, '#');
+          const d = m.doors[s.i];
+          for (const [x, z] of d.cells) setRow(m, x, z, '#', d.lv | 0);
           reconcileDoors(m);
+          break;
+        }
+        case 'stair': {
+          const st = (m.stairs || [])[s.i];
+          if (!st) return false;
+          m.stairs.splice(s.i, 1);
+          MT.fillOpenings(m, st);
           break;
         }
         default: return false;
@@ -687,11 +751,234 @@
     const sx = snap ? Math.round(x / snap) * snap : x, sz = snap ? Math.round(z / snap) * snap : z;
     return MT.edit('Coller', (m) => {
       const start = m.props.length;
-      for (const p of c.props) m.props.push({ ...deep(p), x: round(p.x + sx), z: round(p.z + sz) });
+      for (const p of c.props) m.props.push(MT.tagLv({ ...deep(p), x: round(p.x + sx), z: round(p.z + sz) }));
       S.sel = { kind: 'prop', list: c.props.map((_, k) => start + k) };
       MT.emit('selection');
     }, 'props');
   };
+
+  /* ---------------------------------------------------- étages --- */
+  /* Nouveau niveau au-dessus (dir > 0) du plus haut, ou en dessous (dir < 0) du plus bas.
+     Il reprend la structure du niveau voisin (murs, piliers, sols) pour démarrer vite ;
+     portes et fenêtres deviennent des murs, les cours deviennent du vide. */
+  MT.levelFrom = (srcRows) => srcRows.map((row) => row.replace(/./g, (ch) => (ch === '#' || ch === 'P' ? ch : ch === ' ' || ch === 'o' ? ' ' : ch === 'W' || ch === 'D' ? '#' : '.')));
+  function newLevel(m, lv, from) {
+    const src = MT.gridOf(from, m) || m.grid;
+    const blank = Array.from({ length: m.h }, () => '.'.repeat(m.w));
+    const f = { lv, grid: MT.levelFrom(src), layers: { floor: blank.slice(), ceil: blank.slice(), wall: blank.slice() } };
+    m.floors = (m.floors || []).concat([f]).sort((a, b) => a.lv - b.lv);
+    // escaliers qui attendaient cet étage : leur trémie s'ouvre
+    for (const st of m.stairs || []) if ((st.lv | 0) + 1 === lv) MT.carveOpenings(m, st);
+    return f;
+  }
+  MT.addLevel = (dir) => {
+    const m = S.map;
+    if (!m || !MT.multiOk()) return null;
+    const lvs = MT.levels();
+    if (lvs.length >= (ZS.LEVELS_MAX || 8)) { MT.toast(`${ZS.LEVELS_MAX || 8} niveaux au plus par carte.`, 'warn'); return null; }
+    const lv = dir > 0 ? lvs[lvs.length - 1] + 1 : lvs[0] - 1;
+    if (lv > (ZS.LEVEL_MAX || 6) || lv < (ZS.LEVEL_MIN || -3)) { MT.toast(dir > 0 ? `Pas plus de ${ZS.LEVEL_MAX || 6} étages.` : `Pas plus de ${-(ZS.LEVEL_MIN || -3)} sous-sols.`, 'warn'); return null; }
+    MT.edit(`Ajouter : ${MT.levelName(lv)}`, (mm) => { newLevel(mm, lv, dir > 0 ? lv - 1 : lv + 1); }, 'all');
+    MT.setLevel(lv);
+    MT.toast(`${MT.levelName(lv)} ajouté : il reprend les murs du niveau ${dir > 0 ? 'du dessous' : 'du dessus'}.`, 'ok');
+    return lv;
+  };
+  /* Retire un niveau et tout ce qui s'y trouve (éléments, objets, escaliers qui y montent ou en partent).
+     Seulement l'étage le plus haut ou le sous-sol le plus bas : les niveaux restent d'un seul tenant. */
+  MT.removable = (lv) => { const lvs = MT.levels(); return !!lv && MT.hasLevel(lv) && (lv === lvs[lvs.length - 1] || lv === lvs[0]); };
+  MT.removeLevel = (lv) => {
+    const m = S.map;
+    if (!m || !lv || !MT.hasLevel(lv)) return false;
+    if (!MT.removable(lv)) { MT.toast(lv > 0 ? 'Supprimez d’abord les étages du dessus.' : 'Supprimez d’abord les sous-sols du dessous.', 'warn'); return false; }
+    MT.edit(`Supprimer : ${MT.levelName(lv)}`, (mm) => {
+      const other = (e) => MT.lvOf(e) !== lv;
+      // escaliers qui partent de ce niveau : leur trémie, au niveau du dessus, se referme
+      for (const st of mm.stairs || []) if ((st.lv | 0) === lv) MT.fillOpenings(mm, st);
+      mm.floors = mm.floors.filter((f) => f.lv !== lv);
+      for (const k of ['lights', 'wallbuys', 'perks', 'signs', 'props', 'zones', 'doors', 'risers']) mm[k] = mm[k].filter(other);
+      const nb = mm.boxes.length;
+      mm.boxes = mm.boxes.filter(other);
+      if (mm.boxes.length !== nb) mm.boxStart = clamp(mm.boxStart, 0, Math.max(0, mm.boxes.length - 1));
+      for (const k of ['power', 'amp', 'digipass']) if (mm[k] && !other(mm[k])) mm[k] = null;
+      if (MT.lvOf(mm.spawn) === lv) delete mm.spawn.lv;
+      mm.stairs = (mm.stairs || []).filter((st) => (st.lv | 0) !== lv && (st.lv | 0) + 1 !== lv);
+    }, 'all');
+    if (S.level === lv || !MT.hasLevel(S.level)) { S.level = 0; MT.emit('level', 0); }
+    S.sel = null;
+    MT.emit('selection');
+    return true;
+  };
+
+  /* ---------------------------------------------------- escaliers --- */
+  /* Un escalier part du sol de son niveau (lv) et monte au niveau du dessus. */
+  MT.stairsOf = (m = S.map) => (m && m.stairs) || [];
+  MT.stairPlan = (s) => ZS.stairPlan(s);
+  /* Escalier dont l'emprise (marches, palier, noyau) couvre la case (x, z) du niveau lv. */
+  MT.stairAt = (x, z, lv = S.level) => {
+    if (!MT.multiOk()) return -1;
+    const list = MT.stairsOf();
+    for (let i = list.length - 1; i >= 0; i--) {
+      const st = list[i];
+      if ((st.lv | 0) !== lv) continue;
+      if (ZS.stairPlan(st).footprint.some((c) => c[0] === x && c[1] === z)) return i;
+    }
+    return -1;
+  };
+  /* Trémie : cases de l'étage du dessus vidées au-dessus des hautes marches (et noyau d'un colimaçon).
+     Le jeu les vide de toute façon ; l'éditeur les vide dans la grille pour qu'on les voie. */
+  MT.openingsOf = (st, m = S.map, wallH = m.ambiance.wallHeight) => ZS.stairOpenings(ZS.stairPlan(st), wallH);
+  const WALLISH = new Set(['#', 'W', 'D', 'P']);
+  const FLOORISH = new Set(['.', 'x', 'm', 'o']);
+  const okey = (x, z) => `${x},${z}`;
+  /* Ouvre la trémie. Renvoie les cases changées de l'étage du dessus ({ cells, up, walls }). */
+  function carve(m, st, wallH) {
+    const up = (st.lv | 0) + 1, G = MT.gridOf(up, m), cells = [];
+    let walls = 0;
+    if (!G) return { cells, up, walls };
+    const inM = (x, z) => x >= 0 && z >= 0 && x < m.w && z < m.h;
+    for (const [x, z] of MT.openingsOf(st, m, wallH)) {
+      if (!inM(x, z)) continue;
+      const was = G[z][x];
+      if (setRow(m, x, z, ' ', up)) { cells.push([x, z]); if (WALLISH.has(was)) walls++; }
+    }
+    // le palier d'arrivée : du sol s'il n'y a que du vide
+    for (const [x, z] of ZS.stairPlan(st).exits) if (inM(x, z) && G[z][x] === ' ' && setRow(m, x, z, '.', up)) cells.push([x, z]);
+    if (cells.length) { reconcileDoors(m); fixZoneSeeds(m); }
+    return { cells, up, walls };
+  }
+  MT.carveOpenings = (m, st, wallH) => carve(m, st, wallH).cells.length;
+  /* Escalier retiré ou déplacé : sa trémie redevient du sol là où elle touche la pièce,
+     mais pas du côté du vide (bord de l'étage, mezzanine) ni sur la trémie d'un autre escalier. */
+  MT.fillOpenings = (m, st, wallH = m.ambiance.wallHeight) => {
+    const up = (st.lv | 0) + 1, G = MT.gridOf(up, m);
+    if (!G) return 0;
+    const inM = (x, z) => x >= 0 && z >= 0 && x < m.w && z < m.h;
+    const open = MT.openingsOf(st, m, wallH).filter(([x, z]) => inM(x, z));
+    const mine = new Set(open.map(([x, z]) => okey(x, z)));
+    const others = new Set();
+    for (const o of m.stairs || []) if (o !== st && (o.lv | 0) + 1 === up) for (const [x, z] of MT.openingsOf(o, m, wallH)) others.add(okey(x, z));
+    let n = 0;
+    for (let pass = 0; pass < 16; pass++) {
+      let changed = false;
+      for (const [x, z] of open) {
+        if (G[z][x] !== ' ' || others.has(okey(x, z))) continue;
+        let floor = false, outside = false;
+        for (const [dx, dz] of DIRS) {
+          const nx = x + dx, nz = z + dz, k = okey(nx, nz);
+          if (others.has(k) || !inM(nx, nz)) continue;
+          const ch = G[nz][nx];
+          if (mine.has(k)) { if (ch === '.') floor = true; continue; }
+          if (ch === ' ') outside = true;
+          else if (FLOORISH.has(ch) || WALLISH.has(ch)) floor = true;
+        }
+        if (floor && !outside) { setRow(m, x, z, '.', up); n++; changed = true; }
+      }
+      if (!changed) break;
+    }
+    if (n) fixZoneSeeds(m);
+    return n;
+  };
+  /* Hauteur des murs : la trémie de chaque escalier dépend de la hauteur d'étage. */
+  MT.setWallHeight = (m, h) => {
+    const old = m.ambiance.wallHeight;
+    if (old === h) return;
+    for (const st of m.stairs || []) MT.fillOpenings(m, st, old);
+    m.ambiance.wallHeight = h;
+    let walls = 0;
+    const removed = [];
+    for (const st of m.stairs || []) {
+      const r = carve(m, st);
+      walls += r.walls;
+      if (r.cells.length) removed.push(...cleanElements(m, r.cells, r.up));
+    }
+    if (walls) MT.toast(`Trémies agrandies : ${walls} case${walls > 1 ? 's' : ''} de mur ouverte${walls > 1 ? 's' : ''} au-dessus des escaliers.`, 'warn');
+    if (removed.length) MT.toast(`Retiré : ${[...new Set(removed)].join(', ')}`, 'warn');
+  };
+  /* Escalier tel que l'outil le poserait en (x, z) (options de l'outil). */
+  MT.stairFromOpts = (x, z, o = S.opts.stairs, lv = S.level) => {
+    const st = { x, z, dir: o.dir.slice(), shape: o.shape, w: o.shape === 'spiral' ? 1 : o.w, n: o.n, mat: o.mat };
+    if (o.shape === 'l' || o.shape === 'u') st.n2 = o.n2;
+    if (o.shape !== 'straight') st.turn = o.turn === -1 ? -1 : 1;
+    return MT.tagLv(st, lv);
+  };
+  /* Peut-on poser cet escalier ? Renvoie null, ou la raison. ignore : indice d'un escalier à ignorer. */
+  MT.stairProblem = (st, ignore = -1) => {
+    const m = S.map, lv = st.lv | 0, plan = ZS.stairPlan(st);
+    if (!plan.footprint.every(([x, z]) => inb(x, z))) return 'L’escalier sort de la carte.';
+    if (!plan.cells.every((c) => MT.tileAt(c.x, c.z, lv) === '.')) return 'Il faut du sol libre sous toutes les marches.';
+    const mine = new Set(plan.footprint.map((c) => `${c[0]},${c[1]}`));
+    const open = new Set(MT.openingsOf(st).map((c) => `${c[0]},${c[1]}`));
+    for (const [i, o] of MT.stairsOf().entries()) {
+      if (i === ignore) continue;
+      const op = ZS.stairPlan(o), olv = o.lv | 0;
+      if (olv === lv && op.footprint.some((c) => mine.has(`${c[0]},${c[1]}`))) return 'Il y a déjà un escalier ici.';
+      if (olv === lv + 1 && op.footprint.some((c) => open.has(`${c[0]},${c[1]}`))) return 'La trémie toucherait l’escalier de l’étage du dessus.';
+      if (olv + 1 === lv && MT.openingsOf(o).some((c) => mine.has(`${c[0]},${c[1]}`))) return 'Ces cases sont la trémie d’un escalier du dessous.';
+    }
+    // étage du dessus : la trémie ne coupe ni mur, ni porte, ni fenêtre, ni élément posé au sol
+    const up = lv + 1;
+    if (MT.hasLevel(up)) {
+      const where = up > 0 ? `de l’étage ${up}` : up < 0 ? `du sous-sol ${-up}` : 'du rez-de-chaussée';
+      const WHAT = { '#': 'un mur', W: 'une fenêtre', D: 'une porte', P: 'un pilier' };
+      for (const [x, z] of MT.openingsOf(st)) {
+        const ch = MT.tileAt(x, z, up);
+        if (WALLISH.has(ch)) return `La trémie couperait ${WHAT[ch]} ${where} : déplacez l’escalier ou retirez-le d’abord.`;
+      }
+      const on = (c) => open.has(`${c[0]},${c[1]}`);
+      const atUp = (e) => MT.lvOf(e) === up;
+      const hit = m.perks.some((p) => atUp(p) && on(p.cell)) ? 'un distributeur d’atout'
+        : m.boxes.some((b) => atUp(b) && b.cells.some(on)) ? 'un emplacement de boîte mystère'
+          : m.amp && atUp(m.amp) && m.amp.cells.some(on) ? 'l’Amplificateur'
+            : m.risers.some((r) => atUp(r) && on(r)) ? 'une apparition de zombies'
+              : atUp(m.spawn) && on([Math.floor(m.spawn.pos[0]), Math.floor(m.spawn.pos[1])]) ? 'le départ du joueur' : null;
+      if (hit) return `La trémie tomberait sur ${hit} ${where}.`;
+    }
+    return null;
+  };
+  /* Pose un escalier ; crée l'étage du dessus s'il manque. Renvoie son indice, ou -1. */
+  MT.placeStair = (x, z) => {
+    const m = S.map;
+    if (!m || !MT.multiOk()) return -1;
+    const st = MT.stairFromOpts(x, z);
+    const why = MT.stairProblem(st);
+    if (why) { MT.toast(why, 'warn'); return -1; }
+    const up = S.level + 1;
+    if (up > (ZS.LEVEL_MAX || 6)) { MT.toast(`Pas d’étage possible au-dessus de l’étage ${ZS.LEVEL_MAX || 6}.`, 'warn'); return -1; }
+    const created = !MT.hasLevel(up);
+    if (created && MT.levels().length >= (ZS.LEVELS_MAX || 8)) { MT.toast(`${ZS.LEVELS_MAX || 8} niveaux au plus : impossible d’ajouter l’étage d’arrivée.`, 'warn'); return -1; }
+    let idx = -1;
+    MT.edit(`Poser : escalier ${ZS.STAIR_SHAPES[st.shape].toLowerCase()} (${ZS.STAIR_MATS[st.mat].name.toLowerCase()})`, (mm) => {
+      if (!mm.stairs) mm.stairs = [];
+      if (created) newLevel(mm, up, S.level);
+      mm.stairs.push(st);
+      idx = mm.stairs.length - 1;
+      MT.carveOpenings(mm, st);
+      S.sel = { kind: 'stair', i: idx };
+    }, 'all');
+    MT.emit('selection');
+    if (created) MT.toast(`${MT.levelName(up)} ajouté pour l’arrivée de l’escalier.`, 'ok');
+    return idx;
+  };
+  /* Change un escalier (forme, matériau, sens…) ; la trémie suit. */
+  MT.updateStair = (i, fn, label = 'Modifier l’escalier') => {
+    const m = S.map, st0 = MT.stairsOf()[i];
+    if (!st0) return false;
+    const next = deep(st0);
+    fn(next);
+    if (next.shape === 'spiral') next.w = 1;
+    if (next.shape === 'l' || next.shape === 'u') { if (!next.n2) next.n2 = next.n; } else delete next.n2;
+    if (next.shape === 'straight') delete next.turn; else if (next.turn !== -1) next.turn = 1;
+    const why = MT.stairProblem(next, i);
+    if (why) { MT.toast(why, 'warn'); return false; }
+    MT.edit(label, (mm) => {
+      MT.fillOpenings(mm, mm.stairs[i]);
+      mm.stairs[i] = next;
+      MT.carveOpenings(mm, next);
+    }, 'all');
+    return true;
+  };
+  const DIR_CW = (d) => [-d[1], d[0]];      // quart de tour (sens des aiguilles d'une montre, vu du plan)
+  MT.rotateDir = (d, k = 1) => { let r = d.slice(); for (let i = 0; i < ((k % 4) + 4) % 4; i++) r = DIR_CW(r); return r; };
 
   /* --------------------------------------------- taille de la carte --- */
   /* ax, az : ancrage (0 = gauche/haut, 1 = centre, 2 = droite/bas). */
@@ -716,6 +1003,20 @@
       const mv = (c) => [c[0] + dx, c[1] + dz];
       raw.grid = shiftRows(m0.grid, ' ');
       for (const L of ['floor', 'ceil', 'wall']) raw.layers[L] = shiftRows(m0.layers[L], '.');
+      if (m0.floors && m0.floors.length) {
+        raw.floors = m0.floors.map((f) => {
+          const ls = {};
+          for (const L of ['floor', 'ceil', 'wall']) ls[L] = shiftRows((f.layers && f.layers[L]) || [], '.');
+          return { lv: f.lv, grid: shiftRows(f.grid, ' '), layers: ls };
+        });
+      }
+      let dropped = [];
+      if (raw.stairs) {
+        const fits = (s) => ZS.stairPlan(s).footprint.every((c) => inside(...c));
+        const moved = raw.stairs.map((s) => ({ ...s, x: s.x + dx, z: s.z + dz }));
+        raw.stairs = moved.filter(fits);
+        dropped = moved.filter((s) => !fits(s));
+      }
       raw.zones = raw.zones.map((z) => ({ ...z, seed: mv(z.seed) })).filter((z) => inside(...z.seed));
       raw.spawn.pos = [clamp(raw.spawn.pos[0] + dx, 0, W2), clamp(raw.spawn.pos[1] + dz, 0, H2)];
       raw.doors = raw.doors.map((d) => ({ ...d, cells: d.cells.map(mv).filter((c) => inside(...c)) })).filter((d) => d.cells.length);
@@ -727,12 +1028,14 @@
       if (raw.digipass) { raw.digipass.cell = mv(raw.digipass.cell); if (!inside(...raw.digipass.cell)) raw.digipass = null; }
       raw.lights = raw.lights.map((l) => ({ ...l, pos: [l.pos[0] + dx, l.pos[1], l.pos[2] + dz] })).filter((l) => inside(Math.floor(l.pos[0]), Math.floor(l.pos[2])));
       raw.signs = raw.signs.map((s) => ({ ...s, pos: [s.pos[0] + dx, s.pos[1], s.pos[2] + dz] }));
-      raw.risers = raw.risers.map(mv).filter((c) => inside(...c));
+      raw.risers = raw.risers.map((c) => mv(c).concat(c.slice(2))).filter((c) => inside(c[0], c[1]));
       raw.props = raw.props.map((p) => ({ ...p, x: p.x + dx, z: p.z + dz }));
       if (raw.menuCam) { raw.menuCam.pos[0] += dx; raw.menuCam.pos[2] += dz; raw.menuCam.look[0] += dx; raw.menuCam.look[2] += dz; }
       const m = ZS.normalizeMap(raw);
+      for (const st of dropped) MT.fillOpenings(m, st);
       reconcileDoors(m);
       S.map = m;
+      if (!MT.hasLevel(S.level)) S.level = 0;
       MT.emit('resized', dx, dz);
     }, 'all');
   };
@@ -742,10 +1045,35 @@
   MT.formatMapJson = (o) => {
     const out = ['{'];
     const keys = Object.keys(o).filter((k) => o[k] !== undefined);
+    const rows = (pad, name, list, end) => {
+      out.push(`${pad}${JSON.stringify(name)}: [`);
+      list.forEach((row, r) => out.push(`${pad}  ${JSON.stringify(row)}${r < list.length - 1 ? ',' : ''}`));
+      out.push(`${pad}]${end}`);
+    };
     keys.forEach((k, i) => {
       const v = o[k], end = i < keys.length - 1 ? ',' : '';
       const isList = Array.isArray(v) && v.length && v.every((e) => typeof e === 'string' || (e && typeof e === 'object'));
-      if (isList) {
+      if (k === 'floors' && isList) {
+        // un bloc par niveau : une ligne par rangée, comme la grille du rez-de-chaussée
+        out.push('  "floors": [');
+        v.forEach((f, j) => {
+          out.push('    {');
+          const fk = Object.keys(f).filter((x) => f[x] !== undefined);
+          fk.forEach((x, q) => {
+            const e2 = q < fk.length - 1 ? ',' : '';
+            if (x === 'grid' && Array.isArray(f.grid)) rows('      ', 'grid', f.grid, e2);
+            else if (x === 'layers' && f.layers && typeof f.layers === 'object') {
+              const ls = Object.keys(f.layers);
+              if (!ls.length) { out.push(`      "layers": {}${e2}`); return; }
+              out.push('      "layers": {');
+              ls.forEach((L, li) => rows('        ', L, f.layers[L], li < ls.length - 1 ? ',' : ''));
+              out.push(`      }${e2}`);
+            } else out.push(`      ${JSON.stringify(x)}: ${JSON.stringify(f[x])}${e2}`);
+          });
+          out.push(`    }${j < v.length - 1 ? ',' : ''}`);
+        });
+        out.push(`  ]${end}`);
+      } else if (isList) {
         out.push(`  ${JSON.stringify(k)}: [`);
         v.forEach((e, j) => out.push(`    ${JSON.stringify(e)}${j < v.length - 1 ? ',' : ''}`));
         out.push(`  ]${end}`);
@@ -827,7 +1155,7 @@
     S.map = map;
     S.id = id || map.id;
     S.source = source;
-    S.undo = []; S.redo = []; S.pending = null; S.sel = null;
+    S.undo = []; S.redo = []; S.pending = null; S.sel = null; S.level = 0;
     S.rev++;
     S.savedRev = source === 'workspace' || source === 'game' ? S.rev : -1;
     S.analysisRev = -1;

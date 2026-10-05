@@ -52,6 +52,8 @@
     rotate: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
     tag: '<path d="M3 12.5V4h8.5L21 13.5 13.5 21z"/><circle cx="7.5" cy="8" r="1.4"/>',
+    stairs: '<path d="M3 20h5v-4.5h4.5V11H17V6.5h4"/><path d="M3 20V9.5"/>',
+    layers: '<path d="M12 3.5l9 4.5-9 4.5-9-4.5z"/><path d="M3 12l9 4.5 9-4.5M3 16l9 4.5 9-4.5"/>',
   };
   function icon(name, cls = '') {
     const s = h('span', { class: `ic ${cls}`, 'aria-hidden': 'true' });
@@ -365,7 +367,7 @@
   /* ------------------------------------------------------- structure --- */
   UI.build = () => {
     document.body.classList.add('mt-on');
-    const toolBtns = MT.tools.list.map((t) => h('button', {
+    const toolBtns = MT.tools.available().map((t) => h('button', {
       type: 'button', class: 'mt-tool', dataset: { tool: t.id }, title: `${t.name} (${t.label})`,
       onclick: () => MT.setTool(t.id),
     }, icon(t.id), h('span', { class: 'mt-tool-key' }, t.label)));
@@ -382,6 +384,7 @@
           h('button', { type: 'button', class: 'mt-icon-btn', id: 'mt-redo', title: 'Rétablir (Ctrl+Y)', onclick: () => MT.redo() }, icon('redo'))),
         h('div', { class: 'mt-seg', id: 'mt-viewseg', role: 'radiogroup', 'aria-label': 'Vues' },
           ...[['plan', 'Plan'], ['split', 'Plan + 3D'], ['3d', '3D']].map(([v, l]) => h('button', { type: 'button', dataset: { view: v }, onclick: () => UI.setView(v) }, l))),
+        h('div', { class: 'mt-levels', id: 'mt-levels', role: 'group', 'aria-label': 'Niveau affiché' }),
         h('div', { class: 'mt-spacer' }),
         h('button', { type: 'button', class: 'mt-btn issues', id: 'mt-issues-btn', title: 'Problèmes de la carte', onclick: () => UI.setTab('issues') }, icon('warn'), h('span', { id: 'mt-issues-count' }, '0')),
         h('button', { type: 'button', class: 'mt-btn primary', id: 'mt-test', title: 'Tester la carte (F5) · Maj+F5 : depuis la caméra', onclick: (e) => MT.test(e.shiftKey) }, icon('play'), h('span', null, 'Tester')),
@@ -444,6 +447,7 @@
     MT.on('issues', refreshIssues);
     MT.on('cursor', refreshCursor);
     MT.on('library', () => { if (UI.tab === 'tool' && S.tool === 'paint') renderPanel(); });
+    MT.on('level', () => { refreshLevels(); renderPanel(); refreshTop(); });
     refreshToolbar();
     UI.setTab('tool');
     UI.setView(UI.view);
@@ -500,8 +504,33 @@
   }
 
   /* -------------------------------------------------------- barre haute -- */
+  /* Sélecteur de niveau (barre du haut) : descendre, niveau affiché, monter, ajouter. */
+  function refreshLevels() {
+    const box = $('mt-levels');
+    if (!box) return;
+    box.textContent = '';
+    box.hidden = !S.map || !MT.multiOk();
+    if (box.hidden) return;
+    const lvs = MT.levels(), i = lvs.indexOf(S.level);
+    const sel = h('select', { class: 'f-select mt-level-sel', title: 'Niveau affiché (Ctrl+↑ / Ctrl+↓)' }, lvs.slice().reverse().map((lv) => h('option', { value: lv, selected: lv === S.level }, MT.levelName(lv))));
+    sel.addEventListener('change', () => MT.setLevel(parseInt(sel.value, 10)));
+    box.append(
+      h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Niveau du dessous (Ctrl+↓)', disabled: i <= 0, onclick: () => MT.setLevel(lvs[i - 1]) }, icon('down')),
+      icon('layers', 'mt-levels-ic'), sel,
+      h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Niveau du dessus (Ctrl+↑)', disabled: i >= lvs.length - 1, onclick: () => MT.setLevel(lvs[i + 1]) }, icon('up')),
+      h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Ajouter un étage ou un sous-sol', onclick: () => UI.addLevelDialog() }, icon('plus')));
+  }
+  UI.refreshLevels = refreshLevels;
+  UI.addLevelDialog = async () => {
+    const lvs = MT.levels();
+    const r = await UI.choice(`Ajouter un niveau : un étage au-dessus de « ${MT.levelName(lvs[lvs.length - 1])} » ou un sous-sol sous « ${MT.levelName(lvs[0])} ». Il reprend les murs du niveau voisin ; un escalier (outil Escaliers, K) relie deux niveaux.`, [
+      { label: 'Annuler', value: null }, { label: 'Sous-sol', value: -1 }, { label: 'Étage au-dessus', value: 1, kind: 'primary' },
+    ], 'Ajouter un niveau');
+    if (r) MT.addLevel(r);
+  };
   function refreshTop() {
     if (!S.map) return;
+    refreshLevels();
     const name = $('mt-name');
     if (document.activeElement !== name) name.value = S.map.name;
     const dirty = MT.isDirty();
@@ -512,12 +541,13 @@
     $('mt-undo').title = S.undo.length ? `Annuler : ${S.undo[S.undo.length - 1].label} (Ctrl+Z)` : 'Rien à annuler';
     $('mt-redo').title = S.redo.length ? `Rétablir : ${S.redo[S.redo.length - 1].label} (Ctrl+Y)` : 'Rien à rétablir';
     const m = S.map;
-    $('st-map').textContent = `${m.w} × ${m.h} · ${m.props.length} objet${m.props.length > 1 ? 's' : ''} · ${m.lights.length} lumière${m.lights.length > 1 ? 's' : ''}`;
+    const nl = MT.levels().length;
+    $('st-map').textContent = `${m.w} × ${m.h}${nl > 1 ? ` · ${nl} niveaux` : ''} · ${m.props.length} objet${m.props.length > 1 ? 's' : ''} · ${m.lights.length} lumière${m.lights.length > 1 ? 's' : ''}`;
     MT.api.setTitle(`${dirty ? '● ' : ''}${m.name} — Mod Tools · Zombie Survival`);
   }
   function refreshToolbar() {
     for (const b of document.querySelectorAll('.mt-tool')) b.classList.toggle('on', b.dataset.tool === S.tool);
-    const cls = ['tool-select', 'tool-build', 'tool-paint', 'tool-props', 'tool-elements'];
+    const cls = ['tool-select', 'tool-build', 'tool-paint', 'tool-props', 'tool-elements', 'tool-stairs'];
     document.body.classList.remove(...cls);
     document.body.classList.add(`tool-${S.tool}`);
   }
@@ -527,7 +557,7 @@
   }
   function refreshCursor(p) {
     if (!p || !S.map || !MT.inb(p.x, p.z)) { $('st-cell').textContent = '—'; $('st-tile').textContent = ''; $('st-zone').textContent = ''; return; }
-    $('st-cell').textContent = `x ${p.x} · z ${p.z}${p.view === '3d' ? ` · h ${p.wy.toFixed(2)} m` : ''}`;
+    $('st-cell').textContent = `${MT.levels().length > 1 ? `${MT.levelName(S.level)} · ` : ''}x ${p.x} · z ${p.z}${p.view === '3d' ? ` · h ${p.wy.toFixed(2)} m` : ''}`;
     let t = MT.tools.tileName(MT.tileAt(p.x, p.z));
     if (S.tool === 'paint') { const L = S.opts.paint.layer; const id = MT.cellTexture(p.x, p.z, L); t += ` · ${MT.tools.texName(id)}`; }
     $('st-tile').textContent = t;
@@ -577,20 +607,25 @@
       case 'paint': return [head, ...paintPanel()];
       case 'props': return [head, ...propsPanel()];
       case 'elements': return [head, ...elementsPanel()];
+      case 'stairs': return [head, ...stairsPanel()];
       default: return [head, ...selectPanel()];
     }
   }
   function selectPanel() {
     const m = S.map;
+    const goLv = (e) => { const lv = MT.lvOf(e); if (lv !== S.level && MT.hasLevel(lv)) MT.setLevel(lv); };
     const cycle = (kind, arr) => {
       if (!arr.length) return;
       const cur = S.sel && S.sel.kind === kind ? S.sel.i : -1;
       const i = (cur + 1) % arr.length;
+      goLv(arr[i]);
       MT.select({ kind, i });
       focusSel();
     };
+    const stairs = MT.stairsOf();
     const inv = [
-      ['Objets posés', m.props.length, () => { if (m.props.length) { const cur = MT.selectedProps(); const i = cur.length ? (cur[0] + 1) % m.props.length : 0; MT.select({ kind: 'prop', list: [i] }); focusSel(); } }],
+      ['Objets posés', m.props.length, () => { if (m.props.length) { const cur = MT.selectedProps(); const i = cur.length ? (cur[0] + 1) % m.props.length : 0; goLv(m.props[i]); MT.select({ kind: 'prop', list: [i] }); focusSel(); } }],
+      ...(MT.multiOk() ? [['Escaliers', stairs.length, () => cycle('stair', stairs)]] : []),
       ['Lumières', m.lights.length, () => cycle('light', m.lights)],
       ['Portes payantes', m.doors.length, () => cycle('door', m.doors)],
       ['Armes murales', m.wallbuys.length, () => cycle('wallbuy', m.wallbuys)],
@@ -605,9 +640,9 @@
         h('p', { class: 'p-note' }, 'Cliquez pour sélectionner l’élément suivant et le montrer dans les vues.'),
         h('div', { class: 'inv' }, inv.map(([label, n, fn]) => h('button', { type: 'button', class: 'inv-row', disabled: !n, onclick: fn }, h('span', null, label), h('b', null, n)))),
         h('div', { class: 'p-actions' },
-          btn('Départ', () => { MT.select({ kind: 'spawn' }); focusSel(); }, { ic: 'walk' }),
-          m.power ? btn('Interrupteur', () => { MT.select({ kind: 'power' }); focusSel(); }, { ic: 'power' }) : null,
-          m.amp ? btn('Amplificateur', () => { MT.select({ kind: 'amp' }); focusSel(); }) : null)),
+          btn('Départ', () => { goLv(m.spawn); MT.select({ kind: 'spawn' }); focusSel(); }, { ic: 'walk' }),
+          m.power ? btn('Interrupteur', () => { goLv(m.power); MT.select({ kind: 'power' }); focusSel(); }, { ic: 'power' }) : null,
+          m.amp ? btn('Amplificateur', () => { goLv(m.amp); MT.select({ kind: 'amp' }); focusSel(); }) : null)),
       section('Astuces',
         h('ul', { class: 'p-tips' },
           h('li', null, 'Glisser un cadre dans le plan sélectionne plusieurs objets.'),
@@ -777,11 +812,13 @@
     const s = S.sel, m = S.map;
     if (!s) return;
     let p = null;
-    if (s.kind === 'prop') { const pr = m.props[s.list[0]]; if (pr) p = { x: pr.x - 0.5, z: pr.z - 0.5, y: (pr.y || 0) + 0.5 }; }
-    else if (s.kind === 'light') { const l = m.lights[s.i]; p = { x: l.pos[0] - 0.5, z: l.pos[2] - 0.5, y: l.pos[1] - 0.5 }; }
+    const E = MT.levelY();
+    if (s.kind === 'prop') { const pr = m.props[s.list[0]]; if (pr) p = { x: pr.x - 0.5, z: pr.z - 0.5, y: E + (pr.y || 0) + 0.5 }; }
+    else if (s.kind === 'light') { const l = m.lights[s.i]; p = { x: l.pos[0] - 0.5, z: l.pos[2] - 0.5, y: E + l.pos[1] - 0.5 }; }
     else if (s.kind === 'spawn') p = { x: m.spawn.pos[0] - 0.5, z: m.spawn.pos[1] - 0.5 };
     else if (s.kind === 'cell') p = { x: s.x, z: s.z };
     else if (s.kind === 'zone') { const d = m.zones[s.i]; if (d) p = { x: d.seed[0], z: d.seed[1] }; }
+    else if (s.kind === 'stair') { const st = MT.stairsOf()[s.i]; if (st) { const c = ZS.stairPlan(st).cells; const mid = c[Math.floor(c.length / 2)]; p = { x: mid.x, z: mid.z, y: E + 1.2 }; } }
     else {
       const e = { perk: m.perks[s.i] && m.perks[s.i].cell, riser: m.risers[s.i], wallbuy: m.wallbuys[s.i] && m.wallbuys[s.i].cell, power: m.power && m.power.cell, sign: m.signs[s.i] && MT.signCell(m.signs[s.i]), box: m.boxes[s.i] && m.boxes[s.i].cells[0], amp: m.amp && m.amp.cells[0], door: m.doors[s.i] && m.doors[s.i].cells[0] }[s.kind];
       if (e) p = { x: e[0], z: e[1] };
@@ -860,6 +897,7 @@
           num({ value: m.spawn.pos[1], min: 0, max: m.h, step: 0.25, unit: 'z', width: '72px', onCommit: (v) => commit('Départ', 'elements', (mm) => { mm.spawn.pos[1] = round(v); }) }))),
         field('Regard', num({ value: (((deg(m.spawn.yaw) % 360) + 360) % 360), min: 0, max: 360, step: 15, unit: '°', digits: 1, onCommit: (v) => commit('Direction du départ', 'elements', (mm) => { mm.spawn.yaw = round(MT.util.wrapRad(rad(v)), 4); }) }), '0° : vers le haut du plan'))];
       case 'zone': return zoneInspector(s.i);
+      case 'stair': return stairInspector(s.i);
       case 'cell': return cellInspector(s.x, s.z);
       default: return [];
     }
@@ -946,7 +984,7 @@
   function zoneInspector(i) {
     const m = S.map, z = m.zones[i];
     if (!z) return [];
-    const zi = MT.zoneIndexAt(z.seed[0], z.seed[1]);
+    const zi = MT.zoneIndexAt(z.seed[0], z.seed[1], z.lv | 0);
     const A = MT.analysis();
     const cells = zi >= 0 && A.zones[zi] ? A.zones[zi].cells : 0;
     const tintHex = ZS.colorHex(((Math.round(clamp(z.tint[0] / 1.2, 0, 1) * 255) << 16) | (Math.round(clamp(z.tint[1] / 1.2, 0, 1) * 255) << 8) | Math.round(clamp(z.tint[2] / 1.2, 0, 1) * 255)) >>> 0);
@@ -969,7 +1007,7 @@
     const zi = MT.zoneIndexAt(x, z), A = MT.analysis();
     const paintOne = (layer, id) => commit(id ? 'Peindre' : 'Texture par défaut', 'layers', () => { MT.paintCells(layer, [[x, z]], id); });
     const layerRow = (layer, label) => {
-      const own = m.layers[layer][z][x] !== '.';
+      const own = MT.layersOf()[layer][z][x] !== '.';
       return texField(label, MT.cellTexture(x, z, layer), (id) => paintOne(layer, id), { layer, allowDefault: own });
     };
     return [
@@ -978,7 +1016,7 @@
       section('Textures de cette case', layerRow('floor', 'Sol'), layerRow('wall', 'Murs autour'), layerRow('ceil', 'Plafond')),
       zi >= 0 ? section('Pièce', btn(MT.zoneDefOf(zi) >= 0 ? 'Réglages de la pièce' : 'Nommer cette pièce', () => {
         let di = MT.zoneDefOf(zi);
-        if (di < 0) { commit('Nommer une pièce', 'all', (mm) => { mm.zones.push({ name: A.zones[zi].name, seed: [x, z], tint: [1, 1, 1] }); }); di = m.zones.length - 1; }
+        if (di < 0) { commit('Nommer une pièce', 'all', (mm) => { mm.zones.push(MT.tagLv({ name: A.zones[zi].name, seed: [x, z], tint: [1, 1, 1] })); }); di = m.zones.length - 1; }
         MT.select({ kind: 'zone', i: di });
       })) : null,
     ];
@@ -999,6 +1037,7 @@
         field('Auteur', text({ value: m.author, maxLength: 60, placeholder: 'Votre pseudo', onCommit: (v) => commit('Auteur', 'settings', (mm) => { mm.author = v.trim(); }) })),
         field('Taille', h('span', { class: 'f-inline' }, h('b', null, `${m.w} × ${m.h} cases`), btn('Redimensionner…', () => UI.resizeDialog())), `1 case = 1 m ; de ${ZS.MAP_MIN} à ${ZS.MAP_MAX}`),
         field('Décor aléatoire', h('span', { class: 'f-inline' }, h('code', null, String(m.seed)), btn('Tirer au sort', () => commit('Nouveau décor', 'all', (mm) => { mm.seed = Math.floor(Math.random() * 2147483647); }), { ic: 'rotate' })), 'Caisses penchées, arbres, planches : même graine = même décor')),
+      MT.multiOk() ? levelsSection() : null,
       section('Textures par défaut',
         texField('Sol', m.textures.floor, (id) => commit('Sol par défaut', 'all', (mm) => { mm.textures.floor = id; })),
         texField('Murs', m.textures.wall, (id) => commit('Murs par défaut', 'all', (mm) => { mm.textures.wall = id; })),
@@ -1017,7 +1056,7 @@
         check({ checked: a.moon, label: 'Lune dans le ciel', onChange: (v) => amb('Lune', (x) => { x.moon = v; }) }),
         check({ checked: a.pipes, label: 'Tuyaux au plafond des pièces', onChange: (v) => commit('Tuyaux', 'all', (mm) => { mm.ambiance.pipes = v; }) }),
         field('Arbres morts dehors', slider({ value: a.trees, min: 0, max: 200, step: 1, fmt: (v) => `${v}`, onCommit: (v) => commit('Arbres', 'all', (mm) => { mm.ambiance.trees = Math.round(v); }) })),
-        field('Hauteur des murs', slider({ value: a.wallHeight, min: 3, max: 8, step: 0.1, fmt: (v) => `${v.toFixed(1)} m`, onCommit: (v) => commit('Hauteur des murs', 'all', (mm) => { mm.ambiance.wallHeight = round(v, 2); }) }))),
+        field('Hauteur des murs', slider({ value: a.wallHeight, min: 3, max: 8, step: 0.1, fmt: (v) => `${v.toFixed(1)} m`, onCommit: (v) => commit('Hauteur des murs', 'all', (mm) => { MT.setWallHeight(mm, round(v, 2)); }) }))),
       section('Règles de la partie',
         field('Points au départ', num({ value: r.startPoints, min: 0, max: 1000000, step: 100, unit: 'pts', digits: 0, onCommit: (v) => commit('Points au départ', 'settings', (mm) => { mm.rules.startPoints = Math.round(v); }) })),
         field('Arme de départ', select({ value: r.startWeapon, options: Object.entries(ZS.WEAPONS).map(([id, w]) => [id, w.name]), onChange: (v) => commit('Arme de départ', 'settings', (mm) => { mm.rules.startWeapon = v; }) })),
@@ -1060,6 +1099,96 @@
     })));
   }
 
+  /* --------------------------------------------------------- étages --- */
+  function levelsSection() {
+    const m = S.map, lvs = MT.levels().slice().reverse();
+    const count = (lv) => {
+      const n = (arr) => arr.filter((e) => MT.lvOf(e) === lv).length;
+      const st = MT.stairsOf().filter((x) => (x.lv | 0) === lv).length;
+      const parts = [];
+      if (st) parts.push(`${st} escalier${st > 1 ? 's' : ''} vers le haut`);
+      const el = n(m.lights) + n(m.wallbuys) + n(m.perks) + n(m.boxes) + n(m.risers) + n(m.signs);
+      if (el) parts.push(`${el} élément${el > 1 ? 's' : ''}`);
+      const pr = n(m.props);
+      if (pr) parts.push(`${pr} objet${pr > 1 ? 's' : ''}`);
+      return parts.join(' · ') || 'vide';
+    };
+    return section('Niveaux',
+      h('p', { class: 'p-note' }, 'Étages au-dessus du rez-de-chaussée, sous-sols en dessous. Un escalier monte d’un niveau au suivant ; la trémie (le trou dans le plancher) et les garde-corps sont automatiques.'),
+      h('div', { class: 'inv' }, lvs.map((lv) => h('div', { class: `inv-row lvl ${lv === S.level ? 'on' : ''}` },
+        h('button', { type: 'button', class: 'lvl-go', onclick: () => MT.setLevel(lv), title: 'Afficher ce niveau' }, h('span', null, MT.levelName(lv)), h('small', null, count(lv))),
+        lv !== 0 ? h('button', { type: 'button', class: 'mt-icon-btn sm danger', disabled: !MT.removable(lv), title: MT.removable(lv) ? `Supprimer : ${MT.levelName(lv)}` : lv > 0 ? 'Supprimez d’abord les étages du dessus' : 'Supprimez d’abord les sous-sols du dessous', onclick: async () => {
+          const ok = await UI.confirm(`Supprimer « ${MT.levelName(lv)} » et tout ce qui s’y trouve (éléments, objets, escaliers qui y arrivent ou en partent) ? Ctrl+Z pour revenir en arrière.`, { ok: 'Supprimer', danger: true, title: 'Supprimer un niveau' });
+          if (ok) MT.removeLevel(lv);
+        } }, icon('trash')) : null))),
+      h('div', { class: 'p-actions' },
+        btn('Ajouter un étage', () => MT.addLevel(1), { ic: 'up' }),
+        btn('Ajouter un sous-sol', () => MT.addLevel(-1), { ic: 'down' })));
+  }
+  const DIR_OPTS = [['n', 'Nord ↑', [0, -1]], ['e', 'Est →', [1, 0]], ['s', 'Sud ↓', [0, 1]], ['w', 'Ouest ←', [-1, 0]]];
+  const dirKey = (d) => (DIR_OPTS.find((o) => o[2][0] === d[0] && o[2][1] === d[1]) || DIR_OPTS[0])[0];
+  const STAIR_HELP = {
+    straight: 'Une volée droite, de 1 à 3 cases de large.',
+    l: 'Une volée, un palier, puis une seconde volée à angle droit (quart tournant).',
+    u: 'Deux volées côte à côte : demi-tour sur le palier. Prend deux fois la largeur.',
+    spiral: 'Colimaçon : un bloc de 3 × 3 cases autour d’un noyau, on arrive au-dessus de la première marche.',
+  };
+  /* Hauteur d'une marche (environ 4 marches dessinées par case) et nombre de cases d'un escalier. */
+  function stairInfo(st) {
+    const LH = MT.wallHeight() + (ZS.SLAB || 0.3), plan = ZS.stairPlan(st);
+    const ramps = plan.cells.filter((c) => c.kind !== 'flat');
+    const rise = ramps.length ? (LH * (ramps[0].h1 - ramps[0].h0)) : LH;
+    const steps = Math.max(1, Math.round(rise / 0.19));
+    const slope = Math.round((Math.atan(rise) * 180) / Math.PI);
+    return { LH, cells: plan.cells.length, step: Math.round((rise / steps) * 100), slope, steep: slope > 50 };
+  }
+  /* Réglages communs à l'outil (o = S.opts.stairs) et à un escalier posé (apply(fn)). */
+  function stairControls(o, apply) {
+    const matGrid = h('div', { class: 'stair-mats' }, Object.entries(ZS.STAIR_MATS).map(([id, mt]) => {
+      const u = MT.texThumb(mt.tread);
+      return h('button', { type: 'button', class: `stair-mat ${o.mat === id ? 'on' : ''}`, title: `${mt.name}${mt.open ? ' · marches ouvertes sur limons' : ' · marches pleines'}`, onclick: () => apply((x) => { x.mat = id; }) },
+        h('span', { class: 'stair-sw', style: typeof u === 'string' ? { backgroundImage: `url(${u})` } : {} }), h('span', null, mt.name));
+    }));
+    const info = stairInfo(o.lv !== undefined || o.x !== undefined ? o : MT.stairFromOpts(0, 0, o));
+    const two = o.shape === 'l' || o.shape === 'u';
+    return [
+      section('Forme',
+        seg(o.shape, Object.entries(ZS.STAIR_SHAPES), (v) => apply((x) => { x.shape = v; if (v === 'spiral') x.w = 1; })),
+        h('p', { class: 'p-note' }, STAIR_HELP[o.shape])),
+      section('Matériau', matGrid),
+      section('Dimensions',
+        o.shape !== 'spiral' ? field('Largeur', seg(String(o.w || 1), [['1', '1 case'], ['2', '2 cases'], ['3', '3 cases']], (v) => apply((x) => { x.w = parseInt(v, 10); }))) : null,
+        o.shape !== 'spiral' ? field(two ? '1re volée' : 'Longueur', slider({ value: o.n, min: 2, max: 12, step: 1, fmt: (v) => `${v} case${v > 1 ? 's' : ''}`, onCommit: (v) => apply((x) => { x.n = v; }) })) : null,
+        two ? field('2e volée', slider({ value: o.n2 || o.n, min: 1, max: 12, step: 1, fmt: (v) => `${v} case${v > 1 ? 's' : ''}`, onCommit: (v) => apply((x) => { x.n2 = v; }) })) : null,
+        o.shape !== 'straight' ? field('Virage', seg(String(o.turn === -1 ? -1 : 1), [['-1', '↶ à gauche'], ['1', '↷ à droite']], (v) => apply((x) => { x.turn = parseInt(v, 10); }))) : null,
+        field('Sens de la montée', seg(dirKey(o.dir), DIR_OPTS.map(([k, l]) => [k, l]), (v) => apply((x) => { x.dir = DIR_OPTS.find((d) => d[0] === v)[2].slice(); })), 'R : tourner d’un quart de tour'),
+        h('p', { class: `p-note ${info.steep ? 'warn' : ''}` }, `${info.cells} cases · marches d’environ ${info.step} cm · pente ${info.slope}°${info.steep ? ' : très raide, allongez-le' : ''}.`)),
+    ];
+  }
+  function stairsPanel() {
+    if (!MT.multiOk()) return [h('p', { class: 'p-note' }, 'Ce moteur du jeu ne connaît pas encore les étages (jeu 1.4.0 ou plus récent).')];
+    const o = S.opts.stairs;
+    const up = S.level + 1;
+    const apply = (fn) => { fn(o); if (o.shape === 'spiral') o.w = 1; MT.emit('tool-opts'); MT.emit('preview'); };
+    return [
+      h('p', { class: 'p-note' }, `Monte du ${MT.levelName(S.level).toLowerCase()} à ${MT.levelName(up).toLowerCase()}${MT.hasLevel(up) ? '' : ' (ajouté à la pose)'}. Cliquez sur la case de la première marche ; la trémie s’ouvre toute seule à l’étage, des garde-corps bordent les vides. Les zombies montent et descendent comme le joueur.`),
+      ...stairControls(o, apply),
+    ];
+  }
+  function stairInspector(i) {
+    const st = MT.stairsOf()[i];
+    if (!st) return [];
+    const mt = ZS.STAIR_MATS[st.mat] || ZS.STAIR_MATS.wood;
+    const apply = (fn) => MT.updateStair(i, fn);
+    return [
+      selHead(`Escalier ${ZS.STAIR_SHAPES[st.shape].toLowerCase()}`, `${mt.name} · du ${MT.levelName(st.lv | 0).toLowerCase()} à ${MT.levelName((st.lv | 0) + 1).toLowerCase()}`, [delBtn()]),
+      ...stairControls(st, apply),
+      h('div', { class: 'p-actions' },
+        btn('Utiliser pour poser', () => { Object.assign(S.opts.stairs, { shape: st.shape, mat: st.mat, w: st.w || 1, n: st.n, n2: st.n2 || st.n, turn: st.turn === -1 ? -1 : 1, dir: st.dir.slice() }); MT.setTool('stairs'); }),
+        btn('Tourner', () => MT.tools.rotate(1), { ic: 'rotate' })),
+    ];
+  }
+
   /* ------------------------------------------------- panneau problèmes -- */
   function issuesPanel() {
     return [h('div', { class: 'p-head' }, icon('warn'), h('div', null, h('h2', null, 'Problèmes'), h('p', null, 'Les erreurs empêchent de publier la carte pour les joueurs (la partie de test reste possible) ; les conseils n’empêchent rien.'))), h('div', { id: 'mt-issues' })];
@@ -1073,8 +1202,8 @@
     if (!box) return;
     box.textContent = '';
     if (!n) { box.append(h('p', { class: 'p-ok' }, 'Aucun problème : la carte peut se jouer.')); return; }
-    const item = (e, tone) => h('button', { type: 'button', class: `issue ${tone}`, disabled: !e.at, onclick: () => { if (e.at) MT.emit('focus', { x: e.at[0], z: e.at[1] }); } },
-      h('b', null, tone === 'err' ? 'Erreur' : 'Conseil'), h('span', null, e.msg), e.at ? h('small', null, `x ${e.at[0]} · z ${e.at[1]}`) : null);
+    const item = (e, tone) => h('button', { type: 'button', class: `issue ${tone}`, disabled: !e.at, onclick: () => { if (!e.at) return; const lv = e.at[2] | 0; if (lv !== S.level && MT.hasLevel(lv)) MT.setLevel(lv); MT.emit('focus', { x: e.at[0], z: e.at[1] }); } },
+      h('b', null, tone === 'err' ? 'Erreur' : 'Conseil'), h('span', null, e.msg), e.at ? h('small', null, `${e.at[2] ? `${MT.levelName(e.at[2])} · ` : ''}x ${e.at[0]} · z ${e.at[1]}`) : null);
     for (const e of errors) box.append(item(e, 'err'));
     for (const e of warnings) box.append(item(e, 'warn'));
   }
@@ -1296,7 +1425,13 @@
       if (k === 'KeyD') { e.preventDefault(); MT.duplicateSelection(); return; }
       if (k === 'KeyC') { e.preventDefault(); MT.copySelection(); return; }
       if (k === 'KeyV') { e.preventDefault(); const p = lastCursor; if (p) MT.paste(p.wx, p.wz); else MT.toast('Visez l’endroit où coller (plan ou 3D).', 'warn'); return; }
-      if (k === 'KeyA') { e.preventDefault(); if (S.map.props.length) MT.select({ kind: 'prop', list: S.map.props.map((_, i) => i) }); return; }
+      if (k === 'KeyA') { e.preventDefault(); const list = S.map.props.map((p, i) => (MT.here(p) ? i : -1)).filter((i) => i >= 0); if (list.length) MT.select({ kind: 'prop', list }); return; }
+      if ((k === 'ArrowUp' || k === 'ArrowDown') && MT.multiOk()) {
+        e.preventDefault();
+        const lvs = MT.levels(), i = lvs.indexOf(S.level) + (k === 'ArrowUp' ? 1 : -1);
+        if (i >= 0 && i < lvs.length) { MT.setLevel(lvs[i]); MT.toast(MT.levelName(lvs[i])); }
+        return;
+      }
       return;
     }
     if (e.key === 'F5') { e.preventDefault(); MT.test(e.shiftKey); return; }
@@ -1350,7 +1485,8 @@
   /* --------------------------------------------------------------- aide -- */
   UI.help = () => {
     const rows = [
-      ['Outils', 'V sélection · B construire · T textures · O objets · G éléments de jeu'],
+      ['Outils', 'V sélection · B construire · T textures · O objets · G éléments de jeu · K escaliers'],
+      ['Étages', 'Ctrl+↑ / Ctrl+↓ : niveau du dessus / du dessous · bouton + de la barre du haut : ajouter un étage ou un sous-sol · le plan montre le niveau du dessous en transparence, la 3D cache les niveaux au-dessus'],
       ['Annuler / rétablir', 'Ctrl+Z · Ctrl+Y (ou Ctrl+Maj+Z)'],
       ['Enregistrer', 'Ctrl+S (copie de secours automatique toutes les 40 s)'],
       ['Tester', 'F5 au départ · Maj+F5 depuis la caméra 3D · Échap puis « Retour aux Mod Tools »'],
@@ -1368,7 +1504,7 @@
           h('h3', null, 'Faire une carte en 6 étapes'),
           h('ol', null,
             h('li', null, h('b', null, 'Construire'), ' les pièces (forme « Pièce » : murs autour, sol dedans), puis les ', h('b', null, 'fenêtres'), ' sur les murs extérieurs avec de la cour devant.'),
-            h('li', null, 'Relier les pièces par des ', h('b', null, 'portes payantes'), ' (outil Éléments) et nommer les pièces.'),
+            h('li', null, 'Relier les pièces par des ', h('b', null, 'portes payantes'), ' (outil Éléments) et nommer les pièces. Pour des étages : outil ', h('b', null, 'Escaliers'), ' (K), qui ajoute l’étage du dessus s’il manque.'),
             h('li', null, 'Poser le ', h('b', null, 'départ'), ', les ', h('b', null, 'armes murales'), ', les ', h('b', null, 'distributeurs'), ', les emplacements de ', h('b', null, 'boîte mystère'), ', l’', h('b', null, 'interrupteur'), ' et les ', h('b', null, 'lumières'), '.'),
             h('li', null, 'Habiller : ', h('b', null, 'textures'), ' (sol, murs, plafond, ciel ouvert) et ', h('b', null, 'objets'), ' de la bibliothèque, ou vos propres images.'),
             h('li', null, 'Régler l’', h('b', null, 'ambiance'), ' et les ', h('b', null, 'règles'), ' (onglet Carte), puis ', h('b', null, 'Tester'), ' (F5).'),

@@ -10,8 +10,8 @@ body.mt-on #game canvas { cursor: default; }
 body.mt-on.mt-no3d #game { visibility: hidden; }
 body.mt-on #game canvas.looking { cursor: none; }
 body.mt-on #game canvas.panning, #mt-plan.panning { cursor: grabbing; }
-body.mt-on.tool-build #game canvas, body.mt-on.tool-paint #game canvas, body.mt-on.tool-elements #game canvas, body.mt-on.tool-props #game canvas { cursor: crosshair; }
-body.mt-on.tool-build #mt-plan, body.mt-on.tool-paint #mt-plan, body.mt-on.tool-elements #mt-plan, body.mt-on.tool-props #mt-plan { cursor: crosshair; }
+body.mt-on.tool-build #game canvas, body.mt-on.tool-paint #game canvas, body.mt-on.tool-elements #game canvas, body.mt-on.tool-props #game canvas, body.mt-on.tool-stairs #game canvas { cursor: crosshair; }
+body.mt-on.tool-build #mt-plan, body.mt-on.tool-paint #mt-plan, body.mt-on.tool-elements #mt-plan, body.mt-on.tool-props #mt-plan, body.mt-on.tool-stairs #mt-plan { cursor: crosshair; }
 
 .mt { position: fixed; inset: 0; z-index: 50; display: grid; grid-template-columns: 52px minmax(0, 1fr) 344px; grid-template-rows: 46px minmax(0, 1fr) 26px; pointer-events: none; color: var(--paper); font: 500 15px/1.3 var(--font-hud); user-select: none; }
 .mt > * { pointer-events: auto; }
@@ -286,3 +286,44 @@ code { font: 400 13px var(--font-type); color: #d8cfb6; background: #0a0d0e; pad
 .mm-publist li { padding: 2px 0; }
 .mm-publist li span { display: inline-block; min-width: 180px; }
 .mm-publist li.missing span { color: #ff8a80; }
+
+/* ---------- étages et escaliers (jeu 1.4.0) ---------- */
+.mt-levels { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 4px; border: 1px solid var(--mt-line2); border-radius: 2px; background: #131718; height: 32px; }
+.mt-levels[hidden] { display: none; }
+.mt-levels .mt-levels-ic { color: var(--mt-brass); margin: 0 2px 0 4px; }
+.mt-level-sel { height: 26px; min-width: 150px; border: 0; background: transparent; color: var(--mt-brass-hi); font-weight: 700; letter-spacing: 0.03em; cursor: pointer; }
+.mt-level-sel option { background: #131718; color: var(--paper); }
+.inv-row.lvl { padding: 0 2px 0 0; cursor: default; height: 34px; }
+.inv-row.lvl.on { border-color: var(--mt-brass); background: rgba(214, 173, 87, 0.1); }
+.inv-row .lvl-go { flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; height: 100%; padding: 0 8px; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.inv-row .lvl-go span { font-weight: 700; font-size: 14px; line-height: 1.05; }
+.inv-row.lvl.on .lvl-go span { color: var(--mt-brass-hi); }
+.inv-row .lvl-go small { color: var(--mt-dim); font-size: 12px; line-height: 1.1; }
+.stair-mats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.stair-mat { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 3px; border: 1px solid var(--mt-line); background: #141819; border-radius: 2px; cursor: pointer; font-size: 12px; line-height: 1.1; text-align: center; }
+.stair-mat:hover { border-color: var(--mt-line2); background: #1a2021; }
+.stair-mat.on { border-color: var(--mt-brass); background: rgba(214, 173, 87, 0.14); color: var(--mt-brass-hi); }
+.stair-sw { display: block; height: 34px; border-radius: 1px; background: #2a2a2a center / cover; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5); }
+.p-note.warn { color: var(--mt-warn); }
+
+/* ---------- barre du haut sur les écrans étroits (fenêtre de 1180 px au moins) ---------- */
+.mt-top > .mt-group, .mt-top > .mt-seg, .mt-top > .mt-btn, .mt-top > .mt-icon-btn { flex: none; }
+.mt-seg button { white-space: nowrap; }
+.mt-title { overflow: hidden; }
+.mt-title .mt-dirty { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1560px) {
+  .mt-top { gap: 8px; }
+  .mt-brand { width: 132px; }
+  .mt-brand b { font-size: 17px; }
+  #mt-maps > span:not(.ic) { display: none; }
+  #mt-maps { padding: 0 9px; }
+  .mt-title .mt-dirty { font-size: 0; }
+  .mt-title .mt-dirty.on::before { font-size: 14px; }
+}
+@media (max-width: 1380px) {
+  .mt-levels .mt-levels-ic { display: none; }
+  .mt-seg button { padding: 0 9px; }
+  #mt-test > span:not(.ic) { display: none; }
+  #mt-test { padding: 0 11px; }
+  .mt-level-sel { min-width: 138px; }
+}

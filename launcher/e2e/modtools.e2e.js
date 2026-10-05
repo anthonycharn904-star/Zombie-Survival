@@ -54,12 +54,121 @@ async function player(userData) {
   } finally { await closeAll(app); }
 }
 
+/* Étages et escaliers : pose à la souris sur le plan, étage d'arrivée créé avec sa trémie,
+   changement de niveau au clavier, sous-sol, inspecteur, coupe de la vue 3D, annuler/rétablir,
+   fichier enregistré, partie de test sur plusieurs niveaux et retour. */
+async function floors(mt, userData) {
+  // salle de blankMap(36, 26) : intérieur x 13..23, z 9..17
+  await mt.evaluate(() => {
+    MT.openMap(ZS.blankMap(36, 26, 'Étages E2E'), { id: 'etages-e2e', source: 'new' });
+    MT.ui.setView('split');
+  });
+  await mt.waitForTimeout(300);
+  await mt.evaluate(() => MT.plan.fit());
+  const clickCell = async (x, z, button = 'left') => {
+    const [px, py] = await mt.evaluate(([cx, cz]) => {
+      const r = MT.plan.canvas.getBoundingClientRect();
+      const [sx, sy] = MT.plan.toScreen(cx + 0.5, cz + 0.5);
+      return [r.left + sx, r.top + sy];
+    }, [x, z]);
+    await mt.mouse.move(px, py);
+    await mt.mouse.down({ button });
+    await mt.mouse.up({ button });
+    await mt.waitForTimeout(150);
+  };
+  ok(await mt.evaluate(() => !!document.querySelector('.mt-tool[data-tool="stairs"]') && !document.getElementById('mt-levels').hidden), 'étages : outil Escaliers et sélecteur de niveau présents');
+  await mt.evaluate(() => { if (document.activeElement) document.activeElement.blur(); });
+  await mt.keyboard.press('KeyK');
+  const panel = await mt.evaluate(() => ({ tool: MT.state.tool, mats: document.querySelectorAll('#mt-panel .stair-mat').length, n: Object.keys(ZS.STAIR_MATS).length }));
+  ok(panel.tool === 'stairs' && panel.mats === panel.n && panel.n >= 8, `étages : touche K → outil Escaliers, ${panel.mats} matériaux proposés`);
+  // 1. escalier droit en bois, montée vers l'est, posé au clic
+  await mt.evaluate(() => Object.assign(MT.state.opts.stairs, { shape: 'straight', mat: 'wood', w: 1, n: 5, dir: [1, 0] }));
+  await clickCell(14, 10);
+  const a = await mt.evaluate(() => {
+    const m = MT.state.map, st = (m.stairs || [])[0], g1 = MT.gridOf(1);
+    return { n: (m.stairs || []).length, at: st ? [st.x, st.z, st.mat, st.lv | 0] : null, levels: MT.levels().join(), open: g1 ? [15, 16, 17, 18].map((x) => g1[10][x]).join('') : null, first: g1 ? g1[10][14] : null, exit: g1 ? g1[10][19] : null, level: MT.state.level };
+  });
+  ok(a.n === 1 && a.at.join() === '14,10,wood,0' && a.levels === '0,1' && a.open === '    ' && a.first === '.' && a.exit === '.' && a.level === 0, `étages : escalier en bois posé au clic, étage 1 ajouté avec sa trémie ${JSON.stringify(a)}`);
+  // 2. Ctrl+↑ : étage 1, puis escalier hélicoïdal en métal (crée l'étage 2)
+  await mt.keyboard.press('Control+ArrowUp');
+  ok(await mt.evaluate(() => MT.state.level === 1 && document.querySelector('.mt-level-sel').value === '1'), 'étages : Ctrl+↑ affiche l’étage 1');
+  await mt.evaluate(() => Object.assign(MT.state.opts.stairs, { shape: 'spiral', mat: 'metal', dir: [0, 1], turn: 1 }));
+  await clickCell(22, 12);
+  const b = await mt.evaluate(() => {
+    const m = MT.state.map, st = m.stairs[1], g2 = MT.gridOf(2);
+    return { n: m.stairs.length, st: st ? [st.x, st.z, st.shape, st.mat, st.lv | 0] : null, levels: MT.levels().join(), core: g2 ? g2[13][21] : null, arrive: g2 ? g2[12][22] : null };
+  });
+  ok(b.n === 2 && b.st.join() === '22,12,spiral,metal,1' && b.levels === '0,1,2' && b.core === ' ' && b.arrive === '.', `étages : hélicoïdal en métal posé à l’étage 1, étage 2 ajouté ${JSON.stringify(b)}`);
+  // 3. pose refusée sur la trémie d'un escalier du dessous
+  await mt.evaluate(() => Object.assign(MT.state.opts.stairs, { shape: 'straight', mat: 'stone', dir: [0, 1], n: 3 }));
+  await clickCell(16, 10);
+  ok(await mt.evaluate(() => MT.state.map.stairs.length === 2), 'étages : pas d’escalier sur une trémie');
+  // 4. sous-sol et escalier en briques qui remonte au rez-de-chaussée
+  await mt.evaluate(() => MT.addLevel(-1));
+  await mt.evaluate(() => Object.assign(MT.state.opts.stairs, { shape: 'straight', mat: 'brick', w: 1, n: 6, dir: [0, -1] }));
+  await clickCell(20, 16);
+  const c = await mt.evaluate(() => {
+    const m = MT.state.map, st = m.stairs[2], g0 = MT.gridOf(0);
+    return { level: MT.state.level, levels: MT.levels().join(), st: st ? [st.x, st.z, st.mat, st.lv] : null, hole: [11, 12, 13, 14].map((z) => g0[z][20]).join(''), exit: g0[10][20], sel: document.querySelector('.mt-level-sel').value };
+  });
+  ok(c.level === -1 && c.levels === '-1,0,1,2' && c.st && c.st.join() === '20,16,brick,-1' && c.hole === '    ' && c.exit === '.' && c.sel === '-1', `étages : sous-sol ajouté, escalier en briques jusqu’au rez-de-chaussée ${JSON.stringify(c)}`);
+  // 4b. clic droit avec l'outil Escaliers : l'escalier part (Ctrl+Z le remet) ; un niveau du milieu ne se supprime pas
+  await clickCell(20, 16, 'right');
+  const rr = await mt.evaluate(() => ({ n: MT.state.map.stairs.length, hole: MT.gridOf(0)[12][20] }));
+  await mt.keyboard.press('Control+KeyZ');
+  const back = await mt.evaluate(() => ({ n: MT.state.map.stairs.length, hole: MT.gridOf(0)[12][20], mid: MT.removeLevel(1), levels: MT.levels().join() }));
+  ok(rr.n === 2 && rr.hole === '.' && back.n === 3 && back.hole === ' ' && back.mid === false && back.levels === '-1,0,1,2', `étages : clic droit retire l’escalier et referme la trémie, Ctrl+Z le remet, étage du milieu protégé ${JSON.stringify({ rr, back })}`);
+  // 5. annuler / rétablir : la trémie suit
+  const u = await mt.evaluate(() => {
+    MT.undo();
+    const undone = MT.state.map.stairs.length === 2 && MT.gridOf(0)[12][20] === '.';
+    MT.redo();
+    return { undone, redone: MT.state.map.stairs.length === 3 && MT.gridOf(0)[12][20] === ' ' };
+  });
+  ok(u.undone && u.redone, `étages : annuler et rétablir l’escalier referment et rouvrent la trémie ${JSON.stringify(u)}`);
+  // 6. inspecteur : changer le matériau de l'escalier en bois
+  await mt.evaluate(() => { MT.setLevel(0); MT.setTool('select'); MT.select({ kind: 'stair', i: 0 }); MT.ui.setTab('sel'); });
+  await mt.waitForTimeout(200);
+  await mt.evaluate(() => { const name = ZS.STAIR_MATS.stone.name; const btn = [...document.querySelectorAll('#mt-panel .stair-mat')].find((x) => x.title.startsWith(name)); if (btn) btn.click(); });
+  ok(await mt.evaluate(() => MT.state.map.stairs[0].mat === 'stone'), 'étages : l’inspecteur change le matériau (bois → pierre)');
+  // 7. vue 3D en coupe : au rez-de-chaussée, les étages sont cachés
+  const cut = await mt.waitForFunction(() => {
+    const root = ZS.World.root;
+    if (!root || MT.state.level !== 0) return null;
+    let above = 0, aboveShown = 0, here = 0;
+    root.traverse((o) => { if (!o.userData || o.userData.lv === undefined) return; if (o.userData.lv > 0) { above++; if (o.visible) aboveShown++; } else if (o.visible) here++; });
+    return above > 0 && !aboveShown && here > 0 ? { above, here } : null;
+  }, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => null);
+  ok(!!cut, `étages : vue 3D coupée au niveau affiché ${JSON.stringify(cut)}`);
+  // 8. fichier enregistré au format 2
+  ok(await mt.evaluate(() => MT.ui.save()), 'étages : carte enregistrée');
+  const file = path.join(userData, 'modtools', 'maps', 'etages-e2e.json');
+  let saved = null;
+  try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { saved = null; }
+  ok(!!saved && saved.format === 2 && saved.floors.map((f) => f.lv).join() === '-1,1,2' && saved.stairs.map((s) => s.mat).join() === 'stone,metal,brick', `étages : fichier au format 2 avec niveaux et escaliers ${saved ? JSON.stringify({ format: saved.format, floors: saved.floors.map((f) => f.lv), stairs: saved.stairs.map((s) => s.mat) }) : ''}`);
+  // 9. partie de test sur quatre niveaux, puis retour
+  await mt.keyboard.press('F5');
+  await mt.waitForFunction(() => ZS.G.state === 'playing', null, { timeout: 30000 });
+  ok(await mt.evaluate(() => ZS.LV.join() === '-1,0,1,2'), 'étages : partie de test sur quatre niveaux');
+  await mt.evaluate(() => { if (document.pointerLockElement) document.exitPointerLock(); });
+  await mt.waitForTimeout(400);
+  if (await mt.evaluate(() => ZS.G.state === 'playing')) await mt.keyboard.press('Escape');
+  await mt.waitForFunction(() => ZS.G.state === 'paused', null, { timeout: 10000 });
+  await mt.click('#btn-quit');
+  await mt.waitForFunction(() => ZS.G.state === 'editor' && !document.getElementById('mt').hidden, null, { timeout: 20000 });
+  ok(await mt.evaluate(() => MT.state.map.stairs.length === 3 && MT.levels().length === 4), 'étages : retour aux Mod Tools, carte intacte');
+}
+
 async function author(userData) {
   const { app, launcher } = await launch(userData);
   try {
     ok(!(await launcher.evaluate(() => document.getElementById('btn-modtools').hidden)), 'auteur : bouton Mod Tools visible');
     const [mt] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.click('#btn-modtools')]);
     await mt.waitForLoadState('domcontentloaded');
+    // erreurs JavaScript de la page des Mod Tools (le dessin du plan ou de la 3D qui casse ne se voit pas autrement)
+    const mtErrors = [];
+    mt.on('pageerror', (e) => mtErrors.push(`pageerror: ${e.message}`));
+    mt.on('console', (m) => { if (m.type() === 'error') mtErrors.push(`console.error: ${m.text().slice(0, 300)}`); });
     await mt.waitForFunction(() => document.documentElement.dataset.modtools === 'ready', null, { timeout: 120000 });
     ok(await mt.evaluate(() => ZS.G.state === 'editor' && !!MT.state.map), 'Mod Tools ouverts sur une carte');
     // digi pass de Bunker 7 : il suit l'agrandissement de la carte et part avec son mur
@@ -75,6 +184,8 @@ async function author(userData) {
       return { c0, c1, gone, back: !!back && back.cell.join() === c0.join() && MT.state.map.w === ZS.BUNKER7.grid[0].length };
     });
     ok(!!dp.c0 && !!dp.c1 && dp.c1[0] === dp.c0[0] + 2 && dp.c1[1] === dp.c0[1] + 1 && dp.gone && dp.back, `Mod Tools : le digi pass suit l’agrandissement et part avec son mur ${JSON.stringify(dp)}`);
+    await floors(mt, userData);
+    ok(!mtErrors.length, `étages : aucune erreur dans la console des Mod Tools ${mtErrors.slice(0, 3).join(' | ')}`);
     // carte enregistrée dans l'atelier, image importée, liste de publication
     const r = await mt.evaluate(async () => {
       MT.openMap(ZS.blankMap(36, 26, 'Carte E2E'), { id: 'carte-e2e', source: 'new' });
@@ -119,11 +230,13 @@ async function author(userData) {
     await mt.waitForFunction(() => ZS.G.state === 'paused', null, { timeout: 10000 });
     await mt.click('#btn-quit');
     await mt.waitForFunction(() => ZS.G.state === 'editor' && !document.querySelector('.mt-testbar'), null, { timeout: 20000 });
+    ok(!mtErrors.length, `Mod Tools : aucune erreur dans la console ${mtErrors.slice(0, 3).join(' | ')}`);
     // fermeture avec des modifications : la page demande
     await mt.evaluate(() => { MT.edit('Nom', (m) => { m.name = 'Carte E2E bis'; }, 'settings'); });
     await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith('zsgame://editor')); if (w) w.close(); });
-    await mt.waitForTimeout(600);
-    ok(await mt.evaluate(() => /Enregistrer les modifications/.test(document.getElementById('mt-modal').textContent)), 'fermeture : demande d’enregistrement');
+    const asked = await mt.waitForFunction(() => /Enregistrer les modifications/.test(document.getElementById('mt-modal').textContent), null, { timeout: 5000 }).then(() => true, () => false);
+    const why = asked ? '' : JSON.stringify(await mt.evaluate(() => ({ dirty: MT.isDirty(), modal: MT.ui.modalOpen, text: (document.getElementById('mt-modal') || {}).textContent, state: ZS.G.state })));
+    ok(asked, `fermeture : demande d’enregistrement ${why}`);
     // publication : jeu installé + cartes de l'atelier
     const [pub] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), mt.evaluate(() => MT.api.openPublisher())]);
     await pub.waitForFunction(() => document.querySelectorAll('#maps-list li').length === 2, null, { timeout: 30000 });

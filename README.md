@@ -23,12 +23,22 @@ Ouvrir `game/zombie-survival.html` dans Chrome, Edge ou Firefox. Une connexion i
 
 ## Cartes
 
-Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, format 1) : grille de cases de 1 m (sol, murs, fenêtres, portes payantes, murets, piliers, caisses, cour des zombies), textures par case, pièces nommées, éléments de jeu (départ, armes murales, atouts, emplacements de la boîte mystère, interrupteur, Amplificateur, digi pass, lumières, panneaux, apparitions de zombies au sol), objets posés, ambiance et règles de la partie.
+Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, format 1) : grille de cases de 1 m (sol, murs, fenêtres, portes payantes, murets, piliers, caisses, cour des zombies), textures par case, pièces nommées, éléments de jeu (départ, armes murales, atouts, emplacements de la boîte mystère, interrupteur, Amplificateur, digi pass, lumières, panneaux, apparitions de zombies au sol), objets posés, ambiance et règles de la partie. Depuis le jeu 1.4.0, une carte peut avoir des étages et des sous-sols reliés par des escaliers (format 2, voir « Étages et escaliers » ; une carte sans étage reste au format 1).
 
 - **Bunker 7** est intégré au fichier du jeu.
 - Les autres cartes sont livrées dans le paquet du jeu : `maps/index.json` (ordre du menu) et `maps/<id>.json`. Une carte de ce dossier qui porte l'identifiant `bunker7` remplace celle qui est intégrée.
 - Le bouton **Jouer** du menu ouvre la **sélection de la carte** (depuis le jeu 1.2.0) : une fiche par carte, avec sa vignette (ou, à défaut, son plan dessiné d'après la grille), sa description, le record et le nombre de parties jouées. Choix à la souris ou aux flèches, Entrée ou double clic pour jouer, Échap pour revenir. La dernière carte jouée est présélectionnée. Le record est gardé par carte. Une carte qui ne peut pas se jouer (pas de départ, aucun zombie possible…) n'est pas proposée.
 - Les images et modèles 3D importés (PNG, JPEG, WebP, `.glb`) sont embarqués dans la carte qui les utilise.
+
+## Étages et escaliers
+
+Depuis le jeu 1.4.0, une carte peut monter sur plusieurs niveaux : rez-de-chaussée (niveau 0), jusqu'à 6 étages au-dessus et 3 sous-sols en dessous, 8 niveaux au plus. Un niveau mesure la hauteur des murs plus une dalle de 30 cm (3,8 m avec des murs de 3,5 m). Bunker 7 reste sur un seul niveau, à l'identique.
+
+- **Escaliers** : quatre formes (droit, de 1 à 3 cases de large ; quart tournant ; demi-tour avec palier ; colimaçon autour d'un noyau, 3 × 3 cases) et neuf matériaux (bois, bois ancien, pierre, pierre moussue, béton, métal, caillebotis, brique, marbre). Marches d'environ 19 cm. Le bois, le bois ancien, le métal et le caillebotis sont posés sur des limons, dessous ouvert ; la pierre, la pierre moussue, le béton, la brique et le marbre sont pleins jusqu'au sol.
+- **Trémie et garde-corps** : au-dessus des hautes marches, le plancher de l'étage est ouvert (la tête passe) ; des garde-corps bordent automatiquement les vides (trémies, bords d'étage, terrasses) : on ne tombe pas.
+- **Zombies** : ils montent et descendent comme le joueur, d'un niveau à l'autre ou à travers plusieurs (champ de distances sur tous les niveaux). Ils sortent des fenêtres et des apparitions au sol de tous les étages ; une pièce reliée par un escalier s'ouvre avec la pièce d'où il part.
+- **Le reste suit l'étage** : une lampe n'éclaire que son étage ; les tirs s'arrêtent sur les dalles (sauf à travers une trémie) ; une explosion ne traverse pas un plancher ; les sons venant d'un autre étage sont étouffés.
+- **Format 2** : `grid` et `layers` décrivent le rez-de-chaussée ; `floors: [{ lv, grid, layers }]` les autres niveaux ; chaque élément porte `lv` (absent = rez-de-chaussée ; pour une apparition au sol : `[x, z, lv]`) ; `stairs: [{ x, z, dir, shape, w, n, n2, turn, mat, lv }]` : case de la première marche, sens de la montée, forme (`straight`, `l`, `u`, `spiral`), largeur, longueur des volées, virage (1 à droite, -1 à gauche), matériau, niveau de départ ; l'escalier monte au niveau `lv + 1`.
 
 ## Statistiques du joueur
 
@@ -75,7 +85,9 @@ Depuis le jeu 1.4.0, un digi pass (clavier à code) est fixé au mur de la Geweh
 Ouvrir : bouton **Mod Tools** du launcher (ou `npm run modtools` en développement).
 
 - **Vues** : plan (vue de dessus) et 3D, côte à côte ou seules (Tab). La 3D est le rendu du jeu, avec une caméra libre.
-- **Outils** : Sélection (V), Construire (B : pinceau, ligne, rectangle, pièce entière, remplissage), Textures (T : sol, murs, plafond ou ciel ouvert, case par case ou pièce entière), Objets (O), Éléments de jeu (G).
+- **Outils** : Sélection (V), Construire (B : pinceau, ligne, rectangle, pièce entière, remplissage), Textures (T : sol, murs, plafond ou ciel ouvert, case par case ou pièce entière), Objets (O), Éléments de jeu (G), Escaliers (K, avec le jeu 1.4.0 ou plus récent).
+- **Étages** (launcher 1.2.5) : le sélecteur de niveau de la barre du haut (ou Ctrl+↑ / Ctrl+↓) choisit le niveau édité ; tous les outils travaillent sur ce niveau. Le plan montre en transparence le niveau du dessous ; la vue 3D cache les niveaux du dessus (coupe). Onglet Carte → Niveaux : ajouter un étage ou un sous-sol (il reprend les murs du niveau voisin), supprimer l'étage le plus haut ou le sous-sol le plus bas.
+- **Escaliers** (K) : forme, matériau, largeur, longueur, virage et sens de la montée (R tourne d'un quart de tour) ; clic sur la case de la première marche. L'étage d'arrivée est ajouté s'il manque, la trémie s'ouvre toute seule ; déplacer, tourner ou retirer l'escalier (clic droit, Suppr) la referme. La pose est refusée si la trémie couperait un mur, une porte, une fenêtre ou un élément de l'étage du dessus.
 - **Bibliothèques** : 141 textures en 11 catégories et 181 objets en 11 catégories (stockage, mobilier, hôpital, bureau et labo, industriel, militaire, rue, nature, éclairage, horreur, décals), plus vos propres images et modèles `.glb`.
 - **Carte** : nom, description, taille (8 à 160 cases), textures par défaut, ambiance (ciel, brouillard, lumière, hauteur des murs…), règles (points et arme de départ, courant allumé, armes de la boîte), caméra et vignette du menu.
 - **Tester** (F5) : partie de test sur la carte en cours, sans record ; Échap puis « Retour aux Mod Tools ». Le test se lance même si la carte a des erreurs : un bandeau en haut à droite les rappelle pendant la partie (détaillé au départ et en pause). Un départ posé hors du sol est remplacé, pour le test seulement, par la case de sol la plus proche. Seule une carte sans aucune case de sol ne peut pas se tester.
@@ -90,7 +102,7 @@ Atelier de l'auteur : `%APPDATA%\Zombie Survival\modtools\` (`maps/`, `textures/
 2. **Publier une version du jeu…** ouvre l'outil de publication, avec « Le jeu installé » choisi (le code ne change pas, seules les cartes changent) et le numéro suivant proposé.
 3. **Publier pour tous les joueurs** (voir plus bas). Les joueurs reçoivent les cartes avec la mise à jour du jeu, à leur prochain démarrage du launcher.
 
-Limites du moteur : un seul niveau (pas d'étages), murs sur la grille de 1 m, 160 × 160 cases au plus, au-delà de 16 lumières le jeu ralentit sur les petites cartes graphiques. Les modèles `.glb` compressés (Draco, Meshopt, KTX2) ne sont pas lus : les réexporter sans compression.
+Limites du moteur : murs sur la grille de 1 m, 160 × 160 cases au plus, 8 niveaux au plus (6 étages, 3 sous-sols), pas de rampe ni d'ascenseur, au-delà de 16 lumières (24 sur une carte à étages) le jeu peut ralentir sur les petites cartes graphiques. Les modèles `.glb` compressés (Draco, Meshopt, KTX2) ne sont pas lus : les réexporter sans compression.
 
 ## Launcher
 
@@ -139,9 +151,10 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **5 octobre 2026 — jeu 1.4.0, étages** : cartes sur plusieurs niveaux (étages et sous-sols) reliées par des escaliers de quatre formes et neuf matériaux, que zombies et joueur montent et descendent ; trémies et garde-corps automatiques ; lumière, tirs, explosions et sons limités à leur étage. Bunker 7 inchangé.
 - **4 octobre 2026 — jeu 1.4.0** : le zombie de base devient **Le Fantassin** (fiche d'Anthony) : nouveau modèle, démarche traînante, casque qui tombe ; règles de la fiche (100 PV +50 par manche puis ×1,1 dès la 10, 30 dégâts, trot dès la manche 4, sprint dès la 8, tête ×2 pour toutes les armes au lieu de ×1,5 à ×4 selon l'arme, casque qui encaisse le premier tir à la tête). Écran Modèles : fiche au format de la sienne (en-tête, jauges ×1, capacité, faiblesse), démonstration du casque, brume au sol. Seuls les zombies présents sont dessinés (le modèle est plus détaillé). **Digi pass** sur le mur de la Gewehr 43 (Bunker 7) : code à 4 chiffres tapé au centre de l'écran ; le bon code retire le clavier et donne, pour la partie, points infinis et immortalité.
 - **4 octobre 2026 — jeu 1.3.0** : écran **Modèles** dans le menu (fiche et modèle 3D animé de chaque type de zombie, caractéristiques tirées des règles du jeu, éliminations du joueur).
-- **Launcher 1.2.5 (en préparation, pas encore compilé)** : aide de l'étape « Mise en ligne » adaptée à la nouvelle page des jetons GitHub (« Add permissions », puis *Read-only* → *Read and write*) ; Mod Tools : le digi pass suit le redimensionnement de la carte et part avec son mur.
+- **5 octobre 2026 — launcher 1.2.5** (livre le jeu 1.4.0) : Mod Tools : étages et sous-sols, outil Escaliers, sélecteur de niveau, coupe de la vue 3D, barre du haut adaptée aux fenêtres étroites ; le digi pass suit le redimensionnement de la carte et part avec son mur. Aide de l'étape « Mise en ligne » adaptée à la nouvelle page des jetons GitHub (« Add permissions », puis *Read-only* → *Read and write*).
 - **4 octobre 2026, 21 h 10 — en ligne : jeu 1.2.1 et launcher 1.2.4** (release `v1.2.1`), première publication faite en un clic depuis le launcher. Le jeu 1.2.1 est le code du jeu 1.2.0, republié sous un numéro plus grand que la release 1.2.0 retirée. Vérifié : signature, contenu identique au dépôt, mise à jour d'un launcher 1.1.0 simulée (jeu installé, launcher 1.2.4 proposé et vérifié).
 - **4 octobre 2026 — launcher 1.2.4** : la page de chaque version mise en ligne donne aux nouveaux joueurs le lien de l'installateur (« Nouveau joueur ? »), même quand la version ne joint pas de nouveau launcher : le premier téléchargement se fait toujours depuis la page de la dernière version.
 - **4 octobre 2026 — launcher 1.2.3** : publication en un clic depuis le launcher (« Publier pour tous les joueurs », jeton GitHub chiffré, brouillon puis publication, vérification de l'adresse des mises à jour, reprise après coupure) ; mise à jour automatique du launcher lui-même ; nouvelle vérification au retour d'une partie ; garde-fous contre la republication d'un ancien jeu (incident de la version 1.2.0 du 4 octobre, retirée avant tout téléchargement) et contre un numéro trop petit.

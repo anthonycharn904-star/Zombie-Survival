@@ -91,15 +91,15 @@
   V.overview = () => {
     const m = S.map;
     if (!m) return;
-    const span = Math.max(m.w, m.h);
-    V.cam.position.set(m.w / 2, Math.max(10, span * 0.62), m.h + span * 0.18);
-    V.lookAtPoint(m.w / 2, 0, m.h * 0.48);
+    const span = Math.max(m.w, m.h), E = MT.levelY();
+    V.cam.position.set(m.w / 2, E + Math.max(10, span * 0.62), m.h + span * 0.18);
+    V.lookAtPoint(m.w / 2, E, m.h * 0.48);
   };
   V.topView = () => {
     const m = S.map;
     if (!m) return;
     const span = Math.max(m.w, m.h * V.cam.aspect);
-    V.cam.position.set(m.w / 2, Math.max(12, span * 0.95), m.h / 2 + 0.01);
+    V.cam.position.set(m.w / 2, MT.levelY() + Math.max(12, span * 0.95), m.h / 2 + 0.01);
     V.yaw = 0; V.pitch = -Math.PI / 2 + 0.001;
     applyCamera();
     MT.emit('camera3d');
@@ -113,7 +113,8 @@
   };
   V.walkView = () => {
     const sp = S.map.spawn;
-    V.cam.position.set(sp.pos[0], 1.65, sp.pos[1]);
+    if (MT.lvOf(sp) !== S.level && MT.hasLevel(MT.lvOf(sp))) MT.setLevel(MT.lvOf(sp));
+    V.cam.position.set(sp.pos[0], MT.levelY(MT.lvOf(sp)) + 1.65, sp.pos[1]);
     V.yaw = sp.yaw; V.pitch = -0.05;
     applyCamera();
     MT.emit('camera3d');
@@ -160,7 +161,7 @@
   /* Point visé (voir tools.js pour le format). */
   V.pick = (e) => {
     const h = raycast(e);
-    if (!h) return planePick(e, 0);
+    if (!h) return planePick(e, MT.levelY());
     const p = h.point;
     const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : UP.clone();
     let prop = null, light = null, mt = null, top = false;
@@ -331,15 +332,25 @@
       V.lightBase = S.map.lights.map((l) => l.pos.slice());
       if (V.power) ZS.powerOnQuiet();
       applyOverrides();
+      applyCutaway();
     } else if (V.propsDirty) {
       ZS.rebuildProps();
       V.propsDirty = false;
+      applyCutaway();
     }
     V.helpersDirty = true;
     V.selDirty = true;
     V.lastBuildMs = performance.now() - t0;
   }
   V.forceRebuild = () => { V.worldDirty = true; rebuild(); };
+  /* Coupe : les niveaux au-dessus du niveau affiché sont cachés (on le voit d'en haut). */
+  function applyCutaway() {
+    const root = ZS.World.root;
+    if (!root || !S.map) return;
+    const cut = S.level;
+    root.traverse((o) => { if (o.userData && o.userData.lv !== undefined) o.visible = o.userData.lv <= cut; });
+  }
+  V.applyCutaway = applyCutaway;
   function propGroup(i) {
     const P = ZS.World.props;
     if (!P) return null;
@@ -352,7 +363,7 @@
     for (const i of list || []) {
       const g = propGroup(i), pr = m.props[i];
       if (!g || !pr) continue;
-      g.position.set(pr.x, pr.y || 0, pr.z);
+      g.position.set(pr.x, MT.levelY(MT.lvOf(pr)) + (pr.y || 0), pr.z);
       g.rotation.set(0, pr.r || 0, 0);
       g.scale.setScalar(pr.s || 1);
     }
@@ -362,7 +373,7 @@
     if (!l || !wl || !base) { V.worldDirty = true; schedule(60); return; }
     const dx = l.pos[0] - base[0], dy = l.pos[1] - base[1], dz = l.pos[2] - base[2];
     const yOff = l.fixture === 'neon' ? -0.15 : l.fixture === 'wall' ? 0 : -0.25;
-    wl.light.position.set(l.pos[0], l.pos[1] + yOff, l.pos[2]);
+    wl.light.position.set(l.pos[0], MT.levelY(MT.lvOf(l)) + l.pos[1] + yOff, l.pos[2]);
     wl.fixture.position.set(dx, dy, dz);
     if (!wl.haloBase) wl.haloBase = wl.halo.position.clone();
     wl.halo.position.set(wl.haloBase.x + dx, wl.haloBase.y + dy, wl.haloBase.z + dz);
@@ -412,9 +423,11 @@
     group.name = 'marqueurs';
     // lumières : une icône (utile pour celles sans luminaire)
     const bulbMat = new THREE.SpriteMaterial({ map: bulbTexture(), transparent: true, depthWrite: false, fog: false });
+    const E = MT.levelY();
     m.lights.forEach((l, i) => {
+      if (!MT.here(l)) return;
       const sp = new THREE.Sprite(i === 0 ? bulbMat : bulbMat.clone());
-      sp.position.set(l.pos[0], l.pos[1] + (l.fixture === 'wall' ? 0.28 : 0.24), l.pos[2]);
+      sp.position.set(l.pos[0], E + l.pos[1] + (l.fixture === 'wall' ? 0.28 : 0.24), l.pos[2]);
       sp.scale.set(0.32, 0.32, 1);
       sp.userData.mt = { kind: 'light', i };
       group.add(sp);
@@ -423,35 +436,38 @@
     const riserMat = new THREE.MeshBasicMaterial({ color: 0x3fa83a, transparent: true, opacity: 0.6, depthWrite: false, fog: false });
     const riserArrow = new THREE.MeshBasicMaterial({ color: 0x8dff74, fog: false });
     m.risers.forEach((r, i) => {
+      if (!MT.here(r)) return;
       const d = new THREE.Mesh(G0.disc, riserMat);
-      d.position.set(r[0] + 0.5, 0.025, r[1] + 0.5);
+      d.position.set(r[0] + 0.5, E + 0.025, r[1] + 0.5);
       d.userData.mt = { kind: 'riser', i };
       d.userData.sharedGeo = true;
       const a = new THREE.Mesh(G0.cone, riserArrow);
-      a.position.set(r[0] + 0.5, 0.2, r[1] + 0.5);
+      a.position.set(r[0] + 0.5, E + 0.2, r[1] + 0.5);
       a.userData.mt = { kind: 'riser', i };
       a.userData.sharedGeo = true;
       group.add(d, a);
     });
     // départ du joueur
     const sp = m.spawn;
-    const ring = new THREE.Mesh(G0.ring, new THREE.MeshBasicMaterial({ color: 0x2fa84a, fog: false, side: THREE.DoubleSide }));
-    ring.position.set(sp.pos[0], 0.03, sp.pos[1]);
-    ring.userData.mt = { kind: 'spawn' }; ring.userData.sharedGeo = true;
-    const arr = new THREE.Mesh(G0.arrow, new THREE.MeshBasicMaterial({ color: 0x8dff74, fog: false }));
-    arr.position.set(sp.pos[0] - Math.sin(sp.yaw) * 0.55, 0.3, sp.pos[1] - Math.cos(sp.yaw) * 0.55);
-    arr.rotation.y = sp.yaw;
-    arr.userData.mt = { kind: 'spawn' }; arr.userData.sharedGeo = true;
-    group.add(ring, arr);
+    if (MT.here(sp)) {
+      const ring = new THREE.Mesh(G0.ring, new THREE.MeshBasicMaterial({ color: 0x2fa84a, fog: false, side: THREE.DoubleSide }));
+      ring.position.set(sp.pos[0], E + 0.03, sp.pos[1]);
+      ring.userData.mt = { kind: 'spawn' }; ring.userData.sharedGeo = true;
+      const arr = new THREE.Mesh(G0.arrow, new THREE.MeshBasicMaterial({ color: 0x8dff74, fog: false }));
+      arr.position.set(sp.pos[0] - Math.sin(sp.yaw) * 0.55, E + 0.3, sp.pos[1] - Math.cos(sp.yaw) * 0.55);
+      arr.rotation.y = sp.yaw;
+      arr.userData.mt = { kind: 'spawn' }; arr.userData.sharedGeo = true;
+      group.add(ring, arr);
+    }
     // noms des pièces
     if (V.labels) {
       const A = MT.analysis();
       const acc = A.zones.map(() => [0, 0, 0]);
-      for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) { const zi = A.zoneOf[A.ix(x, z)]; if (zi >= 0) { acc[zi][0] += x + 0.5; acc[zi][1] += z + 0.5; acc[zi][2]++; } }
+      for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) { const zi = MT.zoneIndexAt(x, z); if (zi >= 0) { acc[zi][0] += x + 0.5; acc[zi][1] += z + 0.5; acc[zi][2]++; } }
       A.zones.forEach((zone, i) => {
         if (zone.auto || acc[i][2] < 2) return;
         const t = textSprite(zone.name);
-        t.position.set(acc[i][0] / acc[i][2], MT.wallHeight() + 0.6, acc[i][1] / acc[i][2]);
+        t.position.set(acc[i][0] / acc[i][2], E + MT.wallHeight() + 0.6, acc[i][1] / acc[i][2]);
         group.add(t);
       });
     }
@@ -461,25 +477,32 @@
     const s = S.sel, m = S.map, out = [];
     if (!s || !m) return out;
     const H = MT.wallHeight();
-    const cellBox = (x, z, y0, y1, pad = 0.04) => out.push(new THREE.Box3(new THREE.Vector3(x - pad, y0, z - pad), new THREE.Vector3(x + 1 + pad, y1, z + 1 + pad)));
+    let E = MT.levelY();
+    const el = { light: m.lights, perk: m.perks, riser: m.risers, box: m.boxes, wallbuy: m.wallbuys, sign: m.signs, door: m.doors, stair: m.stairs || [] }[s.kind];
+    if (el && el[s.i]) E = MT.levelY(MT.lvOf(el[s.i]));
+    else if (s.kind === 'amp' && m.amp) E = MT.levelY(MT.lvOf(m.amp));
+    else if (s.kind === 'power' && m.power) E = MT.levelY(MT.lvOf(m.power));
+    else if (s.kind === 'spawn') E = MT.levelY(MT.lvOf(m.spawn));
+    const cellBox = (x, z, y0, y1, pad = 0.04) => out.push(new THREE.Box3(new THREE.Vector3(x - pad, E + y0, z - pad), new THREE.Vector3(x + 1 + pad, E + y1, z + 1 + pad)));
     const faceBox = (cell, n, y0, y1) => {
       const cx = cell[0] + 0.5 + n[0] * 0.5, cz = cell[1] + 0.5 + n[1] * 0.5;
       const hx = n[0] ? 0.06 : 0.5, hz = n[0] ? 0.5 : 0.06;
-      out.push(new THREE.Box3(new THREE.Vector3(cx - hx, y0, cz - hz), new THREE.Vector3(cx + hx, y1, cz + hz)));
+      out.push(new THREE.Box3(new THREE.Vector3(cx - hx, E + y0, cz - hz), new THREE.Vector3(cx + hx, E + y1, cz + hz)));
     };
     switch (s.kind) {
       case 'prop':
         for (const i of s.list) { const g = propGroup(i); if (g) { const b = new THREE.Box3().setFromObject(g); if (!b.isEmpty()) out.push(b.expandByScalar(0.02)); } }
         break;
-      case 'light': { const l = m.lights[s.i]; if (l) out.push(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(l.pos[0], l.pos[1], l.pos[2]), new THREE.Vector3(0.5, 0.5, 0.5))); break; }
+      case 'light': { const l = m.lights[s.i]; if (l) out.push(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(l.pos[0], E + l.pos[1], l.pos[2]), new THREE.Vector3(0.5, 0.5, 0.5))); break; }
+      case 'stair': { const st = (m.stairs || [])[s.i]; if (st) for (const [x, z] of ZS.stairPlan(st).footprint) cellBox(x, z, 0, H + (ZS.SLAB || 0.3), 0.02); break; }
       case 'perk': { const p = m.perks[s.i]; if (p) cellBox(p.cell[0], p.cell[1], 0, 2.3); break; }
       case 'riser': { const r = m.risers[s.i]; if (r) cellBox(r[0], r[1], 0, 0.5); break; }
       case 'box': case 'amp': { const b = s.kind === 'box' ? m.boxes[s.i] : m.amp; if (b) for (const c of b.cells) cellBox(c[0], c[1], 0, s.kind === 'box' ? 1.1 : 1.6); break; }
       case 'wallbuy': { const w = m.wallbuys[s.i]; if (w) faceBox(w.cell, w.n, 1.1, 2.2); break; }
       case 'power': if (m.power) faceBox(m.power.cell, m.power.n, 0.6, 2.2); break;
-      case 'sign': { const g = m.signs[s.i]; if (g) out.push(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(g.pos[0], g.pos[1], g.pos[2]), new THREE.Vector3(g.n[0] ? 0.1 : 1.8, 0.5, g.n[0] ? 1.8 : 0.1))); break; }
+      case 'sign': { const g = m.signs[s.i]; if (g) out.push(new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(g.pos[0], E + g.pos[1], g.pos[2]), new THREE.Vector3(g.n[0] ? 0.1 : 1.8, 0.5, g.n[0] ? 1.8 : 0.1))); break; }
       case 'door': { const d = m.doors[s.i]; if (d) for (const [x, z] of d.cells) cellBox(x, z, 0, 2.65, 0.02); break; }
-      case 'spawn': out.push(new THREE.Box3(new THREE.Vector3(m.spawn.pos[0] - 0.35, 0, m.spawn.pos[1] - 0.35), new THREE.Vector3(m.spawn.pos[0] + 0.35, 1.8, m.spawn.pos[1] + 0.35))); break;
+      case 'spawn': out.push(new THREE.Box3(new THREE.Vector3(m.spawn.pos[0] - 0.35, E, m.spawn.pos[1] - 0.35), new THREE.Vector3(m.spawn.pos[0] + 0.35, E + 1.8, m.spawn.pos[1] + 0.35))); break;
       case 'cell': cellBox(s.x, s.z, 0, H, 0.01); break;
       default: break;
     }
@@ -506,7 +529,7 @@
     const pv = MT.preview;
     if (!pv.cells || !pv.cells.length || pv.cells.length > 3000 || !S.map) return;
     const pos = [];
-    const y = 0.035;
+    const y = MT.levelY() + 0.035;
     for (const [x, z] of pv.cells) {
       if (!MT.inb(x, z)) continue;
       const a = 0.04, b = 0.96;
@@ -535,7 +558,7 @@
       }
     }
     if (V.ghost && gh) {
-      V.ghost.position.set(gh.x, gh.y || 0, gh.z);
+      V.ghost.position.set(gh.x, MT.levelY() + (gh.y || 0), gh.z);
       V.ghost.rotation.set(0, gh.r || 0, 0);
       V.ghost.scale.setScalar(gh.s || 1);
     }
@@ -571,8 +594,18 @@
     MT.on('selection', () => { V.selDirty = true; });
     MT.on('preview', () => { V.cellsDirty = true; });
     MT.on('tool', () => { V.cellsDirty = true; });
-    MT.on('focus', (f) => { if (f && Number.isFinite(f.x)) V.focusOn(f.x + 0.5, f.y || 0.5, f.z + 0.5, 9); });
-    MT.on('look-at', (f) => { V.focusOn(f.x, 0.4, f.z, 10); });
+    MT.on('focus', (f) => { if (f && Number.isFinite(f.x)) V.focusOn(f.x + 0.5, f.y !== undefined ? f.y : MT.levelY() + 0.5, f.z + 0.5, 9); });
+    MT.on('look-at', (f) => { V.focusOn(f.x, MT.levelY() + 0.4, f.z, 10); });
+    // changement de niveau : la caméra monte ou descend d'autant, la coupe suit
+    let lastLevel = 0;
+    MT.on('level', (lv) => {
+      const dy = MT.levelY(lv) - MT.levelY(lastLevel);
+      lastLevel = lv;
+      if (dy) { V.cam.position.y += dy; applyCamera(); MT.emit('camera3d'); }
+      applyCutaway();
+      V.helpersDirty = true; V.selDirty = true; V.cellsDirty = true;
+    });
+    MT.on('map', () => { lastLevel = 0; });
     MT.on('resized', (dx, dz) => { V.cam.position.x += dx; V.cam.position.z += dz; applyCamera(); });
     V.cam.position.set(0, 10, 10);
     applyCamera();

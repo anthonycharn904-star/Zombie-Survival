@@ -22,6 +22,7 @@
     urbain: '#8c8b80', nature: '#4e7d3c', eclairage: '#dcc46e', horreur: '#94403d', decals: '#b14848', import: '#5f8fb0',
   };
   const DOOR_COLOR = { door: '#a8582c', debris: '#7d6d5a', steel: '#6d7a84', gate: '#8a8f7a' };
+  const STAIR_COLOR = { wood: '#93603a', wood_old: '#76604a', stone: '#9a978f', stone_moss: '#76855e', concrete: '#999c9f', metal: '#86919a', grating: '#8a6448', brick: '#b0563d', marble: '#ddd6ca' };
   const BASE_KINDS = new Set(['grid', 'layers', 'all', 'settings', 'textures']);
   const zoneColor = (i, a) => `hsla(${(i * 137.508) % 360}, 55%, 55%, ${a})`;
   const thumbCache = new Map();
@@ -41,7 +42,7 @@
     return { x: Math.floor(w.x), z: Math.floor(w.z), wx: w.x, wz: w.z, wy: 0, face: null, view: 'plan', sx, sy };
   }
   const evInfo = (e) => ({ button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey, view: 'plan' });
-  const usesRight = () => S.tool === 'build' || S.tool === 'paint' || S.tool === 'elements';
+  const usesRight = () => S.tool === 'build' || S.tool === 'paint' || S.tool === 'elements' || S.tool === 'stairs';
 
   P.fit = () => {
     const m = S.map;
@@ -152,6 +153,7 @@
     MT.on('map', () => { P.baseRev++; thumbCache.clear(); requestAnimationFrame(() => P.fit()); });
     MT.on('focus', (f) => { if (f && Number.isFinite(f.x)) P.centerOn(f.x, f.z); });
     MT.on('resized', (dx, dz) => { P.cam.x += dx; P.cam.z += dz; });
+    MT.on('level', () => { P.baseRev++; P.need = true; });
   };
   P.frame = () => {
     if (!P.visible || !P.g) return;
@@ -181,9 +183,14 @@
     return pat;
   }
   P.dirty = null;
+  /* Niveau du dessous (pour le dessiner en transparence dans le vide du niveau affiché). */
+  function lowerGrid() {
+    const lvs = MT.levels(), i = lvs.indexOf(S.level);
+    return i > 0 ? MT.gridOf(lvs[i - 1]) : null;
+  }
   function ensureBase() {
-    const m = S.map, mode = baseMode();
-    const key = `${P.baseRev}|${mode}|${P.showZones}|${m.w}x${m.h}`;
+    const m = S.map, mode = baseMode(), G = MT.grid();
+    const key = `${P.baseRev}|${mode}|${P.showZones}|${m.w}x${m.h}|${S.level}`;
     if (P.base && key === P.baseKey) {
       if (P.dirty && P.dirty.size) { drawCells(P.base.getContext('2d'), [...P.dirty].map((k) => [k % m.w, Math.floor(k / m.w)]), mode); P.dirty = null; }
       return;
@@ -197,43 +204,52 @@
     if (P.base.width !== m.w * B || P.base.height !== m.h * B) { P.base.width = m.w * B; P.base.height = m.h * B; }
     const g = P.base.getContext('2d');
     g.clearRect(0, 0, P.base.width, P.base.height);
-    const A = MT.analysis();
+    const zoneAt = (x, z) => MT.zoneIndexAt(x, z);
     // passe 1 : couleurs des cases par segments (une couleur par suite de cases identiques)
     for (let z = 0; z < m.h; z++) {
-      const row = m.grid[z];
+      const row = G[z];
       let x = 0;
       while (x < m.w) {
         const ch = row[x];
-        const zi = mode === 'tiles' && ch === '.' && P.showZones ? A.zoneOf[A.ix(x, z)] : -1;
+        const zi = mode === 'tiles' && ch === '.' && P.showZones ? zoneAt(x, z) : -1;
         let x2 = x + 1;
-        while (x2 < m.w && row[x2] === ch && (zi < 0 || A.zoneOf[A.ix(x2, z)] === zi) && !(zi < 0 && mode === 'tiles' && ch === '.' && P.showZones && A.zoneOf[A.ix(x2, z)] >= 0)) x2++;
+        while (x2 < m.w && row[x2] === ch && (zi < 0 || zoneAt(x2, z) === zi) && !(zi < 0 && mode === 'tiles' && ch === '.' && P.showZones && zoneAt(x2, z) >= 0)) x2++;
         g.fillStyle = TILE_COLOR[ch] || '#000';
         g.fillRect(x * B, z * B, (x2 - x) * B, B);
         if (zi >= 0) { g.fillStyle = zoneFill(zi); g.fillRect(x * B, z * B, (x2 - x) * B, B); }
         x = x2;
       }
     }
+    // niveau du dessous, en transparence, là où ce niveau est vide (pour aligner les murs)
+    const low = lowerGrid();
+    if (low) {
+      for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) {
+        if (G[z][x] !== ' ' || low[z][x] === ' ') continue;
+        g.fillStyle = hexA(TILE_COLOR[low[z][x]] || '#000000', 0.3);
+        g.fillRect(x * B, z * B, B, B);
+      }
+    }
     // passe 2 : détails (caisses, piliers…) et textures
     const cells = [];
     for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) {
-      const ch = m.grid[z][x];
+      const ch = G[z][x];
       if (mode === 'tiles' ? 'xPmoD'.includes(ch) : ch !== ' ') cells.push([x, z]);
     }
     drawCells(g, cells, mode, true);
   }
   function drawCells(g, cells, mode, fresh = false) {
-    const m = S.map, B = P.B, A = MT.analysis();
-    const inside = (x, z) => A.ok(x, z) && (A.zoneOf[A.ix(x, z)] >= 0 || m.grid[z][x] === 'D');
+    const m = S.map, B = P.B, A = MT.analysis(), G = MT.grid();
+    const inside = (x, z) => A.ok(x, z) && (MT.zoneIndexAt(x, z) >= 0 || G[z][x] === 'D');
     const wallLike = (ch) => ch === '#' || ch === 'W' || ch === 'D' || ch === 'P';
     for (const [x, z] of cells) {
       if (x < 0 || z < 0 || x >= m.w || z >= m.h) continue;
-      const ch = m.grid[z][x], X = x * B, Z = z * B;
+      const ch = G[z][x], X = x * B, Z = z * B;
       if (!fresh) {
         g.fillStyle = TILE_COLOR[ch] || '#000';
         g.fillRect(X, Z, B, B);
       }
       if (mode === 'tiles') {
-        if (!fresh && ch === '.' && P.showZones) { const zi = A.zoneOf[A.ix(x, z)]; if (zi >= 0) { g.fillStyle = zoneFill(zi); g.fillRect(X, Z, B, B); } }
+        if (!fresh && ch === '.' && P.showZones) { const zi = MT.zoneIndexAt(x, z); if (zi >= 0) { g.fillStyle = zoneFill(zi); g.fillRect(X, Z, B, B); } }
         decorate(g, ch, X, Z, B);
       } else if (mode === 'floor' || mode === 'ceil') {
         if (inside(x, z) && ch !== 'P') {
@@ -251,7 +267,7 @@
           const pat = texPattern(g, MT.cellTexture(x, z, 'wall'));
           const sw = Math.max(2, Math.round(B * 0.32));
           for (const [dx, dz] of DIRS) {
-            if (!wallLike(m.grid[z + dz] ? m.grid[z + dz][x + dx] : ' ')) continue;
+            if (!wallLike(G[z + dz] ? G[z + dz][x + dx] : ' ')) continue;
             const rx = dx === 1 ? X + B - sw : X, rz = dz === 1 ? Z + B - sw : Z;
             if (pat) { g.fillStyle = pat; g.fillRect(rx, rz, dx ? sw : B, dz ? sw : B); }
           }
@@ -319,6 +335,7 @@
     g.strokeRect(ox - 0.5, oy - 0.5, m.w * Z + 1, m.h * Z + 1);
 
     const A = MT.analysis();
+    drawStairs(g, m);
     drawWindows(g, A, vis);
     drawDoors(g, m, vis);
     if (P.showProps) drawProps(g, m, vis);
@@ -368,11 +385,80 @@
     g.closePath(); g.fill();
   }
 
+  /* Escaliers du niveau affiché (marches, sens de la montée) et trémies des escaliers du
+     dessous (le vide où arrive un escalier qui monte de l'étage inférieur). */
+  function drawStair(g, st, { ghost = false } = {}) {
+    const plan = ZS.stairPlan(st), Z = P.cam.zoom, col = STAIR_COLOR[st.mat] || '#999999';
+    for (const c of plan.cells) {
+      const [sx, sy] = P.toScreen(c.x, c.z);
+      g.fillStyle = hexA(col, ghost ? 0.5 : 0.92);
+      g.fillRect(sx, sy, Z, Z);
+      // plus clair en montant
+      g.fillStyle = `rgba(255,255,255,${(0.32 * (c.h0 + c.h1)) / 2})`;
+      g.fillRect(sx, sy, Z, Z);
+      if (Z >= 9) {
+        g.strokeStyle = 'rgba(20,14,8,0.55)'; g.lineWidth = 1;
+        g.beginPath();
+        if (c.kind === 'ramp') {
+          // nez de marche : traits en travers de la montée
+          const [dx, dz] = c.din;
+          for (const t of [0.25, 0.5, 0.75]) {
+            if (dx) { const X = sx + (dx > 0 ? t : 1 - t) * Z; g.moveTo(X, sy); g.lineTo(X, sy + Z); }
+            else { const Y = sy + (dz > 0 ? t : 1 - t) * Z; g.moveTo(sx, Y); g.lineTo(sx + Z, Y); }
+          }
+        } else if (c.kind === 'turn') {
+          // marches dansantes : rayons depuis le coin intérieur
+          const px = c.x + 0.5 + (c.dout[0] - c.din[0]) * 0.5, pz = c.z + 0.5 + (c.dout[1] - c.din[1]) * 0.5;
+          const [qx, qy] = P.toScreen(px, pz);
+          for (const a of [1, 2, 3]) {
+            const ang = (a / 4) * (Math.PI / 2);
+            const u = [-c.dout[0], -c.dout[1]], v = c.din;
+            const ex = Math.cos(ang) * u[0] + Math.sin(ang) * v[0], ez = Math.cos(ang) * u[1] + Math.sin(ang) * v[1];
+            const L = Math.min(1 / Math.max(Math.abs(Math.cos(ang)), 1e-3), 1 / Math.max(Math.abs(Math.sin(ang)), 1e-3));
+            g.moveTo(qx, qy); g.lineTo(qx + ex * L * Z, qy + ez * L * Z);
+          }
+        }
+        g.stroke();
+      }
+    }
+    for (const [x, z] of plan.core) { const [sx, sy] = P.toScreen(x + 0.15, z + 0.15); g.fillStyle = '#3d3833'; g.fillRect(sx, sy, Z * 0.7, Z * 0.7); }
+    // parcours de la montée
+    if (Z >= 6) {
+      const pts = plan.cells.map((c) => P.toScreen(c.x + 0.5, c.z + 0.5));
+      g.strokeStyle = ghost ? 'rgba(255,230,170,0.9)' : 'rgba(255,240,200,0.85)'; g.lineWidth = Math.max(1.5, Z * 0.06);
+      g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+      const last = plan.cells[plan.cells.length - 1], [lx, ly] = pts[pts.length - 1];
+      arrow(g, lx, ly, last.dout[0], last.dout[1], Math.max(6, Z * 0.42), ghost ? 'rgba(255,230,170,0.95)' : '#fff0c8', Math.max(1.5, Z * 0.06));
+      if (Z >= 14) {
+        const ex = plan.exits[0], [tx, ty] = P.toScreen(ex[0] + 0.5, ex[1] + 0.5);
+        label(g, `↑ ${MT.levelName((st.lv | 0) + 1)}`, tx, ty, { size: 11, color: '#ffe7b0' });
+      }
+    }
+  }
+  function drawStairs(g, m) {
+    const Z = P.cam.zoom;
+    for (const st of m.stairs || []) {
+      const lv = st.lv | 0;
+      if (lv === S.level) drawStair(g, st);
+      else if (lv + 1 === S.level) {
+        // trémie : on voit l'escalier qui arrive d'en dessous
+        g.setLineDash([4, 3]); g.strokeStyle = 'rgba(255,214,140,0.75)'; g.lineWidth = 1.2;
+        for (const [x, z] of MT.openingsOf(st)) { const [sx, sy] = P.toScreen(x, z); g.strokeRect(sx + 1.5, sy + 1.5, Z - 3, Z - 3); }
+        g.setLineDash([]);
+        const plan = ZS.stairPlan(st), last = plan.cells[plan.cells.length - 1];
+        for (const ex of plan.exits) {
+          const [sx, sy] = P.toScreen(ex[0] + 0.5 - last.dout[0] * 0.3, ex[1] + 0.5 - last.dout[1] * 0.3);
+          arrow(g, sx, sy, -last.dout[0], -last.dout[1], Math.max(5, Z * 0.35), 'rgba(255,214,140,0.9)', 1.5);
+        }
+        if (Z >= 14) { const ex = plan.exits[0], [tx, ty] = P.toScreen(ex[0] + 0.5, ex[1] + 0.5); label(g, `↓ ${MT.levelName(lv)}`, tx, ty + Z * 0.55, { size: 11, color: '#ffd68c' }); }
+      }
+    }
+  }
   function drawWindows(g, A, vis) {
     const Z = P.cam.zoom;
     if (Z < 5) return;
     for (const w of A.windows) {
-      if (!vis(w.x, w.z)) continue;
+      if ((w.lv | 0) !== S.level || !vis(w.x, w.z)) continue;
       const [sx, sy] = P.toScreen(w.x + 0.5, w.z + 0.5);
       g.strokeStyle = '#3a2410'; g.lineWidth = Math.max(1, Z * 0.09);
       for (const k of [-0.25, 0, 0.25]) {
@@ -386,6 +472,7 @@
   function drawDoors(g, m, vis) {
     const Z = P.cam.zoom;
     m.doors.forEach((d) => {
+      if (!MT.here(d)) return;
       let cx = 0, cz = 0;
       for (const [x, z] of d.cells) { cx += x + 0.5; cz += z + 0.5; }
       cx /= d.cells.length; cz /= d.cells.length;
@@ -401,7 +488,7 @@
     const Z = P.cam.zoom;
     const sel = new Set(MT.selectedProps());
     m.props.forEach((pr, i) => {
-      if (!vis(pr.x, pr.z, 4)) return;
+      if (!MT.here(pr) || !vis(pr.x, pr.z, 4)) return;
       const def = ZS.MODELS[pr.m];
       const cat = def ? def.cat : 'import';
       const pts = MT.propCorners(pr).map(([x, z]) => P.toScreen(x, z));
@@ -431,16 +518,18 @@
   }
   function drawElements(g, m, vis) {
     const Z = P.cam.zoom, small = Z < 10;
+    const H = MT.here;
     // apparitions au sol
-    for (const [x, z] of m.risers) {
-      if (!vis(x, z)) continue;
+    for (const rs of m.risers) {
+      const [x, z] = rs;
+      if (!H(rs) || !vis(x, z)) continue;
       const [sx, sy] = P.toScreen(x + 0.5, z + 0.5), r = Math.max(3, Z * 0.3);
       g.fillStyle = 'rgba(70,160,60,0.85)'; g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
       if (!small) { g.strokeStyle = '#0c1a08'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(sx - r * 0.45, sy + r * 0.2); g.lineTo(sx, sy - r * 0.35); g.lineTo(sx + r * 0.45, sy + r * 0.2); g.stroke(); }
     }
     // distributeurs d'atouts
     for (const p of m.perks) {
-      if (!vis(p.cell[0], p.cell[1])) continue;
+      if (!H(p) || !vis(p.cell[0], p.cell[1])) continue;
       const def = ZS.PERKS[p.p], [sx, sy, s] = cellRect(g, p.cell[0], p.cell[1], 0.1);
       g.fillStyle = def.color; g.fillRect(sx, sy, s, s);
       g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 1; g.strokeRect(sx + 0.5, sy + 0.5, s - 1, s - 1);
@@ -452,6 +541,7 @@
     }
     // emplacements de la boîte mystère
     m.boxes.forEach((b, i) => {
+      if (!H(b)) return;
       const x0 = Math.min(b.cells[0][0], b.cells[1][0]), z0 = Math.min(b.cells[0][1], b.cells[1][1]);
       const w = b.cells[0][0] === b.cells[1][0] ? 1 : 2, hgt = w === 1 ? 2 : 1;
       if (!vis(x0, z0)) return;
@@ -467,7 +557,7 @@
         arrow(g, fx, fy, b.face[0], b.face[1], Math.max(4, Z * 0.25), '#9fd0ff', 1.5);
       }
     });
-    if (m.amp) {
+    if (m.amp && H(m.amp)) {
       const b = m.amp, x0 = Math.min(b.cells[0][0], b.cells[1][0]), z0 = Math.min(b.cells[0][1], b.cells[1][1]);
       const w = b.cells[0][0] === b.cells[1][0] ? 1 : 2, hgt = w === 1 ? 2 : 1;
       const [sx, sy] = P.toScreen(x0 + 0.1, z0 + 0.1);
@@ -490,14 +580,16 @@
       if (text && Z >= 16) { const [lx, ly] = P.toScreen(x + 0.5 + n[0] * 0.95, z + 0.5 + n[1] * 0.95); label(g, text, lx, ly, { size: 11, color: tcol }); }
     };
     for (const w of m.wallbuys) {
+      if (!H(w)) continue;
       const def = ZS.WEAPONS[w.w];
       onWall(w.cell, w.n, 'rgba(240,236,220,0.92)', `${def.name} · ${ZS.wallbuyPrice(w)}`, '#f3ead2');
     }
-    if (m.power) onWall(m.power.cell, m.power.n, '#e8c22a', 'Courant', '#ffe58a');
+    if (m.power && H(m.power)) onWall(m.power.cell, m.power.n, '#e8c22a', 'Courant', '#ffe58a');
+    if (m.digipass && H(m.digipass)) onWall(m.digipass.cell, m.digipass.n, '#5d6366', 'Digi pass', '#cfd6da');
     // panneaux
     for (const s of m.signs) {
       const [x, z] = MT.signCell(s);
-      if (!vis(x, z)) continue;
+      if (!H(s) || !vis(x, z)) continue;
       const along = s.n[0] ? [0, 1] : [1, 0];
       const a = P.toScreen(s.pos[0] - along[0] * 0.85 + s.n[0] * 0.04, s.pos[2] - along[1] * 0.85 + s.n[1] * 0.04);
       const b = P.toScreen(s.pos[0] + along[0] * 0.85 + s.n[0] * 0.04, s.pos[2] + along[1] * 0.85 + s.n[1] * 0.04);
@@ -507,7 +599,7 @@
     }
     // lumières
     m.lights.forEach((l) => {
-      if (!vis(l.pos[0], l.pos[2])) return;
+      if (!H(l) || !vis(l.pos[0], l.pos[2])) return;
       const [sx, sy] = P.toScreen(l.pos[0], l.pos[2]), r = clamp(Z * 0.22, 3.5, 9);
       const col = ZS.colorHex(l.color);
       g.fillStyle = col; g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
@@ -518,6 +610,7 @@
       }
     });
     // départ
+    if (!H(m.spawn)) return;
     const sp = m.spawn, [sx, sy] = P.toScreen(sp.pos[0], sp.pos[1]), r = clamp(Z * 0.32, 5, 12);
     g.fillStyle = '#2fa84a'; g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.fill();
     g.strokeStyle = '#0b2410'; g.lineWidth = 1.5; g.stroke();
@@ -528,7 +621,7 @@
     const Z = P.cam.zoom;
     if (Z < 6) return;
     const acc = A.zones.map(() => ({ x: 0, z: 0, n: 0 }));
-    for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) { const zi = A.zoneOf[A.ix(x, z)]; if (zi >= 0) { const a = acc[zi]; a.x += x + 0.5; a.z += z + 0.5; a.n++; } }
+    for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) { const zi = MT.zoneIndexAt(x, z); if (zi >= 0) { const a = acc[zi]; a.x += x + 0.5; a.z += z + 0.5; a.n++; } }
     A.zones.forEach((zone, i) => {
       const a = acc[i];
       if (!a.n || a.n < 2) return;
@@ -566,13 +659,19 @@
       case 'door': { const d = m.doors[s.i]; if (d) for (const [x, z] of d.cells) box(x, z, 1, 1); break; }
       case 'spawn': { const [sx, sy] = P.toScreen(m.spawn.pos[0], m.spawn.pos[1]); g.beginPath(); g.arc(sx, sy, clamp(Z * 0.32, 5, 12) + 4, 0, Math.PI * 2); g.stroke(); break; }
       case 'cell': box(s.x, s.z, 1, 1); break;
+      case 'stair': {
+        const st = (m.stairs || [])[s.i];
+        if (!st) return;
+        for (const [x, z] of ZS.stairPlan(st).footprint) box(x, z, 1, 1);
+        break;
+      }
       case 'zone': {
-        const A = MT.analysis(), def = m.zones[s.i];
-        if (!def) return;
-        const zi = A.zoneOf[A.ix(def.seed[0], def.seed[1])];
+        const def = m.zones[s.i];
+        if (!def || !MT.here(def)) return;
+        const zi = MT.zoneIndexAt(def.seed[0], def.seed[1]);
         if (zi < 0) return;
         g.fillStyle = 'rgba(255,210,122,0.16)';
-        for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) if (A.zoneOf[A.ix(x, z)] === zi) { const [sx, sy] = P.toScreen(x, z); g.fillRect(sx, sy, Z, Z); }
+        for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) if (MT.zoneIndexAt(x, z) === zi) { const [sx, sy] = P.toScreen(x, z); g.fillRect(sx, sy, Z, Z); }
         const [sx, sy] = P.toScreen(def.seed[0] + 0.5, def.seed[1] + 0.5);
         g.fillStyle = '#ffd27a'; g.beginPath(); g.moveTo(sx, sy - 6); g.lineTo(sx + 6, sy); g.lineTo(sx, sy + 6); g.lineTo(sx - 6, sy); g.closePath(); g.fill();
         break;
@@ -605,6 +704,7 @@
       g.setLineDash([]);
       g.fillStyle = 'rgba(255,210,122,0.08)'; g.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
     }
+    if (pv.stair && S.tool === 'stairs') drawStair(g, pv.stair, { ghost: true });
     if (pv.ghost && S.tool === 'props') {
       const pts = MT.propCorners(pv.ghost).map(([x, z]) => P.toScreen(x, z));
       g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
@@ -618,7 +718,7 @@
     const Z = P.cam.zoom;
     const all = [...S.issues.errors.map((e) => [e, '#ff4a4a']), ...S.issues.warnings.map((e) => [e, '#f0b23a'])];
     for (const [e, col] of all) {
-      if (!e.at) continue;
+      if (!e.at || (e.at[2] | 0) !== S.level) continue;
       const [sx, sy] = P.toScreen(e.at[0] + 0.5, e.at[1] + 0.5), r = clamp(Z * 0.55, 7, 16);
       g.strokeStyle = col; g.lineWidth = 2;
       g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.stroke();

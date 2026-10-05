@@ -20,15 +20,19 @@
     { id: 'paint', name: 'Textures', key: 'KeyT', label: 'T', hint: 'Clic : peindre · clic droit : texture par défaut · Alt+clic : pipette' },
     { id: 'props', name: 'Objets', key: 'KeyO', label: 'O', hint: 'Clic : poser · R : tourner · Alt+clic : pipette · Échap : sélection' },
     { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser ou sélectionner · clic droit : retirer' },
+    { id: 'stairs', name: 'Escaliers', key: 'KeyK', label: 'K', hint: 'Clic sur le sol : poser (la flèche montre le sens de la montée) · R : tourner · clic droit : retirer', multi: true },
   ];
+  /* Outils proposés : les escaliers demandent un moteur à étages (jeu 1.4.0). */
+  T.available = () => T.list.filter((t) => !t.multi || MT.multiOk());
   T.drag = null;
-  MT.preview = { cells: null, tone: 'paint', ghost: null, face: null, rect: null };
+  MT.preview = { cells: null, tone: 'paint', ghost: null, face: null, rect: null, stair: null };
 
   MT.setTool = (id) => {
-    if (!T.list.some((t) => t.id === id)) return;
+    if (!T.available().some((t) => t.id === id)) return;
     T.cancel();
     S.tool = id;
     MT.preview.ghost = null;
+    MT.preview.stair = null;
     MT.emit('tool', id);
   };
 
@@ -83,20 +87,20 @@
       const rad0 = Math.max(0.28, 9 / zoom);
       for (let i = m.lights.length - 1; i >= 0; i--) {
         const l = m.lights[i];
-        if (Math.hypot(l.pos[0] - p.wx, l.pos[2] - p.wz) < rad0) return { kind: 'light', i };
+        if (MT.here(l) && Math.hypot(l.pos[0] - p.wx, l.pos[2] - p.wz) < rad0) return { kind: 'light', i };
       }
-      if (Math.hypot(m.spawn.pos[0] - p.wx, m.spawn.pos[1] - p.wz) < rad0 * 1.2) return { kind: 'spawn' };
+      if (MT.here(m.spawn) && Math.hypot(m.spawn.pos[0] - p.wx, m.spawn.pos[1] - p.wz) < rad0 * 1.2) return { kind: 'spawn' };
       let best = -1, bestArea = Infinity;
       for (let i = m.props.length - 1; i >= 0; i--) {
         const pr = m.props[i];
-        if (!MT.propContains(pr, p.wx, p.wz, 2 / zoom)) continue;
+        if (!MT.here(pr) || !MT.propContains(pr, p.wx, p.wz, 2 / zoom)) continue;
         const b = MT.modelBox(pr.m), area = (b.max.x - b.min.x) * (b.max.z - b.min.z) * (pr.s || 1) ** 2;
         if (area < bestArea) { best = i; bestArea = area; }
       }
       if (best >= 0) return { kind: 'prop', i: best };
     }
     const els = MT.elementsAt(p.x, p.z).filter((e) => e.kind !== 'light' || p.view !== '3d');
-    const order = ['perk', 'box', 'amp', 'wallbuy', 'power', 'sign', 'riser', 'spawn', 'light', 'door'];
+    const order = ['perk', 'box', 'amp', 'wallbuy', 'power', 'sign', 'riser', 'spawn', 'light', 'door', 'stair'];
     els.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
     return els[0] || null;
   };
@@ -104,7 +108,7 @@
   /* ----------------------------------------------------- gestes --- */
   T.cancel = () => {
     if (T.drag) { MT.cancelGesture(); T.drag = null; }
-    MT.preview.cells = null; MT.preview.rect = null;
+    MT.preview.cells = null; MT.preview.rect = null; MT.preview.stair = null;
     MT.emit('preview');
   };
   T.down = (p, ev) => {
@@ -135,18 +139,18 @@
     const m = S.map;
     if (sel.kind === 'prop') {
       MT.begin('Déplacer');
-      const y0 = m.props[sel.list[0]].y || 0;
+      const p0 = m.props[sel.list[0]], y0 = MT.levelY(MT.lvOf(p0)) + (p0.y || 0);   // plan de glissement en 3D : hauteur absolue
       T.drag = { mode: 'props', start: [p.wx, p.wz], orig: sel.list.map((i) => [m.props[i].x, m.props[i].z]), list: sel.list.slice(), planeY: y0, moved: false };
     } else if (sel.kind === 'light') {
       MT.begin('Déplacer la lumière');
       const l = m.lights[sel.i];
-      T.drag = { mode: 'light', i: sel.i, start: [p.wx, p.wz], orig: [l.pos[0], l.pos[2]], planeY: 0, moved: false };
+      T.drag = { mode: 'light', i: sel.i, start: [p.wx, p.wz], orig: [l.pos[0], l.pos[2]], planeY: MT.levelY(MT.lvOf(l)), moved: false };
     } else if (sel.kind === 'spawn') {
       MT.begin('Déplacer le départ');
-      T.drag = { mode: 'spawn', start: [p.wx, p.wz], orig: m.spawn.pos.slice(), planeY: 0, moved: false };
-    } else if (['perk', 'box', 'amp', 'wallbuy', 'power', 'sign', 'riser'].includes(sel.kind)) {
+      T.drag = { mode: 'spawn', start: [p.wx, p.wz], orig: m.spawn.pos.slice(), planeY: MT.levelY(MT.lvOf(m.spawn)), moved: false };
+    } else if (['perk', 'box', 'amp', 'wallbuy', 'power', 'sign', 'riser', 'stair'].includes(sel.kind)) {
       MT.begin('Déplacer');
-      T.drag = { mode: 'element', sel: { ...sel }, cell: [p.x, p.z], planeY: 0, moved: false };
+      T.drag = { mode: 'element', sel: { ...sel }, cell: [p.x, p.z], planeY: MT.levelY(), moved: false };
     } else return false;
     return true;
   }
@@ -179,16 +183,17 @@
       if (nx === m.spawn.pos[0] && nz === m.spawn.pos[1]) return;
       d.moved = true;
       m.spawn.pos = [clamp(nx, 0, m.w), clamp(nz, 0, m.h)];
+      MT.tagLv(m.spawn);
       MT.touch('elements');
     } else if (d.mode === 'element') {
       if (p.x === d.cell[0] && p.z === d.cell[1]) return;
-      if (moveElement(d.sel, p)) { d.cell = [p.x, p.z]; d.moved = true; MT.touch('elements'); }
+      if (moveElement(d.sel, p, d.cell)) { d.cell = [p.x, p.z]; d.moved = true; MT.touch(d.sel.kind === 'stair' ? 'all' : 'elements'); }
     }
   }
   function occupied(x, z, except) {
-    return MT.elementsAt(x, z).some((e) => ['perk', 'box', 'amp'].includes(e.kind) && !(except && e.kind === except.kind && e.i === except.i));
+    return MT.elementsAt(x, z).some((e) => ['perk', 'box', 'amp', 'stair'].includes(e.kind) && !(except && e.kind === except.kind && e.i === except.i));
   }
-  function moveElement(sel, p) {
+  function moveElement(sel, p, from) {
     const m = S.map, t = MT.tileAt(p.x, p.z);
     switch (sel.kind) {
       case 'perk':
@@ -196,9 +201,18 @@
         m.perks[sel.i].cell = [p.x, p.z];
         return true;
       case 'riser':
-        if (t !== '.' || m.risers.some((r, k) => k !== sel.i && r[0] === p.x && r[1] === p.z)) return false;
-        m.risers[sel.i] = [p.x, p.z];
+        if (t !== '.' || m.risers.some((r, k) => k !== sel.i && MT.here(r) && r[0] === p.x && r[1] === p.z)) return false;
+        m.risers[sel.i] = S.level ? [p.x, p.z, S.level] : [p.x, p.z];
         return true;
+      case 'stair': {
+        // l'escalier suit le curseur case par case ; sa trémie le suit
+        const st = m.stairs[sel.i], next = { ...st, dir: st.dir.slice(), x: st.x + p.x - from[0], z: st.z + p.z - from[1] };
+        if (MT.stairProblem(next, sel.i)) return false;
+        MT.fillOpenings(m, st);
+        m.stairs[sel.i] = next;
+        MT.carveOpenings(m, next);
+        return true;
+      }
       case 'box': case 'amp': {
         const cur = sel.kind === 'box' ? m.boxes[sel.i] : m.amp;
         const vertical = cur.cells[0][0] === cur.cells[1][0];
@@ -230,11 +244,20 @@
       MT.emit('preview');
       return;
     }
+    if (S.tool === 'stairs' && !(s && s.kind === 'stair')) {
+      S.opts.stairs.dir = MT.rotateDir(S.opts.stairs.dir, dir > 0 ? 1 : 3);
+      MT.emit('tool-opts'); MT.emit('preview');
+      return;
+    }
     if (!s) {
       if (S.tool === 'elements' && (S.opts.elements.kind === 'box' || S.opts.elements.kind === 'amp')) {
         S.opts.elements.boxVertical = !S.opts.elements.boxVertical;
         MT.emit('tool-opts'); MT.emit('preview');
       }
+      return;
+    }
+    if (s.kind === 'stair') {
+      MT.updateStair(s.i, (st) => { st.dir = MT.rotateDir(st.dir, dir > 0 ? 1 : 3); }, 'Tourner l’escalier');
       return;
     }
     if (s.kind === 'prop') {
@@ -342,7 +365,7 @@
           return;
         }
         const list = [];
-        S.map.props.forEach((pr, i) => { if (pr.x >= x0 && pr.x <= x1 && pr.z >= z0 && pr.z <= z1) list.push(i); });
+        S.map.props.forEach((pr, i) => { if (MT.here(pr) && pr.x >= x0 && pr.x <= x1 && pr.z >= z0 && pr.z <= z1) list.push(i); });
         const merged = d.shift ? [...new Set([...MT.selectedProps(), ...list])] : list;
         MT.select(merged.length ? { kind: 'prop', list: merged } : null);
         if (merged.length) MT.toast(`${merged.length} objet${merged.length > 1 ? 's' : ''} sélectionné${merged.length > 1 ? 's' : ''}`);
@@ -540,7 +563,8 @@
       if (!face) { x = snapV(x, snap); z = snapV(z, snap); }
     } else {
       x = snapV(x, snap); z = snapV(z, snap);
-      if (p.view === '3d' && p.ny > 0.5 && p.wy > 0.04 && p.wy < 12) y = p.wy;
+      const fy = p.wy - MT.levelY();
+      if (p.view === '3d' && p.ny > 0.5 && fy > 0.04 && fy < 12) y = fy;
     }
     return { x, z, y, face };
   }
@@ -603,9 +627,10 @@
         case 'spawn': {
           MT.begin('Déplacer le départ');
           m.spawn.pos = [round(snapV(p.wx, 0.25)), round(snapV(p.wz, 0.25))];
+          MT.tagLv(m.spawn);
           MT.touch('elements');
           MT.select({ kind: 'spawn' });
-          T.drag = { mode: 'spawn-dir', planeY: 0 };
+          T.drag = { mode: 'spawn-dir', planeY: MT.levelY() };
           return true;
         }
         case 'light': {
@@ -617,29 +642,31 @@
             if (face) { L.fixture = 'wall'; pos = [round(p.x + 0.5 + face[0] * 0.62), 2.3, round(p.z + 0.5 + face[1] * 0.62)]; }
           }
           if (!pos) pos = [p.x + 0.5, round(MT.wallHeight() - 0.4), p.z + 0.5];
-          MT.edit('Ajouter une lumière', () => { m.lights.push({ pos, ...L }); S.sel = { kind: 'light', i: m.lights.length - 1 }; }, 'lights');
+          MT.edit('Ajouter une lumière', () => { m.lights.push(MT.tagLv({ pos, ...L })); S.sel = { kind: 'light', i: m.lights.length - 1 }; }, 'lights');
           MT.emit('selection');
-          if (m.lights.length === 17) MT.toast('Plus de 16 lumières : le jeu peut ralentir sur les petites cartes graphiques.', 'warn');
+          const maxL = MT.levels().length > 1 ? 24 : 16;
+          if (m.lights.length === maxL + 1) MT.toast(`Plus de ${maxL} lumières : le jeu peut ralentir sur les petites cartes graphiques.`, 'warn');
           return true;
         }
         case 'door': case 'window': {
           const t = MT.tileAt(p.x, p.z);
-          if (k === 'door' && t === 'D') { const di = m.doors.findIndex((d) => d.cells.some((c) => c[0] === p.x && c[1] === p.z)); MT.select({ kind: 'door', i: di }); return true; }
+          const doorHere = () => m.doors.findIndex((d) => MT.here(d) && d.cells.some((c) => c[0] === p.x && c[1] === p.z));
+          if (k === 'door' && t === 'D') { MT.select({ kind: 'door', i: doorHere() }); return true; }
           if (t !== '#' && t !== (k === 'door' ? 'W' : 'D')) { MT.toast('Visez un mur.', 'warn'); return true; }
           MT.begin(k === 'door' ? 'Ajouter une porte' : 'Ajouter une fenêtre');
           const ch = k === 'door' ? 'D' : 'W';
           MT.setTiles([[p.x, p.z]], ch);
           MT.touch('grid');
           T.drag = { mode: 'wall-line', ch, last: [p.x, p.z] };
-          if (k === 'door') { const di = m.doors.findIndex((d) => d.cells.some((c) => c[0] === p.x && c[1] === p.z)); if (di >= 0) S.sel = { kind: 'door', i: di }; MT.emit('selection'); }
+          if (k === 'door') { const di = doorHere(); if (di >= 0) S.sel = { kind: 'door', i: di }; MT.emit('selection'); }
           return true;
         }
         case 'wallbuy': {
           const face = needWall(p);
           if (!face) return true;
           MT.edit('Ajouter une arme murale', () => {
-            m.wallbuys = m.wallbuys.filter((w) => !(w.cell[0] === p.x && w.cell[1] === p.z));
-            m.wallbuys.push({ w: o.weapon, cell: [p.x, p.z], n: face });
+            m.wallbuys = m.wallbuys.filter((w) => !(MT.here(w) && w.cell[0] === p.x && w.cell[1] === p.z));
+            m.wallbuys.push(MT.tagLv({ w: o.weapon, cell: [p.x, p.z], n: face }));
             S.sel = { kind: 'wallbuy', i: m.wallbuys.length - 1 };
           }, 'elements');
           MT.emit('selection');
@@ -647,7 +674,7 @@
         }
         case 'perk': {
           if (!needFloor(p) || occupied(p.x, p.z)) return true;
-          MT.edit('Ajouter un distributeur', () => { m.perks.push({ p: o.perk, cell: [p.x, p.z], face: MT.defaultFace(p.x, p.z) }); S.sel = { kind: 'perk', i: m.perks.length - 1 }; }, 'elements');
+          MT.edit('Ajouter un distributeur', () => { m.perks.push(MT.tagLv({ p: o.perk, cell: [p.x, p.z], face: MT.defaultFace(p.x, p.z) })); S.sel = { kind: 'perk', i: m.perks.length - 1 }; }, 'elements');
           MT.emit('selection');
           if (m.perks.filter((q) => q.p === o.perk).length > 1) MT.toast('Ce distributeur existe déjà sur la carte.', 'warn');
           return true;
@@ -656,9 +683,9 @@
           const pr = MT.pairAt(p.x, p.z, o.boxVertical);
           if (!pr.cells.every(([x, z]) => MT.tileAt(x, z) === '.' && !occupied(x, z))) { MT.toast('Il faut deux cases de sol libres.', 'warn'); return true; }
           if (k === 'box') {
-            MT.edit('Ajouter un emplacement de boîte', () => { m.boxes.push(pr); S.sel = { kind: 'box', i: m.boxes.length - 1 }; }, 'elements');
+            MT.edit('Ajouter un emplacement de boîte', () => { m.boxes.push(MT.tagLv(pr)); S.sel = { kind: 'box', i: m.boxes.length - 1 }; }, 'elements');
           } else {
-            MT.edit('Placer l’Amplificateur', () => { m.amp = pr; S.sel = { kind: 'amp' }; }, 'elements');
+            MT.edit('Placer l’Amplificateur', () => { m.amp = MT.tagLv(pr); S.sel = { kind: 'amp' }; }, 'elements');
           }
           MT.emit('selection');
           return true;
@@ -666,7 +693,7 @@
         case 'power': {
           const face = needWall(p);
           if (!face) return true;
-          MT.edit('Placer l’interrupteur', () => { m.power = { cell: [p.x, p.z], n: face }; S.sel = { kind: 'power' }; }, 'elements');
+          MT.edit('Placer l’interrupteur', () => { m.power = MT.tagLv({ cell: [p.x, p.z], n: face }); S.sel = { kind: 'power' }; }, 'elements');
           MT.emit('selection');
           return true;
         }
@@ -675,15 +702,15 @@
           const face = p.face || MT.wallFace(p.x, p.z, prefOf(p));
           if (!face) { MT.toast('Il faut du sol devant ce mur.', 'warn'); return true; }
           const text = (o.sign || 'PANNEAU').toUpperCase().slice(0, 28);
-          MT.edit('Ajouter un panneau', () => { m.signs.push({ text, pos: MT.signPos(p.x, p.z, face, round(Math.min(3.05, MT.wallHeight() - 0.45))), n: face }); S.sel = { kind: 'sign', i: m.signs.length - 1 }; }, 'elements');
+          MT.edit('Ajouter un panneau', () => { m.signs.push(MT.tagLv({ text, pos: MT.signPos(p.x, p.z, face, round(Math.min(3.05, MT.wallHeight() - 0.45))), n: face })); S.sel = { kind: 'sign', i: m.signs.length - 1 }; }, 'elements');
           MT.emit('selection');
           return true;
         }
         case 'riser': {
           if (!needFloor(p)) return true;
-          if (m.risers.some((r) => r[0] === p.x && r[1] === p.z)) return true;
+          if (m.risers.some((r) => MT.here(r) && r[0] === p.x && r[1] === p.z)) return true;
           MT.begin('Ajouter des apparitions');
-          m.risers.push([p.x, p.z]);
+          m.risers.push(S.level ? [p.x, p.z, S.level] : [p.x, p.z]);
           MT.touch('elements');
           T.drag = { mode: 'riser-line', last: [p.x, p.z] };
           return true;
@@ -695,7 +722,7 @@
           if (di < 0) {
             const A = MT.analysis();
             const name = A.zones[zi] ? A.zones[zi].name : `Pièce ${m.zones.length + 1}`;
-            MT.edit('Nommer une pièce', () => { m.zones.push({ name, seed: [p.x, p.z], tint: [1, 1, 1] }); }, 'all');
+            MT.edit('Nommer une pièce', () => { m.zones.push(MT.tagLv({ name, seed: [p.x, p.z], tint: [1, 1, 1] })); }, 'all');
             di = m.zones.length - 1;
           }
           MT.select({ kind: 'zone', i: di });
@@ -722,7 +749,7 @@
       } else if (d.mode === 'riser-line') {
         if (p.x === d.last[0] && p.z === d.last[1]) return;
         d.last = [p.x, p.z];
-        if (MT.tileAt(p.x, p.z) === '.' && !m.risers.some((r) => r[0] === p.x && r[1] === p.z)) { m.risers.push([p.x, p.z]); MT.touch('elements'); }
+        if (MT.tileAt(p.x, p.z) === '.' && !m.risers.some((r) => MT.here(r) && r[0] === p.x && r[1] === p.z)) { m.risers.push(S.level ? [p.x, p.z, S.level] : [p.x, p.z]); MT.touch('elements'); }
       } else dragMove(p, ev);
     },
     up() {
@@ -741,11 +768,12 @@
   function removeAt(k, p) {
     const m = S.map;
     const same = (c) => c[0] === p.x && c[1] === p.z;
+    const H = MT.here;
     const label = `Retirer : ${KIND_LABEL[k] || k}`;
     switch (k) {
       case 'light': {
         let best = -1, bd = 0.9;
-        m.lights.forEach((l, i) => { const d = Math.hypot(l.pos[0] - p.wx, l.pos[2] - p.wz); if (d < bd) { bd = d; best = i; } });
+        m.lights.forEach((l, i) => { const d = Math.hypot(l.pos[0] - p.wx, l.pos[2] - p.wz); if (H(l) && d < bd) { bd = d; best = i; } });
         if (best >= 0) MT.edit(label, () => { m.lights.splice(best, 1); }, 'lights');
         break;
       }
@@ -754,17 +782,17 @@
         if ((k === 'door' && t === 'D') || (k === 'window' && t === 'W')) MT.edit(label, () => MT.setTiles([[p.x, p.z]], '#') || false, 'grid');
         break;
       }
-      case 'wallbuy': { const i = m.wallbuys.findIndex((w) => same(w.cell)); if (i >= 0) MT.edit(label, () => { m.wallbuys.splice(i, 1); }, 'elements'); break; }
-      case 'perk': { const i = m.perks.findIndex((q) => same(q.cell)); if (i >= 0) MT.edit(label, () => { m.perks.splice(i, 1); }, 'elements'); break; }
+      case 'wallbuy': { const i = m.wallbuys.findIndex((w) => H(w) && same(w.cell)); if (i >= 0) MT.edit(label, () => { m.wallbuys.splice(i, 1); }, 'elements'); break; }
+      case 'perk': { const i = m.perks.findIndex((q) => H(q) && same(q.cell)); if (i >= 0) MT.edit(label, () => { m.perks.splice(i, 1); }, 'elements'); break; }
       case 'box': {
-        const i = m.boxes.findIndex((b) => b.cells.some(same));
+        const i = m.boxes.findIndex((b) => H(b) && b.cells.some(same));
         if (i >= 0) MT.edit(label, () => { m.boxes.splice(i, 1); m.boxStart = clamp(m.boxStart, 0, Math.max(0, m.boxes.length - 1)); }, 'elements');
         break;
       }
-      case 'amp': if (m.amp && m.amp.cells.some(same)) MT.edit(label, () => { m.amp = null; }, 'elements'); break;
-      case 'power': if (m.power && same(m.power.cell)) MT.edit(label, () => { m.power = null; }, 'elements'); break;
-      case 'sign': { const i = m.signs.findIndex((s) => same(MT.signCell(s))); if (i >= 0) MT.edit(label, () => { m.signs.splice(i, 1); }, 'elements'); break; }
-      case 'riser': { const i = m.risers.findIndex(same); if (i >= 0) MT.edit(label, () => { m.risers.splice(i, 1); }, 'elements'); break; }
+      case 'amp': if (m.amp && H(m.amp) && m.amp.cells.some(same)) MT.edit(label, () => { m.amp = null; }, 'elements'); break;
+      case 'power': if (m.power && H(m.power) && same(m.power.cell)) MT.edit(label, () => { m.power = null; }, 'elements'); break;
+      case 'sign': { const i = m.signs.findIndex((s) => H(s) && same(MT.signCell(s))); if (i >= 0) MT.edit(label, () => { m.signs.splice(i, 1); }, 'elements'); break; }
+      case 'riser': { const i = m.risers.findIndex((r) => H(r) && same(r)); if (i >= 0) MT.edit(label, () => { m.risers.splice(i, 1); }, 'elements'); break; }
       case 'zone': {
         const di = MT.zoneDefOf(MT.zoneIndexAt(p.x, p.z));
         if (di >= 0) MT.edit('Retirer le nom de la pièce', () => { m.zones.splice(di, 1); }, 'all');
@@ -775,7 +803,38 @@
     MT.fixSelection();
   }
 
-  const TOOLS = { select, build, paint, props, elements };
+  /* ======================================================= Escaliers === */
+  const stairs = {
+    down(p, ev) {
+      if (!MT.multiOk()) return false;
+      if (ev.button === 2) {
+        const i = MT.stairAt(p.x, p.z);
+        if (i >= 0) {
+          const st = S.map.stairs[i];
+          MT.edit('Retirer l’escalier', (m) => { m.stairs.splice(i, 1); MT.fillOpenings(m, st); }, 'all');
+          MT.fixSelection();
+        }
+        return true;
+      }
+      if (ev.button !== 0) return false;
+      const here = MT.stairAt(p.x, p.z);
+      if (here >= 0) { const sel = { kind: 'stair', i: here }; MT.select(sel); startMove(sel, p, ev); return true; }
+      MT.placeStair(p.x, p.z);
+      return true;
+    },
+    drag(p, ev) { dragMove(p, ev); },
+    up() { const d = T.drag; if (d && d.moved) MT.touch('all'); },
+    hover(p) {
+      if (!p || !MT.multiOk()) { MT.preview.cells = null; MT.preview.stair = null; return; }
+      if (MT.stairAt(p.x, p.z) >= 0) { MT.preview.cells = null; MT.preview.stair = null; return; }
+      const st = MT.stairFromOpts(p.x, p.z);
+      MT.preview.stair = st;
+      MT.preview.cells = ZS.stairPlan(st).footprint;
+      MT.preview.tone = MT.stairProblem(st) ? 'erase' : 'element';
+    },
+  };
+
+  const TOOLS = { select, build, paint, props, elements, stairs };
   T.impl = TOOLS;
   T.placement = placement;
   T.texName = texName;

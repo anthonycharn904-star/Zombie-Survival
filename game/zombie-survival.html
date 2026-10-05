@@ -791,7 +791,7 @@ const pressed = (c) => !!Input.down[c];
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
 const GAME_VERSION = '1.4.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
-const EDITOR_API = 1;
+const EDITOR_API = 2;
 
 /* ================================================================ 01 DONNÉES ==
    Les cartes sont des données (voir « Cartes » plus bas). Bunker 7 est la
@@ -1094,9 +1094,16 @@ const BASE_TYPE = ZOMBIE_TYPES[0];
    Une carte est un objet de données (fichier .json dans les Mod Tools).
    normalizeMap vérifie et complète toute carte avant usage : valeurs bornées,
    éléments invalides retirés. analyzeMap calcule les pièces, fenêtres et
-   portes ; validateMap signale ce qui empêche de jouer.                     */
-const MAP_FORMAT = 1;
+   portes ; validateMap signale ce qui empêche de jouer.
+   Étages (jeu 1.4.0) : grid et layers forment le niveau 0 ; floors ajoute d'autres
+   niveaux de même taille (lv = 1, 2… au-dessus, -1, -2… en sous-sol). Les éléments
+   portent lv (0 si absent) et leurs hauteurs se mesurent depuis le sol de leur
+   niveau. Les escaliers (stairs) montent d'un niveau au suivant.               */
+const MAP_FORMAT = 2;
 const MAP_MIN = 8, MAP_MAX = 160;
+const LEVEL_MIN = -3, LEVEL_MAX = 6, LEVELS_MAX = 8;
+const SLAB = 0.3;          // épaisseur des dalles entre deux niveaux (m)
+const HEADROOM = 2.0;      // hauteur libre au-dessus d'une marche ; en dessous, l'étage est ouvert (trémie)
 const TILES = [
   { ch: '.', name: 'Sol', color: '#77716a' },
   { ch: '#', name: 'Mur', color: '#2b2825' },
@@ -1117,6 +1124,19 @@ const LIGHT_FIXTURES = { lamp: 'Lampe suspendue', bulb: 'Ampoule nue', neon: 'N�
 const DEFAULT_TEXTURES = { floor: 'bunker_floor', wall: 'bunker_wall', ceil: 'bunker_ceiling', exterior: 'bunker_wall', ground: 'frost_ground' };
 const DEFAULT_AMBIANCE = { sky: '#05070b', fog: '#05070b', fogDensity: 0.05, hemiSky: '#3c475c', hemiGround: '#15110d', hemi: 0.65, exposure: 1.18, moon: true, trees: 46, pipes: true, wallHeight: 3.5 };
 const DEFAULT_RULES = { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null };
+/* Escaliers : formes et matériaux (marches, côtés ; « ouvert » = marches sur limons, dessous vide). */
+const STAIR_SHAPES = { straight: 'Droit', l: 'Quart tournant', u: 'Demi-tour', spiral: 'Colimaçon' };
+const STAIR_MATS = {
+  wood: { name: 'Bois', tread: 'wood_oak', side: 'wood_dark', open: true, rail: 0x5a3a22 },
+  wood_old: { name: 'Bois ancien', tread: 'wood_barn', side: 'wood_rotten', open: true, rail: 0x4a3a2a },
+  stone: { name: 'Pierre', tread: 'stone_blocks', side: 'stone_blocks', open: false, rail: 0x2c2f31 },
+  stone_moss: { name: 'Pierre moussue', tread: 'stone_moss', side: 'stone_wall', open: false, rail: 0x2c2f31 },
+  concrete: { name: 'Béton', tread: 'concrete_slab', side: 'concrete', open: false, rail: 0x3a3f42 },
+  metal: { name: 'Métal', tread: 'metal_diamond', side: 'metal_plates', open: true, rail: 0x50585c },
+  grating: { name: 'Caillebotis', tread: 'metal_grating_rust', side: 'metal_rust', open: true, rail: 0x5a3c2c },
+  brick: { name: 'Brique', tread: 'tiles_terracotta', side: 'brick_red', open: false, rail: 0x2c2f31 },
+  marble: { name: 'Marbre', tread: 'marble_white', side: 'marble_white', open: false, rail: 0x8a7a5a },
+};
 
 function parseColor(v, def) {
   if (typeof v === 'number' && Number.isFinite(v)) return clamp(Math.round(v), 0, 0xffffff);
@@ -1124,6 +1144,65 @@ function parseColor(v, def) {
   return def;
 }
 const colorHex = (n) => `#${(n >>> 0).toString(16).padStart(6, '0')}`;
+
+/* Niveaux d'une carte, du plus bas au plus haut : [{ lv, grid, layers }] (le niveau 0 est m.grid). */
+function mapLevels(m) {
+  const out = [{ lv: 0, grid: m.grid, layers: m.layers }];
+  for (const f of m.floors || []) {
+    if (f && f.lv && Array.isArray(f.grid)) out.push({ lv: f.lv, grid: f.grid, layers: f.layers || {} });
+  }
+  return out.sort((a, b) => a.lv - b.lv);
+}
+
+/* Cases d'un escalier. (x, z) = première marche ; f = dir (sens de la montée), r = droite ;
+   case (a, b) du repère = (x, z) + a·r + b·f. Hauteurs h0 → h1 en fraction de la montée.
+   ramp : pente droite de din ; turn : quart de tour autour du coin commun à l'entrée et
+   à la sortie (marches dansantes) ; flat : palier. entries : cases d'accès (niveau lv) ;
+   exits : paliers d'arrivée (niveau lv + 1) ; core : noyau du colimaçon. */
+function stairPlan(s) {
+  const f = s.dir, r = [-f[1], f[0]], neg = (d) => [-d[0], -d[1]];
+  const T = s.turn === -1 ? -1 : 1, R = T > 0 ? r : neg(r);
+  const at = (a, b) => [s.x + a * r[0] + b * f[0], s.z + a * r[1] + b * f[1]];
+  const cells = [], entries = [], exits = [], core = [];
+  const add = (a, b, h0, h1, kind, din, dout) => { const [x, z] = at(a, b); cells.push({ x, z, h0, h1, kind, din, dout }); };
+  const W = s.shape === 'spiral' ? 1 : clamp(s.w | 0 || 1, 1, 3);
+  const n = clamp(s.n | 0 || 5, 2, 12), n2 = clamp(s.n2 | 0 || n, 1, 12);
+  if (s.shape === 'spiral') {
+    const P = [[0, 0, 'ramp', f, f], [0, 1, 'ramp', f, f], [0, 2, 'turn', f, R], [1, 2, 'ramp', R, R],
+      [2, 2, 'turn', R, neg(f)], [2, 1, 'ramp', neg(f), neg(f)], [2, 0, 'turn', neg(f), neg(R)], [1, 0, 'ramp', neg(R), neg(R)]];
+    P.forEach(([a, b, kind, din, dout], k) => add(a * T, b, k / 8, (k + 1) / 8, kind, din, dout));
+    core.push(at(T, 1));
+    entries.push(at(0, -1));
+    exits.push(at(0, 0));
+  } else if (s.shape === 'l') {
+    const tot = n + n2;
+    for (let b = 0; b < n; b++) for (let a = 0; a < W; a++) add(a, b, b / tot, (b + 1) / tot, 'ramp', f, f);
+    for (let b = n; b < n + W; b++) for (let a = 0; a < W; a++) add(a, b, n / tot, n / tot, 'flat', f, R);
+    for (let k = 0; k < n2; k++) for (let b = n; b < n + W; b++) add(T > 0 ? W + k : -1 - k, b, (n + k) / tot, (n + k + 1) / tot, 'ramp', R, R);
+    for (let a = 0; a < W; a++) entries.push(at(a, -1));
+    for (let b = n; b < n + W; b++) exits.push(at(T > 0 ? W + n2 : -1 - n2, b));
+  } else if (s.shape === 'u') {
+    const tot = n + n2, B = neg(f);
+    for (let b = 0; b < n; b++) for (let a = 0; a < W; a++) add(a, b, b / tot, (b + 1) / tot, 'ramp', f, f);
+    const c0 = T > 0 ? 0 : -W, f0 = T > 0 ? W : -W;   // palier : colonnes c0..c0+2W-1 ; 2e volée : f0..f0+W-1
+    for (let b = n; b < n + W; b++) for (let a = c0; a < c0 + 2 * W; a++) add(a, b, n / tot, n / tot, 'flat', f, B);
+    for (let k = 0; k < n2; k++) for (let a = f0; a < f0 + W; a++) add(a, n - 1 - k, (n + k) / tot, (n + k + 1) / tot, 'ramp', B, B);
+    for (let a = 0; a < W; a++) entries.push(at(a, -1));
+    for (let a = f0; a < f0 + W; a++) exits.push(at(a, n - n2 - 1));
+  } else {
+    for (let b = 0; b < n; b++) for (let a = 0; a < W; a++) add(a, b, b / n, (b + 1) / n, 'ramp', f, f);
+    for (let a = 0; a < W; a++) { entries.push(at(a, -1)); exits.push(at(a, n)); }
+  }
+  const footprint = cells.map((c) => [c.x, c.z]).concat(core.map((c) => c.slice()));
+  return { cells, entries, exits, core, footprint, w: W, n, n2 };
+}
+/* Cases de l'étage au-dessus laissées ouvertes (trémie) : là où la tête toucherait la dalle. */
+function stairOpenings(plan, wallH) {
+  const LH = wallH + SLAB, lim = wallH - HEADROOM, out = [];
+  for (const c of plan.cells) if (Math.max(c.h0, c.h1) * LH > lim + 1e-6) out.push([c.x, c.z]);
+  for (const c of plan.core) out.push(c.slice());
+  return out;
+}
 
 function normalizeMap(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('Fichier de carte illisible.');
@@ -1149,114 +1228,153 @@ function normalizeMap(raw) {
   m.author = str(raw.author, 60);
   m.seed = int(raw.seed, 0, 2147483647, 7);
   m.w = W; m.h = H;
-  m.grid = [];
-  for (let z = 0; z < H; z++) {
-    const row = (typeof raw.grid[z] === 'string' ? raw.grid[z] : '').slice(0, W).padEnd(W, ' ');
-    let out = '';
-    for (const ch of row) out += TILE_CHARS.has(ch) ? ch : ch >= '1' && ch <= '9' ? 'D' : ' ';
-    m.grid.push(out.slice(0, W).padEnd(W, ' '));
-  }
-  const at = (x, z) => (x >= 0 && z >= 0 && x < W && z < H ? m.grid[z][x] : ' ');
-
-  m.palette = (Array.isArray(raw.palette) ? raw.palette : []).slice(0, PAL_CHARS.length).map((id) => texId(id, 'concrete'));
-  m.layers = {};
-  for (const L of ['floor', 'ceil', 'wall']) {
-    const src = raw.layers && Array.isArray(raw.layers[L]) ? raw.layers[L] : null;
+  const readGrid = (src) => {
     const rows = [];
     for (let z = 0; z < H; z++) {
-      const r = src && typeof src[z] === 'string' ? src[z] : '';
+      const row = (typeof src[z] === 'string' ? src[z] : '').slice(0, W).padEnd(W, ' ');
       let out = '';
-      for (let x = 0; x < W; x++) {
-        const ch = r[x] || '.';
-        const k = PAL_CHARS.indexOf(ch);
-        out += k >= 0 && k < m.palette.length ? ch : '.';
-      }
-      rows.push(out);
+      for (const ch of row) out += TILE_CHARS.has(ch) ? ch : ch >= '1' && ch <= '9' ? 'D' : ' ';
+      rows.push(out.slice(0, W).padEnd(W, ' '));
     }
-    m.layers[L] = rows;
+    return rows;
+  };
+  m.grid = readGrid(raw.grid);
+  m.palette = (Array.isArray(raw.palette) ? raw.palette : []).slice(0, PAL_CHARS.length).map((id) => texId(id, 'concrete'));
+  const readLayers = (lsrc) => {
+    const layers = {};
+    for (const L of ['floor', 'ceil', 'wall']) {
+      const src = lsrc && Array.isArray(lsrc[L]) ? lsrc[L] : null;
+      const rows = [];
+      for (let z = 0; z < H; z++) {
+        const r = src && typeof src[z] === 'string' ? src[z] : '';
+        let out = '';
+        for (let x = 0; x < W; x++) {
+          const ch = r[x] || '.';
+          const k = PAL_CHARS.indexOf(ch);
+          out += k >= 0 && k < m.palette.length ? ch : '.';
+        }
+        rows.push(out);
+      }
+      layers[L] = rows;
+    }
+    return layers;
+  };
+  m.layers = readLayers(raw.layers);
+  // autres niveaux (étages et sous-sols)
+  m.floors = [];
+  const levels = new Set([0]);
+  for (const f of Array.isArray(raw.floors) ? raw.floors : []) {
+    if (levels.size >= LEVELS_MAX) break;
+    if (!f || !Number.isInteger(f.lv) || f.lv === 0 || f.lv < LEVEL_MIN || f.lv > LEVEL_MAX || levels.has(f.lv) || !Array.isArray(f.grid)) continue;
+    levels.add(f.lv);
+    m.floors.push({ lv: f.lv, grid: readGrid(f.grid), layers: readLayers(f.layers) });
   }
+  m.floors.sort((a, b) => a.lv - b.lv);
+  // niveau d'un élément : 0 si absent, null (élément retiré) si ce niveau n'existe pas
+  const lvOf = (v) => (v === undefined || v === null || v === 0 ? 0 : Number.isInteger(v) && levels.has(v) ? v : null);
+  const withLv = (o, lv) => { if (lv) o.lv = lv; return o; };
+  const gridOf = (lv) => (lv === 0 ? m.grid : (m.floors.find((f) => f.lv === lv) || {}).grid);
+  const at = (x, z, lv = 0) => { const g = gridOf(lv); return g && x >= 0 && z >= 0 && x < W && z < H ? g[z][x] : ' '; };
+
   m.textures = { ...DEFAULT_TEXTURES };
   if (raw.textures) for (const k in DEFAULT_TEXTURES) m.textures[k] = texId(raw.textures[k], m.textures[k]);
 
-  m.zones = (Array.isArray(raw.zones) ? raw.zones : []).slice(0, 120).map((z) => {
+  m.zones = (Array.isArray(raw.zones) ? raw.zones : []).slice(0, 160).map((z) => {
     if (!z || !cell(z.seed)) return null;
+    const lv = lvOf(z.lv);
+    if (lv === null) return null;
     const o = {
       name: str(z.name, 40).trim() || 'Pièce', seed: cell(z.seed),
       tint: Array.isArray(z.tint) && z.tint.length === 3 ? z.tint.map((v) => num(v, 0, 2, 1)) : [1, 1, 1],
     };
+    withLv(o, lv);
     for (const L of ['floor', 'wall', 'ceil']) if (z[L]) o[L] = texId(z[L], undefined);
     return o;
   }).filter(Boolean);
 
   const sp = raw.spawn && Array.isArray(raw.spawn.pos) ? raw.spawn : null;
-  m.spawn = { pos: sp ? [num(sp.pos[0], 0, W, W / 2), num(sp.pos[1], 0, H, H / 2)] : [W / 2, H / 2], yaw: num(sp && sp.yaw, -10, 10, 0) };
+  m.spawn = withLv({ pos: sp ? [num(sp.pos[0], 0, W, W / 2), num(sp.pos[1], 0, H, H / 2)] : [W / 2, H / 2], yaw: num(sp && sp.yaw, -10, 10, 0) }, sp ? lvOf(sp.lv) || 0 : 0);
 
-  // portes : chaque case D appartient à une seule porte ; les cases orphelines forment des portes à 750
+  // portes : chaque case D appartient à une seule porte de son niveau ; les cases orphelines forment des portes à 750
   const owner = new Map();
+  const okey = (lv, x, z) => `${lv}:${x},${z}`;
   m.doors = [];
-  for (const d of Array.isArray(raw.doors) ? raw.doors.slice(0, 200) : []) {
+  for (const d of Array.isArray(raw.doors) ? raw.doors.slice(0, 300) : []) {
     if (!d || !Array.isArray(d.cells)) continue;
+    const lv = lvOf(d.lv);
+    if (lv === null) continue;
     const cells = [];
     for (const c0 of d.cells.slice(0, 16)) {
       const c = cell(c0);
-      if (!c || at(c[0], c[1]) !== 'D' || owner.has(`${c[0]},${c[1]}`)) continue;
-      owner.set(`${c[0]},${c[1]}`, m.doors.length);
+      if (!c || at(c[0], c[1], lv) !== 'D' || owner.has(okey(lv, c[0], c[1]))) continue;
+      owner.set(okey(lv, c[0], c[1]), m.doors.length);
       cells.push(c);
     }
     if (!cells.length) continue;
     const type = DOOR_TYPES[d.type] ? d.type : 'door';
-    m.doors.push({ cells, cost: int(d.cost, 0, 99999, 750), type, verb: str(d.verb, 60).trim() || DOOR_VERBS[type] });
+    m.doors.push(withLv({ cells, cost: int(d.cost, 0, 99999, 750), type, verb: str(d.verb, 60).trim() || DOOR_VERBS[type] }, lv));
   }
-  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
-    if (at(x, z) !== 'D' || owner.has(`${x},${z}`)) continue;
-    const cells = [], stack = [[x, z]];
-    owner.set(`${x},${z}`, m.doors.length);
-    while (stack.length && cells.length < 16) {
-      const [cx, cz] = stack.pop();
-      cells.push([cx, cz]);
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const k = `${cx + dx},${cz + dz}`;
-        if (at(cx + dx, cz + dz) === 'D' && !owner.has(k)) { owner.set(k, m.doors.length); stack.push([cx + dx, cz + dz]); }
+  for (const lv of [...levels].sort((a, b) => a - b)) {
+    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+      if (at(x, z, lv) !== 'D' || owner.has(okey(lv, x, z))) continue;
+      const cells = [], stack = [[x, z]];
+      owner.set(okey(lv, x, z), m.doors.length);
+      while (stack.length && cells.length < 16) {
+        const [cx, cz] = stack.pop();
+        cells.push([cx, cz]);
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = okey(lv, cx + dx, cz + dz);
+          if (at(cx + dx, cz + dz, lv) === 'D' && !owner.has(k)) { owner.set(k, m.doors.length); stack.push([cx + dx, cz + dz]); }
+        }
       }
+      m.doors.push(withLv({ cells, cost: 750, type: 'door', verb: DOOR_VERBS.door }, lv));
     }
-    m.doors.push({ cells, cost: 750, type: 'door', verb: DOOR_VERBS.door });
   }
 
-  m.wallbuys = (Array.isArray(raw.wallbuys) ? raw.wallbuys : []).slice(0, 60)
-    .filter((w) => w && WEAPONS[w.w] && cell(w.cell) && dir(w.n)).map((w) => {
+  m.wallbuys = (Array.isArray(raw.wallbuys) ? raw.wallbuys : []).slice(0, 80)
+    .filter((w) => w && WEAPONS[w.w] && cell(w.cell) && dir(w.n) && lvOf(w.lv) !== null).map((w) => {
       const o = { w: w.w, cell: cell(w.cell), n: dir(w.n) };
       // prix propre à la carte (sinon prix habituel de l'arme)
       if (typeof w.cost === 'number' && Number.isFinite(w.cost)) o.cost = int(w.cost, 0, 99999, 1000);
-      return o;
+      return withLv(o, lvOf(w.lv));
     });
   m.perks = (Array.isArray(raw.perks) ? raw.perks : []).slice(0, 30)
-    .filter((p) => p && PERKS[p.p] && cell(p.cell) && dir(p.face)).map((p) => ({ p: p.p, cell: cell(p.cell), face: dir(p.face) }));
+    .filter((p) => p && PERKS[p.p] && cell(p.cell) && dir(p.face) && lvOf(p.lv) !== null).map((p) => withLv({ p: p.p, cell: cell(p.cell), face: dir(p.face) }, lvOf(p.lv)));
   const two = (cs) => (Array.isArray(cs) && cs.length === 2 && cell(cs[0]) && cell(cs[1])
     && Math.abs(cell(cs[0])[0] - cell(cs[1])[0]) + Math.abs(cell(cs[0])[1] - cell(cs[1])[1]) === 1 ? [cell(cs[0]), cell(cs[1])] : null);
   m.boxes = (Array.isArray(raw.boxes) ? raw.boxes : []).slice(0, 12)
-    .filter((b) => b && two(b.cells) && dir(b.face)).map((b) => ({ cells: two(b.cells), face: dir(b.face) }));
+    .filter((b) => b && two(b.cells) && dir(b.face) && lvOf(b.lv) !== null).map((b) => withLv({ cells: two(b.cells), face: dir(b.face) }, lvOf(b.lv)));
   m.boxStart = int(raw.boxStart, 0, Math.max(0, m.boxes.length - 1), 0);
-  m.power = raw.power && cell(raw.power.cell) && dir(raw.power.n) ? { cell: cell(raw.power.cell), n: dir(raw.power.n) } : null;
-  m.amp = raw.amp && two(raw.amp.cells) && dir(raw.amp.face) ? { cells: two(raw.amp.cells), face: dir(raw.amp.face) } : null;
+  m.power = raw.power && cell(raw.power.cell) && dir(raw.power.n) && lvOf(raw.power.lv) !== null ? withLv({ cell: cell(raw.power.cell), n: dir(raw.power.n) }, lvOf(raw.power.lv)) : null;
+  m.amp = raw.amp && two(raw.amp.cells) && dir(raw.amp.face) && lvOf(raw.amp.lv) !== null ? withLv({ cells: two(raw.amp.cells), face: dir(raw.amp.face) }, lvOf(raw.amp.lv)) : null;
   // digi pass : sur la face d'un mur (cell, n), décalé de off mètres vers la droite vu de la pièce, à la hauteur y
-  m.digipass = raw.digipass && cell(raw.digipass.cell) && dir(raw.digipass.n)
-    ? { cell: cell(raw.digipass.cell), n: dir(raw.digipass.n), off: num(raw.digipass.off, -0.42, 0.42, 0), y: num(raw.digipass.y, 0.9, 2.2, 1.45) } : null;
-  m.lights = (Array.isArray(raw.lights) ? raw.lights : []).slice(0, 64).map((l) => {
-    if (!l || !vec3(l.pos)) return null;
+  const dp = raw.digipass;
+  m.digipass = dp && cell(dp.cell) && dir(dp.n) && lvOf(dp.lv) !== null
+    ? withLv({ cell: cell(dp.cell), n: dir(dp.n), off: num(dp.off, -0.42, 0.42, 0), y: num(dp.y, 0.9, 2.2, 1.45) }, lvOf(dp.lv)) : null;
+  m.lights = (Array.isArray(raw.lights) ? raw.lights : []).slice(0, 96).map((l) => {
+    if (!l || !vec3(l.pos) || lvOf(l.lv) === null) return null;
     const o = {
       pos: vec3(l.pos), color: parseColor(l.color, 0xffc78f), intensity: num(l.intensity, 0, 10, 1.6),
       range: num(l.range, 1, 60, 12), flicker: num(l.flicker, 0, 1, 0), fixture: LIGHT_FIXTURES[l.fixture] ? l.fixture : 'lamp',
     };
     const pw = parseColor(l.powered, null);
     if (pw !== null) { o.powered = pw; o.poweredRange = num(l.poweredRange, 1, 60, o.range); }
-    return o;
+    return withLv(o, lvOf(l.lv));
   }).filter(Boolean);
-  m.signs = (Array.isArray(raw.signs) ? raw.signs : []).slice(0, 120)
-    .filter((s) => s && vec3(s.pos) && dir(s.n)).map((s) => ({ text: str(s.text, 28).toUpperCase(), pos: vec3(s.pos), n: dir(s.n) }));
+  m.signs = (Array.isArray(raw.signs) ? raw.signs : []).slice(0, 160)
+    .filter((s) => s && vec3(s.pos) && dir(s.n) && lvOf(s.lv) !== null).map((s) => withLv({ text: str(s.text, 28).toUpperCase(), pos: vec3(s.pos), n: dir(s.n) }, lvOf(s.lv)));
+  // apparitions au sol : [x, z] ou [x, z, lv]
   const seenR = new Set();
-  m.risers = (Array.isArray(raw.risers) ? raw.risers : []).slice(0, 300).map(cell).filter((c) => c && !seenR.has(`${c}`) && seenR.add(`${c}`));
+  m.risers = (Array.isArray(raw.risers) ? raw.risers : []).slice(0, 400).map((r) => {
+    const c = cell(r);
+    if (!c) return null;
+    const lv = lvOf(Array.isArray(r) ? r[2] : undefined);
+    if (lv === null || seenR.has(`${c},${lv}`)) return null;
+    seenR.add(`${c},${lv}`);
+    return lv ? [c[0], c[1], lv] : c;
+  }).filter(Boolean);
   m.props = (Array.isArray(raw.props) ? raw.props : []).slice(0, 5000).map((p) => {
-    if (!p || typeof p.m !== 'string' || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
+    if (!p || typeof p.m !== 'string' || !Number.isFinite(p.x) || !Number.isFinite(p.z) || lvOf(p.lv) === null) return null;
     const o = { m: p.m.slice(0, 60), x: num(p.x, -60, W + 60, 0), z: num(p.z, -60, H + 60, 0) };
     if (p.y) o.y = num(p.y, -5, 30, 0);
     if (p.r) o.r = num(p.r, -100, 100, 0);
@@ -1264,7 +1382,19 @@ function normalizeMap(raw) {
     const c = parseColor(p.c, null);
     if (c !== null) o.c = c;
     if (typeof p.solid === 'boolean') o.solid = p.solid;
-    return o;
+    return withLv(o, lvOf(p.lv));
+  }).filter(Boolean);
+  // escaliers (première marche, sens, forme, largeur, longueur, matériau)
+  m.stairs = (Array.isArray(raw.stairs) ? raw.stairs : []).slice(0, 60).map((s) => {
+    if (!s) return null;
+    const c = cell([s.x, s.z]), d = dir(s.dir), lv = lvOf(s.lv);
+    if (!c || !d || lv === null) return null;
+    const shape = STAIR_SHAPES[s.shape] ? s.shape : 'straight';
+    const o = { x: c[0], z: c[1], dir: d, shape, w: shape === 'spiral' ? 1 : int(s.w, 1, 3, 1), n: int(s.n, 2, 12, 5), mat: STAIR_MATS[s.mat] ? s.mat : 'wood' };
+    if (shape === 'l' || shape === 'u') o.n2 = int(s.n2, 1, 12, o.n);
+    if (shape !== 'straight') o.turn = s.turn === -1 ? -1 : 1;
+    if (s.rail === false) o.rail = false;
+    return withLv(o, lv);
   }).filter(Boolean);
 
   // textures importées (images en base64, embarquées dans la carte)
@@ -1326,137 +1456,246 @@ function normalizeMap(raw) {
   return m;
 }
 
+/* La carte se sert-elle des étages (format 2) ? Sinon elle reste lisible par un jeu plus ancien. */
+function mapUsesLevels(m) {
+  if ((m.floors && m.floors.length) || (m.stairs && m.stairs.length)) return true;
+  const has = (e) => e && e.lv;
+  return has(m.spawn) || [m.doors, m.wallbuys, m.perks, m.boxes, m.lights, m.signs, m.props, m.zones].some((list) => (list || []).some(has))
+    || has(m.power) || has(m.amp) || has(m.digipass) || (m.risers || []).some((r) => r[2]);
+}
+
 /* Carte prête à enregistrer en .json : couleurs lisibles, calques vides omis. */
 function serializeMap(m) {
+  const lv = (e, o) => { if (e && e.lv) o.lv = e.lv; return o; };
+  const layersOut = (ls) => {
+    const o = {};
+    for (const L of ['floor', 'ceil', 'wall']) if (ls && Array.isArray(ls[L]) && ls[L].some((row) => /[^.]/.test(row))) o[L] = ls[L].slice();
+    return o;
+  };
   const o = {
-    format: MAP_FORMAT, id: m.id, name: m.name, description: m.description, author: m.author, seed: m.seed, updated: m.updated || undefined,
-    grid: m.grid.slice(), palette: m.palette.slice(), layers: {}, textures: { ...m.textures },
-    zones: m.zones.map((z) => ({ ...z })), spawn: { pos: m.spawn.pos.slice(), yaw: m.spawn.yaw },
-    doors: m.doors.map((d) => ({ cells: d.cells.map((c) => c.slice()), cost: d.cost, type: d.type, verb: d.verb })),
+    format: mapUsesLevels(m) ? 2 : 1, id: m.id, name: m.name, description: m.description, author: m.author, seed: m.seed, updated: m.updated || undefined,
+    grid: m.grid.slice(), palette: m.palette.slice(), layers: layersOut(m.layers),
+    floors: m.floors && m.floors.length ? m.floors.map((f) => { const fo = { lv: f.lv, grid: f.grid.slice() }; const ls = layersOut(f.layers); if (Object.keys(ls).length) fo.layers = ls; return fo; }) : undefined,
+    textures: { ...m.textures },
+    zones: m.zones.map((z) => ({ ...z })), spawn: lv(m.spawn, { pos: m.spawn.pos.slice(), yaw: m.spawn.yaw }),
+    doors: m.doors.map((d) => lv(d, { cells: d.cells.map((c) => c.slice()), cost: d.cost, type: d.type, verb: d.verb })),
     wallbuys: m.wallbuys.map((w) => ({ ...w })), perks: m.perks.map((p) => ({ ...p })),
-    boxes: m.boxes.map((b) => ({ cells: b.cells.map((c) => c.slice()), face: b.face.slice() })), boxStart: m.boxStart,
-    power: m.power ? { cell: m.power.cell.slice(), n: m.power.n.slice() } : null,
-    amp: m.amp ? { cells: m.amp.cells.map((c) => c.slice()), face: m.amp.face.slice() } : null,
-    digipass: m.digipass ? { cell: m.digipass.cell.slice(), n: m.digipass.n.slice(), off: m.digipass.off, y: m.digipass.y } : undefined,
+    boxes: m.boxes.map((b) => lv(b, { cells: b.cells.map((c) => c.slice()), face: b.face.slice() })), boxStart: m.boxStart,
+    power: m.power ? lv(m.power, { cell: m.power.cell.slice(), n: m.power.n.slice() }) : null,
+    amp: m.amp ? lv(m.amp, { cells: m.amp.cells.map((c) => c.slice()), face: m.amp.face.slice() }) : null,
+    digipass: m.digipass ? lv(m.digipass, { cell: m.digipass.cell.slice(), n: m.digipass.n.slice(), off: m.digipass.off, y: m.digipass.y }) : undefined,
     lights: m.lights.map((l) => {
       const o2 = { pos: l.pos.slice(), color: colorHex(l.color), intensity: l.intensity, range: l.range, flicker: l.flicker, fixture: l.fixture };
       if (l.powered !== undefined && l.powered !== null) { o2.powered = colorHex(l.powered); o2.poweredRange = l.poweredRange; }
-      return o2;
+      return lv(l, o2);
     }),
-    signs: m.signs.map((s) => ({ text: s.text, pos: s.pos.slice(), n: s.n.slice() })), risers: m.risers.map((c) => c.slice()),
+    signs: m.signs.map((s) => lv(s, { text: s.text, pos: s.pos.slice(), n: s.n.slice() })), risers: m.risers.map((c) => c.slice()),
     props: m.props.map((p) => { const q = { ...p }; if (q.c !== undefined && q.c !== null) q.c = colorHex(q.c); return q; }),
+    stairs: m.stairs && m.stairs.length ? m.stairs.map((s) => ({ ...s, dir: s.dir.slice() })) : undefined,
     custom: m.custom && (Object.keys(m.custom.textures || {}).length || Object.keys(m.custom.models || {}).length)
       ? { textures: { ...(m.custom.textures || {}) }, models: { ...(m.custom.models || {}) } } : undefined,
     ambiance: { ...m.ambiance }, rules: { ...m.rules }, menuCam: m.menuCam ? JSON.parse(JSON.stringify(m.menuCam)) : null,
     thumb: m.thumb || undefined,
   };
-  for (const L of ['floor', 'ceil', 'wall']) if (m.layers[L].some((row) => /[^.]/.test(row))) o.layers[L] = m.layers[L].slice();
   if (!o.rules.boxWeapons) delete o.rules.boxWeapons;
   return JSON.parse(JSON.stringify(o));
 }
 
-/* Pièces, fenêtres, portes et apparitions d'une carte, sans toucher au monde en cours. */
+/* Pièces, fenêtres, portes, escaliers et apparitions d'une carte, sans toucher au monde en cours.
+   Tableaux par case de tous les niveaux : gAll[K(li, x, z)], zoneAll[…] (li = rang du niveau dans
+   levels, du plus bas au plus haut). g et zoneOf : vues du niveau 0 (comme avant les étages). */
 const TILE_T = { ' ': 0, '.': 1, '#': 2, W: 3, D: 4, x: 5, P: 6, o: 7, m: 9 };
 function analyzeMap(m) {
   const W = m.w, H = m.h, n = W * H;
-  const g = new Uint8Array(n), zoneOf = new Int16Array(n).fill(-1);
+  const LVs = mapLevels(m), L = LVs.length;
+  const levels = LVs.map((l) => l.lv), liOf = new Map(levels.map((lv, i) => [lv, i])), li0 = liOf.get(0);
+  const gAll = new Uint8Array(L * n), zoneAll = new Int16Array(L * n).fill(-1);
   const ix = (x, z) => z * W + x, ok = (x, z) => x >= 0 && z >= 0 && x < W && z < H;
-  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) g[ix(x, z)] = TILE_T[m.grid[z][x]] || 0;
+  const K = (li, x, z) => li * n + z * W + x;
+  LVs.forEach((lvl, li) => {
+    for (let z = 0; z < H; z++) { const row = lvl.grid[z] || ''; for (let x = 0; x < W; x++) gAll[li * n + z * W + x] = TILE_T[row[x]] || 0; }
+  });
+  // escaliers : posés sur du sol, un niveau au-dessus ; ils ouvrent l'étage (trémie) et ont un noyau (colimaçon)
+  const wallH = m.ambiance ? m.ambiance.wallHeight : DEFAULT_AMBIANCE.wallHeight;
+  const stairs = [], taken = new Set();
+  (m.stairs || []).forEach((s, i) => {
+    const lv = s.lv | 0, li = liOf.get(lv), liUp = liOf.get(lv + 1);
+    const plan = stairPlan(s);
+    const issues = [];
+    if (li === undefined) issues.push('level');
+    else if (liUp === undefined) issues.push('top');
+    if (!plan.footprint.every(([x, z]) => ok(x, z))) issues.push('edge');
+    else if (li !== undefined) {
+      if (!plan.cells.every((c) => gAll[K(li, c.x, c.z)] === 1)) issues.push('floor');
+      if (plan.footprint.some(([x, z]) => taken.has(K(li, x, z)))) issues.push('overlap');
+    }
+    let open = [];
+    if (!issues.length) {
+      open = stairOpenings(plan, wallH);
+      if (open.some(([x, z]) => taken.has(K(liUp, x, z)))) issues.push('overlap');
+    }
+    const valid = !issues.length;
+    if (valid) {
+      for (const [x, z] of plan.footprint) taken.add(K(li, x, z));
+      for (const [x, z] of open) taken.add(K(liUp, x, z));
+    }
+    stairs.push({ i, s, lv, li, liUp, plan, valid, issues, open, filled: [] });
+  });
+  for (const st of stairs) {
+    if (!st.valid) continue;
+    for (const [x, z] of st.open) { const k = K(st.liUp, x, z); if (gAll[k] !== 0) st.filled.push([x, z]); gAll[k] = 0; }
+    for (const [x, z] of st.plan.core) gAll[K(st.li, x, z)] = 6;
+  }
   const fillable = (t) => t === 1 || t === 5 || t === 6 || t === 9;
   const zones = [];
-  const fill = (sx, sz, zi) => {
+  const fill = (li, sx, sz, zi) => {
     const stack = [sx, sz];
     let count = 0;
     while (stack.length) {
       const z = stack.pop(), x = stack.pop();
       if (!ok(x, z)) continue;
-      const i = ix(x, z);
-      if (zoneOf[i] !== -1 || !fillable(g[i])) continue;
-      zoneOf[i] = zi; count++;
+      const k = K(li, x, z);
+      if (zoneAll[k] !== -1 || !fillable(gAll[k])) continue;
+      zoneAll[k] = zi; count++;
       stack.push(x + 1, z, x - 1, z, x, z + 1, x, z - 1);
     }
     return count;
   };
   for (const zd of m.zones) {
+    const li = liOf.get(zd.lv | 0);
     const [x, z] = zd.seed;
-    if (!ok(x, z) || zoneOf[ix(x, z)] !== -1 || !fillable(g[ix(x, z)])) continue;
-    zones.push({ ...zd, auto: false });
-    zones[zones.length - 1].cells = fill(x, z, zones.length - 1);
+    if (li === undefined || !ok(x, z) || zoneAll[K(li, x, z)] !== -1 || !fillable(gAll[K(li, x, z)])) continue;
+    zones.push({ ...zd, lv: zd.lv | 0, li, auto: false });
+    zones[zones.length - 1].cells = fill(li, x, z, zones.length - 1);
   }
-  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
-    const i = ix(x, z);
-    if (zoneOf[i] !== -1 || !fillable(g[i])) continue;
-    zones.push({ name: `Pièce ${zones.length + 1}`, seed: [x, z], tint: [1, 1, 1], auto: true });
-    zones[zones.length - 1].cells = fill(x, z, zones.length - 1);
-  }
-  const windows = [], badWindows = [];
-  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
-    if (g[ix(x, z)] !== 3) continue;
-    let found = null;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const zi = ok(x - dx, z - dz) ? zoneOf[ix(x - dx, z - dz)] : -1;
-      const out = ok(x + dx, z + dz) ? g[ix(x + dx, z + dz)] : 0;
-      if (zi >= 0 && (out === 0 || out === 7)) { found = { x, z, nx: dx, nz: dz, zone: zi }; break; }
+  for (let li = 0; li < L; li++) {
+    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+      const k = K(li, x, z);
+      if (zoneAll[k] !== -1 || !fillable(gAll[k])) continue;
+      zones.push({ name: `Pièce ${zones.length + 1}`, seed: [x, z], tint: [1, 1, 1], lv: levels[li], li, auto: true });
+      zones[zones.length - 1].cells = fill(li, x, z, zones.length - 1);
     }
-    if (found) windows.push(found); else badWindows.push([x, z]);
+  }
+  // fenêtres : une pièce d'un côté ; de l'autre, la cour (ou le vide au niveau 0)
+  const windows = [], badWindows = [];
+  for (let li = 0; li < L; li++) {
+    const lv = levels[li];
+    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+      if (gAll[K(li, x, z)] !== 3) continue;
+      let found = null;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const zi = ok(x - dx, z - dz) ? zoneAll[K(li, x - dx, z - dz)] : -1;
+        const out = ok(x + dx, z + dz) ? gAll[K(li, x + dx, z + dz)] : 0;
+        if (zi >= 0 && (out === 7 || (out === 0 && lv === 0))) { found = { x, z, nx: dx, nz: dz, zone: zi, lv, li }; break; }
+      }
+      if (found) windows.push(found); else badWindows.push(lv ? [x, z, lv] : [x, z]);
+    }
   }
   const doors = m.doors.map((d) => {
-    const zs = new Set();
-    for (const [x, z] of d.cells) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (ok(x + dx, z + dz) && zoneOf[ix(x + dx, z + dz)] >= 0) zs.add(zoneOf[ix(x + dx, z + dz)]);
-    return { ...d, zones: zs };
+    const li = liOf.get(d.lv | 0), zs = new Set();
+    if (li !== undefined) for (const [x, z] of d.cells) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (ok(x + dx, z + dz) && zoneAll[K(li, x + dx, z + dz)] >= 0) zs.add(zoneAll[K(li, x + dx, z + dz)]);
+    return { ...d, lv: d.lv | 0, li, zones: zs };
   });
-  const risers = m.risers.map(([x, z]) => ({ x, z, zone: ok(x, z) && g[ix(x, z)] === 1 ? zoneOf[ix(x, z)] : -1 }));
-  const sx = Math.floor(m.spawn.pos[0]), sz = Math.floor(m.spawn.pos[1]);
-  const startZone = ok(sx, sz) && g[ix(sx, sz)] === 1 ? zoneOf[ix(sx, sz)] : -1;
-  return { W, H, g, zoneOf, zones, windows, badWindows, doors, risers, startZone, ix, ok };
+  const risers = m.risers.map(([x, z, lv0]) => {
+    const lv = lv0 | 0, li = liOf.get(lv);
+    return { x, z, lv, li, zone: li !== undefined && ok(x, z) && gAll[K(li, x, z)] === 1 ? zoneAll[K(li, x, z)] : -1 };
+  });
+  const sx = Math.floor(m.spawn.pos[0]), sz = Math.floor(m.spawn.pos[1]), sli = liOf.get(m.spawn.lv | 0);
+  const startZone = sli !== undefined && ok(sx, sz) && gAll[K(sli, sx, sz)] === 1 ? zoneAll[K(sli, sx, sz)] : -1;
+  // liens entre pièces par les escaliers (comme des portes toujours ouvertes)
+  const links = [];
+  for (const st of stairs) {
+    if (!st.valid) continue;
+    const c0 = st.plan.cells[0], zLo = zoneAll[K(st.li, c0.x, c0.z)];
+    let zHi = -1;
+    for (const [x, z] of st.plan.exits) if (ok(x, z) && zoneAll[K(st.liUp, x, z)] >= 0) { zHi = zoneAll[K(st.liUp, x, z)]; break; }
+    st.zoneLo = zLo; st.zoneHi = zHi;
+    if (zLo >= 0 && zHi >= 0 && zLo !== zHi) links.push([zLo, zHi]);
+  }
+  const g = gAll.subarray(li0 * n, (li0 + 1) * n), zoneOf = zoneAll.subarray(li0 * n, (li0 + 1) * n);
+  return { W, H, n, L, levels, liOf, li0, K, gAll, zoneAll, g, zoneOf, zones, windows, badWindows, doors, risers, startZone, stairs, links, ix, ok };
 }
 
-/* Problèmes de jouabilité : errors empêchent de jouer, warnings sont des conseils. */
+/* Problèmes de jouabilité : errors empêchent de jouer, warnings sont des conseils.
+   at : [x, z] (niveau 0) ou [x, z, lv]. */
 function validateMap(m) {
   const A = analyzeMap(m);
   const errors = [], warnings = [];
   const E = (msg, at) => errors.push({ msg, at: at || null });
   const Wn = (msg, at) => warnings.push({ msg, at: at || null });
-  const tileAt = (x, z) => (A.ok(x, z) ? A.g[A.ix(x, z)] : 0);
-  const sp = [Math.floor(m.spawn.pos[0]), Math.floor(m.spawn.pos[1])];
+  const P = (c, lv) => (lv ? [c[0], c[1], lv] : [c[0], c[1]]);
+  const tileAt = (x, z, lv = 0) => { const li = A.liOf.get(lv); return li === undefined || !A.ok(x, z) ? 0 : A.gAll[A.K(li, x, z)]; };
+  const floorAt = (x, z, lv = 0) => tileAt(x, z, lv) === 1;
+  const lvName = (lv) => (lv > 0 ? `étage ${lv}` : lv < 0 ? `sous-sol ${-lv}` : 'rez-de-chaussée');
+  const deLv = (lv) => (lv > 0 ? `de l'étage ${lv}` : lv < 0 ? `du sous-sol ${-lv}` : 'du rez-de-chaussée');
+  const aLv = (lv) => (lv > 0 ? `à l'étage ${lv}` : lv < 0 ? `au sous-sol ${-lv}` : 'au rez-de-chaussée');
+  const multi = A.L > 1;
+  const where = (lv) => (multi ? ` (${lvName(lv)})` : '');
+  // cases occupées par les escaliers (on n'y pose pas de machine)
+  const stairCell = new Set();
+  for (const st of A.stairs) if (st.valid) for (const [x, z] of st.plan.footprint) stairCell.add(`${st.lv}:${x},${z}`);
+  const onStairs = (c, lv) => stairCell.has(`${lv | 0}:${c[0]},${c[1]}`);
+  const sp = P([Math.floor(m.spawn.pos[0]), Math.floor(m.spawn.pos[1])], m.spawn.lv | 0);
   if (A.startZone < 0) E('Le point de départ doit être posé sur le sol, dans une pièce.', sp);
+  else if (onStairs(sp, m.spawn.lv)) Wn('Le point de départ est sur un escalier : mieux vaut le poser sur un sol plat.', sp);
   if (!A.windows.length && !A.risers.some((r) => r.zone >= 0)) E('Aucune fenêtre ni apparition de zombies : aucun zombie ne pourrait venir.');
   else if (A.startZone >= 0 && !A.windows.some((w) => w.zone === A.startZone) && !A.risers.some((r) => r.zone === A.startZone)) {
     E(`La pièce de départ (${A.zones[A.startZone].name}) n'a ni fenêtre ni apparition de zombies : la première manche ne finirait jamais.`, sp);
   }
-  for (const [x, z] of A.badWindows) Wn("Fenêtre ignorée : il faut une pièce d'un côté et l'extérieur (vide ou cour) de l'autre.", [x, z]);
-  for (const r of A.risers) if (r.zone < 0) Wn('Apparition de zombies hors du sol : elle sera ignorée.', [r.x, r.z]);
-  // pièces accessibles depuis le départ
+  for (const c of A.badWindows) {
+    Wn(c[2] ? "Fenêtre ignorée : à l'étage, il faut une pièce d'un côté et une cour (terrasse) de l'autre." : "Fenêtre ignorée : il faut une pièce d'un côté et l'extérieur (vide ou cour) de l'autre.", c);
+  }
+  for (const r of A.risers) if (r.zone < 0) Wn('Apparition de zombies hors du sol : elle sera ignorée.', P([r.x, r.z], r.lv));
+  // escaliers
+  for (const st of A.stairs) {
+    const at = P([st.s.x, st.s.z], st.lv);
+    const up = st.lv + 1;
+    if (st.issues.includes('top')) { Wn(`Escalier sans étage au-dessus : ajoutez le niveau « ${lvName(up)} ». Il est ignoré pour l'instant.`, at); continue; }
+    if (st.issues.includes('edge')) { Wn("Escalier qui sort de la carte : il est ignoré.", at); continue; }
+    if (st.issues.includes('overlap')) { Wn('Escalier qui en chevauche un autre : il est ignoré.', at); continue; }
+    if (st.issues.includes('floor')) { Wn('Escalier posé ailleurs que sur du sol : il est ignoré.', at); continue; }
+    if (!st.plan.exits.every(([x, z]) => floorAt(x, z, up) || tileAt(x, z, up) === 4)) Wn(`Escalier sans palier en haut : il faut du sol ${aLv(up)} devant la dernière marche.`, P(st.plan.exits[0], up));
+    if (!st.plan.entries.some(([x, z]) => floorAt(x, z, st.lv) || tileAt(x, z, st.lv) === 4)) Wn('Escalier sans accès en bas : il faut du sol devant la première marche.', at);
+    if (st.filled.length) Wn(`Escalier : ${st.filled.length} case${st.filled.length > 1 ? 's' : ''} ${deLv(up)} au-dessus des marches ${st.filled.length > 1 ? 'sont laissées' : 'est laissée'} vide${st.filled.length > 1 ? 's' : ''} (trémie).`, P(st.filled[0], up));
+  }
+  // pièces accessibles depuis le départ (portes et escaliers)
   if (A.startZone >= 0) {
     const reach = new Set([A.startZone]);
+    const pairs = A.doors.map((d) => [...d.zones]).concat(A.links);
     let grew = true;
     while (grew) {
       grew = false;
-      for (const d of A.doors) {
-        const zs = [...d.zones];
+      for (const zs of pairs) {
         if (zs.some((z) => reach.has(z)) && zs.some((z) => !reach.has(z))) { zs.forEach((z) => reach.add(z)); grew = true; }
       }
     }
-    A.zones.forEach((z, i) => { if (!reach.has(i) && z.cells > 1) Wn(`Pièce inaccessible depuis le départ : ${z.name}.`, z.seed); });
+    A.zones.forEach((z, i) => { if (!reach.has(i) && z.cells > 1) Wn(`Pièce inaccessible depuis le départ : ${z.name}${where(z.lv)}.`, P(z.seed, z.lv)); });
   }
-  for (const d of A.doors) if (d.zones.size < 2) Wn("Porte qui ne relie pas deux pièces (vérifiez qu'elle est bien dans un mur).", d.cells[0]);
-  const floorAt = (x, z) => tileAt(x, z) === 1;
+  for (const d of A.doors) if (d.zones.size < 2) Wn("Porte qui ne relie pas deux pièces (vérifiez qu'elle est bien dans un mur).", P(d.cells[0], d.lv));
   for (const w of m.wallbuys) {
-    const [x, z] = w.cell;
-    if (tileAt(x, z) !== 2 || !floorAt(x + w.n[0], z + w.n[1])) Wn(`Achat mural « ${WEAPONS[w.w].name} » : il doit être sur un mur, tourné vers le sol.`, w.cell);
+    const [x, z] = w.cell, lv = w.lv | 0;
+    if (tileAt(x, z, lv) !== 2 || !floorAt(x + w.n[0], z + w.n[1], lv)) Wn(`Achat mural « ${WEAPONS[w.w].name} » : il doit être sur un mur, tourné vers le sol.`, P(w.cell, lv));
   }
-  for (const p of m.perks) if (!floorAt(p.cell[0], p.cell[1])) Wn(`Distributeur « ${PERKS[p.p].name} » hors du sol.`, p.cell);
-  m.boxes.forEach((b, i) => { if (!b.cells.every(([x, z]) => floorAt(x, z))) Wn(`Emplacement de boîte mystère n° ${i + 1} hors du sol.`, b.cells[0]); });
+  for (const p of m.perks) {
+    if (!floorAt(p.cell[0], p.cell[1], p.lv | 0)) Wn(`Distributeur « ${PERKS[p.p].name} » hors du sol.`, P(p.cell, p.lv));
+    else if (onStairs(p.cell, p.lv)) Wn(`Distributeur « ${PERKS[p.p].name} » posé sur un escalier.`, P(p.cell, p.lv));
+  }
+  m.boxes.forEach((b, i) => {
+    if (!b.cells.every(([x, z]) => floorAt(x, z, b.lv | 0))) Wn(`Emplacement de boîte mystère n° ${i + 1} hors du sol.`, P(b.cells[0], b.lv));
+    else if (b.cells.some((c) => onStairs(c, b.lv))) Wn(`Emplacement de boîte mystère n° ${i + 1} posé sur un escalier.`, P(b.cells[0], b.lv));
+  });
   if (!m.boxes.length) Wn('Pas de boîte mystère sur cette carte.');
-  if (m.amp && !m.amp.cells.every(([x, z]) => floorAt(x, z))) Wn("L'Amplificateur doit être posé sur le sol.", m.amp.cells[0]);
-  if (m.power && (tileAt(m.power.cell[0], m.power.cell[1]) !== 2 || !floorAt(m.power.cell[0] + m.power.n[0], m.power.cell[1] + m.power.n[1]))) Wn("L'interrupteur du courant doit être sur un mur, tourné vers le sol.", m.power.cell);
+  if (m.amp && !m.amp.cells.every(([x, z]) => floorAt(x, z, m.amp.lv | 0) && !onStairs([x, z], m.amp.lv))) Wn("L'Amplificateur doit être posé sur le sol (pas sur un escalier).", P(m.amp.cells[0], m.amp.lv));
+  if (m.power && (tileAt(m.power.cell[0], m.power.cell[1], m.power.lv | 0) !== 2 || !floorAt(m.power.cell[0] + m.power.n[0], m.power.cell[1] + m.power.n[1], m.power.lv | 0))) Wn("L'interrupteur du courant doit être sur un mur, tourné vers le sol.", P(m.power.cell, m.power.lv));
   if (!m.power && !m.rules.powerOn) {
     const need = m.perks.filter((p) => PERKS[p.p].power).map((p) => PERKS[p.p].name);
-    if (need.length) Wn(`Pas d'interrupteur du courant : ${need.join(', ')} ne fonctionneront jamais (ou cochez « Courant allumé au départ »).`);
+    if (need.length) Wn(`Pas d'interrupteur du courant : ${need.join(', ')} ne fonctionner${need.length > 1 ? 'ont' : 'a'} jamais (ou cochez « Courant allumé au départ »).`);
     if (m.amp) Wn("Pas d'interrupteur du courant : l'Amplificateur ne fonctionnera jamais.");
   }
-  if (m.digipass && (tileAt(m.digipass.cell[0], m.digipass.cell[1]) !== 2 || !floorAt(m.digipass.cell[0] + m.digipass.n[0], m.digipass.cell[1] + m.digipass.n[1]))) Wn('Digi pass : il doit être sur un mur, tourné vers le sol.', m.digipass.cell);
-  if (m.lights.length > 16) Wn(`${m.lights.length} lumières : au-delà de 16, le jeu ralentit sur les petites cartes graphiques.`);
+  const dp = m.digipass;
+  if (dp && (tileAt(dp.cell[0], dp.cell[1], dp.lv | 0) !== 2 || !floorAt(dp.cell[0] + dp.n[0], dp.cell[1] + dp.n[1], dp.lv | 0))) Wn('Digi pass : il doit être sur un mur, tourné vers le sol.', P(dp.cell, dp.lv));
+  const maxLights = A.L > 1 ? 24 : 16;
+  if (m.lights.length > maxLights) Wn(`${m.lights.length} lumières : au-delà de ${maxLights}, le jeu ralentit sur les petites cartes graphiques.`);
   if (m.props.length > 1500) Wn(`${m.props.length} objets : la carte risque d'être lente à charger.`);
   return { errors, warnings, analysis: A };
 }
@@ -1532,7 +1771,7 @@ const Sound = (() => {
     if (!ctx) return;
     lowpass.frequency.setTargetAtTime(on ? 650 : 20000, ctx.currentTime, 0.25);
   }
-  function setListener(x, z, yaw) { L.x = x; L.z = z; L.yaw = yaw; }
+  function setListener(x, z, yaw, y = 0) { L.x = x; L.z = z; L.yaw = yaw; L.y = y; }
 
   /* Sortie d'un son : renvoie un nœud de gain (ou null si inaudible). */
   function out(pos, vol = 1, ref = 4, bus = null) {
@@ -1540,7 +1779,13 @@ const Sound = (() => {
     let pan = 0;
     if (pos) {
       const dx = pos.x - L.x, dz = pos.z - L.z;
-      const d = Math.hypot(dx, dz);
+      let d = Math.hypot(dx, dz);
+      if (NL > 1 && pos.y !== undefined) {
+        // autre étage : plus loin, et étouffé par la dalle
+        const dy = pos.y - (L.y || 0);
+        d = Math.hypot(d, dy);
+        if (Math.abs(dy) > 2.6) gain *= 0.4;
+      }
       gain *= 1 / (1 + Math.pow(Math.max(0, d - 1) / ref, 1.7));
       if (gain < 0.008) return null;
       if (d > 0.05) {
@@ -3705,32 +3950,50 @@ function buildTextures() {
 }
 
 /* ================================================================= 04 MONDE ==
-   La carte en cours devient une grille de cases. La grille sert à tout :
+   La carte en cours devient une grille de cases par niveau. La grille sert à tout :
    géométrie, collisions (cercle contre cases), tirs (lancer de rayon DDA avec
    hauteurs) et navigation des zombies (champ de distances autour du joueur).
+   Étages : un « nœud » est une case d'un niveau (k = li·GN + z·GW + x, li = rang du
+   niveau, du plus bas au plus haut). Chaque nœud où l'on peut se tenir a une surface
+   (sol plat, ou pente d'escalier) ; edgeTo dit, pour chaque côté, vers quel niveau on
+   passe dans la case voisine (marche franchissable) ou -1 (mur, vide, marche trop haute).
    buildWorld reconstruit tout à chaque chargement de carte.
    ============================================================================ */
 const T = { VOID: 0, FLOOR: 1, WALL: 2, WINDOW: 3, DOOR: 4, CRATE: 5, PILLAR: 6, YARD: 7, PROP: 8, LOW: 9 };
 const WIN_LO = 0.9, WIN_HI = 2.3, DOOR_H = 2.6, LOW_H = 1.1;
-let WALL_H = 3.5;
-let GW = 1, GH = 1;
+const STEP_TOL = 0.3;        // différence de hauteur franchissable entre deux cases voisines
+let WALL_H = 3.5, LVL_H = 3.8;
+let GW = 1, GH = 1, GN = 1, NL = 1, LI0 = 0;
+let LV = [0], LVY = new Float32Array(1);
 let grid = new Uint8Array(1), solidTop = new Float32Array(1), doorOf = [null], doorOpen = new Uint8Array(1);
-let zoneOf = new Int16Array(1), interior = new Uint8Array(1), noCeil = new Uint8Array(1);
+let zoneOf = new Int16Array(1), interior = new Uint8Array(1), noCeil = new Uint8Array(1), ceilOn = new Uint8Array(1), hole = new Uint8Array(1), holeZone = new Int16Array(1);
+let surfK = new Uint8Array(1), surfH0 = new Float32Array(1), surfH1 = new Float32Array(1), surfDin = new Uint8Array(1), surfDout = new Uint8Array(1);
+let stairAt = new Int16Array(1), edgeTo = new Int8Array(4);
 let flow = new Float32Array(1), _heapI = new Int32Array(8), _heapD = new Float32Array(8);
+let airBands = [];
 const idx = (x, z) => z * GW + x;
+const node = (li, x, z) => li * GN + z * GW + x;
 const inb = (x, z) => x >= 0 && z >= 0 && x < GW && z < GH;
-const World = { windows: [], doors: {}, lights: [], risers: [], root: null, props: null, ground: null };
-/* Carte chargée : données normalisées, mode éditeur, pièces calculées. */
-const CUR = { map: null, editor: false, zones: [], analysis: null };
+const levelOfNode = (k) => (k / GN) | 0;
+const DIR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const dirIndex = (dx, dz) => (dx === 1 ? 0 : dx === -1 ? 1 : dz === 1 ? 2 : 3);
+const World = { windows: [], doors: {}, lights: [], risers: [], stairs: [], links: [], railEdges: [], root: null, props: null, ground: null };
+/* Carte chargée : données normalisées, mode éditeur, pièces calculées, niveaux. */
+const CUR = { map: null, editor: false, zones: [], analysis: null, levels: [] };
 /* Aléa reproductible du décor (même carte = même décor). */
 let wrand = Math.random;
 const wr = (a = 0, b = 1) => a + wrand() * (b - a);
+/* Rang d'un niveau (lv = 0, 1, -1…) dans la carte chargée, ou -1. */
+const levelIndex = (lv) => LV.indexOf(lv | 0);
 
-function allocGrid(w, h) {
-  GW = w; GH = h;
-  const n = w * h;
+function allocGrid(w, h, nl) {
+  GW = w; GH = h; GN = w * h; NL = nl;
+  const n = GN * nl;
   grid = new Uint8Array(n); solidTop = new Float32Array(n); doorOf = new Array(n).fill(null);
   doorOpen = new Uint8Array(n); zoneOf = new Int16Array(n).fill(-1); interior = new Uint8Array(n); noCeil = new Uint8Array(n);
+  ceilOn = new Uint8Array(n); hole = new Uint8Array(n); holeZone = new Int16Array(n).fill(-1);
+  surfK = new Uint8Array(n); surfH0 = new Float32Array(n); surfH1 = new Float32Array(n); surfDin = new Uint8Array(n); surfDout = new Uint8Array(n);
+  stairAt = new Int16Array(n).fill(-1); edgeTo = new Int8Array(n * 4).fill(-1);
   flow = new Float32Array(n); _heapI = new Int32Array(n * 8); _heapD = new Float32Array(n * 8);
 }
 
@@ -3738,64 +4001,260 @@ function allocGrid(w, h) {
 function parseMapGrid(map) {
   const A = analyzeMap(map);
   CUR.analysis = A;
-  allocGrid(map.w, map.h);
-  World.windows = []; World.doors = {}; World.risers = [];
-  for (let i = 0; i < A.g.length; i++) {
-    const t = A.g[i];
-    grid[i] = t;
-    if (t === T.CRATE) solidTop[i] = 0.95;
-    else if (t === T.LOW) solidTop[i] = LOW_H;
-    zoneOf[i] = A.zoneOf[i];
+  CUR.levels = mapLevels(map);
+  LV = A.levels.slice(); LI0 = A.li0;
+  WALL_H = map.ambiance.wallHeight; LVL_H = WALL_H + SLAB;
+  LVY = new Float32Array(LV.length);
+  LV.forEach((lv, li) => { LVY[li] = lv * LVL_H; });
+  allocGrid(map.w, map.h, A.L);
+  World.windows = []; World.doors = {}; World.risers = []; World.stairs = []; World.links = A.links;
+  for (let k = 0; k < A.gAll.length; k++) {
+    const t = A.gAll[k];
+    grid[k] = t;
+    if (t === T.CRATE) solidTop[k] = 0.95;
+    else if (t === T.LOW) solidTop[k] = LOW_H;
+    zoneOf[k] = A.zoneAll[k];
   }
   CUR.zones = A.zones;
   LAYOUT.zones = A.zones;
-  for (let i = 0; i < grid.length; i++) interior[i] = zoneOf[i] >= 0 || grid[i] === T.DOOR ? 1 : 0;
+  for (let k = 0; k < grid.length; k++) interior[k] = zoneOf[k] >= 0 || grid[k] === T.DOOR ? 1 : 0;
   A.doors.forEach((d, di) => {
+    if (d.li === undefined) return;
     const id = String(di);
-    const door = World.doors[id] = { id, cells: [], zones: new Set(d.zones), opened: false };
-    for (const [x, z] of d.cells) { const i = idx(x, z); doorOf[i] = id; door.cells.push(i); }
+    const door = World.doors[id] = { id, cells: [], zones: new Set(d.zones), opened: false, li: d.li };
+    for (const [x, z] of d.cells) { const k = node(d.li, x, z); doorOf[k] = id; door.cells.push(k); }
   });
   for (const w of A.windows) World.windows.push({ ...w });
-  for (const r of A.risers) if (r.zone >= 0) World.risers.push({ riser: true, x: r.x + 0.5, z: r.z + 0.5, zone: r.zone, cell: idx(r.x, r.z) });
+  for (const r of A.risers) if (r.zone >= 0) World.risers.push({ riser: true, x: r.x + 0.5, z: r.z + 0.5, zone: r.zone, li: r.li, k: node(r.li, r.x, r.z) });
   LAYOUT.startZone = Math.max(0, A.startZone);
-  for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
-    const i = idx(x, z);
-    if (interior[i] && cellTex(i, 'ceil') === 'none') noCeil[i] = 1;
+  // surfaces : sols plats, puis pentes des escaliers
+  for (let k = 0; k < grid.length; k++) {
+    if (grid[k] === T.FLOOR || grid[k] === T.DOOR) { surfK[k] = 1; surfH0[k] = surfH1[k] = LVY[levelOfNode(k)]; }
+    else if (grid[k] === T.YARD) surfH0[k] = surfH1[k] = LVY[levelOfNode(k)];   // cour : hauteur seulement (on n'y marche pas)
   }
+  for (const st of A.stairs) {
+    if (!st.valid) continue;
+    const si = World.stairs.length;
+    World.stairs.push({ s: st.s, plan: st.plan, li: st.li, liUp: st.liUp, open: st.open, zoneLo: st.zoneLo, zoneHi: st.zoneHi, mat: STAIR_MATS[st.s.mat] || STAIR_MATS.wood });
+    const E = LVY[st.li];
+    for (const c of st.plan.cells) {
+      const k = node(st.li, c.x, c.z);
+      surfK[k] = c.kind === 'ramp' ? 2 : c.kind === 'turn' ? 3 : 1;
+      surfH0[k] = E + c.h0 * LVL_H; surfH1[k] = E + c.h1 * LVL_H;
+      surfDin[k] = dirIndex(c.din[0], c.din[1]); surfDout[k] = dirIndex(c.dout[0], c.dout[1]);
+      stairAt[k] = si;
+    }
+    for (const [x, z] of st.open) { const h = node(st.liUp, x, z); hole[h] = 1; holeZone[h] = st.zoneHi >= 0 ? st.zoneHi : st.zoneLo; }
+  }
+  for (let k = 0; k < grid.length; k++) {
+    if (interior[k] && cellTex(k, 'ceil') === 'none') noCeil[k] = 1;
+    const li = levelOfNode(k), holeUp = li < NL - 1 && hole[k + GN];
+    ceilOn[k] = interior[k] && !noCeil[k] && !holeUp ? 1 : 0;
+    // au-dessus d'une trémie, la cage d'escalier a le plafond de la pièce du haut
+    if (hole[k] && grid[k] === T.VOID && holeZone[k] >= 0 && !holeUp && cellTex(k, 'ceil') !== 'none') ceilOn[k] = 1;
+  }
+  // air des sous-sols (sous le sol extérieur, le reste est de la terre) ; prolongé jusqu'au niveau du dessus aux trémies
+  // (cours anglaises : ouvertes jusqu'au sol extérieur ; trémies : à travers la dalle)
+  airBands = [];
+  if (LV[0] < 0) {
+    airBands = new Array(GN).fill(null);
+    for (let li = 0; li < NL && LV[li] < 0; li++) {
+      for (let c = 0; c < GN; c++) {
+        const k = li * GN + c, t = grid[k];
+        if (t === T.WALL || t === T.PILLAR || (t === T.VOID && !hole[k])) continue;
+        const lo = hole[k] ? LVY[li] - SLAB : LVY[li];
+        const top = t === T.YARD ? 0 : li < NL - 1 && hole[k + GN] ? LVY[li + 1] : LVY[li] + WALL_H;
+        (airBands[c] || (airBands[c] = [])).push(lo, top);
+      }
+    }
+    for (let c = 0; c < GN; c++) {
+      const b = airBands[c];
+      if (!b || b.length <= 2) continue;
+      const pairs = [];
+      for (let i = 0; i < b.length; i += 2) pairs.push([b[i], b[i + 1]]);
+      pairs.sort((u, v) => u[0] - v[0]);
+      airBands[c] = pairs.flat();
+    }
+  }
+  buildEdges();
 }
 
-/* Texture d'une case pour un calque (sol, plafond, murs qui l'entourent). */
-function cellTex(i, layer) {
-  const m = CUR.map;
-  const x = i % GW, z = (i / GW) | 0;
-  const ch = m.layers[layer][z][x];
+/* Texture d'une case (nœud) pour un calque (sol, plafond, murs qui l'entourent). */
+function cellTex(k, layer) {
+  const m = CUR.map, li = levelOfNode(k), c = k - li * GN;
+  const x = c % GW, z = (c / GW) | 0;
+  const lvl = CUR.levels[li], rows = lvl && lvl.layers && lvl.layers[layer];
+  const ch = rows && rows[z] ? rows[z][x] || '.' : '.';
   if (ch !== '.') { const id = m.palette[PAL_CHARS.indexOf(ch)]; if (id) return id; }
-  const zi = zoneOf[i];
+  const zi = zoneOf[k] >= 0 ? zoneOf[k] : holeZone[k];
   if (zi >= 0 && CUR.zones[zi] && CUR.zones[zi][layer]) return CUR.zones[zi][layer];
   return m.textures[layer];
 }
 
-const walkable = (i) => grid[i] === T.FLOOR || (grid[i] === T.DOOR && doorOpen[i] === 1);
-const blockedCell = (cx, cz) => !inb(cx, cz) || !walkable(idx(cx, cz));
-const blockedAt = (x, z) => blockedCell(Math.floor(x), Math.floor(z));
-function zoneAt(x, z) {
+/* ------------------------------------------------------------ Surfaces -- */
+/* Hauteur du sol sous (x, z) sur le nœud k : plat, pente droite ou marches dansantes. */
+function surfY(k, x, z) {
+  const kind = surfK[k];
+  if (kind <= 1) return surfH0[k];
+  const c = k % GN, cx = (c % GW) + 0.5, cz = ((c / GW) | 0) + 0.5;
+  const di = DIR4[surfDin[k]];
+  let t;
+  if (kind === 2) t = (x - cx) * di[0] + (z - cz) * di[1] + 0.5;
+  else {
+    const dout = DIR4[surfDout[k]];
+    const px = cx + (dout[0] - di[0]) * 0.5, pz = cz + (dout[1] - di[1]) * 0.5;
+    const u = -((x - px) * dout[0] + (z - pz) * dout[1]), v = (x - px) * di[0] + (z - pz) * di[1];
+    t = u <= 1e-6 && v <= 1e-6 ? 0.5 : Math.atan2(Math.max(0, v), Math.max(0, u)) / (Math.PI / 2);
+  }
+  return surfH0[k] + (surfH1[k] - surfH0[k]) * clamp(t, 0, 1);
+}
+/* Plus grand écart de hauteur le long du bord commun de deux nœuds voisins. */
+function edgeDiff(k, j, x, z, dx, dz) {
+  const ex = x + 0.5 + dx * 0.5, ez = z + 0.5 + dz * 0.5, tx = dz !== 0 ? 1 : 0, tz = dx !== 0 ? 1 : 0;
+  let worst = 0;
+  for (const s of [-0.42, 0, 0.42]) {
+    const px = ex + tx * s, pz = ez + tz * s;
+    worst = Math.max(worst, Math.abs(surfY(k, px - dx * 0.002, pz - dz * 0.002) - surfY(j, px + dx * 0.002, pz + dz * 0.002)));
+  }
+  return worst;
+}
+/* Une case d'escalier ne s'ouvre que par son entrée et sa sortie (et sur ses voisines du même escalier). */
+function stairSideOk(k, d) {
+  if (stairAt[k] < 0) return true;
+  const di = DIR4[surfDin[k]], dout = surfDout[k];
+  return d === dout || d === dirIndex(-di[0], -di[1]);
+}
+function buildEdges() {
+  edgeTo.fill(-1);
+  for (let li = 0; li < NL; li++) {
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const k = node(li, x, z);
+      if (!surfK[k]) continue;
+      for (let d = 0; d < 4; d++) {
+        const dx = DIR4[d][0], dz = DIR4[d][1], nx = x + dx, nz = z + dz;
+        if (!inb(nx, nz)) continue;
+        let best = -1, bestDiff = STEP_TOL;
+        for (let lj = Math.max(0, li - 1); lj <= Math.min(NL - 1, li + 1); lj++) {
+          const j = node(lj, nx, nz);
+          if (!surfK[j]) continue;
+          const same = stairAt[k] >= 0 && stairAt[k] === stairAt[j];
+          if (!same && (!stairSideOk(k, d) || !stairSideOk(j, d ^ 1))) continue;
+          const diff = edgeDiff(k, j, x, z, dx, dz);
+          if (diff <= bestDiff) { bestDiff = diff; best = lj; }
+        }
+        edgeTo[k * 4 + d] = best;
+      }
+    }
+  }
+}
+
+const walkNode = (k) => surfK[k] > 0 && (grid[k] === T.FLOOR || (grid[k] === T.DOOR && doorOpen[k] === 1));
+/* Nœud voisin atteint en passant le côté d (0 : +x, 1 : -x, 2 : +z, 3 : -z), ou -1. */
+function passD(k, d) {
+  const t = edgeTo[k * 4 + d];
+  if (t < 0) return -1;
+  const j = t * GN + (k % GN) + DIR4[d][0] + DIR4[d][1] * GW;
+  return walkNode(j) ? j : -1;
+}
+const passDir = (k, dx, dz) => passD(k, dirIndex(dx, dz));
+/* Diagonale : les deux chemins par les côtés mènent au même nœud (jamais sur un escalier). */
+function diagPass(k, dx, dz) {
+  if (stairAt[k] >= 0) return -1;
+  const a = passDir(k, dx, 0), b = passDir(k, 0, dz);
+  if (a < 0 || b < 0 || stairAt[a] >= 0 || stairAt[b] >= 0) return -1;
+  const j1 = passDir(a, 0, dz), j2 = passDir(b, dx, 0);
+  return j1 >= 0 && j1 === j2 && stairAt[j1] < 0 ? j1 : -1;
+}
+/* Nœud où se tient un corps en (x, z), le plus proche de la hauteur yHint ; -1 s'il n'y en a pas. */
+function locateNode(x, z, yHint = 0, walkOnly = false) {
   const cx = Math.floor(x), cz = Math.floor(z);
-  return inb(cx, cz) ? zoneOf[idx(cx, cz)] : -1;
+  if (!inb(cx, cz)) return -1;
+  let best = -1, bd = Infinity;
+  for (let li = 0; li < NL; li++) {
+    const k = node(li, cx, cz);
+    if (!surfK[k] || (walkOnly && !walkNode(k))) continue;
+    const d = Math.abs(surfY(k, x, z) - yHint);
+    if (d < bd) { bd = d; best = k; }
+  }
+  return best;
 }
-function setProp(x, z, top) {
-  if (!inb(x, z)) return;
-  const i = idx(x, z);
-  if (grid[i] !== T.FLOOR && grid[i] !== T.PROP) return;
-  grid[i] = T.PROP; solidTop[i] = Math.max(solidTop[i], top);
+/* Comme locateNode, mais cherche aussi dans les cases voisines (corps coincé dans un mur). */
+function nearestNode(x, z, yHint = 0) {
+  let k = locateNode(x, z, yHint, true);
+  if (k >= 0) return k;
+  let best = -1, bd = Infinity;
+  for (let r = 1; r <= 3 && best < 0; r++) {
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      const j = locateNode(x + dx, z + dz, yHint, true);
+      if (j < 0) continue;
+      const d = Math.hypot(dx, dz) + Math.abs(surfY(j, x + dx, z + dz) - yHint) * 0.5;
+      if (d < bd) { bd = d; best = j; }
+    }
+  }
+  return best;
 }
-function clearProp(x, z) {
-  if (!inb(x, z)) return;
-  const i = idx(x, z);
-  if (grid[i] === T.PROP) { grid[i] = T.FLOOR; solidTop[i] = 0; }
+const nodeCX = (k) => ((k % GN) % GW) + 0.5;
+const nodeCZ = (k) => (((k % GN) / GW) | 0) + 0.5;
+function zoneAt(x, z, yHint = 0) {
+  const k = locateNode(x, z, yHint);
+  return k >= 0 ? zoneOf[k] : -1;
+}
+/* Sol sous un point (débris, grenades, particules) : la surface la plus haute sous y. */
+function floorBelow(x, z, y) {
+  const cx = Math.floor(x), cz = Math.floor(z);
+  if (!inb(cx, cz)) return 0;
+  let best = -1e9;
+  for (let li = 0; li < NL; li++) {
+    const k = node(li, cx, cz), t = grid[k];
+    let h;
+    if (surfK[k]) {
+      h = surfY(k, x, z);
+      if (stairAt[k] >= 0 && y + 0.05 >= LVY[li] && y < h) return h;   // dans le volume d'une marche
+    } else if (t === T.VOID) {
+      if (hole[k]) h = -1e9;
+      else if (LV[li] === 0) h = 0;                                    // sol extérieur
+      else if (LV[li] > 0 && li > 0 && ceilOn[k - GN]) h = LVY[li];    // toit d'une pièce du dessous
+      else h = -1e9;
+    } else h = LVY[li] + (t === T.CRATE || t === T.PROP || t === T.LOW ? solidTop[k] : 0);
+    if (h <= y + 0.05 && h > best) best = h;
+  }
+  return best > -1e8 ? best : Math.min(0, y);
+}
+/* Rang du niveau où se trouve la hauteur y (la dalle compte avec l'étage qu'elle porte). */
+function levelAtY(y) {
+  let li = 0;
+  while (li < NL - 1 && y >= LVY[li + 1] - SLAB) li++;
+  return li;
+}
+/* Le point (x, y, z) est-il dans un mur, une caisse, une dalle ? (débris qui rebondissent) */
+function solidPoint(x, y, z) {
+  const cx = Math.floor(x), cz = Math.floor(z);
+  if (!inb(cx, cz)) return false;
+  for (let li = 0; li < NL; li++) {
+    const k = node(li, cx, cz), t = grid[k], E = LVY[li];
+    if (y < E - SLAB || y > E + WALL_H + SLAB) continue;
+    if (t === T.WALL || t === T.PILLAR) return true;
+    if (t === T.WINDOW && (y < E + WIN_LO || y > E + WIN_HI)) return true;
+    if (t === T.DOOR && !doorOpen[k]) return true;
+    if ((t === T.CRATE || t === T.PROP || t === T.LOW) && y < E + solidTop[k]) return true;
+  }
+  return false;
+}
+function setProp(li, x, z, top) {
+  if (!inb(x, z) || li < 0 || li >= NL) return;
+  const k = node(li, x, z);
+  if (grid[k] !== T.FLOOR && grid[k] !== T.PROP) return;
+  grid[k] = T.PROP; solidTop[k] = Math.max(solidTop[k], top);
+}
+function clearProp(li, x, z) {
+  if (!inb(x, z) || li < 0 || li >= NL) return;
+  const k = node(li, x, z);
+  if (grid[k] === T.PROP) { grid[k] = T.FLOOR; solidTop[k] = 0; }
 }
 
 /* --------------------------------------------------------- Collisions -- */
-function collideCircle(p, r, isBlocked = blockedCell) {
+function collideCircle(p, r, isBlocked) {
   let hit = false;
   for (let iter = 0; iter < 2; iter++) {
     const x0 = Math.floor(p.x - r), x1 = Math.floor(p.x + r), z0 = Math.floor(p.z - r), z1 = Math.floor(p.z + r);
@@ -3818,13 +4277,58 @@ function collideCircle(p, r, isBlocked = blockedCell) {
   }
   return hit;
 }
-function losClear(x0, z0, x1, z1, r = 0.2) {
+/* Cases bloquantes vues depuis le nœud k : tout sauf k et les voisines où l'on peut passer. */
+function blockedFrom(k) {
+  const c = k % GN, cx = c % GW, cz = (c / GW) | 0;
+  return (x, z) => {
+    if (x === cx && z === cz) return false;
+    const dx = x - cx, dz = z - cz;
+    if (dx < -1 || dx > 1 || dz < -1 || dz > 1) return true;
+    return (dx === 0 || dz === 0 ? passDir(k, dx, dz) : diagPass(k, dx, dz)) < 0;
+  };
+}
+/* Un pas de case en case vers la case du centre de p ; renvoie le nœud atteint (k si fermé). */
+function followCells(k, p) {
+  for (let it = 0; it < 4; it++) {
+    const c = k % GN, cx = c % GW, cz = (c / GW) | 0;
+    const px = Math.floor(p.x), pz = Math.floor(p.z);
+    if (px === cx && pz === cz) return k;
+    const dx = clamp(px - cx, -1, 1), dz = clamp(pz - cz, -1, 1);
+    let j = dx && dz ? diagPass(k, dx, dz) : passDir(k, dx, dz);
+    if (j < 0 && dx && dz) j = passDir(k, dx, 0) >= 0 ? passDir(k, dx, 0) : passDir(k, 0, dz);
+    if (j < 0) return k;
+    k = j;
+  }
+  return k;
+}
+/* Corps (joueur, zombie, cadavre) après un déplacement : change de case (et de niveau) si le
+   passage est ouvert, est repoussé sinon, puis se pose sur la surface. b : { pos, k, gy }. */
+function settleBody(b, r) {
+  if (b.k < 0) b.k = nearestNode(b.pos.x, b.pos.z, b.gy || 0);
+  if (b.k < 0) return;
+  let k = followCells(b.k, b.pos);
+  collideCircle(b.pos, r, blockedFrom(k));
+  k = followCells(k, b.pos);
+  const c = k % GN, cx = c % GW, cz = (c / GW) | 0;
+  if (Math.floor(b.pos.x) !== cx || Math.floor(b.pos.z) !== cz) {
+    // case voisine fermée : le corps reste au bord de la sienne
+    b.pos.x = clamp(b.pos.x, cx + 0.001, cx + 0.999);
+    b.pos.z = clamp(b.pos.z, cz + 0.001, cz + 0.999);
+  }
+  b.k = k;
+  b.gy = surfY(k, b.pos.x, b.pos.z);
+}
+/* Ligne de vue au sol sur un même niveau (sol plat, praticable), à r près de chaque côté. */
+function losClear(k0, x0, z0, x1, z1, r = 0.2) {
+  if (k0 < 0) return false;
   const dx = x1 - x0, dz = z1 - z0, d = Math.hypot(dx, dz);
   if (d < 0.01) return true;
+  const li = levelOfNode(k0), base = li * GN;
+  const ok = (x, z) => { const cx = Math.floor(x), cz = Math.floor(z); if (!inb(cx, cz)) return false; const k = base + cz * GW + cx; return walkNode(k) && stairAt[k] < 0; };
   const ux = dx / d, uz = dz / d, px = -uz * r, pz = ux * r;
   for (let s = 0; s <= d; s += 0.33) {
     const x = x0 + ux * s, z = z0 + uz * s;
-    if (blockedAt(x + px, z + pz) || blockedAt(x - px, z - pz)) return false;
+    if (!ok(x + px, z + pz) || !ok(x - px, z - pz)) return false;
   }
   return true;
 }
@@ -3849,23 +4353,45 @@ function raycast(ox, oy, oz, dx, dy, dz, maxT) {
   RAY.hit = false;
   for (let guard = 0; guard < 1024 && inb(cx, cz); guard++) {
     const tExit = Math.min(tmx, tmz, maxT);
-    const i = cx + cz * GW, ty = grid[i];
+    const c = cx + cz * GW;
     const y0 = oy + dy * tEnter, y1 = oy + dy * tExit;
     _bt = Infinity;
-    if (ty === T.WALL || ty === T.PILLAR) _cand(-1e9, WALL_H, y0, y1, tEnter, oy, dy, enx, enz);
-    else if (ty === T.WINDOW) {
-      _cand(-1e9, WIN_LO, y0, y1, tEnter, oy, dy, enx, enz);
-      _cand(WIN_HI, WALL_H, y0, y1, tEnter, oy, dy, enx, enz);
-    } else if (ty === T.DOOR && !doorOpen[i]) _cand(-1e9, WALL_H, y0, y1, tEnter, oy, dy, enx, enz);
-    else {
-      const top = ty === T.CRATE || ty === T.PROP || ty === T.LOW ? solidTop[i] : 0;
-      _cand(-1e9, top, y0, y1, tEnter, oy, dy, enx, enz);
-      if (interior[i] && !noCeil[i]) _cand(ty === T.DOOR ? DOOR_H : WALL_H, 1e9, y0, y1, tEnter, oy, dy, enx, enz);
+    // terre sous le sol extérieur, sauf l'air des sous-sols
+    if (y0 <= 0 || y1 <= 0) {
+      const bands = airBands.length ? airBands[c] : null;
+      if (!bands) _cand(-1e9, 0, y0, y1, tEnter, oy, dy, enx, enz);
+      else {
+        let cur = -1e9;
+        for (let i = 0; i < bands.length; i += 2) {
+          if (bands[i] > cur) _cand(cur, bands[i], y0, y1, tEnter, oy, dy, enx, enz);
+          cur = Math.max(cur, bands[i + 1]);
+        }
+        if (cur < 0) _cand(cur, 0, y0, y1, tEnter, oy, dy, enx, enz);
+      }
+    }
+    let hitLi = 0;
+    for (let li = 0; li < NL; li++) {
+      const k = li * GN + c, ty = grid[k], E = LVY[li];
+      const before = _bt;
+      const top = E + WALL_H + (li < NL - 1 ? SLAB : 0);
+      if (ty === T.WALL || ty === T.PILLAR) _cand(E - SLAB, top, y0, y1, tEnter, oy, dy, enx, enz);
+      else if (ty === T.WINDOW) {
+        _cand(E - SLAB, E + WIN_LO, y0, y1, tEnter, oy, dy, enx, enz);
+        _cand(E + WIN_HI, top, y0, y1, tEnter, oy, dy, enx, enz);
+      } else if (ty === T.DOOR && !doorOpen[k]) _cand(E - SLAB, top, y0, y1, tEnter, oy, dy, enx, enz);
+      else {
+        if (ty !== T.VOID && LV[li] > 0) _cand(E - SLAB, E, y0, y1, tEnter, oy, dy, enx, enz);
+        if (ty === T.CRATE || ty === T.PROP || ty === T.LOW) _cand(E - 0.01, E + solidTop[k], y0, y1, tEnter, oy, dy, enx, enz);
+        // plafond (au dernier niveau, le toit vaut un mur jusqu'au ciel, comme avant les étages)
+        if (ceilOn[k]) _cand(E + (ty === T.DOOR ? DOOR_H : WALL_H), li === NL - 1 ? 1e9 : E + WALL_H + SLAB, y0, y1, tEnter, oy, dy, enx, enz);
+        if (stairAt[k] >= 0) stairCand(k, E, ox, oy, oz, dx, dy, dz, tEnter, tExit, enx, enz);
+      }
+      if (_bt < before) hitLi = li;
     }
     if (_bt <= tExit) {
       RAY.hit = true; RAY.t = _bt;
       RAY.x = ox + dx * _bt; RAY.y = oy + dy * _bt; RAY.z = oz + dz * _bt;
-      RAY.nx = _bnx; RAY.ny = _bny; RAY.nz = _bnz; RAY.cell = i; RAY.type = ty;
+      RAY.nx = _bnx; RAY.ny = _bny; RAY.nz = _bnz; RAY.cell = hitLi * GN + c; RAY.type = grid[hitLi * GN + c];
       return RAY;
     }
     if (tExit >= maxT) break;
@@ -3875,23 +4401,49 @@ function raycast(ox, oy, oz, dx, dy, dz, maxT) {
   RAY.t = maxT; RAY.x = ox + dx * maxT; RAY.y = oy + dy * maxT; RAY.z = oz + dz * maxT;
   return RAY;
 }
+/* Escalier : plein entre le sol de son niveau et sa surface (pente ou marches dansantes). */
+function stairCand(k, E, ox, oy, oz, dx, dy, dz, t0, t1, enx, enz) {
+  const steps = surfK[k] === 3 ? 4 : 1;
+  for (let s = 0; s < steps; s++) {
+    const ta = t0 + ((t1 - t0) * s) / steps, tb = t0 + ((t1 - t0) * (s + 1)) / steps;
+    const ya = oy + dy * ta, yb = oy + dy * tb;
+    const ha = surfY(k, ox + dx * ta, oz + dz * ta), hb = surfY(k, ox + dx * tb, oz + dz * tb);
+    let t = Infinity, nx = 0, ny = 0, nz = 0;
+    if (ya >= E && ya <= ha) { if (s === 0) { t = ta; nx = enx; nz = enz; } else { t = ta; ny = 1; } }
+    else if (ya > ha && yb <= hb) {
+      const fa = ya - ha, fb = yb - hb;
+      t = ta + ((tb - ta) * fa) / Math.max(1e-6, fa - fb); ny = 1;
+    } else if (dy > 0 && ya < E && yb >= E) { t = (E - oy) / dy; ny = -1; }
+    if (t < _bt) { _bt = t; _bnx = nx; _bny = ny; _bnz = nz; }
+    if (t < Infinity) return;
+  }
+}
+/* Ligne de vue en 3D (explosions, onde de choc) : rien de plein entre les deux points. */
+function sightClear(x0, y0, z0, x1, y1, z1) {
+  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, d = Math.hypot(dx, dy, dz);
+  if (d < 0.05) return true;
+  raycast(x0, y0, z0, dx / d, dy / d, dz / d, d);
+  return !RAY.hit || RAY.t >= d - 0.05;
+}
 
 /* ----------------------------------- Champ de flux (navigation zombies) -- */
 const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-function computeFlow(px, pz) {
+/* Distances (en cases) de chaque nœud praticable jusqu'au nœud k0 du joueur. */
+function computeFlow(k0) {
   flow.fill(1e9);
-  let sx = Math.floor(px), sz = Math.floor(pz);
-  if (!inb(sx, sz) || !walkable(idx(sx, sz))) {
-    let best = null, bd = 1e9;
-    for (const [dx, dz] of DIRS8) {
-      const x = sx + dx, z = sz + dz;
-      if (inb(x, z) && walkable(idx(x, z))) {
-        const d = Math.hypot(x + 0.5 - px, z + 0.5 - pz);
-        if (d < bd) { bd = d; best = [x, z]; }
-      }
+  let s = k0;
+  if (s < 0 || !walkNode(s)) {
+    if (s < 0) return;
+    // joueur sur une case fermée (objet posé…) : on part de la voisine la plus proche
+    let best = -1;
+    for (let d = 0; d < 4; d++) {
+      const t = edgeTo[s * 4 + d];
+      if (t < 0) continue;
+      const j = t * GN + (s % GN) + DIR4[d][0] + DIR4[d][1] * GW;
+      if (walkNode(j)) { best = j; break; }
     }
-    if (!best) return;
-    [sx, sz] = best;
+    if (best < 0) return;
+    s = best;
   }
   let n = 0;
   const push = (i, d) => {
@@ -3905,7 +4457,6 @@ function computeFlow(px, pz) {
       k = p;
     }
   };
-  const s = idx(sx, sz);
   flow[s] = 0; push(s, 0);
   while (n > 0) {
     const i = _heapI[0], d = _heapD[0];
@@ -3925,38 +4476,48 @@ function computeFlow(px, pz) {
       }
     }
     if (d > flow[i]) continue;
-    const x = i % GW, z = (i / GW) | 0;
-    for (let k = 0; k < 8; k++) {
-      const dx = DIRS8[k][0], dz = DIRS8[k][1], nx = x + dx, nz = z + dz;
-      if (!inb(nx, nz)) continue;
-      const j = idx(nx, nz);
-      if (!walkable(j)) continue;
-      if (k >= 4 && (!walkable(idx(x + dx, z)) || !walkable(idx(x, z + dz)))) continue;
-      const nd = d + (k >= 4 ? 1.4142 : 1);
+    for (let q = 0; q < 8; q++) {
+      const j = q < 4 ? passD(i, q) : diagPass(i, DIRS8[q][0], DIRS8[q][1]);
+      if (j < 0) continue;
+      const nd = d + (q >= 4 ? 1.4142 : 1);
       if (nd < flow[j] && n < _heapI.length) { flow[j] = nd; push(j, nd); }
     }
   }
 }
-function flowAt(x, z) {
-  const cx = Math.floor(x), cz = Math.floor(z);
-  return inb(cx, cz) ? flow[idx(cx, cz)] : 1e9;
-}
-/* Direction conseillée depuis (x, z) : vers la case voisine la plus proche du joueur. */
-function flowDir(x, z, out) {
-  const cx = Math.floor(x), cz = Math.floor(z);
-  let best = inb(cx, cz) ? flow[idx(cx, cz)] : 1e9, bx = -1, bz = -1;
-  for (let k = 0; k < 8; k++) {
-    const dx = DIRS8[k][0], dz = DIRS8[k][1], nx = cx + dx, nz = cz + dz;
-    if (!inb(nx, nz)) continue;
-    const j = idx(nx, nz);
-    if (!walkable(j)) continue;
-    if (k >= 4 && (blockedCell(cx + dx, cz) || blockedCell(cx, cz + dz))) continue;
-    if (flow[j] < best) { best = flow[j]; bx = nx; bz = nz; }
+const flowAt = (k) => (k >= 0 ? flow[k] : 1e9);
+/* Direction conseillée depuis le nœud k (position x, z) : vers la case voisine la plus proche du joueur. */
+function flowDir(k, x, z, out) {
+  if (k < 0) return false;
+  let best = flow[k], bj = -1;
+  if (!walkNode(k)) {
+    // point hors du sol (mur, fenêtre…) : la case voisine du même niveau la plus proche du joueur
+    const li = (k / GN) | 0, c = k % GN, cx = c % GW, cz = (c / GW) | 0;
+    const free = (a, b) => inb(a, b) && walkNode(node(li, a, b));
+    for (let q = 0; q < 8; q++) {
+      const dx = DIRS8[q][0], dz = DIRS8[q][1];
+      if (!free(cx + dx, cz + dz) || (q >= 4 && (!free(cx + dx, cz) || !free(cx, cz + dz)))) continue;
+      const j = node(li, cx + dx, cz + dz);
+      if (flow[j] < best) { best = flow[j]; bj = j; }
+    }
+  } else {
+    for (let q = 0; q < 8; q++) {
+      const j = q < 4 ? passD(k, q) : diagPass(k, DIRS8[q][0], DIRS8[q][1]);
+      if (j >= 0 && flow[j] < best) { best = flow[j]; bj = j; }
+    }
   }
-  if (bx < 0) return false;
-  const tx = bx + 0.5 - x, tz = bz + 0.5 - z, d = Math.hypot(tx, tz) || 1;
+  if (bj < 0) return false;
+  const tx = nodeCX(bj) - x, tz = nodeCZ(bj) - z, d = Math.hypot(tx, tz) || 1;
   out.x = tx / d; out.z = tz / d;
   return true;
+}
+/* Pièces ouvertes ensemble : une pièce s'ouvre avec celles que relient ses escaliers. */
+function activateZone(zi) {
+  if (zi < 0 || G.activeZones.has(zi)) return;
+  G.activeZones.add(zi);
+  for (const [a, b] of World.links) {
+    if (a === zi) activateZone(b);
+    else if (b === zi) activateZone(a);
+  }
 }
 
 /* ---------------------------------------------------------- Géométrie -- */
@@ -3993,158 +4554,429 @@ function mtx(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
   _e.set(rx, ry, rz, 'YXZ'); _q.setFromEuler(_e);
   return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), _q, new THREE.Vector3(sx, sy, sz));
 }
+/* Boîte allongée de (x0, y0, z0) à (x1, y1, z1) (rampes, limons) : section w × h. */
+function beamMtx(x0, y0, z0, x1, y1, z1, w, h) {
+  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, L = Math.hypot(dx, dy, dz) || 1e-4;
+  const X = new THREE.Vector3(dx / L, dy / L, dz / L);
+  const Y = new THREE.Vector3(0, 1, 0).addScaledVector(X, -X.y).normalize();
+  const Z = new THREE.Vector3().crossVectors(X, Y);
+  const m = new THREE.Matrix4().makeBasis(X, Y, Z);
+  m.scale(new THREE.Vector3(L, h, w));
+  m.setPosition((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  return m;
+}
 
-function zoneTint(i) {
-  const z = zoneOf[i];
+function zoneTint(k) {
+  const z = zoneOf[k] >= 0 ? zoneOf[k] : holeZone[k];
   return z >= 0 && LAYOUT.zones[z] ? LAYOUT.zones[z].tint : [0.92, 0.92, 0.92];
 }
 const OUTSIDE_TINT = [0.5, 0.53, 0.6];
+const tallType = (t) => t === T.WALL || t === T.PILLAR || t === T.WINDOW;
+
+/* Faces regroupées par texture de la bibliothèque (une matière par texture, couleurs par sommet). */
+class TexMesh {
+  constructor() { this.b = new Map(); }
+  bucket(id) { let B = this.b.get(id); if (!B) { B = { p: [], n: [], u: [], c: [] }; this.b.set(id, B); } return B; }
+  quad(id, v, n, uvs, cols) {
+    const B = this.bucket(id);
+    for (const k of [0, 1, 2, 0, 2, 3]) {
+      const p = v[k], uv = uvs[k], c = cols[k];
+      B.p.push(p[0], p[1], p[2]); B.n.push(n[0], n[1], n[2]); B.u.push(uv[0], uv[1]); B.c.push(c[0], c[1], c[2]);
+    }
+  }
+  /* Polygone convexe plan (sommets dans le sens direct vu de devant) ; texture plaquée en mètres. */
+  poly(id, pts, n, col) {
+    const B = this.bucket(id), td = TEXLIB[id] || TEXLIB.concrete, sx = td.size[0], sy = td.size[1];
+    let uv;
+    if (Math.abs(n[1]) > 0.7) uv = (p) => [p[0] / sx, -p[2] / sy];
+    else { const l = Math.hypot(n[0], n[2]) || 1, tx = n[2] / l, tz = -n[0] / l; uv = (p) => [(p[0] * tx + p[2] * tz) / sx, p[1] / sy]; }
+    for (let i = 1; i < pts.length - 1; i++) {
+      for (const p of [pts[0], pts[i], pts[i + 1]]) {
+        const t = uv(p);
+        B.p.push(p[0], p[1], p[2]); B.n.push(n[0], n[1], n[2]); B.u.push(t[0], t[1]); B.c.push(col[0], col[1], col[2]);
+      }
+    }
+  }
+  build(group, data) {
+    for (const [id, B] of this.b) {
+      if (!B.p.length) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(B.p, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(B.n, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(B.u, 2));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(B.c, 3));
+      g.computeBoundingSphere();
+      const mesh = new THREE.Mesh(g, levelMaterial(id));
+      mesh.userData.level = true;
+      if (data) Object.assign(mesh.userData, data);
+      group.add(mesh);
+    }
+  }
+}
+/* Prisme vertical : polygone xz (sens quelconque) entre ya et yb ; dessus, côtés, dessous (option). */
+function prism(K, pts, ya, yb, topTex, sideTex, topCol, sideCol, bottom) {
+  // sens direct vu d'en haut : (p1 - p0) × (p2 - p0) vers +y
+  let area = 0;
+  for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; area += a[1] * b[0] - a[0] * b[1]; }
+  const P = area > 0 ? pts : pts.slice().reverse();
+  K.poly(topTex, P.map((p) => [p[0], yb, p[1]]), [0, 1, 0], topCol);
+  if (bottom) K.poly(sideTex, P.slice().reverse().map((p) => [p[0], ya, p[1]]), [0, -1, 0], sideCol);
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length], ex = b[0] - a[0], ez = b[1] - a[1], l = Math.hypot(ex, ez);
+    if (l < 1e-5) continue;
+    // normale extérieure : à droite du parcours (sens direct vu d'en haut)
+    const n = [-ez / l, 0, ex / l];
+    const nn = [ez / l, 0, -ex / l];
+    // choisir la normale qui sort du polygone
+    const cx = P.reduce((s, p) => s + p[0], 0) / P.length, cz = P.reduce((s, p) => s + p[1], 0) / P.length;
+    const out = (a[0] - cx) * n[0] + (a[1] - cz) * n[2] > 0 ? n : nn;
+    const v = out === n ? [[a[0], ya, a[1]], [b[0], ya, b[1]], [b[0], yb, b[1]], [a[0], yb, a[1]]] : [[b[0], ya, b[1]], [a[0], ya, a[1]], [a[0], yb, a[1]], [b[0], yb, b[1]]];
+    K.poly(sideTex, v, out, sideCol);
+  }
+}
 
 function buildLevelGeometry() {
-  const buckets = new Map();
-  const bucket = (id) => { let b = buckets.get(id); if (!b) { b = { p: [], n: [], u: [], c: [] }; buckets.set(id, b); } return b; };
-  const push = (B, p, n, uv, c) => { B.p.push(p[0], p[1], p[2]); B.n.push(n[0], n[1], n[2]); B.u.push(uv[0], uv[1]); B.c.push(c[0], c[1], c[2]); };
-  const quad = (B, v, n, uvs, cols) => { for (const k of [0, 1, 2, 0, 2, 3]) push(B, v[k], n, uvs[k], cols[k]); };
-  const isTall = (x, z) => {
-    if (!inb(x, z)) return false;
-    const t = grid[idx(x, z)];
-    return t === T.WALL || t === T.PILLAR || t === T.WINDOW;
-  };
-  const ao = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
-  const texSize = (id) => { const d = TEXLIB[id] || TEXLIB.concrete; return d; };
-  /* face verticale de la case (x,z) côté d, entre y0 et y1 */
-  const vface = (texId, x, z, d, y0, y1, tint, top = WALL_H) => {
-    let v, n, u0, u1;
-    if (d === 0) { v = [[x + 1, y0, z + 1], [x + 1, y0, z], [x + 1, y1, z], [x + 1, y1, z + 1]]; n = [1, 0, 0]; u0 = -(z + 1); u1 = -z; }
-    else if (d === 1) { v = [[x, y0, z], [x, y0, z + 1], [x, y1, z + 1], [x, y1, z]]; n = [-1, 0, 0]; u0 = z; u1 = z + 1; }
-    else if (d === 2) { v = [[x, y0, z + 1], [x + 1, y0, z + 1], [x + 1, y1, z + 1], [x, y1, z + 1]]; n = [0, 0, 1]; u0 = x; u1 = x + 1; }
-    else { v = [[x + 1, y0, z], [x, y0, z], [x, y1, z], [x + 1, y1, z]]; n = [0, 0, -1]; u0 = -(x + 1); u1 = -x; }
-    const td = texSize(texId);
-    u0 /= td.size[0]; u1 /= td.size[0];
-    const v0 = td.fit ? y0 / WALL_H : y0 / td.size[1], v1 = td.fit ? y1 / WALL_H : y1 / td.size[1];
-    const kb = y0 < 0.01 ? 0.62 : 1, kt = y1 > top - 0.01 ? 0.8 : 1;
-    quad(bucket(texId), v, n, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], [ao(tint, kb), ao(tint, kb), ao(tint, kt), ao(tint, kt)]);
-  };
-  const hface = (texId, x, z, y, up, tint, aoFn) => {
-    let v, n;
-    if (up) { v = [[x, y, z + 1], [x + 1, y, z + 1], [x + 1, y, z], [x, y, z]]; n = [0, 1, 0]; }
-    else { v = [[x + 1, y, z + 1], [x, y, z + 1], [x, y, z], [x + 1, y, z]]; n = [0, -1, 0]; }
-    const td = texSize(texId);
-    const uvs = v.map((p) => [p[0] / td.size[0], -p[2] / td.size[1]]);
-    const cols = v.map((p) => ao(tint, aoFn ? aoFn(p[0], p[2]) : 1));
-    quad(bucket(texId), v, n, uvs, cols);
-  };
-  const cornerAO = (vx, vz) => {
-    let c = 0;
-    if (isTall(vx - 1, vz - 1)) c++;
-    if (isTall(vx, vz - 1)) c++;
-    if (isTall(vx - 1, vz)) c++;
-    if (isTall(vx, vz)) c++;
-    return 1 - 0.16 * c;
-  };
-  const sideDirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const dirIndex = (dx, dz) => (dx === 1 ? 0 : dx === -1 ? 1 : dz === 1 ? 2 : 3);
-  const winAt = new Map(World.windows.map((w) => [idx(w.x, w.z), w]));
+  // un seul niveau : son groupe sert de racine (même scène qu'avant les étages)
+  const root = NL > 1 ? new THREE.Group() : null;
   const extTex = CUR.map.textures.exterior;
-  /* matière et teinte d'un mur vu depuis la case voisine j */
-  const wallLook = (j) => {
-    const nt = grid[j];
-    if (interior[j] && nt !== T.DOOR) return [cellTex(j, 'wall'), zoneTint(j)];
-    if (nt === T.DOOR) {
-      const x = j % GW, z = (j / GW) | 0;
-      for (const [dx, dz] of sideDirs) if (inb(x + dx, z + dz) && zoneOf[idx(x + dx, z + dz)] >= 0) return [cellTex(idx(x + dx, z + dz), 'wall'), [0.85, 0.85, 0.85]];
-      return [CUR.map.textures.wall, [0.85, 0.85, 0.85]];
-    }
-    if (nt === T.WINDOW) { const w = winAt.get(j); if (w) { const x = w.x - w.nx, z = w.z - w.nz; return [cellTex(idx(x, z), 'wall'), [0.8, 0.8, 0.82]]; } }
-    return [extTex, OUTSIDE_TINT];
-  };
-  const tops = [];
-  for (let z = 0; z < GH; z++) {
-    for (let x = 0; x < GW; x++) {
-      const i = idx(x, z), t = grid[i];
-      if (t === T.WALL || t === T.PILLAR) {
-        for (let d = 0; d < 4; d++) {
-          const nx = x + sideDirs[d][0], nz = z + sideDirs[d][1];
-          if (!inb(nx, nz)) continue;
-          const j = idx(nx, nz), nt = grid[j];
-          if (nt === T.WALL || nt === T.PILLAR) continue;
-          const [tex, tint] = wallLook(j);
-          vface(tex, x, z, d, 0, WALL_H, t === T.PILLAR ? ao(tint, 0.85) : tint);
-        }
-        if (CUR.editor) tops.push([x, z]);
-      } else if (t === T.WINDOW) {
-        const w = winAt.get(i);
-        if (!w) { // fenêtre mal placée : rendue comme un mur
+  const winAt = new Map(World.windows.map((w) => [node(w.li, w.x, w.z), w]));
+  const ao = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
+  const texSize = (id) => TEXLIB[id] || TEXLIB.concrete;
+  for (let li = 0; li < NL; li++) {
+    const E = LVY[li], base = li * GN, lvv = LV[li];
+    const K = new TexMesh();
+    const nodeAt = (x, z) => base + z * GW + x;
+    const isTall = (x, z) => inb(x, z) && tallType(grid[nodeAt(x, z)]);
+    /* au-dessus d'un mur : le ciel ou une trémie (le mur traverse la dalle et montre son dessus) */
+    const openAbove = (k) => {
+      if (li >= NL - 1) return false;
+      const u = k + GN;
+      return grid[u] === T.VOID && (hole[u] === 1 || LV[li + 1] > 0);
+    };
+    /* face verticale de la case (x,z) côté d, entre y0 et y1 (au-dessus du sol du niveau) */
+    const vface = (texId, x, z, d, y0, y1, tint, top = WALL_H, kb0, kt0) => {
+      let v, n, u0, u1;
+      const Y0 = E + y0, Y1 = E + y1;
+      if (d === 0) { v = [[x + 1, Y0, z + 1], [x + 1, Y0, z], [x + 1, Y1, z], [x + 1, Y1, z + 1]]; n = [1, 0, 0]; u0 = -(z + 1); u1 = -z; }
+      else if (d === 1) { v = [[x, Y0, z], [x, Y0, z + 1], [x, Y1, z + 1], [x, Y1, z]]; n = [-1, 0, 0]; u0 = z; u1 = z + 1; }
+      else if (d === 2) { v = [[x, Y0, z + 1], [x + 1, Y0, z + 1], [x + 1, Y1, z + 1], [x, Y1, z + 1]]; n = [0, 0, 1]; u0 = x; u1 = x + 1; }
+      else { v = [[x + 1, Y0, z], [x, Y0, z], [x, Y1, z], [x + 1, Y1, z]]; n = [0, 0, -1]; u0 = -(x + 1); u1 = -x; }
+      const td = texSize(texId);
+      u0 /= td.size[0]; u1 /= td.size[0];
+      const v0 = td.fit ? y0 / WALL_H : y0 / td.size[1], v1 = td.fit ? y1 / WALL_H : y1 / td.size[1];
+      const kb = kb0 !== undefined ? kb0 : y0 < 0.01 ? 0.62 : 1, kt = kt0 !== undefined ? kt0 : y1 > top - 0.01 ? 0.8 : 1;
+      K.quad(texId, v, n, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], [ao(tint, kb), ao(tint, kb), ao(tint, kt), ao(tint, kt)]);
+    };
+    const hface = (texId, x, z, y, up, tint, aoFn) => {
+      let v, n;
+      const Y = E + y;
+      if (up) { v = [[x, Y, z + 1], [x + 1, Y, z + 1], [x + 1, Y, z], [x, Y, z]]; n = [0, 1, 0]; }
+      else { v = [[x + 1, Y, z + 1], [x, Y, z + 1], [x, Y, z], [x + 1, Y, z]]; n = [0, -1, 0]; }
+      const td = texSize(texId);
+      const uvs = v.map((p) => [p[0] / td.size[0], -p[2] / td.size[1]]);
+      const cols = v.map((p) => ao(tint, aoFn ? aoFn(p[0], p[2]) : 1));
+      K.quad(texId, v, n, uvs, cols);
+    };
+    const cornerAO = (vx, vz) => {
+      let c = 0;
+      if (isTall(vx - 1, vz - 1)) c++;
+      if (isTall(vx, vz - 1)) c++;
+      if (isTall(vx - 1, vz)) c++;
+      if (isTall(vx, vz)) c++;
+      return 1 - 0.16 * c;
+    };
+    /* matière et teinte d'un mur vu depuis la case voisine j */
+    const wallLook = (j) => {
+      const nt = grid[j];
+      if (interior[j] && nt !== T.DOOR) return [cellTex(j, 'wall'), zoneTint(j)];
+      if (nt === T.DOOR) {
+        const c = j - base, x = c % GW, z = (c / GW) | 0;
+        for (const [dx, dz] of DIR4) if (inb(x + dx, z + dz) && zoneOf[nodeAt(x + dx, z + dz)] >= 0) return [cellTex(nodeAt(x + dx, z + dz), 'wall'), [0.85, 0.85, 0.85]];
+        return [CUR.map.textures.wall, [0.85, 0.85, 0.85]];
+      }
+      if (nt === T.WINDOW) { const w = winAt.get(j); if (w) return [cellTex(nodeAt(w.x - w.nx, w.z - w.nz), 'wall'), [0.8, 0.8, 0.82]]; }
+      if (hole[j] && holeZone[j] >= 0) return [cellTex(j, 'wall'), zoneTint(j)];
+      return [extTex, OUTSIDE_TINT];
+    };
+    const tops = [];
+    /* dessus d'un mur : vu d'en haut (vue en plan des Mod Tools, étage au-dessus par une trémie, terrasse) */
+    const wallTop = (x, z, k, ext) => {
+      if (ext) tops.push([x, z, E + WALL_H + SLAB + 0.002]);
+      else if (CUR.editor) tops.push([x, z, E + WALL_H + 0.002]);
+    };
+    const below = li > 0;     // les murs d'un étage descendent dans la dalle
+    for (let z = 0; z < GH; z++) {
+      for (let x = 0; x < GW; x++) {
+        const k = nodeAt(x, z), t = grid[k];
+        if (t === T.WALL || t === T.PILLAR) {
+          const ext = openAbove(k);
           for (let d = 0; d < 4; d++) {
-            const nx = x + sideDirs[d][0], nz = z + sideDirs[d][1];
-            if (!inb(nx, nz) || isTall(nx, nz)) continue;
-            const [tex, tint] = wallLook(idx(nx, nz));
+            const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+            if (!inb(nx, nz)) continue;
+            const j = nodeAt(nx, nz), nt = grid[j];
+            if (nt === T.WALL || nt === T.PILLAR) continue;
+            if (lvv < 0 && nt === T.VOID && !hole[j]) continue;          // contre la terre
+            const [tex, tint0] = wallLook(j), tint = t === T.PILLAR ? ao(tint0, 0.85) : tint0;
+            if (below) vface(tex, x, z, d, -SLAB, 0, tint, WALL_H, 0.55, 0.62);
             vface(tex, x, z, d, 0, WALL_H, tint);
+            if (ext) vface(tex, x, z, d, WALL_H, WALL_H + SLAB, tint, WALL_H, 0.8, 0.8);
           }
-          continue;
+          wallTop(x, z, k, ext);
+        } else if (t === T.WINDOW) {
+          const w = winAt.get(k), ext = openAbove(k);
+          if (!w) { // fenêtre mal placée : rendue comme un mur
+            for (let d = 0; d < 4; d++) {
+              const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+              if (!inb(nx, nz) || isTall(nx, nz)) continue;
+              const j = nodeAt(nx, nz);
+              if (lvv < 0 && grid[j] === T.VOID && !hole[j]) continue;
+              const [tex, tint] = wallLook(j);
+              if (below) vface(tex, x, z, d, -SLAB, 0, tint, WALL_H, 0.55, 0.62);
+              vface(tex, x, z, d, 0, WALL_H, tint);
+              if (ext) vface(tex, x, z, d, WALL_H, WALL_H + SLAB, tint, WALL_H, 0.8, 0.8);
+            }
+            wallTop(x, z, k, ext);
+            continue;
+          }
+          const inside = dirIndex(-w.nx, -w.nz), outside = dirIndex(w.nx, w.nz);
+          const inCell = nodeAt(x - w.nx, z - w.nz);
+          const tin = LAYOUT.zones[w.zone].tint, texIn = cellTex(inCell, 'wall');
+          vface(texIn, x, z, inside, 0, WIN_LO, tin); vface(texIn, x, z, inside, WIN_HI, WALL_H, tin);
+          vface(extTex, x, z, outside, 0, WIN_LO, OUTSIDE_TINT); vface(extTex, x, z, outside, WIN_HI, WALL_H, OUTSIDE_TINT);
+          hface(texIn, x, z, WIN_LO, true, ao(tin, 0.8));
+          hface(texIn, x, z, WIN_HI, false, ao(tin, 0.6));
+          if (below) { vface(extTex, x, z, outside, -SLAB, 0, OUTSIDE_TINT, WALL_H, 0.55, 0.62); vface(texIn, x, z, inside, -SLAB, 0, tin, WALL_H, 0.55, 0.62); }
+          if (ext) { vface(extTex, x, z, outside, WALL_H, WALL_H + SLAB, OUTSIDE_TINT, WALL_H, 0.8, 0.8); vface(texIn, x, z, inside, WALL_H, WALL_H + SLAB, tin, WALL_H, 0.8, 0.8); }
+          wallTop(x, z, k, ext);
+        } else if (t === T.DOOR) {
+          for (let d = 0; d < 4; d++) {
+            const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+            if (!inb(nx, nz)) continue;
+            const nt = grid[nodeAt(nx, nz)];
+            if (nt === T.WALL || nt === T.DOOR || nt === T.PILLAR) continue;
+            const [tex, tint] = wallLook(nodeAt(nx, nz));
+            vface(tex, x, z, d, DOOR_H, WALL_H, tint);
+          }
+          const [tex] = wallLook(k);
+          hface(tex, x, z, DOOR_H, false, [0.55, 0.55, 0.55]);
+        } else if (t === T.LOW) {
+          const tex = cellTex(k, 'wall'), tint = zoneTint(k);
+          for (let d = 0; d < 4; d++) {
+            const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+            if (!inb(nx, nz)) continue;
+            const nt = grid[nodeAt(nx, nz)];
+            if (nt === T.WALL || nt === T.PILLAR || nt === T.LOW || nt === T.WINDOW) continue;
+            vface(tex, x, z, d, 0, LOW_H, tint, LOW_H);
+          }
+          hface(tex, x, z, LOW_H, true, ao(tint, 0.9));
         }
-        const inside = dirIndex(-w.nx, -w.nz), outside = dirIndex(w.nx, w.nz);
-        const inCell = idx(x - w.nx, z - w.nz);
-        const tin = LAYOUT.zones[w.zone].tint, texIn = cellTex(inCell, 'wall');
-        vface(texIn, x, z, inside, 0, WIN_LO, tin); vface(texIn, x, z, inside, WIN_HI, WALL_H, tin);
-        vface(extTex, x, z, outside, 0, WIN_LO, OUTSIDE_TINT); vface(extTex, x, z, outside, WIN_HI, WALL_H, OUTSIDE_TINT);
-        hface(texIn, x, z, WIN_LO, true, ao(tin, 0.8));
-        hface(texIn, x, z, WIN_HI, false, ao(tin, 0.6));
-        if (CUR.editor) tops.push([x, z]);
-      } else if (t === T.DOOR) {
-        for (let d = 0; d < 4; d++) {
-          const nx = x + sideDirs[d][0], nz = z + sideDirs[d][1];
-          if (!inb(nx, nz)) continue;
-          const nt = grid[idx(nx, nz)];
-          if (nt === T.WALL || nt === T.DOOR || nt === T.PILLAR) continue;
-          const [tex, tint] = wallLook(idx(nx, nz));
-          vface(tex, x, z, d, DOOR_H, WALL_H, tint);
+        if (interior[k] && t !== T.PILLAR && t !== T.LOW) {
+          const tint = t === T.DOOR ? [0.85, 0.85, 0.85] : zoneTint(k);
+          hface(cellTex(k, 'floor'), x, z, 0, true, tint, cornerAO);
+          if (ceilOn[k]) {
+            const ct = cellTex(k, 'ceil');
+            if (ct !== 'none') hface(ct, x, z, WALL_H, false, ao(tint, 0.9), cornerAO);
+          }
+        } else if (t === T.YARD && lvv !== 0) {
+          // terrasse (étage) ou cour anglaise (sous-sol) : un sol à la hauteur du niveau
+          hface(cellTex(k, 'floor'), x, z, 0, true, ao(OUTSIDE_TINT, 1.5), cornerAO);
+        } else if (t === T.VOID && hole[k] && ceilOn[k]) {
+          // plafond au-dessus d'une trémie (cage d'escalier)
+          const ct = cellTex(k, 'ceil');
+          if (ct !== 'none') hface(ct, x, z, WALL_H, false, ao(zoneTint(k), 0.9));
         }
-        const [tex] = wallLook(i);
-        hface(tex, x, z, DOOR_H, false, [0.55, 0.55, 0.55]);
-      } else if (t === T.LOW) {
-        const tex = cellTex(i, 'wall'), tint = zoneTint(i);
-        for (let d = 0; d < 4; d++) {
-          const nx = x + sideDirs[d][0], nz = z + sideDirs[d][1];
-          if (!inb(nx, nz)) continue;
-          const nt = grid[idx(nx, nz)];
-          if (nt === T.WALL || nt === T.PILLAR || nt === T.LOW || nt === T.WINDOW) continue;
-          vface(tex, x, z, d, 0, LOW_H, tint, LOW_H);
+        // tranche et dessous des dalles d'étage, toits, terre des sous-sols
+        if (li > 0 && t !== T.VOID && !tallType(t)) {
+          const edgeTex = interior[k] ? cellTex(k, 'wall') : extTex, edgeTint = interior[k] ? zoneTint(k) : OUTSIDE_TINT;
+          for (let d = 0; d < 4; d++) {
+            const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+            const j = inb(nx, nz) ? nodeAt(nx, nz) : -1;
+            if (j >= 0 && (grid[j] !== T.VOID || (lvv < 0 && !hole[j]))) continue;
+            vface(edgeTex, x, z, d, -SLAB, 0, edgeTint, WALL_H, 0.62, 0.7);
+          }
+          const kb = k - GN, tb = grid[kb];
+          if (!ceilOn[kb] && !tallType(tb) && (tb !== T.VOID || LV[li - 1] >= 0 || hole[kb])) hface('concrete', x, z, -SLAB, false, [0.62, 0.62, 0.62]);
         }
-        hface(tex, x, z, LOW_H, true, ao(tint, 0.9));
+        if (li > 0 && t === T.VOID && !hole[k] && lvv > 0 && ceilOn[k - GN] && interior[k - GN]) hface('concrete_dark', x, z, 0, true, [0.7, 0.7, 0.72]);
+        if (lvv < 0 && t === T.VOID && !hole[k]) {
+          for (let d = 0; d < 4; d++) {
+            const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+            if (!inb(nx, nz)) continue;
+            const j = nodeAt(nx, nz), nt = grid[j];
+            if (!(interior[j] || nt === T.YARD || hole[j])) continue;
+            const [tex, tint] = nt === T.YARD ? [extTex, OUTSIDE_TINT] : wallLook(j);
+            vface(tex, x, z, d, 0, nt === T.YARD ? -E : WALL_H + (li < NL - 1 ? SLAB : 0), tint);
+          }
+        }
       }
-      if (interior[i] && t !== T.PILLAR && t !== T.LOW) {
-        const tint = t === T.DOOR ? [0.85, 0.85, 0.85] : zoneTint(i);
-        hface(cellTex(i, 'floor'), x, z, 0, true, tint, cornerAO);
-        if (!noCeil[i]) {
-          const ct = cellTex(i, 'ceil');
-          if (ct !== 'none') hface(ct, x, z, WALL_H, false, ao(tint, 0.9), cornerAO);
+    }
+    for (const st of World.stairs) if (st.li === li) buildStair(st, K);
+    const group = new THREE.Group();
+    group.userData.lv = lvv;
+    K.build(group);
+    // dessus des murs
+    if (tops.length) {
+      const p = [], n = [];
+      for (const [x, z, y] of tops) { for (const q of [[x, z + 1], [x + 1, z + 1], [x + 1, z], [x, z + 1], [x + 1, z], [x, z]]) { p.push(q[0], y, q[1]); n.push(0, 1, 0); } }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
+      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x2b2825 }));
+      mesh.userData.wallTops = true;
+      group.add(mesh);
+    }
+    if (!root) { group.userData.levels = true; return group; }
+    root.add(group);
+  }
+  root.userData.levels = true;
+  const rails = buildRailings();
+  if (rails) root.add(rails);
+  return root;
+}
+
+/* ------------------------------------------------------------ Escaliers -- */
+/* Empreinte (polygones xz) des k marches d'une case : tranches le long de la montée, secteurs
+   autour du coin intérieur pour un tournant (marches dansantes), la case entière pour un palier. */
+function stepPolys(k, steps) {
+  const c = k % GN, x = c % GW, z = (c / GW) | 0, cx = x + 0.5, cz = z + 0.5;
+  const din = DIR4[surfDin[k]], kind = surfK[k];
+  if (kind === 2) {
+    const lat = [-din[1], din[0]], out = [];
+    const P = (t, s) => [cx + din[0] * (t - 0.5) + lat[0] * s, cz + din[1] * (t - 0.5) + lat[1] * s];
+    for (let i = 0; i < steps; i++) { const t0 = i / steps, t1 = (i + 1) / steps; out.push([P(t0, -0.5), P(t1, -0.5), P(t1, 0.5), P(t0, 0.5)]); }
+    return out;
+  }
+  if (kind === 3) {
+    const dout = DIR4[surfDout[k]];
+    const px = cx + (dout[0] - din[0]) * 0.5, pz = cz + (dout[1] - din[1]) * 0.5;
+    const U = [-dout[0], -dout[1]], V = din;
+    const W = (u, v) => [px + U[0] * u + V[0] * v, pz + U[1] * u + V[1] * v];
+    const hit = (a) => (a <= Math.PI / 4 + 1e-9 ? [1, Math.tan(a)] : [1 / Math.tan(a), 1]);
+    const out = [];
+    for (let i = 0; i < steps; i++) {
+      const a0 = (Math.PI / 2) * (i / steps), a1 = (Math.PI / 2) * ((i + 1) / steps);
+      const pts = [W(0, 0), W(...hit(a0))];
+      if (a0 < Math.PI / 4 - 1e-9 && a1 > Math.PI / 4 + 1e-9) pts.push(W(1, 1));
+      pts.push(W(...hit(a1)));
+      out.push(pts);
+    }
+    return out;
+  }
+  return [[[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]]];
+}
+/* Une volée : marches pleines (pierre, béton, brique, marbre) posées sur le sol, ou marches minces
+   sur limons (bois, métal, caillebotis). La surface de marche (surfY) passe au milieu des marches. */
+function buildStair(st, K) {
+  const M = st.mat, E = LVY[st.li], open = !!M.open, si = World.stairs.indexOf(st);
+  const tc = [0.95, 0.95, 0.95], sc = [0.8, 0.8, 0.8];
+  const stringers = [];
+  for (const c of st.plan.cells) {
+    const k = node(st.li, c.x, c.z);
+    const y0 = surfH0[k], y1 = surfH1[k], rise = y1 - y0;
+    const steps = rise < 0.01 ? 1 : Math.max(1, Math.round(rise / 0.19));
+    stepPolys(k, steps).forEach((pg, i) => {
+      const yt = rise < 0.01 ? y0 : y0 + (rise * (i + 0.5)) / steps;
+      if (open) prism(K, pg, yt - 0.06, yt, M.tread, M.side, tc, sc, true);
+      else prism(K, pg, E, yt, M.tread, M.side, tc, ao3(sc, 0.9), false);
+    });
+    if (!open) continue;
+    // limons le long des côtés libres (ni entrée, ni sortie, ni case voisine du même escalier à même hauteur)
+    for (let d = 0; d < 4; d++) {
+      if (d === surfDout[k] || d === dirIndex(-DIR4[surfDin[k]][0], -DIR4[surfDin[k]][1])) continue;
+      const e = cellEdge(k, d), nx = c.x + DIR4[d][0], nz = c.z + DIR4[d][1];
+      if (inb(nx, nz)) {
+        const j = node(st.li, nx, nz);
+        if (stairAt[j] === si && Math.abs(surfY(j, e.mx + DIR4[d][0] * 0.04, e.mz + DIR4[d][1] * 0.04) - e.ym) < 0.3) continue;
+      }
+      stringers.push(e);
+    }
+  }
+  for (const e of stringers) {
+    const ox = -DIR4[e.d][0] * 0.03, oz = -DIR4[e.d][1] * 0.03;
+    for (const [a, b] of [[e.a, e.m], [e.m, e.b]]) {
+      // limon : bande inclinée sous la ligne des marches
+      const P = (p, y) => [p[0] + ox, y, p[1] + oz];
+      const n = [DIR4[e.d][0], 0, DIR4[e.d][1]], nn = [-n[0], 0, -n[2]];
+      const q = [P(a, a[2] - 0.3), P(b, b[2] - 0.3), P(b, b[2] + 0.08), P(a, a[2] + 0.08)];
+      // deux faces (dehors et dedans) : sens direct vu de chaque côté
+      const cross = (q[1][0] - q[0][0]) * n[2] - (q[1][2] - q[0][2]) * n[0];
+      const fwd = cross > 0 ? q : q.slice().reverse();
+      K.poly(M.side, fwd, n, sc);
+      K.poly(M.side, fwd.slice().reverse(), nn, ao3(sc, 0.8));
+    }
+  }
+}
+const ao3 = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
+/* Bord d'une case (côté d) : extrémités a, b et milieu m (x, z, hauteur de la surface juste à l'intérieur). */
+function cellEdge(k, d) {
+  const c = k % GN, x = c % GW, z = (c / GW) | 0;
+  const dx = DIR4[d][0], dz = DIR4[d][1], tx = dz !== 0 ? 1 : 0, tz = dx !== 0 ? 1 : 0;
+  const mx = x + 0.5 + dx * 0.5, mz = z + 0.5 + dz * 0.5;
+  const at = (s) => {
+    const px = mx + tx * s, pz = mz + tz * s;
+    return [px, pz, surfY(k, clamp(px - dx * 0.04 - tx * Math.sign(s) * 0.04, x + 0.001, x + 0.999), clamp(pz - dz * 0.04 - tz * Math.sign(s) * 0.04, z + 0.001, z + 0.999))];
+  };
+  const a = at(-0.5), b = at(0.5), m = at(0);
+  return { d, a, b, m, mx, mz, ym: m[2] };
+}
+
+/* ------------------------------------------------------ Garde-corps --- */
+/* Personne ne tombe : un bord praticable qui donne sur un vide (trémie, bord d'étage, côté d'un
+   escalier) est infranchissable (edgeTo = -1) ; le garde-corps le montre. */
+function buildRailings() {
+  World.railEdges = [];
+  if (NL < 2) return null;
+  const byColor = new Map();
+  let curLi = 0;
+  const add = (color, item) => { const key = `${curLi}|${color}`; let l = byColor.get(key); if (!l) { l = []; byColor.set(key, l); } l.push(item); };
+  const posts = new Set();
+  for (let li = 0; li < NL; li++) {
+    curLi = li;
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const k = node(li, x, z);
+      const yard = grid[k] === T.YARD && LV[li] > 0;          // terrasse d'étage
+      if ((!surfK[k] && !yard) || grid[k] === T.DOOR) continue;
+      const si = stairAt[k];
+      for (let d = 0; d < 4; d++) {
+        if (!yard && edgeTo[k * 4 + d] >= 0) continue;
+        const nx = x + DIR4[d][0], nz = z + DIR4[d][1];
+        if (!inb(nx, nz)) continue;
+        if (yard && grid[node(li, nx, nz)] !== T.VOID) continue;
+        const e = cellEdge(k, d);
+        // chute : le plus grand écart, le long du bord, entre ce sol et ce qu'il y a juste de l'autre côté
+        let drop = 0;
+        for (const p of [e.a, e.m, e.b]) {
+          const qx = clamp(p[0] + DIR4[d][0] * 0.06, nx + 0.02, nx + 0.98), qz = clamp(p[1] + DIR4[d][1] * 0.06, nz + 0.02, nz + 0.98);
+          drop = Math.max(drop, p[2] - floorBelow(qx, qz, p[2] + 0.05));
+        }
+        if (drop < 0.45) continue;
+        const base = Math.min(e.a[2], e.m[2], e.b[2]);
+        if (solidPoint(nx + 0.5, base + 0.6, nz + 0.5)) continue;
+        const color = si >= 0 ? World.stairs[si].mat.rail : 0x3c4246;
+        World.railEdges.push([li, x, z, d]);
+        const ix = -DIR4[d][0] * 0.05, iz = -DIR4[d][1] * 0.05;
+        const pts = [e.a, e.m, e.b].map((p) => [p[0] + ix, p[2], p[1] + iz]);
+        for (const p of [pts[0], pts[2]]) {
+          const key = `${p[0].toFixed(2)},${p[2].toFixed(2)},${p[1].toFixed(1)}`;
+          if (posts.has(key)) continue;
+          posts.add(key);
+          add(color, { geo: GEO.box, matrix: mtx(p[0], p[1] + 0.5, p[2], 0, 0, 0, 0.05, 1.0, 0.05) });
+        }
+        for (let s = 0; s < 2; s++) {
+          const a = pts[s], b = pts[s + 1];
+          add(color, { geo: GEO.box, matrix: beamMtx(a[0], a[1] + 1.0, a[2], b[0], b[1] + 1.0, b[2], 0.05, 0.06) });
+          add(color, { geo: GEO.box, matrix: beamMtx(a[0], a[1] + 0.5, a[2], b[0], b[1] + 0.5, b[2], 0.03, 0.03) });
         }
       }
     }
   }
+  if (!byColor.size) return null;
   const group = new THREE.Group();
-  for (const [id, B] of buckets) {
-    if (!B.p.length) continue;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(B.p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(B.n, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(B.u, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(B.c, 3));
-    g.computeBoundingSphere();
-    const mesh = new THREE.Mesh(g, levelMaterial(id));
-    mesh.userData.level = true;
-    group.add(mesh);
-  }
-  // dessus des murs (vue en plan des Mod Tools)
-  if (tops.length) {
-    const p = [], n = [];
-    for (const [x, z] of tops) { for (const k of [[x, z + 1], [x + 1, z + 1], [x + 1, z], [x, z + 1], [x + 1, z], [x, z]]) { p.push(k[0], WALL_H + 0.002, k[1]); n.push(0, 1, 0); } }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
-    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x2b2825 }));
-    mesh.userData.wallTops = true;
+  group.userData.rails = true;
+  for (const [key, list] of byColor) {
+    const [li, color] = key.split('|').map(Number);
+    const mesh = new THREE.Mesh(mergeGeometries(list), new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.45 }));
+    mesh.userData.lv = LV[li];
     group.add(mesh);
   }
   return group;
@@ -4154,50 +4986,76 @@ function buildDecor() {
   const group = new THREE.Group();
   const BOX = GEO.box;
   const CYL = new THREE.CylinderGeometry(1, 1, 1, 10);
+  // un maillage par niveau : les Mod Tools cachent les niveaux au-dessus de celui qu'on édite
+  const perLevel = (lists, mat) => lists.forEach((list, li) => {
+    if (!list.length) return;
+    const mesh = new THREE.Mesh(mergeGeometries(list), mat);
+    if (NL > 1) mesh.userData.lv = LV[li];
+    group.add(mesh);
+  });
   // Caisses
   const crates = [];
-  for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
-    if (grid[idx(x, z)] !== T.CRATE) continue;
-    const ry = wr(-0.08, 0.08);
-    crates.push({ geo: BOX, matrix: mtx(x + 0.5, 0.475, z + 0.5, 0, ry, 0, 0.95, 0.95, 0.95), color: [1, 1, 1] });
-    if (wrand() < 0.45) {
-      crates.push({ geo: BOX, matrix: mtx(x + 0.5 + wr(-0.08, 0.08), 0.95 + 0.33, z + 0.5 + wr(-0.08, 0.08), 0, wr(-0.5, 0.5), 0, 0.66, 0.66, 0.66), color: [0.85, 0.85, 0.85] });
-      solidTop[idx(x, z)] = 1.6;
+  const cratesLv = [];
+  for (let li = 0; li < NL; li++) {
+    const E = LVY[li];
+    crates.length = 0;
+    for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+      const k = node(li, x, z);
+      if (grid[k] !== T.CRATE) continue;
+      const ry = wr(-0.08, 0.08);
+      crates.push({ geo: BOX, matrix: mtx(x + 0.5, E + 0.475, z + 0.5, 0, ry, 0, 0.95, 0.95, 0.95), color: [1, 1, 1] });
+      if (wrand() < 0.45) {
+        crates.push({ geo: BOX, matrix: mtx(x + 0.5 + wr(-0.08, 0.08), E + 0.95 + 0.33, z + 0.5 + wr(-0.08, 0.08), 0, wr(-0.5, 0.5), 0, 0.66, 0.66, 0.66), color: [0.85, 0.85, 0.85] });
+        solidTop[k] = 1.6;
+      }
     }
+    cratesLv.push(crates.slice());
   }
-  if (crates.length) group.add(new THREE.Mesh(mergeGeometries(crates), MAT.crate));
+  perLevel(cratesLv, MAT.crate);
   // Cadres de fenêtres + tuyaux
-  const wood = [], pipes = [];
+  const woodLv = LV.map(() => []), pipesLv = LV.map(() => []);
   for (const w of World.windows) {
+    const E = LVY[w.li], wood = woodLv[w.li];
     const cx = w.x + 0.5 - w.nx * 0.47, cz = w.z + 0.5 - w.nz * 0.47;
     const along = w.nx !== 0 ? 'z' : 'x';
     const ry = along === 'x' ? 0 : Math.PI / 2;
-    wood.push({ geo: BOX, matrix: mtx(cx, WIN_LO + 0.04, cz, 0, ry, 0, 1.08, 0.08, 0.12) });
-    wood.push({ geo: BOX, matrix: mtx(cx, WIN_HI - 0.04, cz, 0, ry, 0, 1.08, 0.08, 0.12) });
+    wood.push({ geo: BOX, matrix: mtx(cx, E + WIN_LO + 0.04, cz, 0, ry, 0, 1.08, 0.08, 0.12) });
+    wood.push({ geo: BOX, matrix: mtx(cx, E + WIN_HI - 0.04, cz, 0, ry, 0, 1.08, 0.08, 0.12) });
     for (const s of [-0.5, 0.5]) {
       const ox = along === 'x' ? s : 0, oz = along === 'z' ? s : 0;
-      wood.push({ geo: BOX, matrix: mtx(cx + ox, (WIN_LO + WIN_HI) / 2, cz + oz, 0, ry, 0, 0.1, WIN_HI - WIN_LO + 0.1, 0.12) });
+      wood.push({ geo: BOX, matrix: mtx(cx + ox, E + (WIN_LO + WIN_HI) / 2, cz + oz, 0, ry, 0, 0.1, WIN_HI - WIN_LO + 0.1, 0.12) });
     }
   }
-  if (wood.length) group.add(new THREE.Mesh(mergeGeometries(wood), MAT.frame));
+  perLevel(woodLv, MAT.frame);
   if (CUR.map.ambiance.pipes) {
     LAYOUT.zones.forEach((zone, zi) => {
-      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, open = 0, cells = 0;
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, open = 0, cells = 0, li = 0;
       for (let i = 0; i < grid.length; i++) if (zoneOf[i] === zi) {
-        const x = i % GW, z = (i / GW) | 0;
+        const c = i % GN, x = c % GW, z = (c / GW) | 0;
+        li = (i / GN) | 0;
         x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); z0 = Math.min(z0, z); z1 = Math.max(z1, z + 1);
         cells++; if (noCeil[i]) open++;
       }
       if (!cells || open > cells / 3 || x1 - x0 < 3 || z1 - z0 < 3) return;
+      const E = LVY[li], pipes = pipesLv[li];
       const alongX = x1 - x0 >= z1 - z0;
       for (const [off, r, dy] of [[0.35, 0.09, 0.2], [0.62, 0.05, 0.14]]) {
-        const y = WALL_H - dy;
+        // pas de tuyau qui traverse une cage d'escalier
+        let cut = false;
+        if (NL > 1) {
+          for (let s = alongX ? x0 : z0; s < (alongX ? x1 : z1) && !cut; s++) {
+            const k = alongX ? node(li, s, Math.floor(z0 + off)) : node(li, Math.floor(x0 + off), s);
+            if (zoneOf[k] === zi && !ceilOn[k]) cut = true;
+          }
+        }
+        if (cut) continue;
+        const y = E + WALL_H - dy;
         if (alongX) pipes.push({ geo: CYL, matrix: mtx((x0 + x1) / 2, y, z0 + off, 0, 0, Math.PI / 2, r, x1 - x0, r) });
         else pipes.push({ geo: CYL, matrix: mtx(x0 + off, y, (z0 + z1) / 2, Math.PI / 2, 0, 0, r, z1 - z0, r) });
       }
     });
   }
-  if (pipes.length) group.add(new THREE.Mesh(mergeGeometries(pipes), MAT.pipe));
+  perLevel(pipesLv, MAT.pipe);
   // Arbres morts dehors
   const trees = [];
   let placed = 0;
@@ -4207,7 +5065,8 @@ function buildDecor() {
     let ok = true;
     for (let dz = -3; dz <= 3 && ok; dz++) for (let dx = -3; dx <= 3 && ok; dx++) {
       const cx = Math.floor(x) + dx, cz = Math.floor(z) + dz;
-      if (inb(cx, cz) && grid[idx(cx, cz)] !== T.VOID) ok = false;
+      if (!inb(cx, cz)) continue;
+      for (let li = 0; li < NL; li++) if (grid[node(li, cx, cz)] !== T.VOID || hole[node(li, cx, cz)]) { ok = false; break; }
     }
     if (!ok) continue;
     placed++;
@@ -4224,24 +5083,87 @@ function buildDecor() {
       trees.push({ geo: CYL, matrix: m });
     }
   }
-  if (trees.length) group.add(new THREE.Mesh(mergeGeometries(trees), MAT.bark));
+  if (trees.length) {
+    const tm = new THREE.Mesh(mergeGeometries(trees), MAT.bark);
+    if (LI0 > 0) tm.userData.lv = 0;   // Mod Tools : caché quand on édite un sous-sol
+    group.add(tm);
+  }
   CYL.dispose();
   // Sol extérieur (coordonnées de texture en mètres)
   const gs = Math.max(GW, GH) + 170, gtex = CUR.map.textures.ground, gd = TEXLIB[gtex] || TEXLIB.frost_ground;
-  const pg = new THREE.PlaneGeometry(gs, gs);
-  const uv = pg.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * gs) / gd.size[0], (uv.getY(i) * gs) / gd.size[1]);
   const gmat = new THREE.MeshStandardMaterial({ map: levelTexture(gtex), roughness: 1 });
-  const ground = new THREE.Mesh(pg, gmat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.set(GW / 2, -0.02, GH / 2);
+  let ground;
+  if (LI0 === 0) {
+    const pg = new THREE.PlaneGeometry(gs, gs);
+    const uv = pg.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * gs) / gd.size[0], (uv.getY(i) * gs) / gd.size[1]);
+    ground = new THREE.Mesh(pg, gmat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(GW / 2, -0.02, GH / 2);
+  } else {
+    // sous-sols : le sol est percé au-dessus des cages d'escalier et des cours anglaises
+    const holeAt = (x, z) => {
+      const c = z * GW + x;
+      if (hole[LI0 * GN + c]) return true;
+      if (grid[LI0 * GN + c] !== T.VOID) return false;
+      for (let li = 0; li < LI0; li++) if (grid[li * GN + c] === T.YARD) return true;
+      return false;
+    };
+    const p = [], u = [], y = -0.02, x0 = GW / 2 - gs / 2, x1 = GW / 2 + gs / 2, z0 = GH / 2 - gs / 2, z1 = GH / 2 + gs / 2;
+    const rect = (ax, az, bx, bz) => {
+      for (const [px, pz] of [[ax, bz], [bx, bz], [bx, az], [ax, bz], [bx, az], [ax, az]]) { p.push(px, y, pz); u.push(px / gd.size[0], -pz / gd.size[1]); }
+    };
+    rect(x0, z0, x1, 0); rect(x0, GH, x1, z1); rect(x0, 0, 0, GH); rect(GW, 0, x1, GH);
+    for (let z = 0; z < GH; z++) {
+      let x = 0;
+      while (x < GW) {
+        if (holeAt(x, z)) { x++; continue; }
+        let x2 = x + 1;
+        while (x2 < GW && !holeAt(x2, z)) x2++;
+        rect(x, z, x2, z + 1);
+        x = x2;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(p.map((v, i) => (i % 3 === 1 ? 1 : 0)), 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
+    ground = new THREE.Mesh(g, gmat);
+  }
   ground.userData.ground = true;
+  if (LI0 > 0) ground.userData.lv = 0;   // Mod Tools : caché quand on édite un sous-sol
   World.ground = ground;
   group.add(ground);
   return group;
 }
 
 /* ------------------------------------------------------------ Lumières -- */
+/* Plusieurs niveaux : une lampe n'éclaire que son étage (les dalles ne font pas d'ombre). La
+   bande de hauteur éclairée est codée dans PointLight.decay (1e6 + cm sous la lampe × 1000 +
+   cm au-dessus) et décodée par le shader : hors de la bande, la lumière ne compte pas. */
+(function patchLightBands() {
+  const C = THREE.ShaderChunk;
+  const from = 'directLight.color *= punctualLightIntensityToIrradianceFactor( lightDistance, pointLight.distance, pointLight.decay );';
+  if (!C.lights_pars_begin || !C.lights_pars_begin.includes(from)) return;
+  C.lights_pars_begin = C.lights_pars_begin.replace(from, [
+    'float zsDecay = pointLight.decay;',
+    'if ( zsDecay > 500000.0 ) {',
+    '\tfloat zsCode = zsDecay - 1000000.0;',
+    '\tfloat zsLo = floor( zsCode / 1000.0 + 0.0005 );',
+    '\tfloat zsHi = zsCode - zsLo * 1000.0;',
+    '\tfloat zsDy = dot( viewMatrix[ 1 ].xyz, geometry.position - pointLight.position );',
+    '\tzsDecay = 2.0;',
+    '\tif ( zsDy < -0.01 * zsLo || zsDy > 0.01 * zsHi ) directLight.color = vec3( 0.0 );',
+    '}',
+    'directLight.color *= punctualLightIntensityToIrradianceFactor( lightDistance, pointLight.distance, zsDecay );',
+  ].join('\n\t\t'));
+})();
+function lightBandDecay(y, li) {
+  if (NL < 2) return 2;
+  const E = LVY[li];
+  const lo = clamp(Math.round((y - (E - 0.02)) * 100), 0, 999), hi = clamp(Math.round((E + WALL_H + 0.02 - y) * 100), 0, 999);
+  return 1e6 + lo * 1000 + hi;
+}
 const LIGHT_GEO = {};
 function buildLights() {
   const group = new THREE.Group();
@@ -4254,58 +5176,64 @@ function buildLights() {
   const shadeMat = new THREE.MeshStandardMaterial({ color: 0x2c3a30, roughness: 0.6, metalness: 0.4, side: THREE.DoubleSide });
   const cableMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
   const metalMat = new THREE.MeshStandardMaterial({ color: 0x9a9e9a, roughness: 0.4, metalness: 0.5 });
-  LAYOUT.lights.forEach((L, li) => {
+  LAYOUT.lights.forEach((L, i) => {
+    const li = Math.max(0, levelIndex(L.lv || 0)), E = LVY[li];
+    const py = E + L.pos[1];
     const light = new THREE.PointLight(L.color, L.intensity, L.range || 12, 2);
-    light.position.set(L.pos[0], L.pos[1] - 0.25, L.pos[2]);
+    light.position.set(L.pos[0], py - 0.25, L.pos[2]);
     group.add(light);
     const bulbMat = new THREE.MeshBasicMaterial({ color: L.color });
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: L.color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.scale.set(1.3, 1.3, 1);
     const fx = L.fixture || 'lamp';
     const cx = Math.floor(L.pos[0]), cz = Math.floor(L.pos[2]);
-    const ceilAbove = inb(cx, cz) && interior[idx(cx, cz)] && !noCeil[idx(cx, cz)];
+    const ceilAbove = inb(cx, cz) && ceilOn[node(li, cx, cz)] === 1;
     const fixture = new THREE.Group();
-    fixture.userData.light = li;
+    fixture.userData.light = i;
+    fixture.userData.lv = LV[li];
+    light.userData.lv = LV[li];
+    halo.userData.lv = LV[li];
     if (fx === 'lamp' || fx === 'bulb') {
       const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-      bulb.position.set(L.pos[0], L.pos[1] - 0.22, L.pos[2]);
+      bulb.position.set(L.pos[0], py - 0.22, L.pos[2]);
       if (fx === 'bulb') bulb.scale.set(0.6, 0.8, 0.6);
       fixture.add(bulb);
       if (fx === 'lamp') {
         const shade = new THREE.Mesh(shadeGeo, shadeMat);
-        shade.position.set(L.pos[0], L.pos[1] - 0.12, L.pos[2]);
+        shade.position.set(L.pos[0], py - 0.12, L.pos[2]);
         fixture.add(shade);
       }
       if (ceilAbove) {
         const len = Math.max(0.02, WALL_H - L.pos[1] + 0.02);
         const cable = new THREE.Mesh(cableGeo, cableMat);
-        cable.scale.y = len; cable.position.set(L.pos[0], L.pos[1] + len / 2 - 0.02, L.pos[2]);
+        cable.scale.y = len; cable.position.set(L.pos[0], py + len / 2 - 0.02, L.pos[2]);
         fixture.add(cable);
       }
       halo.position.copy(bulb.position);
     } else if (fx === 'neon') {
       const tube = new THREE.Mesh(GEO.box, bulbMat);
-      tube.scale.set(1.2, 0.05, 0.05); tube.position.set(L.pos[0], L.pos[1] - 0.05, L.pos[2]);
+      tube.scale.set(1.2, 0.05, 0.05); tube.position.set(L.pos[0], py - 0.05, L.pos[2]);
       const box = new THREE.Mesh(GEO.box, metalMat);
-      box.scale.set(1.3, 0.06, 0.16); box.position.set(L.pos[0], L.pos[1] + 0.02, L.pos[2]);
+      box.scale.set(1.3, 0.06, 0.16); box.position.set(L.pos[0], py + 0.02, L.pos[2]);
       fixture.add(tube, box);
-      halo.position.set(L.pos[0], L.pos[1] - 0.05, L.pos[2]);
+      halo.position.set(L.pos[0], py - 0.05, L.pos[2]);
       halo.scale.set(2.2, 0.8, 1);
-      light.position.y = L.pos[1] - 0.15;
+      light.position.y = py - 0.15;
     } else if (fx === 'wall') {
       const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-      bulb.position.set(L.pos[0], L.pos[1], L.pos[2]);
+      bulb.position.set(L.pos[0], py, L.pos[2]);
       bulb.scale.setScalar(0.6);
       const plate = new THREE.Mesh(GEO.box, metalMat);
-      plate.scale.set(0.14, 0.24, 0.14); plate.position.set(L.pos[0], L.pos[1] - 0.12, L.pos[2]);
+      plate.scale.set(0.14, 0.24, 0.14); plate.position.set(L.pos[0], py - 0.12, L.pos[2]);
       fixture.add(bulb, plate);
       halo.position.copy(bulb.position);
-      light.position.y = L.pos[1];
+      light.position.y = py;
     } else {
       halo.visible = false;
     }
+    light.decay = lightBandDecay(light.position.y, li);
     group.add(fixture, halo);
-    World.lights.push({ def: L, light, bulbMat, halo, fixture, base: L.intensity, color: L.color, flicker: L.flicker, phase: wr(0, 100), out: 0 });
+    World.lights.push({ def: L, light, bulbMat, halo, fixture, base: L.intensity, color: L.color, flicker: L.flicker, phase: wr(0, 100), out: 0, li });
   });
   return group;
 }
@@ -4370,19 +5298,23 @@ function buildProps(map, perProp) {
     const def = MODELS[pr.m];
     const info = def ? modelParts(pr.m) : null;
     if (!info) return;
+    const li = Math.max(0, levelIndex(pr.lv || 0)), E = LVY[li];
     const matrix = propMatrix(pr);
+    if (E) matrix.elements[13] += E;
     if (def.glb) {
       const o = glbObject(pr.m);
       if (o) {
         const g = new THREE.Group();
         g.add(o);
         g.applyMatrix4(matrix);
+        g.userData.lv = LV[li];
         if (perProp) { g.userData.prop = i; o.traverse((c) => { if (c.isMesh) c.userData.prop = i; }); }
         group.add(g);
       }
     } else if (perProp) {
       const g = new THREE.Group();
       g.userData.prop = i;
+      g.userData.lv = LV[li];
       const b = new PropBatch();
       b.add(info.parts, new THREE.Matrix4(), pr.c);
       b.build(g, { prop: i });
@@ -4392,7 +5324,7 @@ function buildProps(map, perProp) {
     const solid = typeof pr.solid === 'boolean' ? pr.solid : def.solid;
     if (solid && !def.decal) {
       const top = (pr.y || 0) + info.box.max.y * (pr.s || 1);
-      if (top > 0.15) for (const [cx, cz] of propFootprint(pr, info)) setProp(cx, cz, top);
+      if (top > 0.15) for (const [cx, cz] of propFootprint(pr, info)) setProp(li, cx, cz, top);
     }
   });
   if (batch) batch.build(group);
@@ -4431,7 +5363,7 @@ function disposeWorld() {
   }
   clearPowerups();
   Features.interactables = []; Features.perkMachines = []; Features.box = null; Features.power = null; Features.amp = null; Features.digipass = null;
-  World.windows = []; World.doors = {}; World.lights = []; World.risers = []; World.props = null; World.ground = null;
+  World.windows = []; World.doors = {}; World.lights = []; World.risers = []; World.stairs = []; World.links = []; World.props = null; World.ground = null;
 }
 /* Recopie les éléments de la carte dans LAYOUT (format attendu par les éléments de jeu). */
 function applyMapLayout(map) {
@@ -6513,7 +7445,8 @@ class PointPool {
       any = 1;
       this.vel[k + 1] -= this.g * dt;
       this.pos[k] += this.vel[k] * dt; this.pos[k + 1] += this.vel[k + 1] * dt; this.pos[k + 2] += this.vel[k + 2] * dt;
-      if (this.pos[k + 1] < 0.015) { this.pos[k + 1] = 0.015; this.vel[k] *= 0.2; this.vel[k + 2] *= 0.2; this.vel[k + 1] = 0; }
+      const fy = NL > 1 ? floorBelow(this.pos[k], this.pos[k + 2], this.pos[k + 1] - this.vel[k + 1] * dt) + 0.015 : 0.015;
+      if (this.pos[k + 1] < fy) { this.pos[k + 1] = fy; this.vel[k] *= 0.2; this.vel[k + 2] *= 0.2; this.vel[k + 1] = 0; }
       if (this.colored) {
         const f = this.life[i] / this.max[i];
         this.col[k] = this.base[k] * f; this.col[k + 1] = this.base[k + 1] * f; this.col[k + 2] = this.base[k + 2] * f;
@@ -6649,17 +7582,39 @@ function sparkBurst(x, y, z, nx, ny, nz, amount = 6) {
     FX.sparks.emit(x, y, z, nx * rand(1, 3) + rand(-1.5, 1.5), ny * rand(1, 3) + rand(0, 2), nz * rand(1, 3) + rand(-1.5, 1.5), rand(0.12, 0.3), 1, 0.75, 0.35);
   }
 }
-function dirtBurst(x, z) {
-  for (let i = 0; i < 14; i++) FX.dirt.emit(x + rand(-0.3, 0.3), 0.05, z + rand(-0.3, 0.3), rand(-1.2, 1.2), rand(1.5, 3.5), rand(-1.2, 1.2), rand(0.4, 0.9));
-  spawnPuff(x, 0.4, z, 1.4, 1.2, 0x3e3428, 0.55, 0.3);
+function dirtBurst(x, z, y = 0) {
+  for (let i = 0; i < 14; i++) FX.dirt.emit(x + rand(-0.3, 0.3), y + 0.05, z + rand(-0.3, 0.3), rand(-1.2, 1.2), rand(1.5, 3.5), rand(-1.2, 1.2), rand(0.4, 0.9));
+  spawnPuff(x, y + 0.4, z, 1.4, 1.2, 0x3e3428, 0.55, 0.3);
+}
+/* Rien entre un point (explosion, joueur) et un zombie ? Sur une carte d'un seul niveau, la ligne
+   de vue au sol d'avant les étages ; sinon, au sol d'un même niveau ou par un rayon vers sa poitrine. */
+function clearToZombie(x, y, z, k0, zb) {
+  if (NL === 1) return losClear(k0, x, z, zb.pos.x, zb.pos.z, 0);
+  if (k0 >= 0 && zb.k >= 0 && levelOfNode(k0) === levelOfNode(zb.k) && stairAt[k0] < 0 && stairAt[zb.k] < 0 && losClear(k0, x, z, zb.pos.x, zb.pos.z, 0)) return true;
+  return sightClear(x, y, z, zb.pos.x, zb.pos.y + 0.9, zb.pos.z);
+}
+/* Nœud du sol sous un point (une seule hauteur : la case, comme avant les étages). */
+function nodeUnder(x, z, y) {
+  if (NL === 1) { const cx = Math.floor(x), cz = Math.floor(z); return inb(cx, cz) ? cz * GW + cx : -1; }
+  return locateNode(x, z, floorBelow(x, z, y + 0.1));
+}
+/* Débris qui rebondit : une seule hauteur, comme avant (cases fermées, depuis l'intérieur) ; sinon le plein. */
+function debrisHit(x, y, z, ox, oz) {
+  if (NL === 1) {
+    const cx = Math.floor(x), cz = Math.floor(z);
+    return (!inb(cx, cz) || !walkNode(cz * GW + cx)) && interior[Math.floor(oz) * GW + Math.floor(ox)] === 1;
+  }
+  return solidPoint(x, y, z);
 }
 
 /* Explosion ; opts.src dit ce qui explose (grenade, rocket, plasma, rounds) pour les
    statistiques. Renvoie le nombre de zombies touchés. */
 function explode(x, y, z, radius, damage, opts = {}) {
   const big = clamp(radius / 4.5, 0.4, 1.6);
-  Sound.explosion({ x, z }, big);
-  FX.boomLight.position.set(x, Math.max(y, 0.5) + 0.3, z);
+  Sound.explosion({ x, y, z }, big);
+  const fl = NL > 1 ? floorBelow(x, z, y + 0.1) : 0;
+  FX.boomLight.position.set(x, Math.max(y, fl + 0.5) + 0.3, z);
+  FX.boomLight.decay = lightBandDecay(FX.boomLight.position.y, levelAtY(fl + 0.1));
   FX.boomLight.color.setHex(opts.color || 0xff8a3a);
   FX.boomLight.intensity = 6 * big; FX.boomT = 0.35;
   const col = new THREE.Color(opts.color || 0xffa040);
@@ -6669,16 +7624,17 @@ function explode(x, y, z, radius, damage, opts = {}) {
     const a = rand(0, TAU), s = rand(2, 7);
     FX.sparks.emit(x, y + 0.2, z, Math.cos(a) * s, rand(1, 6), Math.sin(a) * s, rand(0.3, 0.8), col.r, col.g, col.b);
   }
-  if (y < 1.2) addDecal('scorch', x, 0.001, z, 0, 1, 0, radius * 0.6);
-  const d = Math.hypot(player.pos.x - x, player.pos.z - z);
+  if (y - fl < 1.2) addDecal('scorch', x, fl + 0.001, z, 0, 1, 0, radius * 0.6);
+  const d = Math.hypot(player.pos.x - x, player.pos.z - z, NL > 1 ? Math.max(0, Math.abs(player.gy + 0.9 - y) - 0.9) : 0);
   FX.shake = Math.min(1.2, FX.shake + Math.max(0, 1 - d / (radius * 3)) * 0.9 * big);
   // dégâts
   let hit = 0;
+  const k0 = nodeUnder(x, z, y);
   for (const zb of Zombies.list) {
     if (!zb.alive) continue;
-    const dz = Math.hypot(zb.pos.x - x, zb.pos.z - z);
+    const dz = Math.hypot(zb.pos.x - x, zb.pos.z - z, NL > 1 ? Math.max(0, Math.abs(zb.pos.y + 0.9 - y) - 0.9) : 0);
     if (dz > radius + 0.3) continue;
-    if (!losClear(x, z, zb.pos.x, zb.pos.z, 0)) continue;
+    if (!clearToZombie(x, y, z, k0, zb)) continue;
     const f = clamp(1 - dz / (radius + 0.3), 0, 1);
     damageZombie(zb, damage * (0.3 + 0.7 * f), { kind: 'explosive', src: opts.src, dx: (zb.pos.x - x) / (dz || 1), dz: (zb.pos.z - z) / (dz || 1), force: 2 + 6 * f });
     hit++;
@@ -6769,10 +7725,11 @@ function updateGrenades(dt) {
         const dot = g.vx * RAY.nx + g.vy * RAY.ny + g.vz * RAY.nz;
         g.vx -= 2 * dot * RAY.nx; g.vy -= 2 * dot * RAY.ny; g.vz -= 2 * dot * RAY.nz;
         g.vx *= 0.45; g.vy *= 0.35; g.vz *= 0.45;
-        if (sp > 2) Sound.grenadeBounce({ x: g.x, z: g.z });
+        if (sp > 2) Sound.grenadeBounce({ x: g.x, y: g.y, z: g.z });
       } else { g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt; }
     }
-    if (g.y < 0.05) { g.y = 0.05; g.vy = Math.abs(g.vy) * 0.3; g.vx *= 0.7; g.vz *= 0.7; }
+    const gf = NL > 1 ? floorBelow(g.x, g.z, g.y + 0.3) : 0;
+    if (g.y < gf + 0.05) { g.y = gf + 0.05; g.vy = Math.abs(g.vy) * 0.3; g.vx *= 0.7; g.vz *= 0.7; }
     g.m.position.set(g.x, g.y, g.z);
     g.m.rotation.x += dt * 8; g.m.rotation.z += dt * 5;
     g.light -= dt;
@@ -6789,12 +7746,13 @@ function updateFX(dt) {
     if (d.life <= 0) { m.visible = false; continue; }
     d.vy -= 12 * dt;
     let nx = m.position.x + d.vx * dt, nz = m.position.z + d.vz * dt;
-    if (blockedAt(nx, m.position.z) && interior[idx(Math.floor(m.position.x), Math.floor(m.position.z))]) { d.vx *= -0.4; nx = m.position.x; }
-    if (blockedAt(m.position.x, nz) && interior[idx(Math.floor(m.position.x), Math.floor(m.position.z))]) { d.vz *= -0.4; nz = m.position.z; }
+    if (debrisHit(nx, m.position.y, m.position.z, m.position.x, m.position.z)) { d.vx *= -0.4; nx = m.position.x; }
+    if (debrisHit(m.position.x, m.position.y, nz, m.position.x, m.position.z)) { d.vz *= -0.4; nz = m.position.z; }
     m.position.x = nx; m.position.z = nz; m.position.y += d.vy * dt;
     m.rotation.x += d.ax * dt; m.rotation.y += d.ay * dt; m.rotation.z += d.az * dt;
-    if (m.position.y < d.sy) {
-      m.position.y = d.sy; d.vy = Math.abs(d.vy) * 0.25; d.vx *= 0.6; d.vz *= 0.6;
+    const dfy = NL > 1 ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0;
+    if (m.position.y < dfy + d.sy) {
+      m.position.y = dfy + d.sy; d.vy = Math.abs(d.vy) * 0.25; d.vx *= 0.6; d.vz *= 0.6;
       d.ax *= 0.5; d.ay *= 0.5; d.az *= 0.5;
     }
     if (d.life < 0.6) { const k = d.life / 0.6; m.scale.set(d.scale[0] * k, d.scale[1] * k, d.scale[2] * k); }
@@ -6807,12 +7765,13 @@ function updateFX(dt) {
     if (h.life <= 0) { m.visible = false; continue; }
     h.vy -= 12 * dt;
     let nx = m.position.x + h.vx * dt, nz = m.position.z + h.vz * dt;
-    if (blockedAt(nx, m.position.z) && interior[idx(Math.floor(m.position.x), Math.floor(m.position.z))]) { h.vx *= -0.35; nx = m.position.x; }
-    if (blockedAt(m.position.x, nz) && interior[idx(Math.floor(m.position.x), Math.floor(m.position.z))]) { h.vz *= -0.35; nz = m.position.z; }
+    if (debrisHit(nx, m.position.y, m.position.z, m.position.x, m.position.z)) { h.vx *= -0.35; nx = m.position.x; }
+    if (debrisHit(m.position.x, m.position.y, nz, m.position.x, m.position.z)) { h.vz *= -0.35; nz = m.position.z; }
     m.position.x = nx; m.position.z = nz; m.position.y += h.vy * dt;
     m.rotation.x += h.ax * dt; m.rotation.y += h.ay * dt; m.rotation.z += h.az * dt;
-    if (m.position.y < 0.08) {
-      m.position.y = 0.08;
+    const hfy = NL > 1 ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0;
+    if (m.position.y < hfy + 0.08) {
+      m.position.y = hfy + 0.08;
       h.vy = Math.abs(h.vy) > 1 ? Math.abs(h.vy) * 0.3 : 0;
       h.vx *= 0.55; h.vz *= 0.55; h.ax *= 0.45; h.ay *= 0.6; h.az *= 0.45;
     }
@@ -6853,8 +7812,10 @@ function clearFX() {
    Déplacement (ZQSD/WASD), sprint, saut, accroupi, santé avec régénération,
    mise à terre et réanimation (Second Souffle), caméra et tremblements.
    ============================================================================ */
+/* pos : position au sol (x, z) ; k : nœud de la grille (case et niveau) ; gy : hauteur du sol sous
+   le joueur (étage, marche) ; y : hauteur du saut au-dessus de ce sol. */
 const player = {
-  pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+  pos: new THREE.Vector3(), vel: new THREE.Vector3(), k: -1, gy: 0,
   y: 0, vy: 0, grounded: true,
   yaw: 0, pitch: 0, recoil: 0, recoilYaw: 0, punch: 0,
   hp: 100, maxHp: 100, lastHit: -99,
@@ -6867,9 +7828,18 @@ const player = {
 const PLAYER_EYE = 1.62;
 const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3();
 
+/* Pose le joueur en (x, z) sur le niveau lv (ou au plus près de la hauteur actuelle). */
+function placePlayer(x, z, lv) {
+  const li = lv === undefined ? -1 : levelIndex(lv);
+  const y = li >= 0 ? LVY[li] : player.gy;
+  player.pos.set(x, 0, z);
+  player.k = nearestNode(x, z, y);
+  player.gy = y;
+  settleBody(player, 0.3);
+  player.pos.y = player.gy;
+}
 function resetPlayer() {
-  player.pos.set(LAYOUT.spawn.pos[0], 0, LAYOUT.spawn.pos[1]);
-  if (blockedAt(player.pos.x, player.pos.z)) collideCircle(player.pos, 0.3);
+  placePlayer(LAYOUT.spawn.pos[0], LAYOUT.spawn.pos[1], LAYOUT.spawn.lv || 0);
   player.vel.set(0, 0, 0);
   player.y = 0; player.vy = 0; player.grounded = true;
   player.yaw = LAYOUT.spawn.yaw; player.pitch = 0; player.recoil = 0; player.recoilYaw = 0; player.punch = 0;
@@ -6918,7 +7888,7 @@ function revivePlayer() {
   HUD.setDowned(false);
   HUD.perks();
   for (const z of Zombies.list) {
-    if (!z.alive) continue;
+    if (!z.alive || Math.abs(z.gy - player.gy) > 1) continue;
     const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz);
     if (d < 3.5) { z.knockX = (dx / (d || 1)) * 5; z.knockZ = (dz / (d || 1)) * 5; z.stagger = 0.8; }
   }
@@ -6978,21 +7948,22 @@ function updatePlayer(dt) {
   p.vel.z = damp(p.vel.z, wz * speed, accel, dt);
   p.pos.x += p.vel.x * dt;
   p.pos.z += p.vel.z * dt;
-  // les zombies bloquent le passage
+  // les zombies bloquent le passage (ceux du même étage)
   for (const z of Zombies.list) {
-    if (!z.alive || z.state === 'rise' || z.outside) continue;
+    if (!z.alive || z.state === 'rise' || z.outside || Math.abs(z.gy - p.gy) > 1) continue;
     const dx = p.pos.x - z.pos.x, dz = p.pos.z - z.pos.z, d = Math.hypot(dx, dz), m = p.radius + 0.3;
     if (d < m && d > 1e-4) { p.pos.x += (dx / d) * (m - d); p.pos.z += (dz / d) * (m - d); }
   }
-  collideCircle(p.pos, p.radius);
+  settleBody(p, p.radius);
 
-  // --- saut et gravité
+  // --- saut et gravité (y : au-dessus du sol, qui suit les marches)
   if (pressed('Space') && p.grounded && !p.down && p.crouch < 0.5) { p.vy = 4.7; p.grounded = false; }
   if (!p.grounded) {
     p.vy -= 14 * dt;
     p.y += p.vy * dt;
     if (p.y <= 0) { p.y = 0; p.vy = 0; p.grounded = true; Sound.land(); }
   }
+  p.pos.y = p.gy;
 
   // --- santé
   if (!p.down && p.hp < p.maxHp && G.time - p.lastHit > 2.4) p.hp = Math.min(p.maxHp, p.hp + 70 * dt);
@@ -7015,7 +7986,7 @@ function updatePlayer(dt) {
     const stride = p.sprinting ? 2.1 : 1.7;
     if (p.stepAcc > stride) { p.stepAcc = 0; Sound.step(p.sprinting); }
   }
-  const z = zoneAt(p.pos.x, p.pos.z);
+  const z = p.k >= 0 ? zoneOf[p.k] : -1;
   if (z >= 0 && z !== p.zone) { p.zone = z; if (LAYOUT.zones[z] && !LAYOUT.zones[z].auto) HUD.zone(LAYOUT.zones[z].name); }
   updateCamera(dt);
 }
@@ -7024,7 +7995,7 @@ function updateCamera(dt) {
   const p = player;
   const eye = p.down ? 0.55 : PLAYER_EYE - p.crouch * 0.55;
   const bob = Math.sin(p.bobT * 2) * 0.035 * p.bobAmt * (1 - p.ads * 0.8);
-  camera.position.set(p.pos.x + Math.cos(p.bobT) * 0.02 * p.bobAmt * (1 - p.ads), p.y + eye + bob, p.pos.z);
+  camera.position.set(p.pos.x + Math.cos(p.bobT) * 0.02 * p.bobAmt * (1 - p.ads), p.gy + p.y + eye + bob, p.pos.z);
   const sh = FX.shake * FX.shake;
   camera.rotation.order = 'YXZ';
   camera.rotation.y = p.yaw + p.recoilYaw + rand(-1, 1) * sh * 0.025;
@@ -7041,7 +8012,7 @@ function updateCamera(dt) {
     camera.fov = damp(camera.fov, target, 14, dt);
     camera.updateProjectionMatrix();
   }
-  Sound.setListener(p.pos.x, p.pos.z, p.yaw);
+  Sound.setListener(p.pos.x, p.pos.z, p.yaw, p.gy);
 }
 
 /* ================================================================= 08 ARMES ==
@@ -7325,6 +8296,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
 function blastCone(s) {
   const b = wstat(s, 'blast');
   const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
+  const k0 = NL === 1 ? nodeUnder(ox, oz, 0) : player.k;
   let hit = 0;
   for (const z of Zombies.list) {
     if (!z.alive) continue;
@@ -7332,7 +8304,7 @@ function blastCone(s) {
     if (d > b.range) continue;
     const dot = (zx * _fwd.x + zy * _fwd.y + zz * _fwd.z) / (d || 1);
     if (dot < Math.cos(b.cone) && d > 1.3) continue;
-    if (!losClear(ox, oz, z.pos.x, z.pos.z, 0)) continue;
+    if (!clearToZombie(ox, oy, oz, k0, z)) continue;
     const hd = Math.hypot(zx, zz) || 1;
     damageZombie(z, 1e9, { kind: 'blast', dx: zx / hd, dz: zz / hd, force: 14 * (1 - d / b.range) + 6 });
     hit++;
@@ -7365,6 +8337,7 @@ function muzzleFlash(def, up) {
   Arms.vmLight.intensity = 4;
   FX.muzzleLight.color.setHex(col);
   FX.muzzleLight.position.copy(camera.position).addScaledVector(_fwd, 0.9);
+  FX.muzzleLight.decay = lightBandDecay(FX.muzzleLight.position.y, levelAtY(player.gy + 0.1));
   FX.muzzleLight.intensity = 2.6;
 }
 
@@ -7372,7 +8345,7 @@ function knifeStrike() {
   let best = null, bd = 2.1;
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
   for (const z of Zombies.list) {
-    if (!z.alive || z.state === 'rise') continue;
+    if (!z.alive || z.state === 'rise' || Math.abs(z.gy - player.gy) > 1) continue;
     const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz);
     if (d > bd || (dx * fx + dz * fz) / (d || 1) < 0.5) continue;
     best = z; bd = d;
@@ -7382,10 +8355,11 @@ function knifeStrike() {
   if (bd > 1.15 && !best.outside) {
     const m = Math.min(0.55, bd - 1.0);
     player.pos.x += fx * m; player.pos.z += fz * m;
-    collideCircle(player.pos, player.radius);
+    settleBody(player, player.radius);
+    player.pos.y = player.gy;
   }
   const dx = best.pos.x - player.pos.x, dz = best.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
-  bloodBurst(best.pos.x - dx / d * 0.3, 1.3, best.pos.z - dz / d * 0.3, -dx / d, -dz / d, 8, 0.8);
+  bloodBurst(best.pos.x - dx / d * 0.3, best.gy + 1.3, best.pos.z - dz / d * 0.3, -dx / d, -dz / d, 8, 0.8);
   const killed = damageZombie(best, 150, { kind: 'knife', dx: dx / d, dz: dz / d, force: 1.2 });
   HUD.hitmarker(killed);
 }
@@ -7533,7 +8507,9 @@ function updateViewmodel(dt) {
   TEX.camo.offset.x += dt * 0.06; TEX.camo.offset.y += dt * 0.035;
   // éclairage de l'arme selon la lumière ambiante autour du joueur
   let lum = 0.18;
+  const pli = NL > 1 ? levelAtY(player.gy + 0.1) : 0;
   for (const l of World.lights) {
+    if (NL > 1 && l.li !== pli) continue;
     const d2 = (l.light.position.x - player.pos.x) ** 2 + (l.light.position.z - player.pos.z) ** 2;
     lum += (l.light.intensity / (1 + d2 * 0.07)) * 0.45;
   }
@@ -7594,16 +8570,30 @@ function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
   return best;
 }
 
+/* Dehors, devant une fenêtre : au rez-de-chaussée partout ; à l'étage ou au sous-sol, seulement
+   sur la cour de ce niveau (terrasse, cour anglaise). */
+function yardOk(win, x, z) {
+  if (LV[win.li] === 0) return true;
+  const cx = Math.floor(x), cz = Math.floor(z);
+  return inb(cx, cz) && grid[node(win.li, cx, cz)] === T.YARD;
+}
 function windowSpot(win, k, out) {
   const tx = -win.nz, tz = win.nx;
-  if (k === 0) {
-    out.x = win.x + 0.5 + win.nx * 0.85;
-    out.z = win.z + 0.5 + win.nz * 0.85;
-  } else {
-    const lat = (k % 2 ? 1 : -1) * 0.55, d = 1.55 + Math.floor((k - 1) / 2) * 0.7;
+  let d = 0.85, lat = 0;
+  if (k > 0) { lat = (k % 2 ? 1 : -1) * 0.55; d = 1.55 + Math.floor((k - 1) / 2) * 0.7; }
+  for (let i = 0; i < 6; i++) {
     out.x = win.x + 0.5 + win.nx * d + tx * lat;
     out.z = win.z + 0.5 + win.nz * d + tz * lat;
+    if (yardOk(win, out.x, out.z)) return;
+    d = Math.max(0.85, d - 0.45); lat *= 0.5;
   }
+  out.x = win.x + 0.5 + win.nx * 0.85; out.z = win.z + 0.5 + win.nz * 0.85;
+}
+/* Profondeur d'où sort un zombie : sous la terre, 1,7 m ; à travers une dalle d'étage, juste son épaisseur. */
+function riseDepth(li, x, z) {
+  if (li <= 0) return 1.7;
+  const kb = node(li - 1, Math.floor(x), Math.floor(z));
+  return grid[kb] === T.VOID && !hole[kb] && LV[li - 1] < 0 ? 1.7 : 0.3;
 }
 function leaveWindow(z) {
   if (!z.win) return;
@@ -7627,7 +8617,7 @@ function spawnZombie(sp, hp) {
   hp *= type.mult.hp;
   const z = {
     id: ++Zombies.seq, slot, type, rig: makeRig(), look, helmetOn: !!type.helmet, alive: true, outside: true,
-    state: 'rise', t: 0, hp, maxHp: hp, pos: new THREE.Vector3(), yaw: 0, vx: 0, vz: 0, moving: 0,
+    state: 'rise', t: 0, hp, maxHp: hp, pos: new THREE.Vector3(), k: -1, gy: 0, riseD: 1.7, sinkD: 0.7, yaw: 0, vx: 0, vz: 0, moving: 0,
     speedType: rollSpeedType(G.round), speed: 1, win: sp.riser ? null : sp, phase: rand(0, TAU),
     attackHit: false, winAttack: false, groanT: rand(1.5, 6), gib: 0, headless: false,
     stagger: 0, flinch: 0, knockX: 0, knockZ: 0, losT: 0, los: false,
@@ -7637,18 +8627,24 @@ function spawnZombie(sp, hp) {
   z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]) * type.mult.speed;
   if (sp.riser) {
     z.outside = false;
-    z.pos.set(sp.x + rand(-0.25, 0.25), -1.7, sp.z + rand(-0.25, 0.25));
+    z.gy = LVY[sp.li]; z.k = sp.k;
+    z.pos.set(sp.x + rand(-0.25, 0.25), 0, sp.z + rand(-0.25, 0.25));
+    z.riseD = riseDepth(sp.li, z.pos.x, z.pos.z);
     z.yaw = Math.atan2(player.pos.x - z.pos.x, player.pos.z - z.pos.z);
   } else {
     const win = sp;
-    const lat = rand(-0.9, 0.9), out = rand(2.6, 4.0);
+    let lat = rand(-0.9, 0.9), out = rand(2.6, 4.0);
     const tx = -win.nz, tz = win.nx;
-    z.pos.set(win.x + 0.5 + win.nx * out + tx * lat, -1.7, win.z + 0.5 + win.nz * out + tz * lat);
+    z.gy = LVY[win.li]; z.k = -1;
+    if (!yardOk(win, win.x + 0.5 + win.nx * out + tx * lat, win.z + 0.5 + win.nz * out + tz * lat)) { out = rand(0.6, 1.0); lat = rand(-0.3, 0.3); }
+    z.pos.set(win.x + 0.5 + win.nx * out + tx * lat, 0, win.z + 0.5 + win.nz * out + tz * lat);
+    z.riseD = riseDepth(win.li, z.pos.x, z.pos.z);
     z.yaw = Math.atan2(-win.nx, -win.nz);
     win.queue.push(z);
   }
+  z.pos.y = z.gy - z.riseD;
   z.lastX = z.pos.x; z.lastZ = z.pos.z;
-  dirtBurst(z.pos.x, z.pos.z);
+  dirtBurst(z.pos.x, z.pos.z, z.gy);
   Sound.rise(z.pos);
   Zombies.list.push(z);
   animateZombie(z, 0);
@@ -7723,11 +8719,14 @@ function killZombie(z, info) {
     z.flingVY = info.kind === 'blast' ? rand(3, 6) : rand(1.5, 3.5);
     if (Math.random() < 0.55) z.gib = randInt(1, 3);
     if (z.helmetOn && Math.random() < 0.75) popHelmet(z, dx, dz, 1.5);
-    bloodBurst(z.pos.x, 1.1, z.pos.z, dx, dz, 14, 1.5);
-    for (let i = 0; i < (z.gib ? 4 : 2); i++) spawnDebris(MAT.gib, rand(0.06, 0.14), rand(0.06, 0.2), rand(0.06, 0.12), z.pos.x, 1.0, z.pos.z, dx * rand(2, 5) + rand(-1.5, 1.5), rand(2, 5), dz * rand(2, 5) + rand(-1.5, 1.5), 3);
+    bloodBurst(z.pos.x, z.gy + 1.1, z.pos.z, dx, dz, 14, 1.5);
+    for (let i = 0; i < (z.gib ? 4 : 2); i++) spawnDebris(MAT.gib, rand(0.06, 0.14), rand(0.06, 0.2), rand(0.06, 0.12), z.pos.x, z.gy + 1.0, z.pos.z, dx * rand(2, 5) + rand(-1.5, 1.5), rand(2, 5), dz * rand(2, 5) + rand(-1.5, 1.5), 3);
   }
-  if (!z.outside || zoneAt(z.pos.x, z.pos.z) >= 0) addDecal('blood', z.pos.x - dx * 0.6, 0.002, z.pos.z - dz * 0.6, 0, 1, 0, rand(0.9, 1.5));
-  else addDecal('blood', z.pos.x, 0.002, z.pos.z, 0, 1, 0, rand(0.8, 1.3));
+  // corps : il s'enfonce dans la terre, ou à peine dans une dalle d'étage
+  const zli = z.k >= 0 ? levelOfNode(z.k) : levelAtY(z.gy + 0.1);
+  z.sinkD = riseDepth(zli, z.pos.x, z.pos.z) > 1 ? 0.7 : 0.3;
+  if (!z.outside || (z.k >= 0 && zoneOf[z.k] >= 0)) addDecal('blood', z.pos.x - dx * 0.6, z.gy + 0.002, z.pos.z - dz * 0.6, 0, 1, 0, rand(0.9, 1.5));
+  else addDecal('blood', z.pos.x, z.gy + 0.002, z.pos.z, 0, 1, 0, rand(0.8, 1.3));
   onZombieKilled(z, info);
 }
 
@@ -7744,9 +8743,9 @@ function popHelmet(z, dx = 0, dz = 0, force = 1) {
 
 function updateZombies(dt) {
   Zombies.flowT -= dt;
-  const pc = idx(clamp(Math.floor(player.pos.x), 0, GW - 1), clamp(Math.floor(player.pos.z), 0, GH - 1));
+  const pc = player.k;
   if (Zombies.flowT <= 0 || pc !== Zombies.lastCell) {
-    computeFlow(player.pos.x, player.pos.z);
+    computeFlow(pc);
     Zombies.flowT = 0.3;
     Zombies.lastCell = pc;
   }
@@ -7770,9 +8769,9 @@ function updateZombie(z, dt) {
   if (z.groanT <= 0) { z.groanT = rand(3.5, 8); Sound.zombie(z.pos, 'groan'); }
   switch (z.state) {
     case 'rise': {
-      z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1)));
+      z.pos.y = z.gy - z.riseD * (1 - smooth(clamp(z.t / 1.3, 0, 1)));
       z.moving = 0;
-      if (z.t >= 1.3) { z.pos.y = 0; z.state = z.win ? 'approach' : 'chase'; z.t = 0; }
+      if (z.t >= 1.3) { z.pos.y = z.gy; z.state = z.win ? 'approach' : 'chase'; z.t = 0; }
       break;
     }
     case 'approach': {
@@ -7796,7 +8795,7 @@ function updateZombie(z, dt) {
       z.moving = 0;
       z.yaw = turnTo(z.yaw, Math.atan2(-z.win.nx, -z.win.nz), 8 * dt);
       const pd = Math.hypot(player.pos.x - z.pos.x, player.pos.z - z.pos.z);
-      if (z.win.boards <= 2 && pd < 1.95 && !player.down) {
+      if (z.win.boards <= 2 && pd < 1.95 && !player.down && Math.abs(player.gy - z.gy) < 1.5) {
         z.state = 'attack'; z.winAttack = true; z.t = 0; z.attackHit = false;
         Sound.zombie(z.pos, 'attack');
         break;
@@ -7813,10 +8812,13 @@ function updateZombie(z, dt) {
       const ix = z.win.x + 0.5 - z.win.nx * 0.95, iz = z.win.z + 0.5 - z.win.nz * 0.95;
       z.pos.x = lerp(z.climbFrom.x, ix, smooth(k));
       z.pos.z = lerp(z.climbFrom.z, iz, smooth(k));
-      z.pos.y = Math.sin(k * Math.PI) * 0.7;
+      z.pos.y = z.gy + Math.sin(k * Math.PI) * 0.7;
       z.moving = 0;
       if (k >= 1) {
-        z.pos.y = 0; z.state = 'chase'; z.t = 0; z.outside = false;
+        z.state = 'chase'; z.t = 0; z.outside = false;
+        z.k = nearestNode(z.pos.x, z.pos.z, z.gy);
+        if (z.k >= 0) z.gy = surfY(z.k, z.pos.x, z.pos.z);
+        z.pos.y = z.gy;
         leaveWindow(z);
         z.lastX = z.pos.x; z.lastZ = z.pos.z;
       }
@@ -7829,18 +8831,25 @@ function updateZombie(z, dt) {
   if (z.alive && !z.removed) animateZombie(z, dt);
 }
 
+/* Poursuite : en ligne droite si le joueur est en vue sur le même sol (même niveau, pas sur un
+   escalier) ; sinon le champ de flux, qui passe par les portes ouvertes et les escaliers. */
 function chase(z, dt) {
   const px = player.pos.x, pz = player.pos.z;
   const dx = px - z.pos.x, dz = pz - z.pos.z, d = Math.hypot(dx, dz) || 1e-3;
+  const sameFloor = Math.abs(player.gy - z.gy) < 1;
   z.losT -= dt;
-  if (z.losT <= 0) { z.losT = rand(0.2, 0.35); z.los = d < 14 && losClear(z.pos.x, z.pos.z, px, pz, 0.28); }
+  if (z.losT <= 0) {
+    z.losT = rand(0.2, 0.35);
+    z.los = d < 14 && sameFloor && (NL === 1 || (player.k >= 0 && z.k >= 0 && levelOfNode(player.k) === levelOfNode(z.k) && stairAt[player.k] < 0))
+      && losClear(z.k, z.pos.x, z.pos.z, px, pz, 0.28);
+  }
   let mx, mz;
   if (z.los) { mx = dx / d; mz = dz / d; }
-  else if (flowDir(z.pos.x, z.pos.z, _fd)) { mx = _fd.x; mz = _fd.z; }
+  else if (flowDir(z.k, z.pos.x, z.pos.z, _fd)) { mx = _fd.x; mz = _fd.z; }
   else { mx = dx / d; mz = dz / d; }
   let sx = 0, sz = 0;
   for (const o of Zombies.list) {
-    if (o === z || !o.alive || o.outside) continue;
+    if (o === z || !o.alive || o.outside || Math.abs(o.gy - z.gy) > 1) continue;
     const ox = z.pos.x - o.pos.x, oz = z.pos.z - o.pos.z, od2 = ox * ox + oz * oz;
     if (od2 < 0.5 && od2 > 1e-6) {
       const od = Math.sqrt(od2);
@@ -7857,16 +8866,17 @@ function chase(z, dt) {
   z.knockX = damp(z.knockX, 0, 6, dt);
   z.knockZ = damp(z.knockZ, 0, 6, dt);
   const pdx = z.pos.x - px, pdz = z.pos.z - pz, pd = Math.hypot(pdx, pdz), min = 0.62;
-  if (pd < min && pd > 1e-4) { z.pos.x = px + (pdx / pd) * min; z.pos.z = pz + (pdz / pd) * min; }
-  collideCircle(z.pos, 0.28);
+  if (sameFloor && pd < min && pd > 1e-4) { z.pos.x = px + (pdx / pd) * min; z.pos.z = pz + (pdz / pd) * min; }
+  settleBody(z, 0.28);
+  z.pos.y = z.gy;
   z.moving = Math.hypot(z.vx, z.vz);
   z.yaw = turnTo(z.yaw, z.los || z.moving < 0.2 ? Math.atan2(dx, dz) : Math.atan2(z.vx, z.vz), 7 * dt);
-  if (d < 1.25 && !player.down && z.stagger <= 0) {
+  if (d < 1.25 && sameFloor && !player.down && z.stagger <= 0) {
     z.state = 'attack'; z.t = 0; z.attackHit = false; z.winAttack = false;
     if (Math.random() < 0.6) Sound.zombie(z.pos, 'attack');
   }
   // recyclage des traînards et des bloqués
-  z.farT = flowAt(z.pos.x, z.pos.z) > 42 && !z.los ? z.farT + dt : 0;
+  z.farT = flowAt(z.k) > 42 && !z.los ? z.farT + dt : 0;
   z.stuckT -= dt;
   if (z.stuckT <= 0) {
     z.stuckT = 4;
@@ -7883,11 +8893,12 @@ function attack(z, dt) {
   if (!z.winAttack && d > 0.8) {
     const st = Math.min(d - 0.8, 0.9 * dt);
     z.pos.x += (dx / d) * st; z.pos.z += (dz / d) * st;
-    collideCircle(z.pos, 0.28);
+    settleBody(z, 0.28);
+    z.pos.y = z.gy;
   }
   if (!z.attackHit && z.t >= 0.42) {
     z.attackHit = true;
-    if (d < (z.winAttack ? 2.05 : 1.6) && !player.down) playerDamage(RULES.zombieHit * (z.type || BASE_TYPE).mult.damage);
+    if (d < (z.winAttack ? 2.05 : 1.6) && !player.down && Math.abs(player.gy - z.gy) < 1.5) playerDamage(RULES.zombieHit * (z.type || BASE_TYPE).mult.damage);
   }
   if (z.t >= 0.95) {
     z.state = z.winAttack ? 'tear' : 'chase';
@@ -7895,17 +8906,20 @@ function attack(z, dt) {
   }
 }
 function updateCorpse(z, dt) {
-  if (z.flingVY !== 0 || z.pos.y > 0) {
+  // hauteur au-dessus du sol (projeté par une explosion)
+  let h = z.pos.y - z.gy;
+  if (z.flingVY !== 0 || h > 0) {
     z.flingVY -= 14 * dt;
-    z.pos.y += z.flingVY * dt;
-    if (z.pos.y <= 0) { z.pos.y = 0; z.flingVY = 0; z.vx *= 0.4; z.vz *= 0.4; }
+    h += z.flingVY * dt;
+    if (h <= 0) { h = 0; z.flingVY = 0; z.vx *= 0.4; z.vz *= 0.4; }
   }
   if (z.t < 3) {
     z.pos.x += z.vx * dt; z.pos.z += z.vz * dt;
     z.vx = damp(z.vx, 0, 3, dt); z.vz = damp(z.vz, 0, 3, dt);
-    if (!z.outside) collideCircle(z.pos, 0.25);
+    if (!z.outside) settleBody(z, 0.25);
+    z.pos.y = z.gy + h;
   } else {
-    z.pos.y = -smooth(clamp((z.t - 3) / 1.2, 0, 1)) * 0.7;
+    z.pos.y = z.gy - smooth(clamp((z.t - 3) / 1.2, 0, 1)) * z.sinkD;
   }
   if (z.t > 4.3) { removeZombie(z); return; }
   animateZombie(z, dt);
@@ -7995,15 +9009,15 @@ function pickSpawnPoint() {
   const cand = World.windows.filter((w) => G.activeZones.has(w.zone));
   for (const r of World.risers) {
     if (!G.activeZones.has(r.zone)) continue;
-    if (Math.hypot(player.pos.x - r.x, player.pos.z - r.z) < 3) continue;
+    if (Math.hypot(player.pos.x - r.x, player.pos.z - r.z) < 3 && Math.abs(LVY[r.li] - player.gy) < 1.5) continue;
     cand.push(r);
   }
   return weightedPick(cand, (w) => {
     if (w.riser) {
-      const d = flowAt(w.x, w.z);
+      const d = flowAt(w.k);
       return 1 / (1 + Math.pow(Math.min(d, 60) / 9, 2)) + 0.02;
     }
-    const d = flowAt(w.x + 0.5 - w.nx, w.z + 0.5 - w.nz);
+    const d = flowAt(node(w.li, w.x - w.nx, w.z - w.nz));
     return 1 / (1 + Math.pow(Math.min(d, 60) / 9, 2)) / (1 + w.queue.length * 0.6) + 0.02;
   });
 }
@@ -8056,7 +9070,7 @@ function buildFeatures() {
 function buildWindows(group) {
   for (const w of World.windows) {
     w.boards = 6; w.queue = []; w.repairT = 0; w.planks = [];
-    w.cx = w.x + 0.5; w.cz = w.z + 0.5;
+    w.cx = w.x + 0.5; w.cz = w.z + 0.5; w.E = LVY[w.li];
     const ry = w.nx !== 0 ? Math.PI / 2 : 0;
     for (let i = 0; i < 6; i++) {
       const m = new THREE.Mesh(GEO.box, MAT.board);
@@ -8064,14 +9078,15 @@ function buildWindows(group) {
       m.rotation.order = 'YXZ';
       const tilt = (i % 2 ? 1 : -1) * wr(0.1, 0.3);
       const depth = -0.3 - (i % 2) * 0.05;
-      const rest = new THREE.Vector3(w.cx + w.nx * depth, WIN_LO + 0.17 + i * 0.2, w.cz + w.nz * depth);
+      const rest = new THREE.Vector3(w.cx + w.nx * depth, w.E + WIN_LO + 0.17 + i * 0.2, w.cz + w.nz * depth);
       m.position.copy(rest);
       m.rotation.set(0, ry, tilt);
+      if (NL > 1) m.userData.lv = LV[w.li];
       group.add(m);
       w.planks.push({ m, rest, ry, tilt, state: 'on', t: 0, vx: 0, vy: 0, vz: 0, spin: 0, from: new THREE.Vector3() });
     }
     Features.interactables.push({
-      kind: 'window', x: w.cx - w.nx * 1.05, z: w.cz - w.nz * 1.05, r: 1.6, hold: true,
+      kind: 'window', x: w.cx - w.nx * 1.05, z: w.cz - w.nz * 1.05, y: w.E, r: 1.6, hold: true,
       prompt() { return w.boards < 6 ? { text: 'Maintenez F pour reconstruire la barricade' } : null; },
       useHold(dt) {
         w.repairT -= dt;
@@ -8093,19 +9108,19 @@ Features.tearBoard = function (w) {
   p.vz = w.nz * rand(2.2, 3.6) + rand(-0.7, 0.7);
   p.spin = rand(-8, 8);
   w.boards = Math.max(0, w.boards - 1);
-  Sound.boardBreak({ x: w.cx, z: w.cz });
+  Sound.boardBreak({ x: w.cx, y: w.E, z: w.cz });
   spawnPuff(p.m.position.x, p.m.position.y, p.m.position.z, 0.5, 0.6, 0x8a7a66, 0.35, 0.2);
 };
 function repairBoard(w, withPoints) {
   const p = w.planks.find((q) => q.state === 'gone') || w.planks.find((q) => q.state === 'off');
   if (!p) return;
   p.state = 'repair'; p.t = 0;
-  p.from.set(w.cx - w.nx * 1.0 + rand(-0.3, 0.3), 0.15, w.cz - w.nz * 1.0 + rand(-0.3, 0.3));
+  p.from.set(w.cx - w.nx * 1.0 + rand(-0.3, 0.3), w.E + 0.15, w.cz - w.nz * 1.0 + rand(-0.3, 0.3));
   p.m.visible = true;
   w.boards = Math.min(6, w.boards + 1);
   // statistiques : seulement les planches reclouées par le joueur (pas le bonus Charpentier)
   if (withPoints) { Life.add('boards'); if (w.boards >= 6) Life.add('windowsSealed'); }
-  Sound.boardPlace({ x: w.cx, z: w.cz });
+  Sound.boardPlace({ x: w.cx, y: w.E, z: w.cz });
   // points de réparation plafonnés par manche, comme dans le jeu d'origine
   if (withPoints && G.repairPts < RULES.repairCap) { addPoints(RULES.pointsBoard); G.repairPts += RULES.pointsBoard; }
 }
@@ -8117,7 +9132,7 @@ function updateWindows(dt) {
         p.vy -= 12 * dt;
         p.m.position.x += p.vx * dt; p.m.position.y += p.vy * dt; p.m.position.z += p.vz * dt;
         p.m.rotation.z += p.spin * dt; p.m.rotation.x += p.spin * 0.4 * dt;
-        if (p.m.position.y < 0.05) { p.m.position.y = 0.05; p.vy = Math.abs(p.vy) * 0.2; p.vx *= 0.5; p.vz *= 0.5; p.spin *= 0.5; }
+        if (p.m.position.y < w.E + 0.05) { p.m.position.y = w.E + 0.05; p.vy = Math.abs(p.vy) * 0.2; p.vx *= 0.5; p.vz *= 0.5; p.spin *= 0.5; }
         if (p.t > 2.2) { p.state = 'gone'; p.m.visible = false; }
       } else if (p.state === 'repair') {
         p.t += dt;
@@ -8141,17 +9156,19 @@ function repairAllWindows() {
 function buildDoors(group) {
   for (const id in World.doors) {
     const d = World.doors[id], def = LAYOUT.doors[id];
-    Object.assign(d, { cost: def.cost, type: def.type, verb: def.verb, pieces: [], anim: -1 });
-    const xs = d.cells.map((i) => i % GW), zs = d.cells.map((i) => (i / GW) | 0);
+    const E = LVY[d.li];
+    Object.assign(d, { cost: def.cost, type: def.type, verb: def.verb, pieces: [], anim: -1, E });
+    const xs = d.cells.map((k) => (k % GN) % GW), zs = d.cells.map((k) => ((k % GN) / GW) | 0);
     const x0 = Math.min(...xs), x1 = Math.max(...xs) + 1, z0 = Math.min(...zs), z1 = Math.max(...zs) + 1;
     d.cx = (x0 + x1) / 2; d.cz = (z0 + z1) / 2;
     const alongX = x1 - x0 > z1 - z0, width = alongX ? x1 - x0 : z1 - z0;
     d.group = new THREE.Group();
+    d.group.userData.lv = LV[d.li];
     group.add(d.group);
     const add = (mat, sx, sy, sz, lx, ly, lz, rx = 0, ry = 0, rz = 0) => {
       const m = new THREE.Mesh(GEO.box, mat);
       m.scale.set(sx, sy, sz);
-      m.position.set(alongX ? d.cx + lx : d.cx + lz, ly, alongX ? d.cz + lz : d.cz + lx);
+      m.position.set(alongX ? d.cx + lx : d.cx + lz, E + ly, alongX ? d.cz + lz : d.cz + lx);
       m.rotation.set(rx, (alongX ? 0 : Math.PI / 2) + ry, rz);
       d.group.add(m);
       d.pieces.push({ m, pos: m.position.clone(), rot: m.rotation.clone(), scale: m.scale.clone(), vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 });
@@ -8174,7 +9191,7 @@ function buildDoors(group) {
       }
     }
     Features.interactables.push({
-      kind: 'door', x: d.cx, z: d.cz, r: 2.3,
+      kind: 'door', x: d.cx, z: d.cz, y: E, r: 2.3,
       prompt() { return d.opened ? null : { text: `Appuyez sur F pour ${d.verb}`, cost: d.cost }; },
       use() { if (!d.opened && trySpend(d.cost)) openDoor(d); },
     });
@@ -8183,11 +9200,11 @@ function buildDoors(group) {
 function openDoor(d) {
   d.opened = true;
   for (const i of d.cells) doorOpen[i] = 1;
-  for (const z of d.zones) G.activeZones.add(z);
+  for (const z of d.zones) activateZone(z);
   G.stats.doors++;
   Life.add('doors');
   Zombies.flowT = 0;
-  Sound.door(d.type, { x: d.cx, z: d.cz });
+  Sound.door(d.type, { x: d.cx, y: d.E, z: d.cz });
   d.anim = 0;
   for (const p of d.pieces) {
     if (d.type === 'debris') {
@@ -8195,7 +9212,7 @@ function openDoor(d) {
       p.ax = rand(-6, 6); p.ay = rand(-6, 6); p.az = rand(-6, 6);
     } else { p.vx = 0; p.vy = 2.6; p.vz = 0; p.ax = p.ay = p.az = 0; }
   }
-  for (let i = 0; i < 4; i++) spawnPuff(d.cx + rand(-0.8, 0.8), rand(0.3, 1.8), d.cz + rand(-0.8, 0.8), 1.2, 1.4, 0x7d776c, 0.5, 0.3);
+  for (let i = 0; i < 4; i++) spawnPuff(d.cx + rand(-0.8, 0.8), d.E + rand(0.3, 1.8), d.cz + rand(-0.8, 0.8), 1.2, 1.4, 0x7d776c, 0.5, 0.3);
 }
 function updateDoors(dt) {
   for (const id in World.doors) {
@@ -8208,7 +9225,7 @@ function updateDoors(dt) {
         p.vy -= 12 * dt;
         p.m.position.x += p.vx * dt; p.m.position.y += p.vy * dt; p.m.position.z += p.vz * dt;
         p.m.rotation.x += p.ax * dt; p.m.rotation.y += p.ay * dt; p.m.rotation.z += p.az * dt;
-        if (p.m.position.y < 0.1) { p.m.position.y = 0.1; p.vy = Math.abs(p.vy) * 0.25; p.vx *= 0.6; p.vz *= 0.6; }
+        if (p.m.position.y < d.E + 0.1) { p.m.position.y = d.E + 0.1; p.vy = Math.abs(p.vy) * 0.25; p.vx *= 0.6; p.vz *= 0.6; }
         if (d.anim > 0.9) p.m.scale.multiplyScalar(Math.pow(0.02, dt));
       } else {
         p.m.position.y += p.vy * dt;
@@ -8230,15 +9247,17 @@ function buildWallbuys(group) {
     const def = WEAPONS[wb.w];
     const price = wallbuyPrice(wb);
     const [cx, cz] = wb.cell, [nx, nz] = wb.n;
+    const li = Math.max(0, levelIndex(wb.lv || 0)), E = LVY[li];
     const fx = cx + 0.5 + nx * 0.506, fz = cz + 0.5 + nz * 0.506;
     const mat = new THREE.MeshStandardMaterial({ map: chalkTexture(wb.w), transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const mesh = new THREE.Mesh(GEO.plane, mat);
     mesh.scale.set(1.6, 0.8, 1);
-    mesh.position.set(fx, 1.65, fz);
-    mesh.lookAt(fx + nx, 1.65, fz + nz);
+    mesh.position.set(fx, E + 1.65, fz);
+    mesh.lookAt(fx + nx, E + 1.65, fz + nz);
+    mesh.userData.lv = LV[li];
     group.add(mesh);
     Features.interactables.push({
-      kind: 'wallbuy', x: fx + nx * 0.75, z: fz + nz * 0.75, r: 1.35,
+      kind: 'wallbuy', x: fx + nx * 0.75, z: fz + nz * 0.75, y: E, r: 1.35,
       prompt() {
         const slot = Arms.slots.find((s) => s && s.id === wb.w);
         if (!slot) return { text: `Appuyez sur F pour acheter ${def.name}`, cost: price };
@@ -8321,8 +9340,10 @@ function buildDigipass(group) {
   const rx = nz, rz = -nx;                                   // vers la droite, vu de la pièce
   const W = 0.16, H = 0.24, D = 0.04, FW = W - 0.012, FH = H - 0.012;
   const x = cx + 0.5 + nx * 0.5 + rx * d.off, z = cz + 0.5 + nz * 0.5 + rz * d.off;
+  const li = Math.max(0, levelIndex(d.lv || 0)), E = LVY[li];
   const root = new THREE.Group();
-  root.position.set(x, d.y, z);
+  root.position.set(x, E + d.y, z);
+  root.userData.lv = LV[li];
   root.rotation.y = Math.atan2(nx, nz);                      // l'avant du clavier regarde la pièce
   const plate = new THREE.Mesh(GEO.box, new THREE.MeshStandardMaterial({ color: 0x1d2022, roughness: 0.7, metalness: 0.3 }));
   plate.scale.set(W + 0.026, H + 0.026, 0.01); plate.position.z = 0.005;
@@ -8341,11 +9362,11 @@ function buildDigipass(group) {
   led.scale.setScalar(0.0055); led.position.set(FW * 0.4, FH * 0.5 - 0.011, D + 0.003);
   root.add(plate, body, face, screen, led);
   group.add(root);
-  const dp = { root, lcd, lcdTex, led, x, z, gone: false, blink: 0, ledCol: null };
+  const dp = { root, lcd, lcdTex, led, x, z, E, gone: false, blink: 0, ledCol: null };
   Features.digipass = dp;
   digipassLCD('- - - -');
   Features.interactables.push({
-    kind: 'digipass', x: x + nx * 0.6, z: z + nz * 0.6, r: 1.4,
+    kind: 'digipass', x: x + nx * 0.6, z: z + nz * 0.6, y: E, r: 1.4,
     prompt() { return dp.gone || Keypad.open ? null : { text: 'Appuyez sur F pour utiliser le Digi pass' }; },
     use() { openKeypad(); },
   });
@@ -8417,7 +9438,7 @@ function keypadType(d) {
 function updateKeypad(dt) {
   if (!Keypad.open) return;
   const dp = Features.digipass;
-  if (!dp || dp.gone || player.down || Math.hypot(player.pos.x - dp.x, player.pos.z - dp.z) > 2.4) { closeKeypad(); return; }
+  if (!dp || dp.gone || player.down || Math.hypot(player.pos.x - dp.x, player.pos.z - dp.z) > 2.4 || Math.abs(player.gy - dp.E) > 1.6) { closeKeypad(); return; }
   if (Keypad.state === 'typing') {
     for (let d = 0; d <= 9; d++) if (pressed(`Digit${d}`) || pressed(`Numpad${d}`)) keypadType(String(d));
     if (Keypad.state === 'typing' && pressed('Backspace') && Keypad.code) { Keypad.code = Keypad.code.slice(0, -1); Sound.keypad('key'); renderKeypad(); }
@@ -8464,15 +9485,18 @@ function buildPerks(group) {
   for (const pm of LAYOUT.perks) {
     const built = buildPerkMachine(pm.p);
     const [cx, cz] = pm.cell, [fx, fz] = pm.face;
-    built.group.position.set(cx + 0.5 - fx * 0.1, 0, cz + 0.5 - fz * 0.1);
+    const li = Math.max(0, levelIndex(pm.lv || 0)), E = LVY[li];
+    built.group.position.set(cx + 0.5 - fx * 0.1, E, cz + 0.5 - fz * 0.1);
     built.group.rotation.y = Math.atan2(fx, fz);
+    built.group.userData.lv = LV[li];
     group.add(built.group);
-    setProp(cx, cz, 2.1);
-    const m = Object.assign(built, { id: pm.p, active: true, cell: [cx, cz], sinkT: -1 });
+    setProp(li, cx, cz, 2.1);
+    // retirée (Second Souffle) : elle s'enfonce dans la terre, ou se tasse sur une dalle d'étage
+    const m = Object.assign(built, { id: pm.p, active: true, cell: [cx, cz], sinkT: -1, li, E, deep: riseDepth(li, cx + 0.5, cz + 0.5) > 1 });
     lightMachine(m, !PERKS[pm.p].power);
     Features.perkMachines.push(m);
     Features.interactables.push({
-      kind: 'perk', x: cx + 0.5 + fx * 1.0, z: cz + 0.5 + fz * 1.0, r: 1.5,
+      kind: 'perk', x: cx + 0.5 + fx * 1.0, z: cz + 0.5 + fz * 1.0, y: E, r: 1.5,
       prompt() {
         if (!m.active) return null;
         const perk = PERKS[m.id];
@@ -8507,8 +9531,10 @@ function updatePerkMachines(dt) {
   for (const m of Features.perkMachines) {
     if (m.sinkT < 0) continue;
     m.sinkT += dt;
-    m.group.position.y = -smooth(clamp(m.sinkT / 2.5, 0, 1)) * 2.4;
-    if (m.sinkT > 2.5 && m.group.visible) { m.group.visible = false; clearProp(m.cell[0], m.cell[1]); Zombies.flowT = 0; }
+    const k = smooth(clamp(m.sinkT / 2.5, 0, 1));
+    if (m.deep) m.group.position.y = m.E - k * 2.4;
+    else m.group.scale.y = Math.max(0.02, 1 - k);
+    if (m.sinkT > 2.5 && m.group.visible) { m.group.visible = false; clearProp(m.li, m.cell[0], m.cell[1]); Zombies.flowT = 0; }
   }
 }
 
@@ -8520,7 +9546,8 @@ function buildBox(group) {
     beam: buildBeam(), holder: new THREE.Group(), root: new THREE.Group(), displayModels: {}, display: null, skull: null,
   });
   for (const b of LAYOUT.boxes) {
-    box.locs.push({ cells: b.cells, face: b.face, x: (b.cells[0][0] + b.cells[1][0]) / 2 + 0.5, z: (b.cells[0][1] + b.cells[1][1]) / 2 + 0.5 });
+    const li = Math.max(0, levelIndex(b.lv || 0));
+    box.locs.push({ cells: b.cells, face: b.face, x: (b.cells[0][0] + b.cells[1][0]) / 2 + 0.5, z: (b.cells[0][1] + b.cells[1][1]) / 2 + 0.5, li, E: LVY[li] });
   }
   box.holder.position.y = 0.8;
   box.root.add(box.group, box.beam, box.holder);
@@ -8532,7 +9559,7 @@ function buildBox(group) {
   box.skull.visible = false;
   box.holder.add(box.skull);
   box.inter = {
-    kind: 'box', x: 0, z: 0, r: 1.6,
+    kind: 'box', x: 0, z: 0, y: 0, r: 1.6,
     prompt() {
       if (box.state === 'idle') return { text: 'Appuyez sur F pour la boîte mystère', cost: RULES.boxCost };
       if (box.state === 'offer') return { text: `Appuyez sur F pour prendre ${WEAPONS[box.offer].name}` };
@@ -8554,17 +9581,19 @@ function buildBox(group) {
 function placeBox(i) {
   const box = Features.box;
   const prev = box.locs[box.cur];
-  if (prev) for (const [x, z] of prev.cells) clearProp(x, z);
+  if (prev) for (const [x, z] of prev.cells) clearProp(prev.li, x, z);
   box.cur = i;
   const L = box.locs[i];
-  for (const [x, z] of L.cells) setProp(x, z, 0.78);
-  box.root.position.set(L.x - L.face[0] * 0.05, 0, L.z - L.face[1] * 0.05);
+  for (const [x, z] of L.cells) setProp(L.li, x, z, 0.78);
+  box.root.position.set(L.x - L.face[0] * 0.05, L.E, L.z - L.face[1] * 0.05);
+  box.root.userData.lv = LV[L.li];
   box.root.rotation.y = Math.atan2(L.face[0], L.face[1]);
   box.root.visible = true;
   box.group.position.y = 0; box.group.rotation.y = 0;
   box.beam.visible = true;
   box.inter.x = L.x + L.face[0] * 1.0;
   box.inter.z = L.z + L.face[1] * 1.0;
+  box.inter.y = L.E;
   Zombies.flowT = 0;
 }
 function boxShow(id) {
@@ -8623,7 +9652,7 @@ function updateBox(dt) {
           box.state = 'skull'; box.t = 0;
           boxShow(null);
           box.skull.visible = true; box.skull.position.y = 0;
-          Sound.boxLaugh({ x: box.root.position.x, z: box.root.position.z });
+          Sound.boxLaugh({ x: box.root.position.x, y: box.root.position.y, z: box.root.position.z });
           G.points += RULES.boxCost;
           HUD.pointsChanged(RULES.boxCost);
           HUD.banner('La boîte s’enfuit', 'Vos 950 points sont remboursés', 'warn');
@@ -8648,16 +9677,16 @@ function updateBox(dt) {
       if (box.t > 2.2) {
         box.state = 'leaving'; box.t = 0;
         box.skull.visible = false; box.beam.visible = false;
-        Sound.boxGone({ x: box.root.position.x, z: box.root.position.z });
+        Sound.boxGone({ x: box.root.position.x, y: box.root.position.y, z: box.root.position.z });
       }
       break;
     case 'leaving':
       box.group.position.y = box.t * box.t * 1.3;
       box.group.rotation.y += dt * (2 + box.t * 6);
       if (box.t > 2.2) {
-        spawnPuff(box.root.position.x, 1.5, box.root.position.z, 2.5, 0.6, 0x9fe8ff, 0.8, 0, true, TEX.glow);
+        spawnPuff(box.root.position.x, box.root.position.y + 1.5, box.root.position.z, 2.5, 0.6, 0x9fe8ff, 0.8, 0, true, TEX.glow);
         box.root.visible = false;
-        for (const [x, z] of box.locs[box.cur].cells) clearProp(x, z);
+        for (const [x, z] of box.locs[box.cur].cells) clearProp(box.locs[box.cur].li, x, z);
         Zombies.flowT = 0;
         box.state = 'away'; box.t = 0;
       }
@@ -8680,12 +9709,14 @@ function updateBox(dt) {
 function buildPowerSwitchFeature(group) {
   const ps = buildPowerSwitch();
   const [cx, cz] = LAYOUT.power.cell, [nx, nz] = LAYOUT.power.n;
-  ps.group.position.set(cx + 0.5 + nx * 0.5 + nx * 0.04, 0, cz + 0.5 + nz * 0.5 + nz * 0.04);
+  const li = Math.max(0, levelIndex(LAYOUT.power.lv || 0)), E = LVY[li];
+  ps.group.position.set(cx + 0.5 + nx * 0.5 + nx * 0.04, E, cz + 0.5 + nz * 0.5 + nz * 0.04);
   ps.group.rotation.y = Math.atan2(nx, nz);
+  ps.group.userData.lv = LV[li];
   group.add(ps.group);
   Features.power = Object.assign(ps, { anim: -1 });
   Features.interactables.push({
-    kind: 'power', x: cx + 0.5 + nx * 1.4, z: cz + 0.5 + nz * 1.4, r: 1.6,
+    kind: 'power', x: cx + 0.5 + nx * 1.4, z: cz + 0.5 + nz * 1.4, y: E, r: 1.6,
     prompt() { return G.power ? null : { text: 'Appuyez sur F pour rétablir le courant' }; },
     use() { if (!G.power) activatePower(); },
   });
@@ -8698,7 +9729,7 @@ function activatePower() {
   setPoweredLights();
   Features.perkMachines.forEach((m, i) => {
     if (!PERKS[m.id].power || !m.active) return;
-    schedule(0.7 + i * 0.4, () => { lightMachine(m, true); Sound.perkJingle(m.id, { x: m.group.position.x, z: m.group.position.z }); });
+    schedule(0.7 + i * 0.4, () => { lightMachine(m, true); Sound.perkJingle(m.id, { x: m.group.position.x, y: m.E, z: m.group.position.z }); });
   });
   const a = Features.amp;
   if (a) schedule(1.2, () => { setLin(a.tubeMat.color, 0x8a3ad0); a.labelMat.emissiveIntensity = 0.9; a.glow.material.opacity = 0.45; });
@@ -8725,16 +9756,18 @@ function updatePowerSwitch(dt) {
 function buildAmpFeature(group) {
   const a = buildAmp();
   const L = LAYOUT.amp;
+  const li = Math.max(0, levelIndex(L.lv || 0)), E = LVY[li];
   const x = (L.cells[0][0] + L.cells[1][0]) / 2 + 0.5, z = (L.cells[0][1] + L.cells[1][1]) / 2 + 0.5;
-  a.group.position.set(x, 0, z);
+  a.group.position.set(x, E, z);
   a.group.rotation.y = Math.atan2(L.face[0], L.face[1]);
-  for (const [cx, cz] of L.cells) setProp(cx, cz, 1.0);
+  a.group.userData.lv = LV[li];
+  for (const [cx, cz] of L.cells) setProp(li, cx, cz, 1.0);
   group.add(a.group);
   const amp = Features.amp = Object.assign(a, { state: 'idle', t: 0, weapon: null, display: null, models: {}, holder: new THREE.Group() });
   amp.holder.position.set(0, 1.12, 0.35);
   a.group.add(amp.holder);
   Features.interactables.push({
-    kind: 'amp', x: x + L.face[0] * 1.2, z: z + L.face[1] * 1.2, r: 1.7,
+    kind: 'amp', x: x + L.face[0] * 1.2, z: z + L.face[1] * 1.2, y: E, r: 1.7,
     prompt() {
       if (!G.power) return { text: "L'Amplificateur n'a pas de courant", disabled: true };
       if (amp.state === 'working') return { text: 'Amplification en cours…', disabled: true };
@@ -8759,7 +9792,7 @@ function buildAmpFeature(group) {
       amp.weapon = takeCurrentWeapon().id;
       amp.state = 'working'; amp.t = 0;
       ampShow(amp.weapon, false);
-      Sound.ampWork({ x, z });
+      Sound.ampWork({ x, y: E, z });
     },
   });
 }
@@ -8799,7 +9832,7 @@ function updateAmp(dt) {
       amp.state = 'ready'; amp.t = 0;
       ampShow(amp.weapon, true);
       setLin(amp.tubeMat.color, 0x8a3ad0);
-      Sound.perkJingle('mainleste', { x: amp.group.position.x, z: amp.group.position.z });
+      Sound.perkJingle('mainleste', { x: amp.group.position.x, y: amp.group.position.y, z: amp.group.position.z });
     }
   } else if (amp.state === 'ready') {
     amp.holder.position.z = lerp(-0.15, 0.4, clamp(amp.t / 0.7, 0, 1));
@@ -8815,17 +9848,19 @@ function buildSigns(group) {
   for (const s of LAYOUT.signs) {
     const tex = toTex(genLabel(s.text, 512, 128, { color: 'rgba(232,224,204,0.85)', chip: 900 }), { clamp: true });
     const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const li = Math.max(0, levelIndex(s.lv || 0)), y = LVY[li] + s.pos[1];
     const m = new THREE.Mesh(GEO.plane, mat);
     m.scale.set(1.7, 0.42, 1);
-    m.position.set(s.pos[0], s.pos[1], s.pos[2]);
-    m.lookAt(s.pos[0] + s.n[0], s.pos[1], s.pos[2] + s.n[1]);
+    m.position.set(s.pos[0], y, s.pos[2]);
+    m.lookAt(s.pos[0] + s.n[0], y, s.pos[2] + s.n[1]);
+    m.userData.lv = LV[li];
     group.add(m);
   }
 }
 
 /* -------------------------------------------------------------- Bonus --- */
-function maybeDropPowerup(x, z) {
-  if (Powerups.drops >= 4 || zoneAt(x, z) < 0) return;
+function maybeDropPowerup(x, z, gy = 0) {
+  if (Powerups.drops >= 4 || zoneAt(x, z, gy) < 0) return;
   const forced = Powerups.acc >= Powerups.threshold;
   if (!forced && Math.random() > 0.025) return;
   if (forced) { Powerups.acc = 0; Powerups.threshold = Math.round(Powerups.threshold * 1.14); }
@@ -8835,26 +9870,26 @@ function maybeDropPowerup(x, z) {
     if (!Powerups.bag.length) Powerups.bag = shuffle(Object.keys(POWERUPS).filter((k) => k !== 'carpenter'));
     type = Powerups.bag.pop();
   }
-  spawnPowerup(type, x, z);
+  spawnPowerup(type, x, z, gy);
   Powerups.drops++;
 }
-function spawnPowerup(type, x, z) {
+function spawnPowerup(type, x, z, gy = 0) {
   const m = buildPowerupModel(type);
-  m.position.set(x, 1, z);
+  m.position.set(x, gy + 1, z);
   scene.add(m);
-  Powerups.list.push({ type, m, x, z, t: 0, life: 26 });
-  Sound.powerupSpawn({ x, z });
+  Powerups.list.push({ type, m, x, z, gy, t: 0, life: 26 });
+  Sound.powerupSpawn({ x, y: gy, z });
 }
 function updatePowerups(dt) {
   for (let i = Powerups.list.length - 1; i >= 0; i--) {
     const p = Powerups.list[i];
     p.t += dt;
     p.m.rotation.y += dt * 1.8;
-    p.m.position.y = 1 + Math.sin(p.t * 3) * 0.1;
+    p.m.position.y = p.gy + 1 + Math.sin(p.t * 3) * 0.1;
     const left = p.life - p.t;
     p.m.visible = left > 6 || Math.floor(p.t * (left < 2.5 ? 10 : 5)) % 2 === 0;
     let remove = left <= 0;
-    if (!remove && !player.down && Math.hypot(player.pos.x - p.x, player.pos.z - p.z) < 1.25) {
+    if (!remove && !player.down && Math.hypot(player.pos.x - p.x, player.pos.z - p.z) < 1.25 && Math.abs(player.gy - p.gy) < 1.2) {
       applyPowerup(p.type);
       remove = true;
     }
@@ -8897,7 +9932,7 @@ function updateInteract(dt) {
     const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
     for (const it of Features.interactables) {
       const dx = it.x - player.pos.x, dz = it.z - player.pos.z, d = Math.hypot(dx, dz);
-      if (d > it.r) continue;
+      if (d > it.r || Math.abs(player.gy - (it.y || 0)) > 1.6) continue;
       const facing = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
       if (facing < -0.25 && d > 0.6) continue;
       const score = d - facing * 0.8;
@@ -8951,8 +9986,8 @@ function resetFeatures() {
     placeBox(Math.min(LAYOUT.boxStart, box.locs.length - 1));
   }
   for (const m of Features.perkMachines) {
-    m.active = true; m.sinkT = -1; m.group.visible = true; m.group.position.y = 0;
-    setProp(m.cell[0], m.cell[1], 2.1);
+    m.active = true; m.sinkT = -1; m.group.visible = true; m.group.position.y = m.E; m.group.scale.y = 1;
+    setProp(m.li, m.cell[0], m.cell[1], 2.1);
     lightMachine(m, !PERKS[m.id].power);
   }
   G.power = false;
@@ -9107,7 +10142,7 @@ function endRound() {
   HUD.round(true);
 }
 function onZombieKilled(z, info) {
-  if (info.kind !== 'nuke') maybeDropPowerup(z.pos.x, z.pos.z);
+  if (info.kind !== 'nuke') maybeDropPowerup(z.pos.x, z.pos.z, z.gy);
   if (G.roundState !== 'active') return;
   G.killed++;
   if (G.killed >= G.total) endRound();
@@ -9140,13 +10175,14 @@ function newGame(save) {
   G.points = CUR.map ? CUR.map.rules.startPoints : RULES.startPoints;
   G.grenades = 2;
   G.repairPts = 0;
-  G.activeZones = new Set([LAYOUT.startZone]);
+  G.activeZones = new Set();
+  activateZone(LAYOUT.startZone);
   G.timers.insta = 0; G.timers.double = 0;
   G.cheat = false;
   G.stats = freshStats();
   resetArms();
   Zombies.flowT = 0;
-  computeFlow(player.pos.x, player.pos.z);
+  computeFlow(player.k);
   if (save) restoreSave(save);
   HUD.full();
 }
@@ -9172,7 +10208,7 @@ function restoreSave(s) {
       if (!d) continue;
       d.opened = true; d.anim = 2;
       for (const i of d.cells) doorOpen[i] = 1;
-      for (const z of d.zones) G.activeZones.add(z);
+      for (const z of d.zones) activateZone(z);
       for (const p of d.pieces) p.m.visible = false;
     }
     if (s.power) powerOnQuiet();
@@ -9630,9 +10666,10 @@ function menuView() {
   const m = CUR.map;
   if (m && m.menuCam) return m.menuCam;
   const sp = m ? m.spawn.pos : [0, 0];
-  let look = [sp[0] - Math.sin(m ? m.spawn.yaw : 0) * 6, 1.3, sp[1] - Math.cos(m ? m.spawn.yaw : 0) * 6];
-  if (Features.box && Features.box.locs.length) { const L = Features.box.locs[Features.box.cur]; look = [L.x, 1.0, L.z]; }
-  return { pos: [sp[0], 1.72, sp[1]], look, sway: [1.2, 0.8] };
+  const E = m ? LVY[Math.max(0, levelIndex(m.spawn.lv || 0))] || 0 : 0;
+  let look = [sp[0] - Math.sin(m ? m.spawn.yaw : 0) * 6, E + 1.3, sp[1] - Math.cos(m ? m.spawn.yaw : 0) * 6];
+  if (Features.box && Features.box.locs.length) { const L = Features.box.locs[Features.box.cur]; if (Math.abs(L.E - E) < 1) look = [L.x, L.E + 1.0, L.z]; }
+  return { pos: [sp[0], E + 1.72, sp[1]], look, sway: [1.2, 0.8] };
 }
 function menuCamera(dt) {
   G.menuT += dt;
@@ -9663,7 +10700,7 @@ function frame(now) {
     if (G.state === 'playing') update(dt);
     else if (G.state === 'menu') menuCamera(dt);
     else if (G.state === 'editor' && window.ZSEditor) window.ZSEditor.frame(dt);
-    else if (G.state === 'gameover') { updateFX(dt); updateLights(dt, G.time += dt * 0.3); camera.position.y = damp(camera.position.y, 0.4, 1.5, dt); }
+    else if (G.state === 'gameover') { updateFX(dt); updateLights(dt, G.time += dt * 0.3); camera.position.y = damp(camera.position.y, player.gy + 0.4, 1.5, dt); }
   } catch (err) {
     console.error(err);
   }
@@ -9721,7 +10758,7 @@ function loadMap(map) {
   resetFeatures();
   resetPlayer();
   resetArms();
-  computeFlow(player.pos.x, player.pos.z);
+  computeFlow(player.k);
 }
 /* ------------------------------------------------- Sélection de la carte -- */
 const el = (tag, cls, text) => {
@@ -10279,6 +11316,9 @@ window.ZS = {
   setRenderEnabled(on) { renderEnabled = !!on; },
   get WALL_H() { return WALL_H; },
   get HEMI() { return HEMI; },
+  /* étages (interface 2) */
+  MAP_FORMAT, SLAB, HEADROOM, LEVEL_MIN, LEVEL_MAX, LEVELS_MAX, STAIR_SHAPES, STAIR_MATS, mapLevels, stairPlan, stairOpenings, mapUsesLevels, levelIndex,
+  get LV() { return LV; }, get LVY() { return LVY; }, get LVL_H() { return LVL_H; },
   T, cellTex, propFootprint, wallbuyPrice, registerCustomModels, glbReady, updateLights, setPoweredLights, resetLights, powerOnQuiet, resetFeatures, applyAmbiance, lightMachine,
   /* Reconstruit seulement les objets posés (ajout, suppression, changement de modèle). */
   rebuildProps() {
@@ -10317,7 +11357,7 @@ window.ZS = {
     renderer.setSize(size.x, size.y, false);
     return url;
   },
-  /* Partie de test sur une carte des Mod Tools : options.at = [x, z, lacet] pour partir d'ailleurs. */
+  /* Partie de test sur une carte des Mod Tools : options.at = [x, z, lacet, niveau] pour partir d'ailleurs. */
   playTest(map, opts = {}) {
     G.editorSession = true;
     viewCamera = null;
@@ -10325,10 +11365,11 @@ window.ZS = {
     G.mapId = map.id;
     resetFeatures();
     resetPlayer();
-    if (opts.at) { player.pos.set(opts.at[0], 0, opts.at[1]); player.yaw = opts.at[2] || 0; collideCircle(player.pos, 0.3); }
+    const at = () => { placePlayer(opts.at[0], opts.at[1], opts.at[3] || 0); player.yaw = opts.at[2] || 0; };
+    if (opts.at) at();
     resetArms();
     startGame(null);
-    if (opts.at) { player.pos.set(opts.at[0], 0, opts.at[1]); player.yaw = opts.at[2] || 0; collideCircle(player.pos, 0.3); const z = zoneAt(player.pos.x, player.pos.z); if (z >= 0) G.activeZones.add(z); computeFlow(player.pos.x, player.pos.z); }
+    if (opts.at) { at(); if (player.k >= 0) activateZone(zoneOf[player.k]); computeFlow(player.k); }
   },
   stopTest() {
     exitLock();
@@ -10348,12 +11389,12 @@ window.__zs = {
   step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { if (G.state === 'playing') update(dt); endFrameInput(); } },
   points(n) { G.points += n; HUD.pointsChanged(n); },
   give(id, up) { giveWeapon(id, !!up); },
-  tp(x, z, yaw) { player.pos.set(x, 0, z); if (yaw !== undefined) player.yaw = yaw; },
+  tp(x, z, yaw, lv) { placePlayer(x, z, lv); if (yaw !== undefined && yaw !== null) player.yaw = yaw; },
   power() { if (!G.power) activatePower(); },
   openAll() { for (const id in World.doors) if (!World.doors[id].opened) openDoor(World.doors[id]); },
   round(n) { clearZombies(); G.round = n - 1; G.roundState = 'pre'; G.roundT = 0.1; },
   god(on = true) { G.god = on; },
-  drop(type) { spawnPowerup(type, player.pos.x - Math.sin(player.yaw) * 2, player.pos.z - Math.cos(player.yaw) * 2); },
+  drop(type) { spawnPowerup(type, player.pos.x - Math.sin(player.yaw) * 2, player.pos.z - Math.cos(player.yaw) * 2, player.gy); },
   start() { startGame(null); },
   map(id) { const m = MAPS.byId[id]; if (m) { loadMap(m); refreshMenu(); } return !!m; },
   load(raw) { const m = normalizeMap(raw); loadMap(m); refreshMenu(); return validateMap(m); },

@@ -268,18 +268,25 @@
       if (test) { if (!(id in saved)) saved[id] = b.textContent; b.textContent = 'Retour aux Mod Tools'; } else if (id in saved) b.textContent = saved[id];
     }
   }
-  /* Case de sol (dans une pièce) la plus proche de (x, z), ou null si la carte n'a aucun sol. */
-  function nearestFloor(A, x, z) {
-    let best = null, bd = Infinity;
-    for (let cz = 0; cz < A.H; cz++) {
-      for (let cx = 0; cx < A.W; cx++) {
-        const i = A.ix(cx, cz);
-        if (A.g[i] !== 1 || A.zoneOf[i] < 0) continue;
-        const d = (cx + 0.5 - x) ** 2 + (cz + 0.5 - z) ** 2;
-        if (d < bd) { bd = d; best = [cx, cz]; }
+  /* Case de sol (dans une pièce) la plus proche de (x, z) au niveau lv (sinon au rez-de-chaussée),
+     ou null si la carte n'a aucun sol. Renvoie [x, z, lv]. */
+  function nearestFloor(A, x, z, lv = 0) {
+    const tries = A.zoneAll && A.liOf.has(lv) && lv !== 0 ? [lv, 0] : [0];
+    for (const L of tries) {
+      let best = null, bd = Infinity;
+      const li = A.zoneAll ? A.liOf.get(L) : 0;
+      for (let cz = 0; cz < A.H; cz++) {
+        for (let cx = 0; cx < A.W; cx++) {
+          const g = A.zoneAll ? A.gAll[A.K(li, cx, cz)] : A.g[A.ix(cx, cz)];
+          const zi = A.zoneAll ? A.zoneAll[A.K(li, cx, cz)] : A.zoneOf[A.ix(cx, cz)];
+          if (g !== 1 || zi < 0) continue;
+          const d = (cx + 0.5 - x) ** 2 + (cz + 0.5 - z) ** 2;
+          if (d < bd) { bd = d; best = [cx, cz, L]; }
+        }
       }
+      if (best) return best;
     }
-    return best;
+    return null;
   }
 
   /* Bandeau de la partie de test : les erreurs de la carte restent visibles pendant
@@ -326,19 +333,21 @@
     const notes = [];
     let at = null;
     if (fromCam) {
+      // depuis la caméra : au niveau affiché, sur la case de sol sous la caméra
       const c = MT.v3.cam.position;
-      if (MT.tileAt(Math.floor(c.x), Math.floor(c.z)) === '.') at = [c.x, c.z, MT.v3.yaw];
-      else notes.push('La caméra n’est pas au-dessus d’un sol : départ normal.');
+      if (MT.tileAt(Math.floor(c.x), Math.floor(c.z)) === '.') at = [c.x, c.z, MT.v3.yaw, S.level];
+      else notes.push('La caméra n’est pas au-dessus d’un sol du niveau affiché : départ normal.');
     }
     if (!at && v.analysis.startZone < 0) {
-      const p = nearestFloor(v.analysis, copy.spawn.pos[0], copy.spawn.pos[1]);
+      const p = nearestFloor(v.analysis, copy.spawn.pos[0], copy.spawn.pos[1], copy.spawn.lv | 0);
       if (!p) {
         UI.setTab('issues');
         MT.toast('Test impossible : la carte n’a aucune case de sol où démarrer.', 'error');
         return;
       }
       copy.spawn.pos = [p[0] + 0.5, p[1] + 0.5];
-      notes.push(`Départ hors du sol : la partie commence sur le sol le plus proche (x ${p[0]} · z ${p[1]}).`);
+      if (p[2]) copy.spawn.lv = p[2]; else delete copy.spawn.lv;
+      notes.push(`Départ hors du sol : la partie commence sur le sol le plus proche (${p[2] ? `${MT.levelName(p[2])}, ` : ''}x ${p[0]} · z ${p[1]}).`);
     }
     if (v.errors.length) UI.setTab('issues');
     MT.v3.setActive(false);
