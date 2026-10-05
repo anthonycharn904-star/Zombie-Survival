@@ -1,7 +1,7 @@
 # Zombie-Survival
 Prototype de mon jeu "Zombie Survival", qui j'espère deviendra un grand jeu dans le futur ! Mais toujours free-to-play
 
-Survie par manches dans le style du mode Zombies : barricades, armes au mur, boîte mystère, atouts, courant, Amplificateur. Un seul fichier HTML (Three.js r128), sons synthétisés, textures générées au démarrage.
+Survie par manches dans le style du mode Zombies : barricades, armes au mur, boîte mystère, atouts, courant, Pack-A-Punch. Un seul fichier HTML (Three.js r128), sons synthétisés, textures générées au démarrage.
 
 ## Installer le jeu (joueurs)
 
@@ -23,7 +23,7 @@ Ouvrir `game/zombie-survival.html` dans Chrome, Edge ou Firefox. Une connexion i
 
 ## Cartes
 
-Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, format 1) : grille de cases de 1 m (sol, murs, fenêtres, portes payantes, murets, piliers, caisses, cour des zombies), textures par case, pièces nommées, éléments de jeu (départ, armes murales, atouts, emplacements de la boîte mystère, interrupteur, Amplificateur, digi pass, lumières, panneaux, apparitions de zombies au sol), objets posés, ambiance et règles de la partie. Depuis le jeu 1.4.0, une carte peut avoir des étages et des sous-sols reliés par des escaliers (format 2, voir « Étages et escaliers » ; une carte sans étage reste au format 1).
+Depuis la version 1.1.0 du jeu, une carte est un fichier de données (JSON, format 1) : grille de cases de 1 m (sol, murs, fenêtres, portes payantes, murets, piliers, caisses, cour des zombies), textures par case, pièces nommées, éléments de jeu (départ, armes murales, atouts, emplacements de la boîte mystère, interrupteur, Pack-A-Punch, digi pass, lumières, panneaux, apparitions de zombies au sol), objets posés, ambiance et règles de la partie. Depuis le jeu 1.4.0, une carte peut avoir des étages et des sous-sols reliés par des escaliers (format 2, voir « Étages et escaliers » ; une carte sans étage reste au format 1).
 
 - **Bunker 7** est intégré au fichier du jeu.
 - Les autres cartes sont livrées dans le paquet du jeu : `maps/index.json` (ordre du menu) et `maps/<id>.json`. Une carte de ce dossier qui porte l'identifiant `bunker7` remplace celle qui est intégrée.
@@ -40,6 +40,23 @@ Depuis le jeu 1.4.0, une carte peut monter sur plusieurs niveaux : rez-de-chauss
 - **Le reste suit l'étage** : une lampe n'éclaire que son étage ; les tirs s'arrêtent sur les dalles (sauf à travers une trémie) ; une explosion ne traverse pas un plancher ; les sons venant d'un autre étage sont étouffés.
 - **Format 2** : `grid` et `layers` décrivent le rez-de-chaussée ; `floors: [{ lv, grid, layers }]` les autres niveaux ; chaque élément porte `lv` (absent = rez-de-chaussée ; pour une apparition au sol : `[x, z, lv]`) ; `stairs: [{ x, z, dir, shape, w, n, n2, turn, mat, lv }]` : case de la première marche, sens de la montée, forme (`straight`, `l`, `u`, `spiral`), largeur, longueur des volées, virage (1 à droite, -1 à gauche), matériau, niveau de départ ; l'escalier monte au niveau `lv + 1`.
 
+## Atouts et Pack-A-Punch
+
+Cinq distributeurs d'atout. Leurs noms ont changé avec le jeu 1.6.0 ; les identifiants (cartes, Mod Tools, sauvegardes) restent les mêmes.
+
+| Atout | Coût | Effet | Courant | Identifiant |
+|---|---|---|---|---|
+| Mastodonte | 2 500 | encaisser 5 coups au lieu de 2 | oui | `cuirasse` |
+| Rechargement rapide | 3 000 | rechargement deux fois plus rapide | oui | `mainleste` |
+| Double coup | 2 000 | cadence +33 %, dégâts ×1,5 | oui | `detente` |
+| Quick Revive | 500 | se relever seul (3 fois) | non | `souffle` |
+| Staminup | 2 000 | sprint illimité, +7 % de vitesse | oui | `endurance` |
+
+- **Boisson** (depuis le jeu 1.6.0, 2,75 s ; on ne peut pas tirer pendant ce temps) : l'arme descend ; la main droite apporte la bouteille aux couleurs de l'atout (étiquette avec sa lettre et son nom) et fait sauter la capsule du pouce ; elle porte le goulot à la bouche, la main tourne ; trois gorgées, tête en arrière, le liquide baisse ; l'atout est accordé après la dernière gorgée (à 1,85 s) ; la bouteille vide est jetée au sol, devant à droite, et l'arme remonte.
+- **Bouteille brisée** : elle se brise au premier choc (sol, mur, caisse, distributeur ; contre la machine elle-même, pas à la limite de sa case). Ses morceaux restent là où elle s'est cassée jusqu'à la fin de la partie : 30 éclats de verre, 7 bouts d'étiquette de la couleur de l'atout, le fond et le goulot. Au-delà de 1 200 éclats (une quarantaine de bouteilles), les plus anciens sont réutilisés.
+- **À terre pendant la boisson** : la bouteille tombe et se brise, l'atout n'est pas accordé.
+- **Pack-A-Punch** (« Amplificateur » avant le jeu 1.6.0) : améliore l'arme tenue pour 5 000 points, avec le courant. Les libellés des Mod Tools (palette, sélection) suivront avec la prochaine version du launcher ; les noms des atouts y sont déjà à jour, car ils viennent du jeu installé.
+
 ## Statistiques du joueur
 
 Depuis le jeu 1.2.0, le bouton **Statistiques** du menu affiche les compteurs de toute la vie du joueur sur ce poste (enregistrés dans le stockage local du jeu, clé `zs.stats`, pendant les parties ; sauvegardés à la pause, à la fin de partie, à la fermeture de la fenêtre et toutes les 20 s de jeu). Les parties de test des Mod Tools ne comptent pas.
@@ -47,7 +64,7 @@ Depuis le jeu 1.2.0, le bouton **Statistiques** du menu affiche les compteurs de
 - **Service** : heures de jeu total (temps passé en partie, pauses exclues), parties jouées, manches terminées, meilleure manche (records des cartes compris), points gagnés, points dépensés.
 - **Éliminations** : zombies tués ; dont tirs dans la tête, engins explosifs (grenades, Panzerschreck, munitions explosives), corps-à-corps, armes spéciales (Désintégrateur, Onde de choc), bonus Bombe ; précision des tirs (tirs ayant touché au moins un zombie / tirs).
 - **Défense du bunker** : portes ouvertes, fenêtres totalement barricadées (la dernière planche reclouée par le joueur ; le bonus Charpentier ne compte pas), planches reclouées, courant rétabli, fois à terre.
-- **Arsenal** : armes achetées au mur, tirages de la boîte mystère, atouts bus, armes amplifiées, bonus ramassés.
+- **Arsenal** : armes achetées au mur, tirages de la boîte mystère, atouts bus, armes passées au Pack-A-Punch, bonus ramassés.
 
 La précision de l'écran de fin de partie compte aussi un tir de fusil à pompe une seule fois, même si plusieurs plombs touchent.
 
@@ -167,6 +184,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **5 octobre 2026 — jeu 1.6.0** : atouts renommés (Mastodonte, Rechargement rapide, Double coup, Quick Revive, Staminup ; identifiants inchangés : cartes et sauvegardes compatibles) ; l'Amplificateur devient le Pack-A-Punch. Animation de boisson des atouts : bouteille aux couleurs de l'atout tenue en main, capsule, goulot à la bouche et trois gorgées, puis bouteille jetée au sol qui se brise au premier choc ; ses éclats et des bouts d'étiquette restent là où elle s'est cassée. Contient la correction du digi pass (1.5.1). Essai de bout en bout `launcher/e2e/perk-drink.e2e.js`. Les libellés « Pack-A-Punch » des Mod Tools sont dans le code du launcher, pas encore dans une version publiée.
 - **5 octobre 2026 — jeu 1.5.1** : le digi pass revient. La Bunker 7 publiée avec les jeux 1.4.0 et 1.5.0 (modifiée dans les Mod Tools avant l'ajout du digi pass) remplaçait la carte intégrée et n'en avait pas ; elle reprend maintenant celui de la carte intégrée, en gardant ses objets.
 - **5 octobre 2026 — launcher 1.2.6** (livre le jeu 1.5.0) : la fiche « Notes de version » est cliquable et ouvre l'**Historique des mises à jour** (toutes les versions publiées et leurs notes, aussi hors ligne) ; chaque publication joint au manifeste signé les notes des versions précédentes ; un jeu installé depuis l'installateur montre les notes publiées de sa version. Outil de publication : le dernier launcher en ligne reste annoncé même si celui qui publie est plus récent, avertissement quand aucun launcher n'est annoncé, rappel sous les notes que les précédentes restent dans l'historique.
 - **5 octobre 2026 — en ligne : jeu 1.4.0 (10 h 39) et jeu 1.5.0 (12 h 43)**, publiés par Anthony. Leurs pages n'ont pas de lien « Nouveau joueur ? » : l'outil de publication avait abandonné l'annonce du launcher 1.2.4 (corrigé dans le launcher 1.2.6).

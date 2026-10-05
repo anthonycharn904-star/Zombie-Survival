@@ -596,7 +596,7 @@ body {
   <div id="downed" hidden>
     <div class="downed-title">À terre</div>
     <div class="downed-bar"><i id="down-fill"></i></div>
-    <div class="downed-sub">Second Souffle vous relève…</div>
+    <div class="downed-sub">Quick Revive vous relève…</div>
   </div>
   <div id="lockhint" hidden>Souris libre : cliquez dans le jeu pour la capturer. Les flèches permettent aussi de tourner.</div>
 </div>
@@ -653,7 +653,7 @@ body {
         <li>Reclouez les planches des fenêtres : 10 points par planche.</li>
         <li>Les armes dessinées à la craie s'achètent au mur, munitions comprises.</li>
         <li id="tip-box">La boîte mystère donne une arme au hasard pour 950 points.</li>
-        <li id="tip-power">Rétablissez le courant dans la salle des machines pour les atouts et l'Amplificateur.</li>
+        <li id="tip-power">Rétablissez le courant dans la salle des machines pour les atouts et le Pack-A-Punch.</li>
       </ul>
     </aside>
   </div>
@@ -928,7 +928,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.5.1';
+const GAME_VERSION = '1.6.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 2;
 
@@ -1056,7 +1056,7 @@ let LAYOUT = { zones: [], doors: {}, wallbuys: [], perks: [], boxes: [], boxStar
    rpm = cadence ; mag/res = chargeur/réserve ; reload = secondes
    spread/ads = dispersion en degrés hanche/visée ; pen = zombies traversés
    box = poids dans la boîte mystère (0 = absent) ; wall = prix au mur
-   up = statistiques après l'Amplificateur                                    */
+   up = statistiques après le Pack-A-Punch                                    */
 const WEAPONS = {
   m1911: {
     name: 'M1911', kind: 'pistol', auto: false, rpm: 420, dmg: 40, mag: 8, res: 80, reload: 1.6,
@@ -1147,12 +1147,14 @@ const WEAPONS = {
 for (const id in WEAPONS) WEAPONS[id].id = id;
 
 /* --------------------------------------------------------------- Atouts -- */
+/* Identifiants inchangés (cartes et sauvegardes) ; noms depuis le jeu 1.6.0 (avant : Cuirasse,
+   Main Leste, Double Détente, Second Souffle, Endurance). */
 const PERKS = {
-  cuirasse: { name: 'Cuirasse', cost: 2500, color: '#b3231f', glyph: 'C', power: true, desc: 'Encaissez 5 coups au lieu de 2' },
-  mainleste: { name: 'Main Leste', cost: 3000, color: '#1f8f5a', glyph: 'M', power: true, desc: 'Rechargement deux fois plus rapide' },
-  detente: { name: 'Double Détente', cost: 2000, color: '#d49a1c', glyph: 'D', power: true, desc: 'Cadence +33 %, dégâts ×1,5' },
-  souffle: { name: 'Second Souffle', cost: 500, color: '#2f6fd1', glyph: 'S', power: false, desc: 'Vous vous relevez seul (3 fois)' },
-  endurance: { name: 'Endurance', cost: 2000, color: '#e0761c', glyph: 'E', power: true, desc: 'Sprint illimité, +7 % de vitesse' },
+  cuirasse: { name: 'Mastodonte', cost: 2500, color: '#b3231f', glyph: 'M', power: true, desc: 'Encaissez 5 coups au lieu de 2' },
+  mainleste: { name: 'Rechargement rapide', cost: 3000, color: '#1f8f5a', glyph: 'R', power: true, desc: 'Rechargement deux fois plus rapide' },
+  detente: { name: 'Double coup', cost: 2000, color: '#d49a1c', glyph: 'D', power: true, desc: 'Cadence +33 %, dégâts ×1,5' },
+  souffle: { name: 'Quick Revive', cost: 500, color: '#2f6fd1', glyph: 'Q', power: false, desc: 'Vous vous relevez seul (3 fois)' },
+  endurance: { name: 'Staminup', cost: 2000, color: '#e0761c', glyph: 'S', power: true, desc: 'Sprint illimité, +7 % de vitesse' },
 };
 const MAX_PERKS = 4;
 
@@ -1859,12 +1861,12 @@ function validateMap(m) {
     else if (b.cells.some((c) => onStairs(c, b.lv))) Wn(`Emplacement de boîte mystère n° ${i + 1} posé sur un escalier.`, P(b.cells[0], b.lv));
   });
   if (!m.boxes.length) Wn('Pas de boîte mystère sur cette carte.');
-  if (m.amp && !m.amp.cells.every(([x, z]) => floorAt(x, z, m.amp.lv | 0) && !onStairs([x, z], m.amp.lv))) Wn("L'Amplificateur doit être posé sur le sol (pas sur un escalier).", P(m.amp.cells[0], m.amp.lv));
+  if (m.amp && !m.amp.cells.every(([x, z]) => floorAt(x, z, m.amp.lv | 0) && !onStairs([x, z], m.amp.lv))) Wn("Le Pack-A-Punch doit être posé sur le sol (pas sur un escalier).", P(m.amp.cells[0], m.amp.lv));
   if (m.power && (tileAt(m.power.cell[0], m.power.cell[1], m.power.lv | 0) !== 2 || !floorAt(m.power.cell[0] + m.power.n[0], m.power.cell[1] + m.power.n[1], m.power.lv | 0))) Wn("L'interrupteur du courant doit être sur un mur, tourné vers le sol.", P(m.power.cell, m.power.lv));
   if (!m.power && !m.rules.powerOn) {
     const need = m.perks.filter((p) => PERKS[p.p].power).map((p) => PERKS[p.p].name);
     if (need.length) Wn(`Pas d'interrupteur du courant : ${need.join(', ')} ne fonctionner${need.length > 1 ? 'ont' : 'a'} jamais (ou cochez « Courant allumé au départ »).`);
-    if (m.amp) Wn("Pas d'interrupteur du courant : l'Amplificateur ne fonctionnera jamais.");
+    if (m.amp) Wn("Pas d'interrupteur du courant : le Pack-A-Punch ne fonctionnera jamais.");
   }
   const dp = m.digipass;
   if (dp && (tileAt(dp.cell[0], dp.cell[1], dp.lv | 0) !== 2 || !floorAt(dp.cell[0] + dp.n[0], dp.cell[1] + dp.n[1], dp.lv | 0))) Wn('Digi pass : il doit être sur un mur, tourné vers le sol.', P(dp.cell, dp.lv));
@@ -2263,17 +2265,42 @@ const Sound = (() => {
       tone('sine', 80, 40, t + 0.95, 0.4, 0.8, o);
     }
   }
-  function drink() {
+  /* Boisson d'atout : capsule qui saute, gorgées, bouteille lancée, verre qui se brise. */
+  function perkCap() {
     if (!ctx) return;
-    const t = ctx.currentTime, o = out(null, 0.4);
-    tone('sine', 3300, 3300, t, 0.15, 0.2, o);
-    for (let i = 0; i < 3; i++) noiseHit(t + 0.35 + i * 0.22, 0.12, 0.7, 'lowpass', 380, 200, 3, o);
-    const s = ctx.createOscillator(); s.type = 'sawtooth';
-    s.frequency.setValueAtTime(190, t + 1.1); s.frequency.linearRampToValueAtTime(150, t + 1.5);
-    const f = filt('bandpass', 750, 4); const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t + 1.1); g.gain.exponentialRampToValueAtTime(0.25, t + 1.15);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
-    s.connect(f); f.connect(g); g.connect(o); s.start(t + 1.1); s.stop(t + 1.55);
+    const t = ctx.currentTime, o = out(null, 0.32);
+    tone('sine', 2600, 900, t, 0.06, 0.5, o);
+    noiseHit(t, 0.2, 0.32, 'highpass', 3500, 6500, 0.7, o, 0.004);
+    tone('triangle', 4300, 4000, t + 0.1, 0.05, 0.12, o);
+  }
+  function gulp(i = 0) {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.42), f = 155 - i * 14;
+    tone('sine', f, f * 0.55, t, 0.17, 0.7, o, 0.012);
+    noiseHit(t, 0.15, 0.45, 'lowpass', 540, 240, 2.5, o, 0.012);
+  }
+  function bottleWhoosh() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.22);
+    noiseHit(t, 0.24, 0.6, 'bandpass', 500, 2400, 1.2, o, 0.06);
+  }
+  function glassBreak(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.8, 5); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.34, 0.9, 'highpass', 2200, 5600, 0.8, o, 0.002);
+    noiseHit(t, 0.07, 0.6, 'bandpass', 1500, 800, 1.2, o, 0.001);
+    tone('sine', 200, 70, t, 0.09, 0.32, o);
+    for (let i = 0; i < 10; i++) {
+      const f = rand(2600, 7600);
+      tone('sine', f, f * rand(0.97, 1), t + rand(0, 0.24), rand(0.06, 0.22), rand(0.04, 0.15), o, 0.001);
+    }
+  }
+  function glassTinkle(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.25, 4); if (!o) return;
+    const t = ctx.currentTime, f = rand(3000, 7000);
+    tone('sine', f, f, t, rand(0.04, 0.1), 0.12, o, 0.001);
   }
   const PERK_NOTES = {
     cuirasse: [196, 233.1, 293.7, 392],
@@ -2494,7 +2521,7 @@ const Sound = (() => {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
     zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
-    buy, deny, keypad, door, drink, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
+    buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say, rankStamp, rankUp, prestige,
   };
 })();
@@ -2694,11 +2721,50 @@ function genPerkPanel(perk) {
   g.beginPath(); g.arc(w / 2, 150, 70, 0, TAU); g.fill();
   g.fillStyle = perk.color; g.font = `900 110px ${FONT_DISPLAY}`; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(perk.glyph, w / 2, 156);
-  g.fillStyle = '#fff6e6'; g.font = `900 46px ${FONT_DISPLAY}`; g.textBaseline = 'alphabetic';
+  g.fillStyle = '#fff6e6'; g.textBaseline = 'alphabetic';
   const words = perk.name.toUpperCase().split(' ');
-  words.forEach((wd, i) => g.fillText(wd, w / 2, 290 + i * 46));
+  words.forEach((wd, i) => {
+    let size = 46;
+    g.font = `900 ${size}px ${FONT_DISPLAY}`;
+    while (size > 22 && g.measureText(wd).width > w - 44) { size -= 2; g.font = `900 ${size}px ${FONT_DISPLAY}`; }
+    g.fillText(wd, w / 2, 290 + i * 46);
+  });
   g.font = `700 34px ${FONT_HUD}`; g.fillStyle = 'rgba(255,240,200,0.9)';
   g.fillText(String(perk.cost), w / 2, h - 50);
+  return c;
+}
+/* Étiquette de la bouteille d'atout, enroulée autour du verre : bandeau de la couleur de
+   l'atout, médaillon avec la lettre devant (u = 0, coupé en deux sur les bords) et derrière
+   (u = 0,5), nom de l'atout sur les deux côtés. Dessin original. */
+function genBottleLabel(perk) {
+  const w = 512, h = 160;
+  const c = makeCanvas(w, h), g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, h);
+  gr.addColorStop(0, perk.color); gr.addColorStop(0.6, perk.color); gr.addColorStop(1, '#140e0a');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,0.18)';
+  for (let x = 0; x < w; x += 8) g.fillRect(x, 0, 3, h);
+  g.fillStyle = 'rgba(255,238,205,0.92)';
+  g.fillRect(0, 10, w, 5); g.fillRect(0, h - 15, w, 5);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const medal = (cx) => {
+    g.fillStyle = '#f3e4c2'; g.beginPath(); g.arc(cx, h / 2, 50, 0, TAU); g.fill();
+    g.strokeStyle = perk.color; g.lineWidth = 5; g.beginPath(); g.arc(cx, h / 2, 41, 0, TAU); g.stroke();
+    g.fillStyle = perk.color; g.font = `900 64px ${FONT_DISPLAY}`;
+    g.fillText(perk.glyph, cx, h / 2 + 3);
+  };
+  medal(0); medal(w); medal(w / 2);
+  const words = perk.name.toUpperCase().split(' ');
+  const lines = words.length > 1 && perk.name.length > 11 ? [words[0], words.slice(1).join(' ')] : [words.join(' ')];
+  g.fillStyle = '#fff3dc';
+  for (const cx of [w / 4, (3 * w) / 4]) {
+    lines.forEach((line, i) => {
+      let size = lines.length > 1 ? 30 : 36;
+      g.font = `900 ${size}px ${FONT_DISPLAY}`;
+      while (size > 14 && g.measureText(line).width > 140) { size -= 2; g.font = `900 ${size}px ${FONT_DISPLAY}`; }
+      g.fillText(line, cx, h / 2 + (lines.length > 1 ? (i - 0.5) * 32 : 2));
+    });
+  }
   return c;
 }
 function genLabel(text, w, h, opts = {}) {
@@ -4134,9 +4200,11 @@ function buildTextures() {
   TEX.zskin = genZombieSkin();
   TEX.zcloth = genZombieCloth();
   TEX.perk = {};
+  TEX.bottleLabel = {};
   for (const id in PERKS) {
     const pc = genPerkPanel(PERKS[id]);
     TEX.perk[id] = toTex(pc, { clamp: true });
+    TEX.bottleLabel[id] = toTex(genBottleLabel(PERKS[id]), { clamp: true });
   }
   for (const k in TEX) {
     if (TEX[k] && TEX[k].isTexture) share(TEX[k]);
@@ -5662,7 +5730,12 @@ function buildMaterials() {
   MAT.sleeve = std({ color: 0x4f5638, map: TEX.cloth, roughness: 0.95 });
   MAT.glove = std({ color: 0x3b2a1d, roughness: 0.7 });
   MAT.blade = std({ color: 0xb8bcc0, roughness: 0.25, metalness: 0.9 });
-  MAT.bottleGlass = std({ color: 0x223322, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 });
+  MAT.bottleGlass = std({ color: 0x8fa596, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.34, depthWrite: false });
+  // capsule : peu métallique (sans reflet d'environnement, un laiton très métallique paraît noir)
+  MAT.bottleCap = std({ color: 0xd9b45c, roughness: 0.35, metalness: 0.25 });
+  // éclats de la bouteille brisée : verre avec un léger reflet, teinté par l'atout (couleur par éclat)
+  MAT.glassShard = std({ color: 0xffffff, roughness: 0.08, metalness: 0.35, transparent: true, opacity: 0.88, emissive: 0x26302c, side: THREE.DoubleSide });
+  MAT.labelScrap = std({ color: 0xffffff, roughness: 0.75, metalness: 0, side: THREE.DoubleSide });
   // zombies
   // une légère émission garde les silhouettes lisibles dans le noir, derrière les fenêtres
   MAT.zSkin = std({ map: TEX.zskin, vertexColors: true, roughness: 0.78, emissive: 0x2c3528, emissiveIntensity: 1 });
@@ -5935,6 +6008,85 @@ function buildPerkMachine(id) {
   g.add(body, panel, sign, slot, feet, glow);
   return { group: g, panelMat, signMat, glow };
 }
+/* Bouteille d'atout (dessin original) : verre fumé tourné, liquide de la couleur de l'atout,
+   étiquette enroulée (lettre et nom), capsule dorée. Origine au fond, 20,5 cm de haut. Sert à
+   la vue à la première personne (boisson) et à la bouteille lancée qui se brise. */
+const BOTTLE = { h: 0.205, neck: 0.195, liquidY: 0.006, liquidH: 0.118 };
+let BOTTLE_GEO = null;
+function bottleGeometries() {
+  if (BOTTLE_GEO) return BOTTLE_GEO;
+  const V = (r, y) => new THREE.Vector2(r, y);
+  const glass = new THREE.LatheGeometry([V(0.0001, 0), V(0.027, 0), V(0.0315, 0.005), V(0.032, 0.112), V(0.0285, 0.128),
+    V(0.0195, 0.146), V(0.0128, 0.16), V(0.0122, 0.189), V(0.0138, 0.192), V(0.0138, 0.198), V(0.0108, 0.2), V(0.0001, 0.2)], 22);
+  // sans fonds : bouteille couchée, on ne voit pas un disque plein au bout du liquide
+  const liquid = new THREE.CylinderGeometry(0.0292, 0.0292, 1, 18, 1, true);
+  liquid.translate(0, 0.5, 0);
+  // étiquette au-dessus de la main qui tient la bouteille par le bas
+  const label = new THREE.CylinderGeometry(0.0327, 0.0327, 0.06, 28, 1, true);
+  label.translate(0, 0.08, 0);
+  const cap = new THREE.CylinderGeometry(0.0152, 0.0146, 0.0075, 18);
+  const capOn = cap.clone();
+  capOn.translate(0, 0.2025, 0);
+  BOTTLE_GEO = { glass, liquid, label, cap, capOn };
+  return BOTTLE_GEO;
+}
+const BOTTLE_MATS = { label: {}, liquid: {} };
+function bottleMats(id) {
+  if (!BOTTLE_MATS.label[id]) {
+    BOTTLE_MATS.label[id] = new THREE.MeshStandardMaterial({ map: TEX.bottleLabel[id], roughness: 0.55 });
+    const c = new THREE.Color(PERKS[id].color).convertSRGBToLinear();
+    BOTTLE_MATS.liquid[id] = new THREE.MeshStandardMaterial({ color: c, emissive: c.clone().multiplyScalar(0.35), roughness: 0.25 });
+  }
+  return { label: BOTTLE_MATS.label[id], liquid: BOTTLE_MATS.liquid[id] };
+}
+function buildBottle(id, { full = true, cap = true } = {}) {
+  const G = bottleGeometries(), M = bottleMats(id);
+  const g = new THREE.Group();
+  const liquid = new THREE.Mesh(G.liquid, M.liquid);
+  liquid.position.y = BOTTLE.liquidY;
+  liquid.scale.y = BOTTLE.liquidH;
+  liquid.visible = full;
+  const label = new THREE.Mesh(G.label, M.label);
+  const glass = new THREE.Mesh(G.glass, MAT.bottleGlass);
+  glass.renderOrder = 2;
+  const capM = new THREE.Mesh(G.capOn, MAT.bottleCap);
+  capM.visible = cap;
+  g.add(liquid, label, glass, capM);
+  g.userData = { liquid, label, glass, cap: capM };
+  return g;
+}
+/* Habille une bouteille aux couleurs d'un atout (la bouteille de la vue à la première personne sert à tous). */
+function dressBottle(g, id, full = true) {
+  const M = bottleMats(id), u = g.userData;
+  u.label.material = M.label;
+  u.liquid.material = M.liquid;
+  u.liquid.visible = full;
+  u.liquid.position.y = BOTTLE.liquidY;
+  u.liquid.scale.y = BOTTLE.liquidH;
+  u.cap.visible = true;
+}
+/* Main droite gantée qui tient la bouteille par le bas (repère de la bouteille : fond au centre,
+   y vers le goulot, +z vers le joueur quand elle est droite) : dos de la main sur le côté droit,
+   doigts enroulés derrière, pouce devant sous l'étiquette. GRIP_WRIST : le poignet, où arrive
+   l'avant-bras. */
+const GRIP_WRIST = [0.058, 0.022, 0.006];
+function buildGripHand() {
+  const g = new THREE.Group();
+  const box = (sx, sy, sz, x, y, z, rz = 0) => {
+    const m = new THREE.Mesh(GEO.box, MAT.glove);
+    m.scale.set(sx, sy, sz); m.position.set(x, y, z); m.rotation.z = rz;
+    g.add(m);
+  };
+  box(0.022, 0.066, 0.064, 0.043, 0.034, -0.004);          // paume et dos de la main
+  box(0.03, 0.05, 0.05, 0.058, 0.024, 0.004);              // poignet
+  for (let i = 0; i < 4; i++) {
+    const y = 0.009 + i * 0.0158;
+    box(0.068, 0.0135, 0.017, 0.006, y, -0.039);           // doigt enroulé derrière la bouteille
+    box(0.017, 0.0135, 0.03, -0.031, y, -0.022);           // bout du doigt, sur le côté gauche
+  }
+  box(0.048, 0.017, 0.018, 0.014, 0.032, 0.037, -0.22);    // pouce, devant
+  return g;
+}
 function buildBoxModel() {
   const g = new THREE.Group();
   const body = new THREE.Mesh(GEO.box, MAT.boxSide);
@@ -5979,7 +6131,7 @@ function buildAmp() {
     t.scale.set(0.06, 0.7, 0.06); t.position.set(-0.4 + i * 0.4, 2.1, -0.12);
     g.add(t);
   }
-  const labelTex = toTex(genLabel('AMPLIFICATEUR', 512, 96, { bg: '#1a1420', color: '#e9d8ff', chip: 300 }), { clamp: true });
+  const labelTex = toTex(genLabel('PACK-A-PUNCH', 512, 96, { bg: '#1a1420', color: '#e9d8ff', chip: 300 }), { clamp: true });
   const labelMat = new THREE.MeshStandardMaterial({ map: labelTex, emissiveMap: labelTex, emissive: 0xffffff, emissiveIntensity: 0.05 });
   const label = new THREE.Mesh(GEO.plane, labelMat);
   label.scale.set(1.2, 0.22, 1); label.position.set(0, 1.5, 0.195);
@@ -7602,7 +7754,7 @@ const SPECIMEN_MODELS = {
    explosions et projectiles (roquettes, plasma).
    ============================================================================ */
 const FX = {
-  decals: [], decalIdx: 0, debris: [], helmets: [], sprites: [], projectiles: [], grenades: [],
+  decals: [], decalIdx: 0, debris: [], helmets: [], sprites: [], projectiles: [], grenades: [], bottles: [], glass: null,
   shake: 0, muzzleLight: null, boomLight: null, boomT: 0,
 };
 
@@ -7705,7 +7857,229 @@ function buildFX() {
   FX.muzzleLight = new THREE.PointLight(0xffb060, 0, 9, 2);
   FX.boomLight = new THREE.PointLight(0xff8a3a, 0, 16, 2);
   group.add(FX.muzzleLight, FX.boomLight);
+  group.add(buildGlass());
   return group;
+}
+
+/* ------------------------------------------- Verre des bouteilles d'atout --
+   Une bouteille lancée se brise au premier choc : des éclats de verre, des bouts d'étiquette (de la
+   couleur de l'atout), le fond et le goulot partent de ce point, rebondissent, puis restent là où
+   ils sont tombés jusqu'à la fin de la partie (au plus GLASS.max éclats : les plus anciens sont
+   réutilisés). */
+const GLASS = { max: 1200, chunksMax: 96, scrapsMax: 320, perBottle: 30, scraps: 7 };
+function buildGlass() {
+  const tri = new THREE.BufferGeometry();
+  // prisme triangulaire plat (taille 1 × 0,12 × 1), à plat dans le plan horizontal
+  const P = [[-0.5, 0, -0.35], [0.5, 0, -0.42], [0.05, 0, 0.55]];
+  const pos = [];
+  const face = (a, b, c) => pos.push(...a, ...b, ...c);
+  const top = P.map((p) => [p[0], 0.06, p[2]]), bot = P.map((p) => [p[0], -0.06, p[2]]);
+  face(top[0], top[2], top[1]); face(bot[0], bot[1], bot[2]);
+  for (let i = 0; i < 3; i++) { const j = (i + 1) % 3; face(top[i], top[j], bot[j]); face(top[i], bot[j], bot[i]); }
+  tri.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  tri.computeVertexNormals();
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const inst = (geo, mat, n) => {
+    const m = new THREE.InstancedMesh(geo, mat, n);
+    m.frustumCulled = false;
+    for (let i = 0; i < n; i++) { m.setMatrixAt(i, zero); m.setColorAt(i, _glassCol.set(0xffffff)); }
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    return m;
+  };
+  FX.glass = {
+    shards: inst(tri, MAT.glassShard, GLASS.max),
+    chunks: inst(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true), MAT.glassShard, GLASS.chunksMax),
+    scraps: inst(GEO.box, MAT.labelScrap, GLASS.scrapsMax),
+    list: [], next: { shard: 0, chunk: 0, scrap: 0 }, moving: 0,
+  };
+  const g = new THREE.Group();
+  g.add(FX.glass.shards, FX.glass.chunks, FX.glass.scraps);
+  return g;
+}
+const _glassCol = new THREE.Color(), _glassObj = new THREE.Object3D();
+/* Hauteur où un éclat se pose : sol du niveau, ou dessus d'une caisse ou d'un objet. */
+function surfaceBelow(x, z, y) {
+  if (NL > 1) return floorBelow(x, z, y);
+  const cx = Math.floor(x), cz = Math.floor(z);
+  if (!inb(cx, cz)) return 0;
+  const k = cz * GW + cx, ty = grid[k];
+  if ((ty === T.CRATE || ty === T.PROP || ty === T.LOW) && y >= solidTop[k] - 0.03) return solidTop[k];
+  return 0;
+}
+/* Distributeurs d'atout : leur case entière arrête les tirs et les déplacements, mais le verre se
+   brise et rebondit contre la machine elle-même, plus étroite que sa case. machineAt : distributeur
+   de la case du point (x, y, z) ; inMachine : le point est dans la machine (marge r). */
+function machineAt(x, z, y) {
+  const cx = Math.floor(x), cz = Math.floor(z);
+  for (const m of Features.perkMachines) if (m.cell[0] === cx && m.cell[1] === cz && m.group.visible && y > m.E - 1.5 && y < m.E + 3.5) return m;
+  return null;
+}
+function machineHalf(m, r) {
+  const side = Math.abs(Math.sin(m.group.rotation.y)) > 0.5;
+  return [(side ? 0.36 : 0.45) + r, (side ? 0.45 : 0.36) + r, 2.29 * m.group.scale.y + r];
+}
+function inMachine(m, x, y, z, r) {
+  const p = m.group.position, [hx, hz, top] = machineHalf(m, r);
+  return Math.abs(x - p.x) < hx && Math.abs(z - p.z) < hz && y > p.y - r && y < p.y + top;
+}
+function glassBlocked(x, y, z, ox, oz) {
+  const m = machineAt(x, z, y);
+  return m ? inMachine(m, x, y, z, 0.004) : debrisHit(x, y, z, ox, oz);
+}
+/* Bouteille lancée par le joueur (x, y, z : son milieu ; quat : orientation de départ, celle de la
+   bouteille dans la main) : elle culbute en vol et se brise au premier choc. */
+function throwBottle(id, x, y, z, vx, vy, vz, quat = null) {
+  const b = buildBottle(id, { full: false, cap: false });
+  b.position.y = -BOTTLE.h / 2;                 // tourne autour de son milieu
+  const g = new THREE.Group();
+  g.add(b);
+  g.position.set(x, y, z);
+  if (quat) g.quaternion.copy(quat);
+  else g.rotation.set(rand(-0.4, 0.4), rand(0, TAU), rand(-0.4, 0.4));
+  scene.add(g);
+  FX.bottles.push({ g, id, x, y, z, vx, vy, vz, ax: -rand(9, 14), az: rand(-3, 3), t: 0 });
+}
+function updateBottles(dt) {
+  const R = 0.035;
+  for (let i = FX.bottles.length - 1; i >= 0; i--) {
+    const b = FX.bottles[i];
+    b.t += dt;
+    b.vy -= 12 * dt;
+    const sp = Math.hypot(b.vx, b.vy, b.vz), step = sp * dt;
+    let hit = false, nx = 0, ny = 1, nz = 0;
+    if (sp > 0.01) {
+      raycast(b.x, b.y, b.z, b.vx / sp, b.vy / sp, b.vz / sp, step + 0.07);
+      // la case d'un distributeur ne compte pas : c'est la machine qui arrête la bouteille (plus bas)
+      if (RAY.hit && RAY.t <= step + 0.07 && !(RAY.type === T.PROP && machineAt(RAY.x - RAY.nx * 0.01, RAY.z - RAY.nz * 0.01, RAY.y))) {
+        hit = true; b.x = RAY.x; b.y = RAY.y; b.z = RAY.z; nx = RAY.nx; ny = RAY.ny; nz = RAY.nz;
+      }
+    }
+    if (!hit) {
+      b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+      const m = machineAt(b.x, b.z, b.y);
+      if (m && inMachine(m, b.x, b.y, b.z, R)) {
+        // contre la face de la machine la moins enfoncée
+        const p = m.group.position, [hx, hz, top] = machineHalf(m, R);
+        const dx = b.x - p.x, dz = b.z - p.z;
+        const px = hx - Math.abs(dx), pz = hz - Math.abs(dz), py = p.y + top - b.y;
+        hit = true; nx = 0; ny = 0; nz = 0;
+        if (py < px && py < pz) { ny = 1; b.y = p.y + top - R; }
+        else if (px < pz) { nx = Math.sign(dx) || 1; b.x = p.x + nx * (hx - R + 0.01); }
+        else { nz = Math.sign(dz) || 1; b.z = p.z + nz * (hz - R + 0.01); }
+      } else {
+        const fy = surfaceBelow(b.x, b.z, b.y + 0.25);
+        if (b.y <= fy + 0.06) { hit = true; b.y = fy; nx = 0; ny = 1; nz = 0; }
+      }
+    }
+    if (hit || b.t > 4) {
+      scene.remove(b.g);
+      FX.bottles.splice(i, 1);
+      shatterBottle(b.id, b.x, b.y, b.z, nx, ny, nz, b.vx, b.vz);
+      continue;
+    }
+    b.g.position.set(b.x, b.y, b.z);
+    b.g.rotateX(b.ax * dt); b.g.rotateZ(b.az * dt);
+  }
+}
+/* Bouteille brisée au point (x, y, z), face (nx, ny, nz) : bruit de verre, reflets, éclats. */
+function shatterBottle(id, x, y, z, nx, ny, nz, vx, vz) {
+  Sound.glassBreak({ x, y, z });
+  for (let i = 0; i < 8; i++) FX.sparks.emit(x, y + 0.03, z, rand(-1.2, 1.2), rand(0.4, 1.6), rand(-1.2, 1.2), rand(0.1, 0.25), 0.75, 0.85, 0.8);
+  const tint = new THREE.Color(PERKS[id] ? PERKS[id].color : '#ffffff');
+  const piece = (kind, sx, sy, sz) => {
+    const G = FX.glass;
+    const mesh = kind === 'chunk' ? G.chunks : kind === 'scrap' ? G.scraps : G.shards;
+    const max = kind === 'chunk' ? GLASS.chunksMax : kind === 'scrap' ? GLASS.scrapsMax : GLASS.max;
+    const idx = G.next[kind];
+    G.next[kind] = (idx + 1) % max;
+    // un emplacement réutilisé : l'ancien éclat disparaît de la liste
+    const old = G.list.findIndex((e) => e.mesh === mesh && e.idx === idx);
+    if (old >= 0) G.list.splice(old, 1);
+    // verre clair un peu teinté ; bouts d'étiquette de la couleur de l'atout
+    if (kind === 'scrap') _glassCol.copy(tint).multiplyScalar(rand(0.75, 1));
+    else _glassCol.set(0xd9e6e1).lerp(tint, kind === 'chunk' ? 0.18 : Math.random() < 0.25 ? 0.5 : 0.1);
+    mesh.setColorAt(idx, _glassCol);
+    mesh.instanceColor.needsUpdate = true;
+    // la plupart des morceaux restent près du point de choc, quelques-uns glissent plus loin
+    const sp = 0.4 + 1.7 * Math.random() ** 2;
+    const rx = rand(-1, 1), ry = rand(0.2, 1), rz = rand(-1, 1);
+    const e = {
+      mesh, idx, kind, sx, sy, sz, rest: false, t: 0,
+      x: x + rand(-0.03, 0.03) + nx * 0.03, y: y + 0.03 + Math.max(0, ny) * 0.02, z: z + rand(-0.03, 0.03) + nz * 0.03,
+      vx: (nx * 1.2 + rx) * sp * 0.6 + vx * 0.12, vy: (ny * 0.6 + ry) * sp * 0.55, vz: (nz * 1.2 + rz) * sp * 0.6 + vz * 0.12,
+      rx: rand(0, TAU), ry: rand(0, TAU), rz: rand(0, TAU), wx: rand(-14, 14), wy: rand(-10, 10), wz: rand(-14, 14),
+    };
+    G.list.push(e);
+    G.moving++;
+    writeGlass(e);
+  };
+  for (let i = 0; i < GLASS.perBottle; i++) {
+    const big = Math.random() < 0.3;
+    const sz = big ? rand(0.045, 0.075) : rand(0.018, 0.04);
+    piece('shard', sz * rand(0.7, 1.3), sz * rand(0.5, 1), sz * rand(0.7, 1.3));
+  }
+  for (let i = 0; i < GLASS.scraps; i++) piece('scrap', rand(0.022, 0.04), 0.0016, rand(0.016, 0.03));
+  piece('chunk', 0.031, 0.024, 0.031);              // le fond de la bouteille
+  piece('chunk', 0.0125, 0.055, 0.0125);            // le goulot
+}
+function writeGlass(e) {
+  _glassObj.position.set(e.x, e.y, e.z);
+  _glassObj.rotation.set(e.rx, e.ry, e.rz);
+  _glassObj.scale.set(e.sx, e.sy, e.sz);
+  _glassObj.updateMatrix();
+  e.mesh.setMatrixAt(e.idx, _glassObj.matrix);
+  e.mesh.instanceMatrix.needsUpdate = true;
+}
+/* Demi-épaisseur d'un morceau posé à plat (le goulot se couche sur le côté). */
+function glassHalf(e) {
+  if (e.kind === 'chunk') return e.sy > e.sx * 2 ? e.sx : e.sy / 2;
+  return e.kind === 'scrap' ? e.sy / 2 : e.sy * 0.06;
+}
+function updateGlass(dt) {
+  const G = FX.glass;
+  if (!G || !G.moving) return;
+  let moving = 0, tinkles = 0;
+  for (const e of G.list) {
+    if (e.rest) continue;
+    e.t += dt;
+    e.vy -= (e.kind === 'scrap' ? 6 : 9.8) * dt;     // le papier tombe moins vite
+    let nx = e.x + e.vx * dt, nz = e.z + e.vz * dt;
+    if (glassBlocked(nx, e.y, e.z, e.x, e.z)) { e.vx *= -0.35; nx = e.x; }
+    if (glassBlocked(e.x, e.y, nz, e.x, e.z)) { e.vz *= -0.35; nz = e.z; }
+    e.x = nx; e.z = nz; e.y += e.vy * dt;
+    e.rx += e.wx * dt; e.ry += e.wy * dt; e.rz += e.wz * dt;
+    const half = (e.kind === 'chunk' ? Math.min(e.sx, e.sy) : glassHalf(e)) + 0.002;
+    const fy = surfaceBelow(e.x, e.z, e.y + 0.25);
+    if (e.y < fy + half) {
+      e.y = fy + half;
+      if (Math.abs(e.vy) > 0.7 && e.kind !== 'scrap') {
+        if (tinkles < 2 && Math.abs(e.vy) > 1.4) { tinkles++; Sound.glassTinkle({ x: e.x, y: e.y, z: e.z }); }
+        e.vy = Math.abs(e.vy) * 0.25; e.wx *= 0.4; e.wy *= 0.5; e.wz *= 0.4;
+      } else e.vy = 0;
+      e.vx *= 0.55; e.vz *= 0.55;
+      if (e.vy === 0 && Math.hypot(e.vx, e.vz) < 0.12) {
+        // posé à plat (le goulot couché sur le côté)
+        e.rest = true;
+        e.rx = e.kind === 'chunk' && e.sy > e.sx * 2 ? Math.PI / 2 : rand(-0.12, 0.12);
+        e.rz = rand(-0.12, 0.12);
+        e.y = fy + glassHalf(e) + 0.001;
+      }
+    }
+    if (e.t > 6 && !e.rest) { e.rest = true; e.y = fy + half; }
+    writeGlass(e);
+    if (!e.rest) moving++;
+  }
+  G.moving = moving;
+}
+function clearGlass() {
+  for (const b of FX.bottles) scene.remove(b.g);
+  FX.bottles.length = 0;
+  const G = FX.glass;
+  if (!G) return;
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (const e of G.list) e.mesh.setMatrixAt(e.idx, zero);
+  for (const m of [G.shards, G.chunks, G.scraps]) m.instanceMatrix.needsUpdate = true;
+  G.list.length = 0; G.moving = 0; G.next.shard = G.next.chunk = G.next.scrap = 0;
 }
 
 function addDecal(kind, x, y, z, nx, ny, nz, size) {
@@ -7934,6 +8308,8 @@ function updateGrenades(dt) {
 
 function updateFX(dt) {
   FX.blood.update(dt); FX.sparks.update(dt); FX.dirt.update(dt);
+  updateBottles(dt);
+  updateGlass(dt);
   for (const d of FX.debris) {
     if (d.life <= 0) continue;
     d.life -= dt;
@@ -8001,11 +8377,12 @@ function clearFX() {
   for (const d of FX.debris) { d.life = 0; d.mesh.visible = false; }
   for (const h of FX.helmets) { h.life = 0; h.mesh.visible = false; }
   for (const p of FX.sprites) { p.life = 0; p.s.visible = false; }
+  clearGlass();
 }
 
 /* ================================================================ 07 JOUEUR ==
    Déplacement (ZQSD/WASD), sprint, saut, accroupi, santé avec régénération,
-   mise à terre et réanimation (Second Souffle), caméra et tremblements.
+   mise à terre et réanimation (Quick Revive), caméra et tremblements.
    ============================================================================ */
 /* pos : position au sol (x, z) ; k : nœud de la grille (case et niveau) ; gy : hauteur du sol sous
    le joueur (étage, marche) ; y : hauteur du saut au-dessus de ce sol. */
@@ -8194,7 +8571,9 @@ function updateCamera(dt) {
   const sh = FX.shake * FX.shake;
   camera.rotation.order = 'YXZ';
   camera.rotation.y = p.yaw + p.recoilYaw + rand(-1, 1) * sh * 0.025;
-  camera.rotation.x = p.pitch + p.recoil + p.punch + rand(-1, 1) * sh * 0.025;
+  // tête en arrière (boisson d'atout) : jamais au-delà de la verticale
+  const look = p.pitch + p.recoil + p.punch, ht = Arms.headTilt;
+  camera.rotation.x = look + (ht > 0 ? Math.min(ht, Math.max(0, 1.53 - look)) : Math.max(ht, Math.min(0, -1.53 - look))) + rand(-1, 1) * sh * 0.025;
   camera.rotation.z = (p.down ? 0.25 : 0) + rand(-1, 1) * sh * 0.01;
   // champ de vision horizontal → vertical, avec zoom de visée
   const slot = curSlot();
@@ -8219,7 +8598,7 @@ const Arms = {
   slots: [null, null], cur: 0,
   state: 'idle', t: 0, dur: 0, nextFire: 0, autoReloadAt: -1, pending: -1,
   bloom: 0, kick: 0, kickRot: 0, swayX: 0, swayY: 0, sprintK: 0, cycleT: 0,
-  knifeDone: false, throwDone: false, drinkId: null,
+  knifeDone: false, throwDone: false, drinkId: null, ev: 0, headTilt: 0, capV: null, capW: [0, 0, 0], capT: 0,
   root: null, holder: null, gun: null, models: {}, flash: null, flashT: 0,
 };
 const _dir = new THREE.Vector3(), _mw = new THREE.Vector3(), _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3();
@@ -8263,16 +8642,18 @@ function buildViewmodel() {
   const handle = new THREE.Mesh(GEO.box, MAT.gunWoodDark); handle.scale.set(0.024, 0.034, 0.1); handle.position.z = 0.02;
   const guard = new THREE.Mesh(GEO.box, MAT.gunMetal); guard.scale.set(0.02, 0.06, 0.012); guard.position.z = -0.03;
   Arms.knife.add(blade, handle, guard); Arms.knife.visible = false;
-  // bouteille
-  Arms.bottle = new THREE.Group();
-  Arms.bottleLiquid = new THREE.MeshStandardMaterial({ color: 0xaa2222, emissive: 0x330000, roughness: 0.3 });
-  const glass = new THREE.Mesh(GEO.cyl, MAT.bottleGlass); glass.scale.set(0.036, 0.16, 0.036);
-  const liquid = new THREE.Mesh(GEO.cyl, Arms.bottleLiquid); liquid.scale.set(0.031, 0.12, 0.031); liquid.position.y = -0.015;
-  const neck = new THREE.Mesh(GEO.cyl, MAT.bottleGlass); neck.scale.set(0.014, 0.07, 0.014); neck.position.y = 0.11;
-  Arms.bottle.add(glass, liquid, neck); Arms.bottle.visible = false;
+  // bouteille d'atout (habillée aux couleurs de l'atout acheté) et sa capsule qui saute
+  Arms.bottle = buildBottle('souffle');
+  Arms.bottle.visible = false;
+  Arms.cap = new THREE.Mesh(bottleGeometries().cap, MAT.bottleCap);
+  Arms.cap.visible = false;
+  Arms.capV = new THREE.Vector3();
+  Arms.grip = buildGripHand();
+  Arms.grip.visible = false;
+  Arms.root.add(Arms.grip);
   // grenade
   Arms.nade = new THREE.Mesh(GEO.sph, MAT.gunMetal2); Arms.nade.scale.set(0.04, 0.055, 0.04); Arms.nade.visible = false;
-  Arms.root.add(Arms.knife, Arms.bottle, Arms.nade);
+  Arms.root.add(Arms.knife, Arms.bottle, Arms.cap, Arms.nade);
   Arms.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare, color: 0xffd9a0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   Arms.flash.visible = false;
   vmScene.add(Arms.flash);
@@ -8292,6 +8673,8 @@ function refreshGunModel() {
 function resetArms() {
   Arms.slots = [null, null]; Arms.cur = 0;
   Arms.state = 'idle'; Arms.t = 0; Arms.dur = 0; Arms.nextFire = 0; Arms.autoReloadAt = -1;
+  Arms.ev = 0; Arms.headTilt = 0; Arms.drinkId = null;
+  if (Arms.bottle) { Arms.bottle.visible = false; Arms.cap.visible = false; Arms.grip.visible = false; }
   Arms.bloom = Arms.kick = Arms.kickRot = 0; Arms.cycleT = 0;
   giveWeapon(CUR.map ? CUR.map.rules.startWeapon : 'm1911');
 }
@@ -8356,11 +8739,104 @@ function startThrow() {
   if (G.grenades <= 0 || !['idle', 'reload'].includes(Arms.state) || player.down) return;
   Arms.state = 'throw'; Arms.t = 0; Arms.dur = 0.6; Arms.throwDone = false;
 }
+/* Boisson d'atout (temps en secondes depuis l'achat) : l'arme descend, la main droite apporte la
+   bouteille et fait sauter la capsule du pouce, porte le goulot à la bouche (la main tourne) et le
+   joueur boit trois gorgées tête en arrière ; l'atout est accordé, puis la bouteille vide est jetée
+   au sol devant à droite : elle se brise au premier choc et ses éclats restent là où elle s'est
+   cassée. L'arme remonte. À terre pendant la boisson : la bouteille tombe et se brise, l'atout
+   n'est pas accordé. */
+const DRINK = { lower: 0.28, bring: 0.6, cap: 0.7, uncap: 0.82, mouth: 1.02, gulps: [1.12, 1.38, 1.64], grant: 1.85, away: 1.98, wind: 2.08, release: 2.18, follow: 2.32, end: 2.75 };
+const DRINK_EV = { cap: 1, gulp: 2, grant: 16, release: 32, dropped: 64, whoosh: 128 };
+// bouche dans la vue de l'arme (x à droite, y en haut, z vers l'arrière) : le goulot y est posé
+const DRINK_MOUTH = [0, -0.085, -0.045];
+/* Poses de la bouteille aux moments clés : position du fond (null : goulot à la bouche), bascule θ
+   autour de x (la bouteille se couche vers le joueur), rotation ψ sur elle-même (la main tourne),
+   inclinaison λ sur le côté ; rotation = Rz(λ)·Rx(θ)·Ry(ψ). */
+const DRINK_KEYS = [
+  [DRINK.lower, [0.22, -0.56, -0.34], 0.5, 0.2, -0.5],
+  [DRINK.bring, [0.07, -0.145, -0.37], 0.05, -0.19, 0.04],
+  [DRINK.uncap, [0.068, -0.14, -0.365], 0.04, -0.21, 0.03],
+  [DRINK.mouth, null, 1.9, -1.57, 0],
+  [DRINK.grant, null, 2.12, -1.57, 0],
+  [DRINK.away, [0.12, -0.15, -0.3], 0.6, -1.4, -0.4],
+  [DRINK.wind, [0.2, -0.08, -0.27], -0.2, -1.5, -0.8],
+  [DRINK.release, [0.17, -0.17, -0.5], -1.0, -1.5, -1.0],
+];
+const DRINK_POSE = { p: new THREE.Vector3(), th: 0, ps: 0, la: 0 };
+const _dpA = new THREE.Vector3(), _dpB = new THREE.Vector3(), _dpE = new THREE.Euler(0, 0, 0, 'ZXY');
+function drinkKeyPos(k, th, ps, la, out) {
+  if (k[1]) return out.fromArray(k[1]);
+  _dpE.set(th, ps, la, 'ZXY');
+  out.set(0, BOTTLE.neck, 0).applyEuler(_dpE);
+  return out.set(DRINK_MOUTH[0] - out.x, DRINK_MOUTH[1] - out.y, DRINK_MOUTH[2] - out.z);
+}
+/* Pose de la bouteille à l'instant t (objet partagé) ; dth : bascule en plus (gorgée). */
+function drinkPose(t, dth = 0) {
+  const K = DRINK_KEYS, P = DRINK_POSE;
+  let i = 0;
+  while (i < K.length - 2 && t > K[i + 1][0]) i++;
+  const a = K[i], b = K[i + 1];
+  let q = clamp((t - a[0]) / (b[0] - a[0]), 0, 1);
+  q = i === K.length - 2 ? q * q : smooth(q);   // le lancer part de plus en plus vite
+  P.th = lerp(a[2], b[2], q) + dth; P.ps = lerp(a[3], b[3], q); P.la = lerp(a[4], b[4], q);
+  if (!a[1] && !b[1]) drinkKeyPos(a, P.th, P.ps, P.la, P.p);     // le goulot reste à la bouche
+  else P.p.lerpVectors(drinkKeyPos(a, a[2], a[3], a[4], _dpA), drinkKeyPos(b, b[2], b[3], b[4], _dpB), q);
+  return P;
+}
 function startDrink(perkId) {
-  Arms.state = 'drink'; Arms.t = 0; Arms.dur = 1.9; Arms.drinkId = perkId;
-  setLin(Arms.bottleLiquid.color, PERKS[perkId].color);
-  setLin(Arms.bottleLiquid.emissive, PERKS[perkId].color).multiplyScalar(0.3);
-  Sound.drink();
+  Arms.state = 'drink'; Arms.t = 0; Arms.dur = DRINK.end; Arms.drinkId = perkId; Arms.ev = 0;
+  Arms.autoReloadAt = -1;
+  dressBottle(Arms.bottle, perkId, true);
+  Arms.cap.visible = false;
+  Sound.swap();
+}
+/* Le pouce fait sauter la capsule : elle part en tournant (vue de l'arme). */
+function flickCap() {
+  const c = Arms.bottle.userData.cap;
+  Arms.bottle.updateMatrixWorld(true);
+  _v1.set(0, 0.2025, 0).applyMatrix4(Arms.bottle.matrixWorld);
+  Arms.cap.position.copy(_v1);
+  Arms.cap.rotation.copy(Arms.bottle.rotation);
+  c.visible = false;
+  Arms.cap.visible = true;
+  Arms.capV.set(rand(0.25, 0.4), rand(0.85, 1.05), rand(0.05, 0.15));
+  Arms.capW = [rand(9, 15), rand(-4, 4), rand(6, 12)];
+  Arms.capT = 0;
+}
+/* Point de départ dans le monde d'une bouteille qui quitte la main : le point de l'écran où elle
+   est dessinée (vue de l'arme), vu par la caméra du joueur, à 42 cm (ou contre le mur s'il est
+   plus près). */
+function bottleWorldStart(out) {
+  const B = Arms.bottle;
+  B.updateMatrixWorld(true);
+  _v1.set(0, BOTTLE.h / 2, 0).applyMatrix4(B.matrixWorld).project(vmCamera);
+  _v1.z = 0.5;
+  cameraBasis();
+  _v1.unproject(camera).sub(camera.position).normalize();
+  const c = camera.position;
+  let d = 0.42;
+  raycast(c.x, c.y, c.z, _v1.x, _v1.y, _v1.z, d);
+  if (RAY.hit && RAY.t < d) d = Math.max(0.05, RAY.t - 0.06);
+  return out.set(c.x + _v1.x * d, c.y + _v1.y * d, c.z + _v1.z * d);
+}
+/* Orientation dans le monde de la bouteille dessinée dans la main (la caméra de l'arme est fixe). */
+const _btQ = new THREE.Quaternion(), _btE = new THREE.Euler(0, 0, 0, 'YXZ');
+function bottleWorldQuat() {
+  return _btQ.copy(camera.quaternion).multiply(Arms.bottle.quaternion);
+}
+function releaseBottle() {
+  const o = bottleWorldStart(_tmp);
+  // jetée vers le sol devant à droite (repère du regard, tangage limité : elle part toujours vers le bas)
+  _btE.set(clamp(player.pitch, -0.7, 0.2), player.yaw, 0, 'YXZ');
+  _v2.set(2.3, -2.1, -0.9).applyEuler(_btE);
+  throwBottle(Arms.drinkId, o.x, o.y, o.z, _v2.x + player.vel.x * 0.6, _v2.y, _v2.z + player.vel.z * 0.6, bottleWorldQuat());
+  Arms.bottle.visible = false;
+}
+function dropBottle() {
+  if (Arms.t < DRINK.lower || Arms.t >= DRINK.release) return;   // pas en main
+  const o = bottleWorldStart(_tmp);
+  throwBottle(Arms.drinkId, o.x, o.y, o.z, player.vel.x * 0.5 - Math.sin(player.yaw) * 0.4, -0.5, player.vel.z * 0.5 - Math.cos(player.yaw) * 0.4, bottleWorldQuat());
+  Arms.bottle.visible = false;
 }
 function armsBusy() { return !['idle', 'reload', 'swapIn'].includes(Arms.state); }
 
@@ -8598,12 +9074,23 @@ function updateArms(dt) {
       }
       if (Arms.t >= Arms.dur) { Arms.state = 'swapIn'; Arms.t = 0; Arms.dur = 0.22; }
       break;
-    case 'drink':
-      if (Arms.t >= Arms.dur) {
-        grantPerk(Arms.drinkId);
-        Arms.state = 'swapIn'; Arms.t = 0; Arms.dur = 0.35;
+    case 'drink': {
+      const t = Arms.t, E = DRINK_EV;
+      const once = (bit) => { if (Arms.ev & bit) return false; Arms.ev |= bit; return true; };
+      if (player.down && !(Arms.ev & (E.dropped | E.release))) {
+        // à terre : la bouteille tombe et se brise, l'atout est perdu ; l'arme remonte
+        Arms.ev |= E.dropped | E.release | E.grant | E.cap | E.gulp * 7 | E.whoosh;
+        dropBottle();
+        Arms.t = Math.max(Arms.t, DRINK.follow);
       }
+      if (t >= DRINK.cap && once(E.cap)) { flickCap(); Sound.perkCap(); }
+      DRINK.gulps.forEach((g, i) => { if (t >= g && once(E.gulp << i)) Sound.gulp(i); });
+      if (t >= DRINK.grant && once(E.grant)) grantPerk(Arms.drinkId);
+      if (t >= DRINK.wind && once(E.whoosh)) Sound.bottleWhoosh();
+      if (t >= DRINK.release && once(E.release)) releaseBottle();
+      if (Arms.t >= Arms.dur) { Arms.state = 'idle'; Arms.t = 0; Arms.dur = 0; }
       break;
+    }
     default: break;
   }
   if (Arms.autoReloadAt > 0 && G.time >= Arms.autoReloadAt && Arms.state === 'idle') { Arms.autoReloadAt = -1; startReload(); }
@@ -8622,6 +9109,8 @@ function updateViewmodel(dt) {
   const sk = 1 - ads * 0.75;
   x += Arms.swayX * sk; y += Arms.swayY * sk; ry += Arms.swayX * 1.4 * sk; rx += Arms.swayY * 1.1 * sk;
   const b = player.bobAmt * (1 - ads * 0.85);
+  // balancement et pas du joueur : repris par la bouteille d'atout tant qu'elle n'est pas à la bouche
+  const swayBobX = Arms.swayX * sk + Math.sin(player.bobT) * 0.014 * b, swayBobY = Arms.swayY * sk - Math.abs(Math.cos(player.bobT)) * 0.012 * b;
   x += Math.sin(player.bobT) * 0.014 * b;
   y -= Math.abs(Math.cos(player.bobT)) * 0.012 * b;
   y += Math.sin(G.time * 1.6) * 0.0025 * (1 - ads);
@@ -8638,7 +9127,11 @@ function updateViewmodel(dt) {
     magDrop = k < 0.15 ? 0 : k < 0.35 ? (k - 0.15) / 0.2 : k < 0.55 ? 1 : k < 0.75 ? 1 - (k - 0.55) / 0.2 : 0;
   } else if (st === 'swapOut') { const q = smooth(k); y -= 0.32 * q; rx -= 0.9 * q; }
   else if (st === 'swapIn') { const q = 1 - smooth(k); y -= 0.32 * q; rx -= 0.9 * q; }
-  else if (st === 'drink') { const c = clamp(Math.sin(k * Math.PI) * 2.2, 0, 1); y -= 0.42 * c; rx -= 0.4 * c; }
+  else if (st === 'drink') {
+    const t = Arms.t;
+    const down = t < DRINK.lower ? smooth(t / DRINK.lower) : t < DRINK.follow ? 1 : 1 - smooth(clamp((t - DRINK.follow) / (DRINK.end - DRINK.follow), 0, 1));
+    y -= 0.5 * down; rx -= 0.9 * down;
+  }
   else if (st === 'knife') { const c = Math.sin(k * Math.PI); x += 0.08 * c; y -= 0.13 * c; rz -= 0.3 * c; }
   else if (st === 'throw') { const c = Math.sin(k * Math.PI); y -= 0.2 * c; rx -= 0.4 * c; }
   if (player.down) { y -= 0.04; rz += 0.15; }
@@ -8659,36 +9152,71 @@ function updateViewmodel(dt) {
     if (parts.slide) parts.slide.position.z = parts.slide.userData.rest.z + Arms.kick * 0.6;
   }
   Arms.root.updateMatrixWorld(true);
-  // mains
-  const placeArm = (fore, hand, elbow, target, show) => {
-    fore.visible = hand.visible = show;
+  // mains (withHand false : l'avant-bras va jusqu'au poignet, la main est dessinée à part)
+  const placeArm = (fore, hand, elbow, target, show, withHand = true) => {
+    fore.visible = show;
+    hand.visible = show && withHand;
     if (!show) return;
     fore.position.copy(elbow);
     fore.lookAt(target);
-    fore.scale.set(1, 1, Math.max(0.05, elbow.distanceTo(target) - 0.04));
+    fore.scale.set(1, 1, Math.max(0.05, elbow.distanceTo(target) - (withHand ? 0.04 : 0)));
     hand.position.copy(target);
     hand.quaternion.copy(fore.quaternion);
   };
   const elbowR = _tmp.set(0.27, -0.44, -0.1), elbowL = _tmp2.set(-0.2, -0.44, -0.2);
-  if (gun) {
-    _handR.set(0, -0.045, 0.03).applyMatrix4(gun.matrixWorld);
-    placeArm(Arms.foreR, Arms.handR, elbowR, _handR, true);
-  } else placeArm(Arms.foreR, Arms.handR, elbowR, null, false);
-  let leftTarget = null;
+  let leftTarget = null, rightTarget = null, wristR = null, tilt = 0;
   Arms.knife.visible = st === 'knife';
-  Arms.bottle.visible = st === 'drink';
+  Arms.bottle.visible = false;
+  Arms.grip.visible = false;
   Arms.nade.visible = st === 'throw' && !Arms.throwDone;
-  if (st === 'knife') {
+  if (st === 'drink') {
+    const t = Arms.t, B = Arms.bottle, GR = Arms.grip;
+    const dropped = !!(Arms.ev & DRINK_EV.dropped);
+    const bump = DRINK.gulps.reduce((m, g) => m + Math.exp(-(((t - g) / 0.07) ** 2)), 0);
+    const flick = Math.exp(-(((t - DRINK.cap) / 0.035) ** 2));
+    const P = drinkPose(t, 0.05 * bump);
+    const held = t >= DRINK.lower && t < DRINK.release && !dropped;
+    B.visible = held;
+    const free = 1 - smooth(clamp((t - DRINK.uncap) / (DRINK.mouth - DRINK.uncap), 0, 1)) * (1 - smooth(clamp((t - DRINK.grant) / (DRINK.away - DRINK.grant), 0, 1)));
+    B.position.copy(P.p);
+    B.position.x += swayBobX * free;
+    B.position.y += swayBobY * free + 0.008 * flick;  // à-coup du pouce qui fait sauter la capsule
+    B.rotation.set(P.th, P.ps, P.la - 0.06 * flick, 'ZXY');
+    // le liquide baisse à chaque gorgée ; bouteille couchée, il reste du côté du goulot
+    const level = 1 - DRINK.gulps.reduce((m, g) => m + smooth(clamp((t - g + 0.04) / 0.2, 0, 1)), 0) / DRINK.gulps.length;
+    const L = B.userData.liquid;
+    L.scale.y = BOTTLE.liquidH * Math.max(0.001, level);
+    L.position.y = BOTTLE.liquidY + (t >= DRINK.mouth ? BOTTLE.liquidH * (1 - level) : 0);
+    L.visible = level > 0.01;
+    B.updateMatrixWorld(true);
+    // tête en arrière pendant que le joueur boit (secousse à chaque gorgée), petit coup de tête vers
+    // le bas quand il jette la bouteille
+    const drinking = smooth(clamp((t - DRINK.mouth + 0.1) / 0.2, 0, 1)) * (1 - smooth(clamp((t - DRINK.grant + 0.02) / 0.16, 0, 1)));
+    tilt = drinking * (0.12 + 0.2 * smooth(clamp((t - DRINK.mouth) / (DRINK.grant - DRINK.mouth), 0, 1))) + 0.02 * bump;
+    const thr = DRINK.release + 0.06;
+    tilt -= 0.07 * (t < thr ? smooth(clamp((t - DRINK.wind) / (thr - DRINK.wind), 0, 1)) : 1 - smooth(clamp((t - thr) / (DRINK.end - thr), 0, 1)));
+    // main droite : elle tient la bouteille, puis finit le geste du lancer et sort de l'écran
+    if (!dropped && t >= DRINK.lower && t < DRINK.follow) {
+      GR.visible = true;
+      if (held) { GR.position.copy(B.position); GR.quaternion.copy(B.quaternion); }
+      else {
+        const q = smooth((t - DRINK.release) / (DRINK.follow - DRINK.release));
+        const R = drinkPose(DRINK.release);
+        GR.position.set(lerp(R.p.x, 0.4, q), lerp(R.p.y, -0.72, q), lerp(R.p.z, -0.48, q));
+        GR.rotation.set(R.th - 0.8 * q, R.ps, R.la - 0.4 * q, 'ZXY');
+      }
+      GR.updateMatrixWorld(true);
+      wristR = _handR.fromArray(GRIP_WRIST).applyMatrix4(GR.matrixWorld);
+      // coude levé quand la bouteille est à la bouche
+      const up = smooth(clamp((t - DRINK.uncap) / (DRINK.mouth - DRINK.uncap), 0, 1)) * (1 - smooth(clamp((t - DRINK.grant) / (DRINK.wind - DRINK.grant), 0, 1)));
+      elbowR.set(lerp(0.27, 0.3, up), lerp(-0.44, -0.3, up), lerp(-0.1, -0.02, up));
+    }
+    if ((t < DRINK.lower || t >= DRINK.follow) && gun) leftTarget = _handL.fromArray(info.lh).applyMatrix4(gun.matrixWorld);
+  } else if (st === 'knife') {
     const q = smooth(k);
     Arms.knife.position.set(lerp(-0.32, 0.12, q), lerp(-0.12, -0.24, q) + Math.sin(q * Math.PI) * 0.05, lerp(-0.32, -0.5, Math.sin(q * Math.PI)));
     Arms.knife.rotation.set(-0.2, lerp(0.9, -0.6, q), lerp(0.5, -0.4, q));
     leftTarget = Arms.knife.position;
-  } else if (st === 'drink') {
-    const c = clamp(Math.sin(k * Math.PI) * 1.6, 0, 1);
-    Arms.bottle.position.set(lerp(-0.12, -0.02, c), lerp(-0.4, -0.07, c), lerp(-0.32, -0.2, c));
-    Arms.bottle.rotation.set(lerp(0.2, 1.25, c), 0, lerp(-0.3, -0.1, c));
-    leftTarget = _handL.copy(Arms.bottle.position);
-    leftTarget.y -= 0.05; leftTarget.z += 0.02;
   } else if (st === 'throw') {
     const q = smooth(k);
     Arms.nade.position.set(lerp(-0.18, -0.06, q), lerp(-0.3, 0.02, q), lerp(-0.25, -0.5, q));
@@ -8696,7 +9224,21 @@ function updateViewmodel(dt) {
   } else if (gun) {
     leftTarget = _handL.fromArray(info.lh).applyMatrix4(gun.matrixWorld);
   }
+  if (wristR) placeArm(Arms.foreR, Arms.handR, elbowR, wristR, true, false);
+  else {
+    if (!rightTarget && gun) rightTarget = _handR.set(0, -0.045, 0.03).applyMatrix4(gun.matrixWorld);
+    placeArm(Arms.foreR, Arms.handR, elbowR, rightTarget, !!rightTarget);
+  }
   placeArm(Arms.foreL, Arms.handL, elbowL, leftTarget, !!leftTarget);
+  Arms.headTilt = st === 'drink' ? tilt : damp(Arms.headTilt, 0, 12, dt);
+  // capsule qui saute
+  if (Arms.cap.visible) {
+    Arms.capT += dt;
+    Arms.capV.y -= 3.6 * dt;
+    Arms.cap.position.addScaledVector(Arms.capV, dt);
+    Arms.cap.rotation.x += Arms.capW[0] * dt; Arms.cap.rotation.y += Arms.capW[1] * dt; Arms.cap.rotation.z += Arms.capW[2] * dt;
+    if (Arms.capT > 0.8) Arms.cap.visible = false;
+  }
   if (Arms.flashT > 0) { Arms.flashT -= dt; if (Arms.flashT <= 0) Arms.flash.visible = false; }
   Arms.vmLight.intensity = Math.max(0, Arms.vmLight.intensity - dt * 60);
   TEX.camo.offset.x += dt * 0.06; TEX.camo.offset.y += dt * 0.035;
@@ -9220,7 +9762,7 @@ function pickSpawnPoint() {
 
 /* ================================================================== 10 CARTE ==
    Barricades, portes payantes, achats muraux, boîte mystère, distributeurs
-   d'atouts, interrupteur du courant, Amplificateur et bonus lâchés par les
+   d'atouts, interrupteur du courant, Pack-A-Punch et bonus lâchés par les
    zombies. Chaque élément utilisable s'enregistre comme « interactable ».
    ============================================================================ */
 const Features = { interactables: [], perkMachines: [], box: null, power: null, amp: null, digipass: null, group: null };
@@ -9687,14 +10229,14 @@ function buildPerks(group) {
     built.group.userData.lv = LV[li];
     group.add(built.group);
     setProp(li, cx, cz, 2.1);
-    // retirée (Second Souffle) : elle s'enfonce dans la terre, ou se tasse sur une dalle d'étage
+    // retirée (Quick Revive) : elle s'enfonce dans la terre, ou se tasse sur une dalle d'étage
     const m = Object.assign(built, { id: pm.p, active: true, cell: [cx, cz], sinkT: -1, li, E, deep: riseDepth(li, cx + 0.5, cz + 0.5) > 1 });
     lightMachine(m, !PERKS[pm.p].power);
     Features.perkMachines.push(m);
     Features.interactables.push({
       kind: 'perk', x: cx + 0.5 + fx * 1.0, z: cz + 0.5 + fz * 1.0, y: E, r: 1.5,
       prompt() {
-        if (!m.active) return null;
+        if (!m.active || (Arms.state === 'drink' && Arms.drinkId === m.id)) return null;
         const perk = PERKS[m.id];
         if (perk.power && !G.power) return { text: LAYOUT.power ? "Il faut d'abord rétablir le courant" : "Pas de courant sur cette carte", disabled: true };
         if (player.perks.has(m.id)) return null;
@@ -9929,7 +10471,7 @@ function activatePower() {
   });
   const a = Features.amp;
   if (a) schedule(1.2, () => { setLin(a.tubeMat.color, 0x8a3ad0); a.labelMat.emissiveIntensity = 0.9; a.glow.material.opacity = 0.45; });
-  HUD.banner('Courant rétabli', a ? 'Atouts et Amplificateur disponibles' : 'Atouts disponibles', 'power');
+  HUD.banner('Courant rétabli', a ? 'Atouts et Pack-A-Punch disponibles' : 'Atouts disponibles', 'power');
   Sound.say('Courant rétabli');
 }
 /* Courant déjà rétabli au début de la partie (règle de la carte), sans annonce. */
@@ -9948,7 +10490,7 @@ function updatePowerSwitch(dt) {
   p.pivot.rotation.x = lerp(0.5, -2.3, smooth(clamp(p.anim / 0.45, 0, 1)));
 }
 
-/* --------------------------------------------------- Amplificateur ---- */
+/* ----------------------------------------------------- Pack-A-Punch ---- */
 function buildAmpFeature(group) {
   const a = buildAmp();
   const L = LAYOUT.amp;
@@ -9965,13 +10507,13 @@ function buildAmpFeature(group) {
   Features.interactables.push({
     kind: 'amp', x: x + L.face[0] * 1.2, z: z + L.face[1] * 1.2, y: E, r: 1.7,
     prompt() {
-      if (!G.power) return { text: "L'Amplificateur n'a pas de courant", disabled: true };
-      if (amp.state === 'working') return { text: 'Amplification en cours…', disabled: true };
+      if (!G.power) return { text: "Le Pack-A-Punch n'a pas de courant", disabled: true };
+      if (amp.state === 'working') return { text: 'Pack-A-Punch en cours…', disabled: true };
       if (amp.state === 'ready') return { text: `Appuyez sur F pour prendre ${WEAPONS[amp.weapon].up.name}` };
       const s = curSlot();
       if (!s) return null;
-      if (s.up) return { text: 'Cette arme est déjà amplifiée', disabled: true };
-      return { text: `Appuyez sur F pour amplifier ${WEAPONS[s.id].name}`, cost: RULES.ampCost };
+      if (s.up) return { text: 'Cette arme est déjà passée au Pack-A-Punch', disabled: true };
+      return { text: `Appuyez sur F pour passer ${WEAPONS[s.id].name} au Pack-A-Punch`, cost: RULES.ampCost };
     },
     use() {
       if (!G.power || armsBusy()) return;
@@ -10034,7 +10576,7 @@ function updateAmp(dt) {
     amp.holder.position.z = lerp(-0.15, 0.4, clamp(amp.t / 0.7, 0, 1));
     if (amp.t > 15) {
       amp.state = 'idle'; amp.weapon = null; ampShow(null);
-      HUD.hint("L'arme amplifiée a été perdue", 3);
+      HUD.hint("L'arme du Pack-A-Punch a été perdue", 3);
     }
   }
 }
@@ -10798,9 +11340,9 @@ function refreshMenu() {
     $('tip-box').hidden = !map.boxes.length;
     const powered = map.power || map.rules.powerOn;
     $('tip-power').hidden = !powered || (!map.perks.some((p) => PERKS[p.p].power) && !map.amp);
-    $('tip-power').textContent = b7 ? "Rétablissez le courant dans la salle des machines pour les atouts et l'Amplificateur."
-      : map.rules.powerOn ? `Le courant est déjà rétabli : ${map.amp ? "atouts et Amplificateur sont" : 'les atouts sont'} disponibles.`
-      : `Rétablissez le courant pour ${map.amp ? "les atouts et l'Amplificateur" : 'les atouts'}.`;
+    $('tip-power').textContent = b7 ? "Rétablissez le courant dans la salle des machines pour les atouts et le Pack-A-Punch."
+      : map.rules.powerOn ? `Le courant est déjà rétabli : ${map.amp ? 'atouts et Pack-A-Punch sont' : 'les atouts sont'} disponibles.`
+      : `Rétablissez le courant pour ${map.amp ? 'les atouts et le Pack-A-Punch' : 'les atouts'}.`;
   }
   refreshMenuRank();
   const resume = $('btn-resume-save');
@@ -11200,7 +11742,7 @@ function openStats() {
       ['Armes achetées au mur', n('wallbuys')],
       ['Tirages de la boîte mystère', n('boxes')],
       ['Atouts bus', n('perks')],
-      ['Armes amplifiées', n('upgrades')],
+      ['Armes passées au Pack-A-Punch', n('upgrades')],
       ['Bonus ramassés', n('powerups')],
     ]],
   ];
@@ -11260,7 +11802,7 @@ const SPECIMEN_FACTS = {
       details: [
         ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20'],
         ['Vitesse', `${fmtNum(SPEEDS.walk[0] * m.speed)} à ${fmtNum(SPEEDS.run[1] * m.speed)} m/s`, '', `Marche ${sp('walk')} · trot ${sp('jog')} · sprint ${sp('run')} m/s`],
-        ['Coup', `${fmtNum(hit, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / hit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / hit)} avec Cuirasse`],
+        ['Coup', `${fmtNum(hit, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / hit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / hit)} avec ${PERKS.cuirasse.name}`],
         ['Barricades', `1 planche / ${fmtNum(tearBase(1), 1)} s`, '', `De plus en plus vite : ${fmtNum(tearBase(1000), 1)} s dès la manche ${fast}`],
         ['Cartes', type.maps ? maps.join(', ') || '–' : 'toutes', '', type.maps ? '' : maps.join(' · ')],
         ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],

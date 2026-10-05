@@ -389,7 +389,7 @@
     m.risers = keep(m.risers, (r) => !at(r) || tile(r) === '.', () => 'apparition de zombies');
     const one = (e) => { cur = MT.lvOf(e); return cur === lv; };
     if (m.power && one(m.power) && at(m.power.cell) && tile(m.power.cell) !== '#') { m.power = null; removed.push('interrupteur du courant'); }
-    if (m.amp && one(m.amp) && m.amp.cells.some(at) && !m.amp.cells.every((c) => tile(c) === '.')) { m.amp = null; removed.push('Amplificateur'); }
+    if (m.amp && one(m.amp) && m.amp.cells.some(at) && !m.amp.cells.every((c) => tile(c) === '.')) { m.amp = null; removed.push('Pack-A-Punch'); }
     if (m.digipass && one(m.digipass) && at(m.digipass.cell) && tile(m.digipass.cell) !== '#') { m.digipass = null; removed.push('digi pass'); }
     return removed;
   }
@@ -615,7 +615,7 @@
     }
     return best;
   };
-  /* Deux cases pour la boîte / l'Amplificateur, et le côté où se tient le joueur. */
+  /* Deux cases pour la boîte / le Pack-A-Punch, et le côté où se tient le joueur. */
   MT.pairAt = (x, z, vertical) => {
     const cells = vertical ? [[x, z], [x, z + 1]] : [[x, z], [x + 1, z]];
     const cand = vertical ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]];
@@ -928,7 +928,7 @@
       const atUp = (e) => MT.lvOf(e) === up;
       const hit = m.perks.some((p) => atUp(p) && on(p.cell)) ? 'un distributeur d’atout'
         : m.boxes.some((b) => atUp(b) && b.cells.some(on)) ? 'un emplacement de boîte mystère'
-          : m.amp && atUp(m.amp) && m.amp.cells.some(on) ? 'l’Amplificateur'
+          : m.amp && atUp(m.amp) && m.amp.cells.some(on) ? 'le Pack-A-Punch'
             : m.risers.some((r) => atUp(r) && on(r)) ? 'une apparition de zombies'
               : atUp(m.spawn) && on([Math.floor(m.spawn.pos[0]), Math.floor(m.spawn.pos[1])]) ? 'le départ du joueur' : null;
       if (hit) return `La trémie tomberait sur ${hit} ${where}.`;

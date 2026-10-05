@@ -601,7 +601,7 @@
   /* ============================================== Éléments de jeu === */
   const KIND_LABEL = {
     spawn: 'Point de départ', light: 'Lumière', door: 'Porte payante', window: 'Fenêtre barricadée', wallbuy: 'Arme murale',
-    perk: 'Distributeur d’atout', box: 'Boîte mystère', power: 'Interrupteur du courant', amp: 'Amplificateur', sign: 'Panneau',
+    perk: 'Distributeur d’atout', box: 'Boîte mystère', power: 'Interrupteur du courant', amp: 'Pack-A-Punch', sign: 'Panneau',
     riser: 'Apparition de zombies', zone: 'Pièce (nom, teinte)',
   };
   T.KIND_LABEL = KIND_LABEL;
@@ -685,7 +685,7 @@
           if (k === 'box') {
             MT.edit('Ajouter un emplacement de boîte', () => { m.boxes.push(MT.tagLv(pr)); S.sel = { kind: 'box', i: m.boxes.length - 1 }; }, 'elements');
           } else {
-            MT.edit('Placer l’Amplificateur', () => { m.amp = MT.tagLv(pr); S.sel = { kind: 'amp' }; }, 'elements');
+            MT.edit('Placer le Pack-A-Punch', () => { m.amp = MT.tagLv(pr); S.sel = { kind: 'amp' }; }, 'elements');
           }
           MT.emit('selection');
           return true;

@@ -642,7 +642,7 @@
         h('div', { class: 'p-actions' },
           btn('Départ', () => { goLv(m.spawn); MT.select({ kind: 'spawn' }); focusSel(); }, { ic: 'walk' }),
           m.power ? btn('Interrupteur', () => { goLv(m.power); MT.select({ kind: 'power' }); focusSel(); }, { ic: 'power' }) : null,
-          m.amp ? btn('Amplificateur', () => { goLv(m.amp); MT.select({ kind: 'amp' }); focusSel(); }) : null)),
+          m.amp ? btn('Pack-A-Punch', () => { goLv(m.amp); MT.select({ kind: 'amp' }); focusSel(); }) : null)),
       section('Astuces',
         h('ul', { class: 'p-tips' },
           h('li', null, 'Glisser un cadre dans le plan sélectionne plusieurs objets.'),
@@ -751,7 +751,7 @@
     perk: 'Clic sur le sol : distributeur, dos au mur le plus proche. R : le tourner.',
     box: 'Clic sur le sol : un emplacement possible de la boîte mystère (2 cases). R : sens.',
     power: 'Clic sur un mur : l’interrupteur qui rétablit le courant (un seul par carte).',
-    amp: 'Clic sur le sol : l’Amplificateur (2 cases, un seul par carte). R : sens.',
+    amp: 'Clic sur le sol : le Pack-A-Punch (2 cases, un seul par carte). R : sens.',
     sign: 'Clic sur un mur : panneau peint (nom de pièce, indication).',
     riser: 'Clic ou glisser sur le sol : des zombies sortent de terre ici quand la pièce est ouverte.',
     zone: 'Clic dans une pièce : la nommer, lui donner une teinte ou ses propres textures.',
@@ -880,8 +880,8 @@
           field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(b.face)), btn('Retourner', () => MT.tools.rotate(1), { ic: 'rotate' }))),
           h('p', { class: 'p-note' }, 'La boîte part ailleurs après quelques tirages (ours en peluche) : prévoyez plusieurs emplacements.'))];
       }
-      case 'amp': return [selHead('Amplificateur', 'Améliore l’arme tenue (5000 pts)', [delBtn()]), section('Réglages', field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(m.amp.face)), btn('Retourner', () => MT.tools.rotate(1), { ic: 'rotate' }))), h('p', { class: 'p-note' }, 'Il ne marche qu’avec le courant (interrupteur, ou « courant allumé au départ » dans l’onglet Carte).'))];
-      case 'power': return [selHead('Interrupteur du courant', `mur x ${m.power.cell[0]} · z ${m.power.cell[1]}`, [delBtn()]), section('Infos', h('p', { class: 'p-note' }, 'Allume les distributeurs qui demandent le courant, l’Amplificateur et les lumières réglées « avec le courant ».'))];
+      case 'amp': return [selHead('Pack-A-Punch', 'Améliore l’arme tenue (5000 pts)', [delBtn()]), section('Réglages', field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(m.amp.face)), btn('Retourner', () => MT.tools.rotate(1), { ic: 'rotate' }))), h('p', { class: 'p-note' }, 'Il ne marche qu’avec le courant (interrupteur, ou « courant allumé au départ » dans l’onglet Carte).'))];
+      case 'power': return [selHead('Interrupteur du courant', `mur x ${m.power.cell[0]} · z ${m.power.cell[1]}`, [delBtn()]), section('Infos', h('p', { class: 'p-note' }, 'Allume les distributeurs qui demandent le courant, le Pack-A-Punch et les lumières réglées « avec le courant ».'))];
       case 'sign': {
         const g = m.signs[s.i];
         if (!g) return [];
