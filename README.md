@@ -126,7 +126,7 @@ Prérequis : Node.js 22 ou plus récent. Sous Windows, rien d'autre. Sous Linux,
 cd launcher
 npm install
 npm test            # tests unitaires (signature des mises à jour, paquetage du jeu, publication, atelier des Mod Tools)
-npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable, étages et escaliers compris), menu du jeu, statistiques et rang, publication en un clic contre un faux GitHub, zombies et joueur dans les escaliers d'une carte à trois niveaux (sous Linux : xvfb-run -a npm run test:e2e)
+npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable, étages et escaliers compris), menu du jeu, statistiques et rang, publication en un clic contre un faux GitHub, zombies et joueur dans les escaliers d'une carte à trois niveaux, règles du rang (sous Linux : xvfb-run -a npm run test:e2e)
 npm start           # lance le launcher en mode développement
 npm run modtools    # ouvre directement les Mod Tools (il faut la clé de l'auteur sur le PC)
 npm run dist:win    # fabrique dist/Zombie-Survival-Setup-<version>.exe
