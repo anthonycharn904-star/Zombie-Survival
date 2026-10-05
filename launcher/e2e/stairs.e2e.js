@@ -201,8 +201,8 @@ async function openGame() {
         return z;
       };
       window.recycleZombie = function (z) { recycled++; return origRecycle(z); };
-      try {
-        for (let i = 0; i < 3000; i++) {
+      const run = (steps, until) => {
+        for (let i = 0; i < steps && !(until && until()); i++) {
           __zs.step(1, 0.05);
           for (const z of Zombies.list) {
             if (z.alive && z.state === 'attack' && !z.__counted) {
@@ -213,8 +213,26 @@ async function openGame() {
             }
           }
         }
+      };
+      const forced = [];
+      try {
+        run(3000);
+        // une sorte d'apparition (pièce ouverte) que le tirage au sort n'a pas choisie pendant la partie :
+        // un zombie y est placé exprès, il doit lui aussi atteindre le joueur (l'essai ne dépend pas du hasard)
+        const kinds = new Map();
+        for (const sp of [...World.windows, ...World.risers]) {
+          const o = sp.riser ? `apparition (niveau ${LV[sp.li]})` : `fenêtre (niveau ${LV[sp.li]})`;
+          if (G.activeZones.has(sp.zone) && !kinds.has(o)) kinds.set(o, sp);
+        }
+        for (const [o, sp] of kinds) {
+          if (spawned.has(o)) continue;
+          const z = window.spawnZombie(sp, 100);
+          if (!z) continue;
+          forced.push(o);
+          run(1600, () => z.__counted || !z.alive);
+        }
       } finally { window.spawnZombie = orig; window.recycleZombie = origRecycle; }
-      return { spawned: Object.fromEntries(spawned), reached: Object.fromEntries(reached), recycled, round: G.round };
+      return { spawned: Object.fromEntries(spawned), reached: Object.fromEntries(reached), forced, recycled, round: G.round };
     });
     const kinds = Object.keys(soak.spawned);
     ok(kinds.length >= 3 && kinds.every((k) => (soak.reached[k] || 0) > 0) && soak.recycled === 0, 'partie simulée : chaque sorte d’apparition atteint le joueur, aucun zombie bloqué', soak);

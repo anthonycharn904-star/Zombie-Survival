@@ -43,15 +43,16 @@
     </section>
   </section>
 
-  <aside class="dossier" aria-labelledby="notes-title">
+  <aside class="dossier" id="dossier" aria-labelledby="notes-title" aria-describedby="notes-more" aria-haspopup="dialog" aria-controls="history">
     <span class="stamp" id="notes-stamp">—</span>
     <h2 id="notes-title">Notes de version</h2>
     <p class="notes-meta" id="notes-meta"></p>
     <ul class="notes" id="notes-list"></ul>
+    <p class="notes-more" id="notes-more" hidden><span>Historique des mises à jour</span><b id="notes-count"></b><i aria-hidden="true">›</i></p>
   </aside>
 </main>
 
-<footer class="dock">
+<footer class="dock" id="dock">
   <div class="status" id="status" data-tone="idle">
     <div class="status-head" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="status-title">Ouverture du bunker…</span></div>
     <p class="status-detail" id="status-detail" aria-live="polite"></p>
@@ -77,6 +78,27 @@
 </footer>
 
 <div class="veil" id="veil" hidden></div>
+<section class="history" id="history" role="dialog" aria-modal="true" aria-labelledby="history-title" hidden>
+  <header class="history-head">
+    <div>
+      <p class="history-eyebrow">Archives du bunker · toutes les versions publiées</p>
+      <h2 id="history-title">Historique des mises à jour</h2>
+    </div>
+    <span class="history-count" id="history-count"></span>
+    <button class="win" id="history-close" type="button" aria-label="Fermer l'historique" title="Fermer (Échap)">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+    </button>
+  </header>
+  <div class="history-body">
+    <ol class="history-list" id="history-list" role="listbox" aria-label="Versions" tabindex="-1"></ol>
+    <article class="dossier history-sheet" id="history-sheet" aria-live="polite">
+      <span class="stamp" id="hs-stamp">—</span>
+      <h2>Notes de version</h2>
+      <p class="notes-meta" id="hs-meta"></p>
+      <ul class="notes" id="hs-notes"></ul>
+    </article>
+  </div>
+</section>
 <aside class="drawer" id="drawer" aria-labelledby="drawer-title" inert>
   <div class="drawer-head">
     <h2 id="drawer-title">Réglages</h2>

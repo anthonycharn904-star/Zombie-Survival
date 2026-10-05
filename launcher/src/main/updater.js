@@ -18,6 +18,7 @@ const { Readable, Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { fileURLToPath } = require('url');
 const yauzl = require('yauzl');
+const { mergeHistory } = require('./history');
 
 class UpdateError extends Error {
   constructor(code, message, cause) {
@@ -73,6 +74,8 @@ function verifyManifest(raw, publicKeyPem) {
     m.news = m.news.filter((n) => n && typeof n.title === 'string').slice(0, 20)
       .map((n) => ({ title: n.title.slice(0, 160), text: typeof n.text === 'string' ? n.text.slice(0, 2000) : '', date: typeof n.date === 'string' ? n.date.slice(0, 40) : '' }));
   }
+  // Notes des versions précédentes (launcher 1.2.6 et plus) : entrées invalides ignorées, jamais bloquant.
+  if (m.history !== undefined) m.history = mergeHistory(Array.isArray(m.history) ? m.history : []);
   return m;
 }
 

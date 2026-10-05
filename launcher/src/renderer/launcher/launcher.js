@@ -31,6 +31,9 @@ function newer(a, b) {
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i];
   return false;
 }
+/* Une note par ligne : le tiret ou la puce tapés en tête de ligne font double emploi avec la puce de la liste. */
+function cleanNote(n) { return String(n).replace(/^\s*[-–—•*]+\s*/, ''); }
+const plural = (n, word) => `${n}${NB}${word}${n > 1 ? 's' : ''}`;
 function describeSource(url) {
   const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/releases\/latest\/download\/latest\.json$/i.exec(url || '');
   if (m) return { main: `github.com/${m[1]}/${m[2]}`, sub: 'Dernière release publiée sur GitHub' };
@@ -205,26 +208,141 @@ function renderNotes(s, hasUpdate) {
   const inst = s.installed, rem = s.remote;
   const list = $('notes-list');
   list.textContent = '';
-  const add = (text, cls) => { const li = document.createElement('li'); li.textContent = text; if (cls) li.className = cls; list.append(li); };
+  const add = (text, cls) => { const li = document.createElement('li'); li.textContent = cls ? text : cleanNote(text); if (cls) li.className = cls; list.append(li); };
   const heading = (text) => { const h = document.createElement('h4'); h.textContent = text; list.append(h); };
+  // notes publiées de la version installée (historique) : elles passent avant la note
+  // « Version livrée avec le launcher » d'un jeu installé depuis l'installateur
+  const published = inst && (s.history || []).find((e) => e.version === inst.version && e.notes.length);
+  const instNotes = published ? published.notes : (inst && inst.notes) || [];
   if (hasUpdate) {
     $('notes-stamp').textContent = `v${rem.version}`;
     $('notes-meta').textContent = `Nouvelle version${rem.date ? ` du ${fmtDate(rem.date)}` : ''} · installée${NB}: ${inst.version}`;
     (rem.notes && rem.notes.length ? rem.notes : ['Aucune note pour cette version.']).forEach((n) => add(n));
-    if (inst.notes && inst.notes.length) {
+    if (instNotes.length) {
       heading(`Version ${inst.version}`);
-      inst.notes.forEach((n) => add(n));
+      instNotes.forEach((n) => add(n));
     }
   } else if (inst) {
     $('notes-stamp').textContent = `v${inst.version}`;
     $('notes-meta').textContent = `Version installée${inst.installedAt ? ` le ${fmtDate(inst.installedAt)}` : ''}`;
-    if (inst.notes && inst.notes.length) inst.notes.forEach((n) => add(n));
+    if (instNotes.length) instNotes.forEach((n) => add(n));
     else add('Aucune note pour cette version.', 'empty');
   } else {
     $('notes-stamp').textContent = '—';
     $('notes-meta').textContent = 'Aucune version installée';
     add('Le jeu sera installé dès que le serveur de mises à jour sera joignable.', 'empty');
   }
+  // la fiche ouvre l'historique de toutes les versions publiées
+  const count = (s.history || []).length;
+  const d = $('dossier');
+  d.classList.toggle('clickable', count > 0);
+  $('notes-more').hidden = count === 0;
+  $('notes-count').textContent = plural(count, 'version');
+  if (count > 0) { d.setAttribute('role', 'button'); d.tabIndex = 0; } else { d.removeAttribute('role'); d.removeAttribute('tabindex'); }
+  if (hist.open) renderHistory(false);
+}
+
+/* ------------------------------------------ historique des mises à jour --- */
+const hist = { open: false, sel: null, key: '' };
+const historyEntries = () => (current && current.history) || [];
+function badgeOf(version) {
+  const inst = current && current.installed, rem = current && current.remote;
+  if (inst && version === inst.version) return { cls: 'installed', text: 'Installée' };
+  if (inst && rem && !rem.cached && version === rem.version && newer(rem.version, inst.version)) return { cls: 'new', text: 'Nouvelle' };
+  return null;
+}
+function openHistory() {
+  const list = historyEntries();
+  if (!list.length || hist.open) return;
+  if ($('drawer').classList.contains('open')) openDrawer(false, false);
+  const inst = current && current.installed;
+  hist.sel = inst && list.some((e) => e.version === inst.version) ? inst.version : list[0].version;
+  hist.open = true;
+  hist.key = '';
+  $('history').hidden = false;
+  $('veil').hidden = false;
+  $('content').inert = true;
+  $('dock').inert = true;
+  renderHistory(false);
+  const b = $('history-list').querySelector('[aria-selected="true"]');
+  if (b) { b.focus(); b.scrollIntoView({ block: 'nearest' }); }
+}
+function closeHistory() {
+  if (!hist.open) return;
+  hist.open = false;
+  $('history').hidden = true;
+  $('veil').hidden = true;
+  $('content').inert = false;
+  $('dock').inert = false;
+  $('dossier').focus();
+}
+/* Liste des versions (reconstruite seulement si les versions ou leurs états changent : l'état du
+   launcher est renvoyé plusieurs fois par seconde pendant un téléchargement). */
+function renderHistory(swap) {
+  const list = historyEntries();
+  if (!list.some((e) => e.version === hist.sel)) hist.sel = list.length ? list[0].version : null;
+  const key = JSON.stringify([list, list.map((e) => badgeOf(e.version)), hist.sel]);
+  if (key === hist.key) return;
+  hist.key = key;
+  const hadFocus = $('history-list').contains(document.activeElement);
+  $('history-count').textContent = plural(list.length, 'version');
+  const ol = $('history-list');
+  ol.textContent = '';
+  for (const e of list) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'hl-item';
+    b.setAttribute('role', 'option');
+    b.dataset.version = e.version;
+    const v = document.createElement('span'); v.className = 'hl-v'; v.textContent = `v${e.version}`;
+    b.append(v);
+    const badge = badgeOf(e.version);
+    if (badge) { const t = document.createElement('span'); t.className = `hl-badge ${badge.cls}`; t.textContent = badge.text; b.append(t); }
+    const d = document.createElement('span'); d.className = 'hl-date';
+    d.textContent = `${e.date ? fmtDate(e.date) : 'Date inconnue'} · ${plural(e.notes.length, 'note')}`;
+    b.append(d);
+    li.append(b);
+    ol.append(li);
+  }
+  markSelected(hadFocus);
+  renderSheet(swap);
+}
+function markSelected(focus) {
+  for (const b of $('history-list').querySelectorAll('.hl-item')) {
+    const on = b.dataset.version === hist.sel;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+    if (on && focus) { b.focus(); b.scrollIntoView({ block: 'nearest' }); }
+  }
+}
+function renderSheet(swap) {
+  const e = historyEntries().find((x) => x.version === hist.sel);
+  const ul = $('hs-notes');
+  ul.textContent = '';
+  if (!e) return;
+  $('hs-stamp').textContent = `v${e.version}`;
+  const badge = badgeOf(e.version);
+  const parts = [e.date ? `Publiée le ${fmtDate(e.date)}` : 'Date de publication inconnue'];
+  if (badge) parts.push(badge.cls === 'installed' ? 'version installée' : 'pas encore installée');
+  $('hs-meta').textContent = parts.join(' · ');
+  const add = (text, cls) => { const li = document.createElement('li'); li.textContent = text; if (cls) li.className = cls; ul.append(li); };
+  if (e.notes.length) e.notes.forEach((n) => add(cleanNote(n)));
+  else add('Aucune note pour cette version.', 'empty');
+  ul.scrollTop = 0;
+  if (swap) {
+    const sheet = $('history-sheet');
+    sheet.classList.remove('swap');
+    void sheet.offsetWidth;
+    sheet.classList.add('swap');
+  }
+}
+function selectHistory(version, focus) {
+  if (!version) return;
+  const changed = version !== hist.sel;
+  hist.sel = version;
+  markSelected(focus);
+  if (changed) { hist.key = JSON.stringify([historyEntries(), historyEntries().map((e) => badgeOf(e.version)), hist.sel]); renderSheet(true); }
 }
 
 function renderNews(news) {
@@ -282,7 +400,8 @@ function renderDrawer(s) {
 }
 
 /* ---------------------------------------------------------- tiroir --- */
-function openDrawer(open) {
+function openDrawer(open, restoreFocus = true) {
+  if (open && hist.open) closeHistory();
   const d = $('drawer');
   d.classList.toggle('open', open);
   d.inert = !open;
@@ -290,7 +409,7 @@ function openDrawer(open) {
   $('content').inert = open;
   $('btn-settings').setAttribute('aria-expanded', String(open));
   if (open) setTimeout(() => $('drawer-close').focus(), 60);
-  else $('btn-settings').focus();
+  else if (restoreFocus) $('btn-settings').focus();
 }
 
 /* ----------------------------------------------------------- toast --- */
@@ -327,9 +446,37 @@ function bind() {
   $('btn-folder').addEventListener('click', guard(() => window.zs.open('game')));
   $('btn-settings').addEventListener('click', () => openDrawer(!$('drawer').classList.contains('open')));
   $('drawer-close').addEventListener('click', () => openDrawer(false));
-  $('veil').addEventListener('click', () => openDrawer(false));
+  $('veil').addEventListener('click', () => { if (hist.open) closeHistory(); else openDrawer(false); });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && $('drawer').classList.contains('open')) openDrawer(false);
+    if (e.key !== 'Escape') return;
+    if (hist.open) closeHistory();
+    else if ($('drawer').classList.contains('open')) openDrawer(false);
+  });
+  // fiche des notes : ouvre l'historique (sauf clic sur la barre de défilement des notes)
+  $('dossier').addEventListener('click', (e) => {
+    const sc = $('notes-list');
+    if (e.target === sc && e.offsetX >= sc.clientWidth) return;
+    if ($('dossier').classList.contains('clickable')) openHistory();
+  });
+  $('dossier').addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === $('dossier') && $('dossier').classList.contains('clickable')) { e.preventDefault(); openHistory(); }
+  });
+  $('history-close').addEventListener('click', closeHistory);
+  $('history-list').addEventListener('click', (e) => {
+    const b = e.target.closest('.hl-item');
+    if (b) selectHistory(b.dataset.version, true);
+  });
+  $('history-list').addEventListener('keydown', (e) => {
+    const list = historyEntries();
+    const i = list.findIndex((x) => x.version === hist.sel);
+    let j = -1;
+    if (e.key === 'ArrowDown') j = Math.min(list.length - 1, i + 1);
+    else if (e.key === 'ArrowUp') j = Math.max(0, i - 1);
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = list.length - 1;
+    else return;
+    e.preventDefault();
+    if (j >= 0) selectHistory(list[j].version, true);
   });
   for (const k of ['fullscreen', 'keepLauncherOpen', 'autoCheck', 'autoInstall']) {
     $(`set-${k}`).addEventListener('change', guard(() => window.zs.setSetting(k, $(`set-${k}`).checked)));

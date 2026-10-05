@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const gamepack = require('./gamepack');
 const { parseVersion, compareVersions } = require('./updater');
 const { WEB_BASE } = require('./github');
+const { historyBefore } = require('./history');
 
 function generateKeyPair() {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
@@ -55,7 +56,9 @@ function githubLatestUrl(repo, webBase = WEB_BASE) {
 
 /* opts : { source: { htmlPath | folderPath }, version, notes, news, outDir, privatePem, libsDir,
             repo?, webBase?, launcher?: { setupPath, version, notes }, previousLauncher?, minLauncher?,
-            maps?: { index, files } (cartes du paquet, voir gamepack.collectPackage) } */
+            maps?: { index, files } (cartes du paquet, voir gamepack.collectPackage),
+            history?: [{ version, date, notes }] (versions déjà publiées ; seules les antérieures
+            à `version` sont jointes, voir history.js) } */
 async function createRelease(opts) {
   if (!opts.privatePem) throw new Error("Aucune clé de signature : générez-en une d'abord.");
   const notes = (opts.notes || []).map((n) => String(n).trim()).filter(Boolean);
@@ -101,6 +104,9 @@ async function createRelease(opts) {
     }
   }
   if (Array.isArray(opts.news) && opts.news.length) manifest.news = opts.news;
+  // Notes des versions précédentes : le launcher les montre dans « Historique des mises à jour ».
+  const history = historyBefore(version, opts.history || []);
+  if (history.length) manifest.history = history;
   await fsp.writeFile(path.join(dir, 'latest.json'), JSON.stringify(signManifest(manifest, opts.privatePem), null, 2));
   upload.unshift('latest.json');
   return { dir, version, manifest, upload };

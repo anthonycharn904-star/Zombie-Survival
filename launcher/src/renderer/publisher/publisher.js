@@ -76,13 +76,27 @@ function renderGame() {
     if (detectedVersion && cmp(detectedVersion, v) > 0) v = detectedVersion;
     $('game-version').value = v;
   }
+  renderNotesHistory();
+}
+/* Versions précédentes jointes à la publication : le launcher des joueurs les garde dans
+   « Historique des mises à jour » (clic sur les notes de version). */
+function renderNotesHistory() {
+  const v = $('game-version').value.trim();
+  const prev = (st.history || []).filter((e) => !VERSION_RE.test(v) || cmp(e.version, v) < 0);
+  if (!prev.length) {
+    $('notes-history').textContent = 'Les notes de chaque version restent visibles dans le launcher en cliquant sur la fiche des notes (« Historique des mises à jour »).';
+    return;
+  }
+  const span = prev.length === 1 ? `de la ${prev[0].version}` : `des ${prev.length} versions précédentes (${prev[0].version} à ${prev[prev.length - 1].version})`;
+  $('notes-history').textContent = `Ces notes remplaceront celles de la ${prev[0].version} sur la fiche du launcher. Les notes ${span} restent visibles en cliquant sur la fiche (« Historique des mises à jour »).`;
 }
 function renderLauncher() {
   const last = st.lastLauncher;
   $('launcher-last').textContent = last
     ? `Dernier launcher annoncé : ${last.version}. Il reste annoncé dans les prochaines publications tant que vous n'en joignez pas un nouveau.`
-    : `Ce launcher est en version ${st.launcherVersion}. Joignez un installateur seulement si vous avez recompilé le launcher.`;
-  $('setup-path').textContent = setupPath || 'Aucun · le launcher actuel reste annoncé';
+    : `Aucun launcher n'est annoncé : sans installateur joint ici, la page de cette version n'aura pas de lien « Nouveau joueur ? » pour installer le jeu. Joignez l'installateur de ce launcher (version ${st.launcherVersion}).`;
+  $('launcher-last').classList.toggle('warn', !last && !setupPath);
+  $('setup-path').textContent = setupPath || (last ? 'Aucun · le launcher actuel reste annoncé' : 'Aucun');
   $('setup-clear').hidden = !setupPath;
   $('setup-fields').hidden = !setupPath;
 }
@@ -346,6 +360,7 @@ function bind() {
   $('game-version').addEventListener('input', () => {
     versionTouched = true;
     $('game-version').classList.toggle('invalid', !VERSION_RE.test($('game-version').value.trim()));
+    renderNotesHistory();
   });
   $('setup-pick').addEventListener('click', () => call(async () => {
     const p = await window.pub.pickSetup();

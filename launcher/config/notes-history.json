@@ -1,0 +1,56 @@
+{
+  "about": "Notes des versions du jeu publiées avant le launcher 1.2.6, reprises des manifestes signés (latest.json) des releases GitHub. Les publications suivantes portent elles-mêmes leur historique.",
+  "versions": [
+    {
+      "version": "1.5.0",
+      "date": "2026-10-05T10:43:29.535Z",
+      "notes": [
+        "Ajout du système de ranking et de prestige !",
+        "En plus de cela,",
+        "Le menu \"Statistique\" a été ajouté, vous permettant de voir toutes vos stats",
+        "Le menu \"Jouer\" vous dirige vers une sélection de carte, et ne vous lance plus dans la map Bunker 7 directement.",
+        "-Modification majeur dans le mod tools, permettant aux futures maps de jouer plus verticalement (Etages supérieur / inférieur, etc....)",
+        "-Changement du modèle des Zombies: Modèle \"Nazi Zombie\". D'autres modèles de Zombies sont a venir prochainement."
+      ]
+    },
+    {
+      "version": "1.4.0",
+      "date": "2026-10-05T08:39:19.393Z",
+      "notes": [
+        "-Nouveau menu \"Statistique\" qui vous permet de voir toutes vos stats,",
+        "-Nouveau menu \"Model\" qui vous permet de voir tous les modèles de Zombies ainsi que leur descriptif",
+        "-Nouveau modèle de Zombie, plus réaliste au jeu lui-même (3 autres modèles de base vont arriver)",
+        "-Réajustement de la difficulté du jeu; Les zombies auront moins de vies par manche et tueront le joueur en 3 coups. Les Zombies commencent a courir vers la manche 5 au lieu de la 3.",
+        "-Mise à jour majeur du Mod tools pour pouvoir faire des étages a l'avenir",
+        "-Petit secret avec un nouveau digi pass dans la salle principal..... :-)"
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2026-10-04T20:02:20.924Z",
+      "notes": [
+        "Menu Statistique : Vous permet de voir toutes vos stats; Zombie éliminés, barricade réparée, etc...",
+        "-Menu Model : Vous permet de voir tous les modèles de Zombie actuellement présent dans le jeu. Pour le moment, il n'y en a qu'un. Mais attendez vous a en voir beaucoup plus prochainement !",
+        "-Séléction de carte au lieu de rentrer directement dans la map de base.",
+        "Pleins de nouveautés vont suivre !"
+      ]
+    },
+    {
+      "version": "1.2.1",
+      "date": "2026-10-04T19:10:11.530Z",
+      "notes": [
+        "Bouton Jouer : sélection de la carte, avec le record de chaque carte",
+        "Nouvel écran Statistiques : heures de jeu, zombies tués (dans la tête, aux explosifs, au corps-à-corps), portes ouvertes, fenêtres barricadées…",
+        "Précision des tirs corrigée (fusil à pompe)"
+      ]
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-10-03T08:05:52.021Z",
+      "notes": [
+        "Première publication en ligne",
+        "Mises à jour automatiques par le launcher"
+      ]
+    }
+  ]
+}

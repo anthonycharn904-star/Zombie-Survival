@@ -15,6 +15,7 @@ const publisher = require('./publisher');
 const github = require('./github');
 const { readGameVersion } = require('./gamepack');
 const { Workspace } = require('./workspace');
+const history = require('./history');
 const createLog = require('./log');
 
 if (process.env.ZS_USER_DATA) app.setPath('userData', process.env.ZS_USER_DATA);
@@ -32,6 +33,8 @@ const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 const APP_ID = 'fr.zombiesurvival.launcher';
 const PLACEHOLDER = 'VOTRE-PSEUDO';
 const DEFAULT_SETTINGS = { autoCheck: true, autoInstall: true, fullscreen: true, keepLauncherOpen: false };
+// Notes des versions publiées avant le launcher 1.2.6 (les manifestes suivants portent leur historique).
+const BUNDLED_HISTORY = (readJson(path.join(APP_ROOT, 'config', 'notes-history.json')) || {}).versions || [];
 
 let log = () => {};
 let updater = null;
@@ -94,10 +97,24 @@ function setStatus(patch) {
     phaseAfterPlay = patch.phase;
     patch = { ...patch, phase: 'playing' };
   }
+  if ('installed' in patch || 'remote' in patch) patch = { ...patch, history: buildHistory() };
   Object.assign(status, patch);
   for (const w of [launcherWin, publisherWin]) {
     if (w && !w.isDestroyed()) w.webContents.send('launcher:status-changed', status);
   }
+}
+/* Historique des mises à jour affiché par le launcher : version en ligne et ses versions
+   précédentes (manifeste signé, ou sa copie gardée hors ligne), versions publiées avant le
+   launcher 1.2.6, puis le jeu installé en dernier recours (un jeu livré avec l'installateur
+   n'a que la note « Version livrée avec le launcher », qui ne doit pas masquer les vraies). */
+function buildHistory() {
+  const inst = updater ? updater.getInstalled() : null;
+  return history.mergeHistory(
+    history.manifestEntries(lastManifest),
+    history.manifestEntries(readJson(userFile(path.join('cache', 'last-manifest.json')))),
+    BUNDLED_HISTORY,
+    inst ? [{ version: inst.version, notes: inst.notes }] : [],
+  );
 }
 function pickInstalled(inst) {
   return inst ? { version: inst.version, previous: inst.previous, notes: inst.notes, installedAt: inst.installedAt } : null;
@@ -133,7 +150,7 @@ async function checkForUpdates({ auto = false } = {}) {
   try {
     const m = await updater.fetchManifest();
     lastManifest = m;
-    writeJson(userFile(path.join('cache', 'last-manifest.json')), { game: m.game, launcher: m.launcher || null, news: m.news || [], published: m.published || null });
+    writeJson(userFile(path.join('cache', 'last-manifest.json')), { game: m.game, launcher: m.launcher || null, news: m.news || [], published: m.published || null, history: m.history || [] });
     const inst = updater.getInstalled();
     const launcherUpdate = m.launcher && compareVersions(m.launcher.version, app.getVersion()) > 0
       ? { version: m.launcher.version, size: m.launcher.size, notes: m.launcher.notes || [] } : null;
@@ -555,6 +572,7 @@ function publisherState() {
     lastLauncher: carriedLauncher(ps), launcherVersion: app.getVersion(), latestUrl: publisher.githubLatestUrl(ps.repo),
     github: { linked, login: linked && gh ? gh.login || null : null, repo: linked && gh ? gh.repo || null : null, encrypted: safeStorage.isEncryptionAvailable(), tokenUrl: 'https://github.com/settings/personal-access-tokens/new' },
     lastOnline: ps.lastOnline || null,
+    history: publishedHistory().map((e) => ({ version: e.version, date: e.date, notes: e.notes.length })),
   };
 }
 
@@ -593,6 +611,7 @@ async function createPublication(form, repoOverride) {
     news, outDir: form.outDir || ps.outDir, privatePem: pem, libsDir: LIBS_DIR, repo,
     launcher: form.setupPath ? { setupPath: form.setupPath, version: form.launcherVersion, notes: String(form.launcherNotes || '').split('\n') } : null,
     previousLauncher: form.setupPath ? null : ps.lastLauncher,
+    history: publishedHistory(),
   });
   savePublisherSettings({
     repo: repo || '', outDir: form.outDir || ps.outDir, gameSource: form.gameSource, lastGameVersion: result.version,
@@ -618,18 +637,38 @@ async function uploadPublication({ dir, version, upload, notes }) {
   log(`Mise en ligne de ${version} sur ${access.repo}…`);
   send({ step: 'created', version, files: upload });
   const r = await gh.publish({ repo: access.repo, branch: access.branch, version, dir, files: upload, notes: notes || [], onProgress: send });
-  savePublisherSettings({ lastOnline: { version, at: new Date().toISOString(), release: r.release, verified: r.verified } });
+  // versions en ligne, pour l'historique des publications suivantes
+  let online = [];
+  try { online = history.manifestEntries(JSON.parse(readJson(path.join(dir, 'latest.json')).signed)); } catch (e) { online = []; }
+  savePublisherSettings({
+    lastOnline: { version, at: new Date().toISOString(), release: r.release, verified: r.verified },
+    onlineHistory: history.mergeHistory(online, ps.onlineHistory || []),
+  });
   log(`Version ${version} en ligne (${r.release}) ; adresse des mises à jour ${r.verified ? 'vérifiée' : `pas encore à jour : ${r.detail}`}`);
   return r;
 }
-/* Dernier launcher annoncé, repris dans les publications suivantes tant qu'aucun autre n'est joint.
-   Abandonné s'il est plus ancien que le launcher qui publie (installateur de test d'une version
-   provisoire, par exemple) ou si son fichier local a disparu. */
+/* Dernier launcher annoncé, repris dans les publications suivantes tant qu'aucun autre n'est joint :
+   il donne aux nouveaux joueurs le lien de l'installateur (« Nouveau joueur ? ») et met à jour les
+   launchers plus anciens. Un launcher déjà en ligne reste annoncé, même si celui qui publie est plus
+   récent (sans cela, la page de la version n'a plus d'installateur : versions 1.4.0 et 1.5.0).
+   Un installateur local est abandonné s'il est plus ancien que le launcher qui publie (installateur
+   de test d'une version provisoire, par exemple) ou si son fichier a disparu. Sans launcher retenu
+   (réglages perdus, autre PC), celui qu'annonce la version en ligne est repris. */
 function carriedLauncher(ps) {
   const l = ps.lastLauncher;
-  if (!l || !parseVersion(l.version) || compareVersions(l.version, app.getVersion()) < 0) return null;
-  if (!/^https?:/.test(l.file || '') && !(l.localPath && fs.existsSync(l.localPath))) return null;
-  return l;
+  if (l && parseVersion(l.version)) {
+    if (/^https?:/.test(l.file || '')) return l;
+    if (compareVersions(l.version, app.getVersion()) >= 0 && l.localPath && fs.existsSync(l.localPath)) return l;
+  }
+  const online = config && !config.custom && lastManifest ? lastManifest.launcher : null;
+  return online && parseVersion(online.version) && /^https?:/.test(online.file || '') ? online : null;
+}
+/* Versions déjà publiées pour tous les joueurs, jointes à une nouvelle publication : ce que ce
+   launcher a mis en ligne, le manifeste officiel lu au démarrage (pas une source de test) et les
+   versions publiées avant le launcher 1.2.6. */
+function publishedHistory() {
+  const raw = readJson(path.join(keyDir(), 'settings.json')) || {};
+  return history.mergeHistory(raw.onlineHistory || [], config.custom ? [] : history.manifestEntries(lastManifest), BUNDLED_HISTORY);
 }
 function savePublisherSettings(patch) {
   const file = path.join(keyDir(), 'settings.json');
