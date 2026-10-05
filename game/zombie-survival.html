@@ -928,7 +928,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.5.0';
+const GAME_VERSION = '1.5.1';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 2;
 
@@ -1360,10 +1360,28 @@ function stairOpenings(plan, wallH) {
   return out;
 }
 
+/* Élément ajouté à une carte intégrée après qu'un auteur l'a modifiée : la Bunker 7 enregistrée
+   dans les Mod Tools avant le jeu 1.4.0 (avec ses objets), publiée avec les jeux 1.4.0 et 1.5.0,
+   n'a pas de digi pass et remplaçait la Bunker 7 intégrée. Elle reprend celui de la carte intégrée
+   quand le mur qui le porte est toujours là, entouré des mêmes cases ; le reste de la carte de
+   l'auteur est gardé tel quel. (Un digi pass écrit dans la carte, même déplacé, l'emporte.) */
+function withBuiltinAdditions(raw) {
+  const base = BUNKER7, dp = base.digipass;
+  if (raw === base || raw.id !== base.id || raw.digipass !== undefined || !dp || (dp.lv | 0) !== 0) return raw;
+  const [cx, cz] = dp.cell;
+  for (let z = cz - 2; z <= cz + 2; z++) {
+    const row = raw.grid[z], ref = base.grid[z];
+    if (typeof row !== 'string' || typeof ref !== 'string') return raw;
+    for (let x = cx - 2; x <= cx + 2; x++) if (row[x] !== ref[x]) return raw;
+  }
+  return { ...raw, digipass: { cell: dp.cell.slice(), n: dp.n.slice(), off: dp.off, y: dp.y } };
+}
+
 function normalizeMap(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('Fichier de carte illisible.');
   if (typeof raw.format === 'number' && raw.format > MAP_FORMAT) throw new Error('Cette carte a été créée par une version plus récente du jeu.');
   if (!Array.isArray(raw.grid) || raw.grid.length < MAP_MIN) throw new Error("La carte n'a pas de grille valide.");
+  raw = withBuiltinAdditions(raw);
   const num = (v, a, b, d) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, a, b) : d);
   const int = (v, a, b, d) => Math.round(num(v, a, b, d));
   const str = (v, max, d = '') => (typeof v === 'string' ? v.slice(0, max) : d);

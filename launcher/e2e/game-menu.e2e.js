@@ -3,7 +3,8 @@
    statistiques enregistrées à la fermeture de la fenêtre et retrouvées à l'ouverture suivante,
    écran « Modèles » (fiche du Fantassin, modèle 3D dessiné, animations), règles du Fantassin
    (casque qui encaisse le premier tir à la tête, tête ×2, points de vie et dégâts), digi pass
-   (code tapé au clavier, mauvais code refusé, bon code : points infinis et immortalité), rang
+   (code tapé au clavier, mauvais code refusé, bon code : points infinis et immortalité ; Bunker 7
+   publiée avec les jeux 1.4.0 et 1.5.0 : digi pass repris de la carte intégrée), rang
    (XP des éliminations, montée de niveau annoncée en haut de l'écran, menu Ranking, prestige).
      xvfb-run -a node e2e/game-menu.e2e.js   (Linux sans écran) */
 const fs = require('fs');
@@ -122,6 +123,26 @@ async function openGame() {
     const back = await game.evaluate(() => ({ games: Life.data.games, kills: Life.data.kills, melee: Life.data.killsMelee, time: Life.data.time, lv: __zs.Rank.data.lv, menu: document.getElementById('menu-rank').textContent }));
     ok(back.games === 1 && back.kills === 1 && back.melee === 1 && back.time >= 2.9, 'fenêtre fermée en pleine partie : statistiques retrouvées', back);
     ok(back.lv === 2 && /Niveau 2 · Recrue/.test(back.menu), 'rang retrouvé à la réouverture, affiché dans le menu', back);
+    // Bunker 7 publiée avec les jeux 1.4.0 et 1.5.0 (enregistrée dans les Mod Tools avant le digi pass,
+    // avec les objets d'Anthony) : comme carte du paquet du jeu, elle reprend le digi pass de la carte intégrée
+    const published = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'bunker7-publiee-1.5.0.json'), 'utf8'));
+    const pkg = await game.evaluate((raw) => {
+      const m = registerMap(raw, 'package');
+      loadMap(m);
+      const r = {
+        cell: m.digipass && m.digipass.cell.join(), props: m.props.length, built: !!Features.digipass && Features.digipass.root.visible,
+        warn: validateMap(m).warnings.filter((w) => /Digi pass/.test(w.msg)).length,
+        removed: !normalizeMap({ ...raw, digipass: null }).digipass,
+        moved: normalizeMap({ ...raw, digipass: { cell: [31, 12], n: [0, 1] } }).digipass.cell.join(),
+        other: !normalizeMap({ ...raw, id: 'autre-carte' }).digipass,
+        changedWall: !normalizeMap({ ...raw, grid: raw.grid.map((row, z) => (z === 13 ? `${row.slice(0, 30)}#${row.slice(31)}` : row)) }).digipass,
+      };
+      registerMap(BUNKER7, 'builtin');
+      loadMap(MAPS.byId.bunker7);
+      return r;
+    }, published);
+    ok(pkg.cell === '30,12' && pkg.props === 146 && pkg.built && pkg.warn === 0, 'Bunker 7 publiée avec les jeux 1.4.0 et 1.5.0 : digi pass repris de la carte intégrée, objets de l’auteur gardés', pkg);
+    ok(pkg.removed && pkg.moved === '31,12' && pkg.other && pkg.changedWall, 'digi pass repris seulement s’il manque, sur Bunker 7, devant le même mur', pkg);
     await game.click('#btn-stats');
     await game.waitForFunction(() => !document.getElementById('stats').hidden);
     const row = await game.evaluate(() => [...document.querySelectorAll('#stats-report .ledger > div')].find((d) => d.querySelector('dt').firstChild.textContent === 'Zombies tués au corps-à-corps').querySelector('dd').textContent);

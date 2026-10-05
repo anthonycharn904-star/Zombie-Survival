@@ -231,6 +231,8 @@ async function openGame() {
           forced.push(o);
           run(1600, () => z.__counted || !z.alive);
         }
+        // une sorte dont les zombies sont sortis tard (fin de partie) : encore jusqu'à 2 min pour arriver
+        run(2400, () => [...spawned.keys()].every((o) => reached.has(o)));
       } finally { window.spawnZombie = orig; window.recycleZombie = origRecycle; }
       return { spawned: Object.fromEntries(spawned), reached: Object.fromEntries(reached), forced, recycled, round: G.round };
     });
