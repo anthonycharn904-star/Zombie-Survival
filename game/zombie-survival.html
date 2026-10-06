@@ -1016,7 +1016,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.8.0';
+const GAME_VERSION = '1.9.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 2;
 
@@ -2482,6 +2482,23 @@ const Sound = (() => {
     bell(t, rand(1180, 1420), 0.3, o, 0.6);
     noiseHit(t, 0.05, 0.7, 'highpass', 2400, null, 1, o);
   }
+  /* Corps qui tombe au sol (mort, zombie renversé) ; v : force du choc (0,35 à 1). */
+  function bodyFall(pos, v = 1) {
+    if (!ctx) return;
+    const o = out(pos, 0.36 * v, 4); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.17, 0.9, 'lowpass', 460, 90, 0.7, o, 0.003);
+    tone('sine', 96, 40, t, 0.15, 0.75, o, 0.003);
+  }
+  /* Bras arraché : déchirure mouillée, craquement. */
+  function gib(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.45, 4.5); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.22, 0.9, 'bandpass', 950, 260, 1.4, o, 0.002);
+    noiseHit(t + 0.012, 0.05, 0.6, 'highpass', 2600, null, 1, o, 0.001);
+    tone('sine', 190, 70, t, 0.1, 0.4, o, 0.002);
+  }
   function rise(pos) {
     if (!ctx) return;
     const o = out(pos, 0.3, 4); if (!o) return;
@@ -3089,7 +3106,7 @@ const Sound = (() => {
   return {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
-    zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
+    zombie, rise, helmet, bodyFall, gib, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, creak, say, rankStamp, rankUp, prestige,
     syringe, magPickup,
@@ -11986,6 +12003,8 @@ function zombieGeometries() {
       box(0.11, 0.02, 0.27, 0, -0.43, 0.05, K.sole), box(0.1, 0.03, 0.075, 0, -0.415, -0.055, K.sole),
     ]),
   };
+  // moignons (jambes déchiquetées, bras arraché)
+  { const k = zKit(); Object.assign(ZGEO, zStumps(k, { ...zCommonK(k.C), flesh: k.C(0x7a2a22), fleshD: k.C(0x3a0d0a) }, K.low, K.uni)); }
   return ZGEO;
 }
 /* ------------------------------------------- Variantes du Fantassin (rendu) --
@@ -12067,6 +12086,29 @@ function zCommonK(C) {
 function zMouthBlood(k, K, long = 0.075) {
   const { box } = k, H = ZRIG.head;
   return [box(0.007, 0.05, 0.006, -0.01, H - 0.122, 0.09, K.blood, 0.25), box(0.006, long, 0.006, 0.012, H - 0.135, 0.083, K.blood, 0.25)];
+}
+
+/* Moignons (depuis le jeu 1.9.0) : jambes arrachées (au genou : chair, os, lambeaux du pantalon) et
+   bras arraché (à l'épaule : manche déchirée, chair, os). K : couleurs avec la chair (flesh,
+   fleshD) ; cloth : étoffe du pantalon ; sleeve : celle de la manche. */
+function zStumps(k, K, cloth, sleeve = cloth) {
+  const { box, cyl, ell } = k;
+  const stump = [ell(0.072, 0.04, 0.07, 0, -0.012, 0, K.flesh, 0, 0, 0, 12, 7), ell(0.05, 0.03, 0.05, 0, -0.03, 0, K.fleshD, 0, 0, 0, 10, 6),
+    cyl(0.02, 0.016, 0.07, 0.008, -0.05, 0.004, K.bone), ell(0.024, 0.016, 0.022, 0.008, -0.085, 0.004, K.bone),
+    box(0.006, 0.07, 0.006, -0.03, -0.05, 0.05, K.blood), box(0.006, 0.05, 0.006, 0.04, -0.045, -0.04, K.blood)];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * TAU, l = 0.035 + (i % 3) * 0.015;
+    stump.push(box(0.03, l, 0.006, Math.sin(a) * 0.072, -0.01 - l / 2, Math.cos(a) * 0.072, cloth, 0.15 * Math.cos(a), a, 0.25 * ((i % 3) - 1)));
+  }
+  const arm = [ell(0.072, 0.066, 0.072, 0, -0.005, 0, sleeve), cyl(0.066, 0.062, 0.06, 0, -0.04, 0, sleeve),
+    ell(0.058, 0.03, 0.058, 0, -0.072, 0, K.flesh, 0, 0, 0, 10, 6), ell(0.04, 0.022, 0.04, 0, -0.085, 0, K.fleshD, 0, 0, 0, 9, 5),
+    cyl(0.017, 0.014, 0.05, 0.004, -0.1, 0.002, K.bone), ell(0.02, 0.014, 0.019, 0.004, -0.125, 0.002, K.bone),
+    box(0.006, 0.06, 0.006, 0.03, -0.11, 0.04, K.blood), box(0.006, 0.045, 0.006, -0.035, -0.105, -0.03, K.blood)];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU + 0.4, l = 0.03 + (i % 3) * 0.012;
+    arm.push(box(0.03, l, 0.006, Math.sin(a) * 0.064, -0.07 - l / 2, Math.cos(a) * 0.064, sleeve, 0.12 * Math.cos(a), a, 0.25 * ((i % 3) - 1)));
+  }
+  return { stump: mergeGeometries(stump), armStump: mergeGeometries(arm) };
 }
 
 const ZVGEO = {};
@@ -12192,6 +12234,7 @@ function variantGeometries(model) {
       stump.push(box(0.03, l, 0.006, Math.sin(a) * 0.072, -0.01 - l / 2, Math.cos(a) * 0.072, K.low, 0.15 * Math.cos(a), a, 0.25 * ((i % 3) - 1)));
     }
     G = merge({ torso: T, chest, head, upperL, upperR, fore, cuff, thighL, thighR, shin, stump });
+    G.armStump = zStumps(k, K, K.low, K.uni).armStump;
     G.eyes = zombieGeometries().eyes;
 
   } else if (model === 'savant') {
@@ -12293,6 +12336,7 @@ function variantGeometries(model) {
       box(0.105, 0.018, 0.262, 0, -0.432, 0.048, K.sole), box(0.1, 0.028, 0.07, 0, -0.418, -0.055, K.sole),
       box(0.03, 0.004, 0.08, 0, -0.364, 0.09, K.coatD)];
     G = merge({ torso: T, head, specs, eyes, upper, fore, syringe: syr, thigh, shin });
+    Object.assign(G, zStumps(k, { ...K, flesh: C(0x7a2a22), fleshD: C(0x3a0d0a) }, K.trousers, K.coat));
 
   } else if (model === 'sentinelle') {
     /* ---------- La Sentinelle : longue capote croisée, ceinturon, écharpe, bonnet enneigé,
@@ -12364,6 +12408,7 @@ function variantGeometries(model) {
       box(0.11, 0.02, 0.27, 0, -0.43, 0.05, K.sole), box(0.1, 0.03, 0.075, 0, -0.415, -0.055, K.sole),
       ell(0.046, 0.014, 0.05, 0, -0.352, 0.13, K.snow, -0.25, 0, 0, 8, 5), ell(0.03, 0.01, 0.03, 0.02, -0.37, 0.175, K.snow, -0.5, 0, 0, 8, 5)];
     G = merge({ torso: T, lantern: lan, head, cap: bonnet, upper, fore, hand, thigh, shin });
+    Object.assign(G, zStumps(k, { ...K, flesh: C(0x7a2a22), fleshD: C(0x3a0d0a) }, K.coatD, K.coat));
     G.eyes = zombieGeometries().eyes;
     G.lanternPos = L.clone();     // centre de la vitre, repère du bassin (lumière réelle)
   }
@@ -12374,8 +12419,8 @@ function variantGeometries(model) {
 /* Pièces de chaque modèle : géométrie, os suivi, matière, teinte d'instance. bone : un os (hips,
    neck, shL, shR, elL, elR, hipL, hipR, knL, knR) ou une paire gauche-droite (sh, el, hip, kn).
    head : cachée quand la tête a sauté · helmet : le casque · legs : cachée quand le zombie rampe
-   (jambes déchiquetées) · stump : visible seulement alors. Les bras arrachés (gib) cachent les
-   pièces des épaules et des coudes de leur côté. */
+   (jambes déchiquetées) · stump : visible seulement alors ; stump 'arm' : moignon de l'épaule, visible
+   quand le bras de son côté est arraché (gib), ce qui cache les pièces de l'épaule et du coude. */
 const ZPARTS = {
   fantassin: [
     { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
@@ -12386,7 +12431,9 @@ const ZPARTS = {
     { geo: 'upper', bone: 'sh', mat: 'zCloth', tint: 'cloth' },
     { geo: 'fore', bone: 'el', mat: 'zSkin', tint: 'skin' },
     { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
-    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth', legs: true },
+    { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
+    { geo: 'armStump', bone: 'sh', mat: 'zSkin', tint: 'skin', stump: 'arm' },
   ],
   lacere: [
     { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
@@ -12401,6 +12448,7 @@ const ZPARTS = {
     { geo: 'thighR', bone: 'hipR', mat: 'zCloth', tint: 'cloth' },
     { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth', legs: true },
     { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
+    { geo: 'armStump', bone: 'sh', mat: 'zSkin', tint: 'skin', stump: 'arm' },
   ],
   savant: [
     { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
@@ -12411,7 +12459,9 @@ const ZPARTS = {
     { geo: 'fore', bone: 'el', mat: 'zCloth', tint: 'cloth' },
     { geo: 'syringe', bone: 'shR', mat: 'zHelmet', tint: 'white' },
     { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
-    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth', legs: true },
+    { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
+    { geo: 'armStump', bone: 'sh', mat: 'zSkin', tint: 'skin', stump: 'arm' },
   ],
   sentinelle: [
     { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
@@ -12423,7 +12473,9 @@ const ZPARTS = {
     { geo: 'fore', bone: 'el', mat: 'zCloth', tint: 'cloth' },
     { geo: 'hand', bone: 'el', mat: 'zSkin', tint: 'skin' },
     { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
-    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth', legs: true },
+    { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
+    { geo: 'armStump', bone: 'sh', mat: 'zSkin', tint: 'skin', stump: 'arm' },
   ],
 };
 const ZBONES = { sh: ['shL', 'shR'], el: ['elL', 'elR'], hip: ['hipL', 'hipR'], kn: ['knL', 'knR'] };
@@ -12459,14 +12511,18 @@ function buildZombieRenderer() {
   for (let i = ZR.N - 1; i >= 0; i--) ZR.free.push(i);
   return group;
 }
+/* Squelette : racine (position, orientation) → corps (bascule entière) → bassin (pelvis, depuis le
+   jeu 1.9.0 : il porte le buste et les jambes, le buste se penche sans elles) → buste (hips : cou,
+   épaules) ; hanches → genoux ; épaules → coudes. */
 function makeRig() {
   const o = () => new THREE.Object3D();
-  const r = { root: o(), body: o(), hips: o(), neck: o(), shL: o(), shR: o(), elL: o(), elR: o(), hipL: o(), hipR: o(), knL: o(), knR: o() };
-  r.root.add(r.body); r.body.add(r.hips); r.hips.position.y = ZRIG.hips;
+  const r = { root: o(), body: o(), pelvis: o(), hips: o(), neck: o(), shL: o(), shR: o(), elL: o(), elR: o(), hipL: o(), hipR: o(), knL: o(), knR: o() };
+  r.root.add(r.body); r.body.add(r.pelvis); r.pelvis.position.y = ZRIG.hips;
+  r.pelvis.add(r.hips);
   r.hips.add(r.neck); r.neck.position.y = ZRIG.neck;
   r.hips.add(r.shL, r.shR); r.shL.position.set(ZRIG.shoulderX, ZRIG.shoulderY, 0); r.shR.position.set(-ZRIG.shoulderX, ZRIG.shoulderY, 0);
   r.shL.add(r.elL); r.shR.add(r.elR); r.elL.position.y = -ZRIG.upper; r.elR.position.y = -ZRIG.upper;
-  r.hips.add(r.hipL, r.hipR); r.hipL.position.set(ZRIG.hipX, 0, 0); r.hipR.position.set(-ZRIG.hipX, 0, 0);
+  r.pelvis.add(r.hipL, r.hipR); r.hipL.position.set(ZRIG.hipX, 0, 0); r.hipR.position.set(-ZRIG.hipX, 0, 0);
   r.hipL.add(r.knL); r.hipR.add(r.knR); r.knL.position.y = -ZRIG.thigh; r.knR.position.y = -ZRIG.thigh;
   return r;
 }
@@ -12491,14 +12547,15 @@ function randomZombieLook() {
 function zPartVisible(z, def, side) {
   if (def.head && z.headless) return false;
   if (def.helmet && !(z.look.helmet && z.helmetOn !== false)) return false;
+  if (def.stump === 'arm') return side >= 0 && !!(z.gib & (side ? 2 : 1));
   if (def.legs && z.crawl) return false;
   if (def.stump && !z.crawl) return false;
   if (side >= 0 && z.gib && (def.bone.startsWith('sh') || def.bone.startsWith('el')) && (z.gib & (side ? 2 : 1))) return false;
   return true;
 }
+/* Matrices des pièces d'après celles des os (déjà à jour : pose animée ou corps physique). */
 function writeZombieMatrices(z) {
   const R = z.R || ZR, r = z.rig, s = z.slot;
-  r.root.updateMatrixWorld(true);
   for (const { def, m, pair } of R.models[zModelOf(z)]) {
     if (pair) {
       const [bl, br] = ZBONES[def.bone];
@@ -12532,138 +12589,210 @@ function flushZombieMatrices(R = ZR) {
   }
 }
 
-/* Modèles de l'écran « Modèles » (un par type de ZOMBIE_TYPES). make() crée un
-   spécimen à poser dans une scène : { root, restyle(), pose(anim, t, dt, yaw), knockHelmet() }.
-   anims : animations proposées, dans l'ordre des boutons (MODEL_ANIMS). Le Fantassin
-   est dessiné et animé exactement comme dans le jeu. */
+/* Modèles de l'écran « Modèles » (un par type de ZOMBIE_TYPES). make() crée un spécimen à poser
+   dans une scène : { root, restyle(), pose(anim, t, dt, yaw), armShot(), knockHelmet() (casque),
+   legShot() et crawling() (Lacéré) }. anims : animations proposées, dans l'ordre des boutons
+   (MODEL_ANIMS). Chaque spécimen est dessiné et animé exactement comme en partie (jeu 1.9.0 :
+   démarches de chaque allure, fenêtre, trébuchement, morts et corps physique). */
+const SPEC_ANIMS = ['idle', 'walk', 'jog', 'run', 'frenzy', 'crawl', 'attack', 'tear', 'climb', 'rise', 'stumble', 'death'];
 const SPECIMEN_MODELS = {
-  fantassin: {
-    anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'],
-    helmet: true,
-    make() {
-      const R = {};
-      const root = zombieInstances(R, 1, ['fantassin']);
-      for (const m of R.parts) m.castShadow = true;
-      const z = {
-        id: 3, slot: 0, R, rig: makeRig(), look: randomZombieLook(), helmetOn: true, alive: true, state: 'idle', t: 0,
-        pos: new THREE.Vector3(), yaw: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false,
-      };
-      paintZombieSlot(0, z.look, R);
-      // casque arraché par un tir (démonstration de la faiblesse) : il tombe, puis revient
-      const hg = zombieGeometries().helmet.clone();
-      hg.translate(0, -0.2, 0);
-      const loose = new THREE.Mesh(hg, MAT.zHelmet.clone());
-      loose.castShadow = true;
-      loose.visible = false;
-      root.add(loose);
-      const fall = { t: 0, v: new THREE.Vector3(), spin: new THREE.Vector3() };
-      const _p = new THREE.Vector3();
-      return {
-        root,
-        restyle() { z.look = randomZombieLook(); paintZombieSlot(0, z.look, R); },
-        knockHelmet() {
-          if (!z.helmetOn) return false;
-          z.helmetOn = false;
-          _p.set(0, ZRIG.head + 0.04, 0).applyMatrix4(z.rig.neck.matrixWorld);
-          setLin(loose.material.color, z.look.helmetColor);
-          loose.position.copy(_p);
-          loose.rotation.set(0, z.yaw, 0);
-          fall.v.set(0.85, 2.6, 0.75);   // vers l'avant de la photo, pour qu'on le voie au sol
-          fall.spin.set(rand(-8, -5), rand(-3, 3), rand(-6, 6));
-          fall.t = 0;
-          loose.visible = true;
-          z.flinch = 0.45;
-          return true;
-        },
-        pose(anim, t, dt, yaw) {
-          z.yaw = yaw; z.pos.y = 0; z.moving = 0; z.state = 'idle'; z.speedType = 'walk'; z.t = t;
-          if (anim === 'walk' || anim === 'jog' || anim === 'run') {
-            z.state = 'chase'; z.speedType = anim; z.moving = (SPEEDS[anim][0] + SPEEDS[anim][1]) / 2;
-          } else if (anim === 'attack') { z.state = 'attack'; z.t = t % 1.4; }
-          else if (anim === 'tear') z.state = 'tear';
-          else if (anim === 'rise') {
-            // sous terre 0,4 s, sortie en 1,3 s (comme en partie), puis repos avant la suivante
-            const k = t % 3.6;
-            if (k < 1.7) {
-              z.state = 'rise'; z.t = Math.max(0, k - 0.4);
-              z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1)));
-            } else z.t = k;
-          }
-          z.flinch = damp(z.flinch, 0, 6, dt);
-          if (loose.visible) {
-            // le casque rebondit puis roule au sol ; il revient sur la tête au bout de 4 s
-            fall.t += dt;
-            fall.v.y -= 12 * dt;
-            loose.position.addScaledVector(fall.v, dt);
-            loose.rotation.x += fall.spin.x * dt; loose.rotation.y += fall.spin.y * dt; loose.rotation.z += fall.spin.z * dt;
-            if (loose.position.y < 0.08) {
-              loose.position.y = 0.08;
-              fall.v.y = Math.abs(fall.v.y) > 1 ? Math.abs(fall.v.y) * 0.3 : 0;
-              fall.v.x *= 0.55; fall.v.z *= 0.55; fall.spin.multiplyScalar(0.45);
-            }
-            if (fall.t > 4) { loose.visible = false; z.helmetOn = true; }
-          }
-          animateZombie(z, dt);
-          flushZombieMatrices(R);
-        },
-      };
-    },
-  },
-  lacere: { anims: ['idle', 'walk', 'jog', 'run', 'crawl', 'attack', 'tear', 'rise'], legs: true, make: () => variantSpecimen('lacere') },
-  savant: { anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'], make: () => variantSpecimen('savant') },
-  sentinelle: { anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'], make: () => variantSpecimen('sentinelle') },
+  fantassin: { anims: SPEC_ANIMS, helmet: true, make: () => makeSpecimen('fantassin') },
+  lacere: { anims: SPEC_ANIMS, legs: true, make: () => makeSpecimen('lacere') },
+  savant: { anims: SPEC_ANIMS, make: () => makeSpecimen('savant') },
+  sentinelle: { anims: SPEC_ANIMS, make: () => makeSpecimen('sentinelle') },
 };
-
-/* Spécimen d'une variante : même squelette et mêmes animations que le Fantassin ; le Lacéré
-   rampe (animation « Rampe », ou 5 s après un tir dans les jambes) ; la lanterne de la Sentinelle
-   éclaire vraiment. */
-const _lanternW = new THREE.Vector3();
-function variantSpecimen(model) {
+// démarches montrées pour chaque animation (« Autre apparence » passe à la suivante)
+const SPEC_GAITS = { walk: ['fantassin', 'titubant', 'bras', 'boiteux'], jog: ['coureur', 'griffu'], run: ['sprinteur'], frenzy: ['super', 'frenetique'] };
+const SPEC_GAIT_OF = { idle: 'walk', walk: 'walk', jog: 'jog', run: 'run', frenzy: 'frenzy', stumble: 'run', death: 'walk' };
+// morts montrées tour à tour par l'animation « Mort »
+const SPEC_DEATHS = ['back', 'head', 'stagger', 'spin', 'front', 'leg', 'glas', 'explosive', 'knife', 'nuke'];
+function specimenGait(z, S, set) {
+  const a = z.an || zAnimInit(z), list = SPEC_GAITS[set], g = ZGAITS[list[(S.gi[set] || 0) % list.length]];
+  if (a.gait !== g) { a.prev = a.gait; a.gb = 0; a.gait = g; }
+  a.gaitFor = g.type;
+  z.speedType = g.type;
+}
+function specimenRevive(z) {
+  const a = z.an || zAnimInit(z);
+  z.alive = true; z.rd = null; z.deathMode = null; z.deathStyle = null; z.state = 'idle'; z.t = 0;
+  z.knockT = 0; z.knockK = 0; z.stumbleT = 0; z.dvx = 0; z.dvz = 0; z.flinch = 0; z.vx = 0; z.vz = 0;
+  z.knockShift = false; z.knockOx = 0; z.knockOz = 0;
+  a.pts = null; a.ptsN = 0; a.fitOn = false;
+}
+/* Mort de démonstration : tir venu de l'objectif (dans le dos pour « front »), explosion, couteau,
+   Bombe, Minuit ; le spécimen marchait vers l'objectif. */
+function zDemoKill(z, style) {
+  const fx = Math.sin(z.yaw), fz = Math.cos(z.yaw), kind = { explosive: 'explosive', knife: 'knife', nuke: 'nuke', glas: 'glas' }[style] || 'bullet';
+  const back = style === 'front' ? 1 : -1, a = style === 'explosive' ? rand(-0.6, 0.6) : 0;
+  const info = { kind, head: style === 'head', leg: style === 'leg', force: kind === 'explosive' ? 3.2 : kind === 'knife' ? 1.2 : 0.6,
+    dx: back * (fx * Math.cos(a) + fz * Math.sin(a)), dz: back * (fz * Math.cos(a) - fx * Math.sin(a)) };
+  z.vx = fx * z.moving; z.vz = fz * z.moving;
+  z.alive = false; z.state = 'dead'; z.t = 0; z.deathKind = kind; z.flingVY = kind === 'explosive' ? 2.2 : 0;
+  zDeathSetup(z, info, 'chase', style === 'explosive' ? 'limp' : style);
+}
+/* Pose d'un spécimen (animation anim, t secondes depuis le choix, yaw : rotation de l'aperçu). */
+function specimenPose(z, S, anim, t, dt, yaw) {
+  if (S.anim !== anim) { S.anim = anim; S.loop = -1; S.dead = false; specimenRevive(z); }
+  if (anim === 'death') { specimenDeath(z, S, t, dt, yaw); return; }
+  z.yaw = yaw; z.pos.set(0, 0, 0); z.gy = 0; z.moving = 0; z.state = 'idle'; z.t = t;
+  specimenGait(z, S, SPEC_GAIT_OF[anim] || 'walk');
+  switch (anim) {
+    case 'walk': case 'jog': case 'run': case 'frenzy':
+      z.state = 'chase'; z.moving = ZGAIT_REF[z.speedType] * (anim === 'frenzy' ? 1.05 : 1); break;
+    case 'crawl': z.state = 'chase'; z.moving = 0.55; break;
+    case 'attack': z.state = 'attack'; z.t = t % 1.4; break;
+    case 'tear': z.state = 'tear'; z.tearDur = 1.1; z.tearT = 1.1 - (t % 1.1); break;
+    case 'climb': {
+      // fenêtre : il passe l'appui (1,1 s), puis attend 1,3 s de l'autre côté
+      const k = (t % 2.4) / 1.1, s = lerp(-0.85, 0.95, smooth(clamp(k, 0, 1)));
+      z.pos.set(Math.sin(yaw) * s, k < 1 ? zClimbY(k) : 0, Math.cos(yaw) * s);
+      if (k < 1) { z.state = 'climb'; z.t = k * 1.1; } else z.t = (k - 1) * 1.1;
+      break;
+    }
+    case 'rise': {
+      // sous terre 0,4 s, sortie en 1,3 s (comme en partie), puis repos avant la suivante
+      const k = t % 3.6;
+      if (k < 1.7) { z.state = 'rise'; z.t = Math.max(0, k - 0.4); z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1))); }
+      else z.t = k;
+      break;
+    }
+    case 'stumble': {
+      // il court, le genou cède (tir dans les jambes), il tombe face contre terre et se relève
+      const L = Math.floor(t / 3.8), p = t - L * 3.8;
+      if (S.loop !== L) { S.loop = L; S.stage = 0; z.knockT = 0; z.knockK = 0; z.stumbleT = 0; z.knockShift = false; z.knockOx = z.knockOz = 0; }
+      z.pos.set(z.knockOx || 0, 0, z.knockOz || 0);
+      if (S.stage === 0 && p >= 0.5) { S.stage = 1; z.stumbleT = 0.55; z.stumbleSide = Math.random() < 0.5 ? 1 : -1; zHitReact(z, 'leg', z.stumbleSide, true, 1); }
+      if (S.stage === 1 && p >= 0.78) { S.stage = 2; z.stumbleT = 0; z.knockT = z.knockDur = 1.6; z.knockDir = -1; z.knockKind = 'trip'; z.knockThud = false; }
+      if (z.stumbleT > 0) z.stumbleT = Math.max(0, z.stumbleT - dt);
+      if (z.knockT > 0) z.knockT = Math.max(0, z.knockT - dt);
+      z.state = 'chase'; z.moving = S.stage < 2 ? ZGAIT_REF.run * (S.stage === 1 ? 0.6 : 1) : 0;
+      break;
+    }
+    default: break;
+  }
+  // reptation : l'animation « Rampe », ou les 5 s qui suivent un tir dans les jambes (Lacéré)
+  if (S.legT >= 0) { S.legT += dt; if (S.legT > 5) S.legT = -1; }
+  const crawl = anim === 'crawl' || S.legT >= 0;
+  if (crawl && !z.crawl) { z.crawl = true; z.crawlT = anim === 'crawl' ? 1 : 0; }
+  else if (!crawl) z.crawl = false;
+  if (z.crawl) { z.crawlT += dt; z.knockT = 0; if (z.state === 'rise' || z.state === 'climb') { z.state = 'chase'; z.pos.set(0, 0, 0); } }
+  z.flinch = damp(z.flinch, 0, 6, dt);
+  animateZombie(z, dt);
+}
+/* « Mort » : il marche vers l'objectif, meurt (une mort différente à chaque fois), le corps tombe et
+   reste au sol, puis tout recommence (4,6 s). */
+function specimenDeath(z, S, t, dt, yaw) {
+  const L = Math.floor(t / 4.6), p = t - L * 4.6;
+  if (S.loop !== L) { S.loop = L; S.dead = false; specimenRevive(z); }
+  z.crawl = false;
+  if (!S.dead) {
+    z.yaw = yaw; z.pos.set(0, 0, 0); z.gy = 0; z.t = t; z.state = 'chase';
+    specimenGait(z, S, 'walk');
+    z.moving = ZGAIT_REF.walk;
+    animateZombie(z, dt);
+    if (p < 0.9) return;
+    S.dead = true;
+    const style = SPEC_DEATHS[S.deaths++ % SPEC_DEATHS.length];
+    zDemoKill(z, style);
+    if (S.onDeath) S.onDeath(style);
+    return;
+  }
+  z.t += dt;
+  zCorpseStep(z, dt);
+}
+const _lanternW = new THREE.Vector3(), _specC = new THREE.Vector3();
+function makeSpecimen(model) {
   const R = {};
   const root = zombieInstances(R, 1, [model]);
   for (const m of R.parts) m.castShadow = true;
   const type = ZOMBIE_TYPES.find((t) => t.model === model) || BASE_TYPE;
-  const look = () => ({ ...randomZombieLook(), helmet: false });
+  const helmet = !!type.helmet;
+  const look = () => ({ ...randomZombieLook(), helmet });
   const z = {
-    id: 5, slot: 0, R, model, type, rig: makeRig(), look: look(), helmetOn: false, alive: true, state: 'idle', t: 0,
-    pos: new THREE.Vector3(), yaw: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false, crawl: false, crawlT: 0, crawlPh: 0,
+    id: helmet ? 3 : 5, slot: 0, R, model, type, rig: makeRig(), look: look(), helmetOn: helmet, alive: true, state: 'idle', t: 0, spec: true,
+    pos: new THREE.Vector3(), yaw: 0, gy: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false,
+    crawl: false, crawlT: 0, crawlPh: 0, knockT: 0, knockDur: 0, knockDir: 1, knockK: 0, knockKind: null, knockShift: false, knockOx: 0, knockOz: 0,
+    reelT: 0, stumbleT: 0, stumbleSide: 1, tearT: 0, tearDur: 0, vx: 0, vz: 0, knockX: 0, knockZ: 0, dvx: 0, dvz: 0, sinkD: 0.7, rd: null,
   };
   paintZombieSlot(0, z.look, R, model);
+  const S = { anim: null, gi: { walk: helmet ? 0 : 1 }, deaths: 0, loop: -1, stage: 0, dead: false, legT: -1, armT: -1, onDeath: null };
+  // casque arraché par un tir (Fantassin, démonstration de la faiblesse) : il tombe, puis revient
+  let loose = null;
+  const fall = { t: 0, v: new THREE.Vector3(), spin: new THREE.Vector3() }, _p = new THREE.Vector3();
+  if (helmet) {
+    const hg = zombieGeometries().helmet.clone();
+    hg.translate(0, -0.2, 0);
+    loose = new THREE.Mesh(hg, MAT.zHelmet.clone());
+    loose.castShadow = true;
+    loose.visible = false;
+    root.add(loose);
+  }
+  const knockHelmet = () => {
+    if (!loose || !z.helmetOn) return false;
+    z.helmetOn = false;
+    _p.set(0, ZRIG.head + 0.04, 0).applyMatrix4(z.rig.neck.matrixWorld);
+    setLin(loose.material.color, z.look.helmetColor);
+    loose.position.copy(_p);
+    loose.rotation.set(0, z.yaw, 0);
+    fall.v.set(0.85, 2.6, 0.75);   // vers l'avant de la photo, pour qu'on le voie au sol
+    fall.spin.set(rand(-8, -5), rand(-3, 3), rand(-6, 6));
+    fall.t = 0;
+    loose.visible = true;
+    z.flinch = 0.45;
+    if (z.alive) zHitReact(z, 'head', 0, true, 0.9);
+    return true;
+  };
+  S.onDeath = (style) => { if (style === 'head') knockHelmet(); };
+  // bras arraché : il vole, tombe au sol, puis le bras repousse
+  const limb = makeLimb(true);
+  root.add(limb.group);
+  const flat = () => 0, toise = (x, y, zz) => zz < -1.0;
   const geos = zGeoSet(model);
   let light = null;
   if (geos.lanternPos) { light = new THREE.PointLight(0xffb347, 1.3, 3.2, 2); root.add(light); }
-  const legs = { t: -1 };
   return {
     root,
-    restyle() { z.look = look(); paintZombieSlot(0, z.look, R, model); },
+    restyle() {
+      z.look = look(); paintZombieSlot(0, z.look, R, model);
+      const set = SPEC_GAIT_OF[S.anim];
+      if (set && S.anim !== 'idle' && S.anim !== 'death' && S.anim !== 'stumble') S.gi[set] = (S.gi[set] || 0) + 1;
+    },
     crawling: () => z.crawl,
+    center: () => _specC.setFromMatrixPosition(z.rig.hips.matrixWorld),
+    knockHelmet,
     legShot() {
-      if (!type.crawler || legs.t >= 0) return false;
-      legs.t = 0; z.flinch = 0.45;
+      if (!type.crawler || S.legT >= 0) return false;
+      S.legT = 0; z.flinch = 0.45;
+      return true;
+    },
+    armShot() {
+      if (z.gib === 3 || !z.alive) return false;
+      const side = z.gib & 1 ? 2 : z.gib & 2 ? 1 : Math.random() < 0.5 ? 1 : 2, s = side === 1 ? 1 : -1;
+      dressLimb(limb, z, side);
+      const lx = Math.cos(z.yaw), lz = -Math.sin(z.yaw);
+      limb.vx = lx * s * 1.6; limb.vy = 2.6; limb.vz = lz * s * 1.6 + 0.8;
+      limb.ax = rand(-8, 8); limb.ay = rand(-5, 5); limb.az = rand(-8, 8); limb.life = 4.2;
+      z.gib |= side; S.armT = 0;
+      zHitReact(z, 'arm', s, true, 1.3);
       return true;
     },
     pose(anim, t, dt, yaw) {
-      z.yaw = yaw; z.pos.y = 0; z.moving = 0; z.state = 'idle'; z.speedType = 'walk'; z.t = t;
-      if (anim === 'walk' || anim === 'jog' || anim === 'run') {
-        z.state = 'chase'; z.speedType = anim; z.moving = (SPEEDS[anim][0] + SPEEDS[anim][1]) / 2;
-      } else if (anim === 'crawl') { z.state = 'chase'; z.moving = 0.55; }
-      else if (anim === 'attack') { z.state = 'attack'; z.t = t % 1.4; }
-      else if (anim === 'tear') z.state = 'tear';
-      else if (anim === 'rise') {
-        const k = t % 3.6;
-        if (k < 1.7) {
-          z.state = 'rise'; z.t = Math.max(0, k - 0.4);
-          z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1)));
-        } else z.t = k;
+      specimenPose(z, S, anim, t, dt, yaw);
+      if (loose && loose.visible) {
+        // le casque rebondit puis roule au sol ; il revient sur la tête au bout de 4 s
+        fall.t += dt;
+        fall.v.y -= 12 * dt;
+        loose.position.addScaledVector(fall.v, dt);
+        loose.rotation.x += fall.spin.x * dt; loose.rotation.y += fall.spin.y * dt; loose.rotation.z += fall.spin.z * dt;
+        if (loose.position.y < 0.08) {
+          loose.position.y = 0.08;
+          fall.v.y = Math.abs(fall.v.y) > 1 ? Math.abs(fall.v.y) * 0.3 : 0;
+          fall.v.x *= 0.55; fall.v.z *= 0.55; fall.spin.multiplyScalar(0.45);
+        }
+        if (fall.t > 4) { loose.visible = false; z.helmetOn = true; }
       }
-      // reptation : l'animation « Rampe », ou les 5 s qui suivent un tir dans les jambes
-      if (legs.t >= 0) { legs.t += dt; if (legs.t > 5) legs.t = -1; }
-      const crawl = anim === 'crawl' || legs.t >= 0;
-      if (crawl && !z.crawl) { z.crawl = true; z.crawlT = anim === 'crawl' ? 1 : 0; }
-      else if (!crawl) z.crawl = false;
-      if (z.crawl) { z.crawlT += dt; if (z.state === 'rise') z.state = 'chase'; }
-      z.flinch = damp(z.flinch, 0, 6, dt);
-      animateZombie(z, dt);
+      if (limb.life > 0) stepLimb(limb, dt, flat, toise);
+      if (S.armT >= 0) { S.armT += dt; if (S.armT > 4.5) { z.gib = 0; S.armT = -1; } }
       flushZombieMatrices(R);
       if (light) {
         light.position.copy(_lanternW.copy(geos.lanternPos).applyMatrix4(z.rig.hips.matrixWorld));
@@ -12678,7 +12807,7 @@ function variantSpecimen(model) {
    explosions et projectiles (roquettes, plasma).
    ============================================================================ */
 const FX = {
-  decals: [], decalIdx: 0, debris: [], helmets: [], sprites: [], projectiles: [], grenades: [], bottles: [], glass: null,
+  decals: [], decalIdx: 0, debris: [], helmets: [], limbs: [], sprites: [], projectiles: [], grenades: [], bottles: [], glass: null,
   shake: 0, muzzleLight: null, boomLight: null, boomT: 0,
   joltT: 0, joltA: 0,                         // secousse brève (coups du Glas) : durée restante, amplitude
   rumbleT: 0, rumbleA: 0,                     // tremblement léger (orgue de Toccata) : durée restante, amplitude en m
@@ -12770,6 +12899,8 @@ function buildFX() {
     FX.helmets.push({ mesh: m, life: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 });
     group.add(m);
   }
+  // bras arrachés (pièces du modèle, habillées au moment du tir)
+  for (let i = 0; i < 6; i++) { const L = makeLimb(); FX.limbs.push(L); group.add(L.group); }
   for (let i = 0; i < 40; i++) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.smoke, transparent: true, depthWrite: false, opacity: 0 }));
     s.visible = false;
@@ -13113,8 +13244,13 @@ function explode(x, y, z, radius, damage, opts = {}) {
     const dz = Math.hypot(zb.pos.x - x, zb.pos.z - z, NL > 1 ? Math.max(0, Math.abs(zb.pos.y + 0.9 - y) - 0.9) : 0);
     if (dz > radius + 0.3) continue;
     if (!clearToZombie(x, y, z, k0, zb)) continue;
-    const f = clamp(1 - dz / (radius + 0.3), 0, 1);
-    damageZombie(zb, damage * (0.3 + 0.7 * f), { kind: 'explosive', src: opts.src, dx: (zb.pos.x - x) / (dz || 1), dz: (zb.pos.z - z) / (dz || 1), force: 2 + 6 * f, slot: opts.slot || null });
+    const f = clamp(1 - dz / (radius + 0.3), 0, 1), ux = (zb.pos.x - x) / (dz || 1), uz = (zb.pos.z - z) / (dz || 1);
+    const killed = damageZombie(zb, damage * (0.3 + 0.7 * f), { kind: 'explosive', src: opts.src, dx: ux, dz: uz, force: 2 + 6 * f, slot: opts.slot || null });
+    if (!killed && zb.alive) {
+      // souffle au ras du sol : jambes arrachées, il continue en rampant ; parfois un bras arraché
+      if (y - zb.gy < 0.9 && Math.random() < 0.25 + 0.45 * f) startCrawl(zb, ux, uz);
+      if (f > 0.3 && Math.random() < 0.25 * f) gibArm(zb, Math.random() < 0.5 ? 1 : 2, ux, uz);
+    }
     hit++;
   }
   if (opts.self && d < radius * 0.8 && !player.down) {
@@ -13258,6 +13394,7 @@ function updateFX(dt) {
     }
     if (h.life < 0.6) m.scale.setScalar(h.life / 0.6);
   }
+  for (const L of FX.limbs) if (L.life > 0) stepLimb(L, dt, limbFloor, debrisHit);
   for (const p of FX.sprites) {
     if (p.life <= 0) continue;
     p.life -= dt;
@@ -13286,6 +13423,7 @@ function clearFX() {
   for (const d of FX.decals) d.visible = false;
   for (const d of FX.debris) { d.life = 0; d.mesh.visible = false; }
   for (const h of FX.helmets) { h.life = 0; h.mesh.visible = false; }
+  for (const L of FX.limbs) { L.life = 0; L.group.visible = false; }
   for (const p of FX.sprites) { p.life = 0; p.s.visible = false; }
   clearGlass();
 }
@@ -13846,7 +13984,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
   for (const z of Zombies.list) {
     if (!z.alive) continue;
     const t = rayHitZombie(z, ox, oy, oz, dx, dy, dz, 0);
-    if (t >= 0 && t < wallT) _hits.push({ z, t, head: _hitHead, leg: _hitLeg });
+    if (t >= 0 && t < wallT) _hits.push({ z, t, head: _hitHead, leg: _hitLeg, arm: _hitArm });
   }
   _hits.sort((a, b) => a.t - b.t);
   let dmg = wstat(s, 'dmg') * (player.perks.has('detente') ? 1.5 : 1);
@@ -13859,6 +13997,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
     // le casque encaisse le premier tir à la tête, puis tombe (sauf Mort instantanée)
     if (h.head && h.z.helmetOn && G.timers.insta <= 0) {
       popHelmet(h.z, dx, dz);
+      zHitReact(h.z, 'head', 0, Math.sin(h.z.yaw) * dx + Math.cos(h.z.yaw) * dz <= 0, 0.9);
       sparkBurst(hx, hy, hz, -dx, 0, -dz, 6);
       Arms.shotHit = true;
       addPoints(RULES.pointsHit);
@@ -13872,8 +14011,9 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
     if (h.head) d *= (h.z.type || BASE_TYPE).headMult;
     bloodBurst(hx, hy, hz, dx, dz, h.head ? 7 : 4, 1);
     Arms.shotHit = true;
-    const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5, slot: s });
-    if (!killed && h.leg && (h.z.type || BASE_TYPE).crawler) startCrawl(h.z, dx, dz);
+    const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, leg: h.leg, arm: h.arm, hx, hy, hz, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5, slot: s });
+    if (h.arm && Math.random() < armGibChance(def, s)) gibArm(h.z, h.arm, dx, dz);
+    if (!killed && h.leg) zLegHit(h.z, dx, dz, hx, hz, def);
     HUD.hitmarker(killed);
     if (boom) explode(hx, hy, hz, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds', slot: s });
     if (k >= pen) { endT = h.t; stopped = true; break; }
@@ -14187,7 +14327,7 @@ function updateViewmodel(dt) {
    ============================================================================ */
 const Zombies = { list: [], flowT: 0, lastCell: -1, seq: 0 };
 const SPEEDS = { walk: [1.0, 1.35], jog: [2.1, 2.55], run: [3.5, 4.1] };
-let _hitHead = false, _hitLeg = false;
+let _hitHead = false, _hitLeg = false, _hitArm = 0;
 const _zh = new THREE.Vector3();
 const _fd = { x: 0, z: 0 };
 
@@ -14205,10 +14345,12 @@ function tearBase(round) { return clamp(1.35 - round * 0.04, 0.6, 1.35); }
 function tearInterval() { return tearBase(G.round) * rand(0.85, 1.15); }
 function zombieHead(z, out) { return out.set(0, ZRIG.head, 0.02).applyMatrix4(z.rig.neck.matrixWorld); }
 
-/* Rayon contre zombie : sphère pour la tête, cylindre vertical pour le corps. */
+/* Rayon contre zombie : sphère pour la tête, cylindre vertical pour le corps, capsules pour les
+   bras (depuis le jeu 1.9.0 : un bras tendu hors du corps se touche, et un tir au bras peut
+   l'arracher). */
 function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
   let best = -1;
-  _hitHead = false; _hitLeg = false;
+  _hitHead = false; _hitLeg = false; _hitArm = 0;
   if (!z.headless) {
     zombieHead(z, _zh);
     const R = 0.17 + extra;
@@ -14223,7 +14365,7 @@ function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
   const low = z.crawl || z.knockK > 0.5;
   const Rb = (low ? 0.32 : 0.26) + extra, top = low ? 0.5 : 1.5;
   let bx = z.pos.x, bz = z.pos.z;
-  if (!z.crawl && z.knockK > 0.5) { const o = 0.75 * z.knockDir; bx -= Math.sin(z.yaw) * o; bz -= Math.cos(z.yaw) * o; }
+  if (!z.crawl && z.knockK > 0.5) { const o = (z.knockShift ? 0 : 0.75) * z.knockDir; bx -= Math.sin(z.yaw) * o; bz -= Math.cos(z.yaw) * o; }
   const px = ox - bx, pz = oz - bz, a = dx * dx + dz * dz;
   if (a > 1e-9) {
     const b = px * dx + pz * dz, c = px * px + pz * pz - Rb * Rb, disc = b * b - a * c;
@@ -14233,7 +14375,39 @@ function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
       if (t >= 0 && y >= z.pos.y - 0.05 && y <= z.pos.y + top && (best < 0 || t < best - 0.06)) { best = t; _hitHead = false; _hitLeg = !low && y < z.pos.y + 0.72; }
     }
   }
+  // bras : touchés avant le buste (ou hors du buste) ; jamais à la place de la tête
+  if (!_hitHead) {
+    let armT = -1;
+    for (let side = 1; side <= 2; side++) {
+      if (z.gib & side) continue;
+      const t = rayArm(z, side, ox, oy, oz, dx, dy, dz, 0.075 + extra);
+      if (t >= 0 && (best < 0 || t < best + 0.03) && (armT < 0 || t < armT)) { armT = t; _hitArm = side; }
+    }
+    if (_hitArm) { best = armT; _hitLeg = false; }
+  }
   return best;
+}
+/* Distance le long du rayon (direction unitaire) jusqu'à la capsule a → b de rayon r, ou -1. */
+function raySegment(ox, oy, oz, dx, dy, dz, a, b, r) {
+  const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z, wx = ox - a.x, wy = oy - a.y, wz = oz - a.z;
+  const bb = dx * ux + dy * uy + dz * uz, c = ux * ux + uy * uy + uz * uz, d = dx * wx + dy * wy + dz * wz, e = ux * wx + uy * wy + uz * wz;
+  const den = c - bb * bb;
+  const sg = den > 1e-9 ? clamp((e - bb * d) / den, 0, 1) : 0;
+  const t = bb * sg - d;
+  if (t < 0) return -1;
+  const px = ox + dx * t - (a.x + ux * sg), py = oy + dy * t - (a.y + uy * sg), pz = oz + dz * t - (a.z + uz * sg);
+  const d2 = px * px + py * py + pz * pz;
+  return d2 > r * r ? -1 : Math.max(0, t - Math.sqrt(r * r - d2));
+}
+/* Bras d'un zombie (side : 1 gauche, 2 droit) : épaule → coude → main. */
+const _ca = new THREE.Vector3(), _cb = new THREE.Vector3(), _cc = new THREE.Vector3();
+function rayArm(z, side, ox, oy, oz, dx, dy, dz, r) {
+  const el = z.rig[side === 1 ? 'elL' : 'elR'];
+  _ca.setFromMatrixPosition(z.rig[side === 1 ? 'shL' : 'shR'].matrixWorld);
+  _cb.setFromMatrixPosition(el.matrixWorld);
+  _cc.set(0, -0.3, 0).applyMatrix4(el.matrixWorld);
+  const t1 = raySegment(ox, oy, oz, dx, dy, dz, _ca, _cb, r), t2 = raySegment(ox, oy, oz, dx, dy, dz, _cb, _cc, r * 0.85);
+  return t1 < 0 ? t2 : t2 < 0 ? t1 : Math.min(t1, t2);
 }
 
 /* Dehors, devant une fenêtre : au rez-de-chaussée partout ; à l'étage ou au sous-sol, seulement
@@ -14292,6 +14466,9 @@ function spawnZombie(sp, hp) {
     deathKind: null, fallDir: 1, flingVY: 0, nukeT: 0,
     crawl: false, crawlT: 0, crawlPh: 0, crawlSpeed: 0,
     knockT: 0, knockDur: 0, knockDir: 1, knockK: 0, reelT: 0, called: null,   // Le Glas : renversé, chancelant, appelé
+    knockKind: null, knockThud: false, knockShift: false, knockOx: 0, knockOz: 0,           // chute : nature, bruit, racine sous le bassin
+    stumbleT: 0, stumbleSide: 1, tripCd: 0, tearDur: 0,                                     // trébuchement, planches
+    rd: null, dvx: 0, dvz: 0, deathStyle: null, deathClip: 0, deathHit: null, deathMode: null, deathFrom: null,   // mort, corps physique
   };
   z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]) * type.mult.speed;
   if (sp.riser) {
@@ -14377,10 +14554,14 @@ function damageZombie(z, amount, info) {
   }
   if (amount >= z.maxHp * 0.35) z.stagger = Math.max(z.stagger, 0.25);
   if (z.hp <= 0) { killZombie(z, info); return true; }
+  // réaction au coup : la tête, le buste, le bras ou le genou encaissent (ressorts de la pose)
+  const hit = zHitLocal(z, info), front = Math.sin(z.yaw) * (info.dx || 0) + Math.cos(z.yaw) * (info.dz || 0) <= 0;
+  zHitReact(z, hit.part, hit.side, front, clamp(0.3 + (amount / z.maxHp) * 1.6 + (info.force || 0) * 0.3, 0.25, 1.5));
   if (info.kind !== 'nuke') addPoints(RULES.pointsHit);
   return false;
 }
 function killZombie(z, info) {
+  const st = z.state;
   z.alive = false;
   z.state = 'dead';
   z.t = 0;
@@ -14406,14 +14587,12 @@ function killZombie(z, info) {
   } else if (Math.random() < 0.5) Sound.zombie(z.pos, 'death');
   const dx = info.dx || 0, dz = info.dz || 0;
   z.fallDir = Math.sin(z.yaw) * dx + Math.cos(z.yaw) * dz <= 0 ? 1 : -1;
-  if (z.knockK > 0.5 && !z.crawl) { z.fallDir = z.knockDir; z.t = 0.55; }      // déjà à terre (Le Glas)
-  z.knockT = 0; z.reelT = 0;
-  z.vx = z.knockX; z.vz = z.knockZ; z.flingVY = 0;
+  z.reelT = 0; z.stumbleT = 0; z.flingVY = 0;
   if (info.kind === 'explosive' || info.kind === 'blast') {
+    // projeté par le souffle (corps physique), bras arrachés qui volent
     const f = info.force || 3;
-    z.vx = dx * f; z.vz = dz * f;
-    z.flingVY = info.kind === 'blast' ? rand(3, 6) : rand(1.5, 3.5);
-    if (Math.random() < 0.55) z.gib = randInt(1, 3);
+    z.flingVY = info.kind === 'blast' ? rand(3, 6) : rand(1.5, 3.5) * clamp(f / 5, 0.5, 1.3);
+    for (const side of [1, 2]) if (Math.random() < 0.4) gibArm(z, side, dx, dz);
     if (z.helmetOn && Math.random() < 0.75) popHelmet(z, dx, dz, 1.5);
     bloodBurst(z.pos.x, z.gy + 1.1, z.pos.z, dx, dz, 14, 1.5);
     for (let i = 0; i < (z.gib ? 4 : 2); i++) spawnDebris(MAT.gib, rand(0.06, 0.14), rand(0.06, 0.2), rand(0.06, 0.12), z.pos.x, z.gy + 1.0, z.pos.z, dx * rand(2, 5) + rand(-1.5, 1.5), rand(2, 5), dz * rand(2, 5) + rand(-1.5, 1.5), 3);
@@ -14425,6 +14604,9 @@ function killZombie(z, info) {
   else addDecal('blood', z.pos.x, z.gy + 0.002, z.pos.z, 0, 1, 0, rand(0.8, 1.3));
   if (info.kind !== 'nuke') maybeDropItem(z, dropWin);
   onZombieKilled(z, info);
+  // chute : début animé selon le coup (tête, buste, jambe, élan, couteau, Bombe, Minuit), puis corps physique
+  zDeathSetup(z, info, st);
+  z.knockT = 0;
 }
 
 /* Le casque tombe (premier tir à la tête, explosion) : il quitte la tête et roule au sol. */
@@ -14464,6 +14646,8 @@ function updateZombie(z, dt) {
   z.flinch = damp(z.flinch, 0, 10, dt);
   if (z.stagger > 0) z.stagger -= dt;
   if (z.knockT > 0) z.knockT = Math.max(0, z.knockT - dt);
+  if (z.stumbleT > 0) z.stumbleT = Math.max(0, z.stumbleT - dt);
+  if (z.tripCd > 0) z.tripCd -= dt;
   if (z.reelT > 0) z.reelT -= dt;
   if (z.crawl) z.crawlT += dt;
   z.groanT -= dt;
@@ -14488,7 +14672,7 @@ function updateZombie(z, dt) {
       } else {
         z.moving = 0;
         z.yaw = turnTo(z.yaw, Math.atan2(-z.win.nx, -z.win.nz), 8 * dt);
-        if (k === 0) { z.state = 'tear'; z.t = 0; z.tearT = tearInterval() * 0.7; }
+        if (k === 0) { z.state = 'tear'; z.t = 0; z.tearT = z.tearDur = tearInterval() * 0.7; }
       }
       break;
     }
@@ -14503,7 +14687,7 @@ function updateZombie(z, dt) {
       }
       z.tearT -= dt;
       if (z.tearT <= 0) {
-        if (z.win.boards > 0) { Features.tearBoard(z.win); z.tearT = tearInterval(); }
+        if (z.win.boards > 0) { Features.tearBoard(z.win); z.tearT = z.tearDur = tearInterval(); }
         else { z.state = 'climb'; z.t = 0; z.climbFrom = z.pos.clone(); }
       }
       break;
@@ -14513,7 +14697,7 @@ function updateZombie(z, dt) {
       const ix = z.win.x + 0.5 - z.win.nx * 0.95, iz = z.win.z + 0.5 - z.win.nz * 0.95;
       z.pos.x = lerp(z.climbFrom.x, ix, smooth(k));
       z.pos.z = lerp(z.climbFrom.z, iz, smooth(k));
-      z.pos.y = z.gy + Math.sin(k * Math.PI) * 0.7;
+      z.pos.y = z.gy + zClimbY(k);
       z.moving = 0;
       if (k >= 1) {
         z.state = 'chase'; z.t = 0; z.outside = false;
@@ -14613,150 +14797,1188 @@ function attack(z, dt) {
   }
   if (z.t >= 0.95) {
     z.state = z.winAttack ? 'tear' : 'chase';
-    z.t = 0; z.tearT = 0.4; z.winAttack = false;
+    z.t = 0; z.tearT = z.tearDur = 0.4; z.winAttack = false;
   }
 }
 function updateCorpse(z, dt) {
-  // hauteur au-dessus du sol (projeté par une explosion)
-  let h = z.pos.y - z.gy;
-  if (z.flingVY !== 0 || h > 0) {
-    z.flingVY -= 14 * dt;
-    h += z.flingVY * dt;
-    if (h <= 0) { h = 0; z.flingVY = 0; z.vx *= 0.4; z.vz *= 0.4; }
-  }
-  if (z.t < 3) {
-    z.pos.x += z.vx * dt; z.pos.z += z.vz * dt;
-    z.vx = damp(z.vx, 0, 3, dt); z.vz = damp(z.vz, 0, 3, dt);
-    if (!z.outside) settleBody(z, 0.25);
-    z.pos.y = z.gy + h;
-  } else {
-    z.pos.y = z.gy - smooth(clamp((z.t - 3) / 1.2, 0, 1)) * z.sinkD;
-  }
-  if (z.t > 4.3) { removeZombie(z); return; }
-  animateZombie(z, dt);
+  if (!zCorpseStep(z, dt)) removeZombie(z);
 }
 
-function animateZombie(z, dt) {
-  const r = z.rig;
-  const run = z.speedType === 'run', jog = z.speedType === 'jog', walk = !run && !jog;
-  const mv = z.moving || 0;
-  z.phase += mv * dt * (run ? 2.2 : jog ? 2.6 : 3.1);
-  const s = Math.sin(z.phase), c = Math.cos(z.phase);
-  const amp = run ? 0.95 : jog ? 0.7 : 0.45;
-  const mk = clamp(mv, 0, 1);
-  let lean = run ? 0.35 : jog ? 0.2 : 0.1;
-  // Le Fantassin : bras droit tendu vers sa proie, bras gauche ballant
-  let shR = -1.22 + s * 0.06 * mk, elR = -0.18, sdR = -0.34;
-  let shL = -0.1 - s * 0.32 * mk, elL = -0.28, sdL = 0.1;
-  if (jog) { shL = -0.25 - s * 0.6 * mk; elL = -0.5; }
-  if (run) { shL = -0.5 - s * 0.9 * mk; shR = -0.5 + s * 0.9 * mk; elL = elR = -1.3; sdL = 0.25; sdR = -0.25; }
-  let hipL = s * amp * mk, hipR = -s * amp * mk;
-  let knL = Math.max(0, -c) * amp * 1.3 * mk + 0.05, knR = Math.max(0, c) * amp * 1.3 * mk + 0.05;
-  let roll = s * 0.05 * mk, twist = 0;
-  let hipsY = ZRIG.hips - Math.abs(c) * 0.03 * mk;
-  if (walk) {
-    // démarche traînante : la jambe gauche suit, raide, et son pied racle le sol
-    hipL = (0.1 + s * 0.6) * amp * mk;
-    knL = 0.03 + Math.max(0, -c) * 0.12 * mk;
-    hipR = -s * amp * 1.1 * mk;
-    knR = Math.max(0, c) * amp * 1.45 * mk + 0.05;
-    roll = (0.035 + s * 0.06) * mk;
-    twist = (-0.06 + s * 0.05) * mk;
-    hipsY = ZRIG.hips - (0.012 + Math.max(0, s) * 0.03) * mk;
+/* ------------------------------------------- Rampants, trébuchements, bras arrachés --
+   (jeu 1.9.0) Tir dans les jambes : le Lacéré s'effondre et rampe ; les autres trébuchent (le
+   genou cède), et un sprinteur peut tomber face contre terre, puis se relève. Bras arraché par un
+   tir ou une explosion : il vole, le moignon saigne, le zombie frappe de l'autre bras (ou mord). */
+function zLegHit(z, dx, dz, hx, hz, def) {
+  if ((z.type || BASE_TYPE).crawler) return startCrawl(z, dx, dz);
+  if (!z.alive || z.crawl || z.state === 'rise' || z.state === 'climb' || z.knockT > 0) return false;
+  z.stumbleT = 0.55;
+  z.stumbleSide = zHitLocal(z, { leg: true, hx, hz }).side || (Math.random() < 0.5 ? 1 : -1);
+  z.stagger = Math.max(z.stagger, 0.45);
+  if (z.state === 'chase' && z.speedType === 'run' && (z.moving || 0) > 2.2 && !(z.tripCd > 0)
+    && Math.random() < (def && def.kind === 'shotgun' ? 0.6 : 0.35)) zTrip(z);
+  return true;
+}
+/* Sprinteur qui trébuche : il tombe face contre terre (1,3 à 1,7 s), glisse sur son élan, se relève. */
+function zTrip(z) {
+  z.knockT = z.knockDur = rand(1.3, 1.7);
+  z.knockDir = -1; z.knockKind = 'trip'; z.knockThud = false;
+  z.stagger = Math.max(z.stagger, z.knockDur);
+  z.stumbleT = 0; z.tripCd = 5;
+  if (z.state === 'attack' && !z.winAttack) { z.state = 'chase'; z.t = 0; }
+  Sound.zombie(z.pos, 'death');
+}
+// chance d'arracher le bras touché : armes lourdes surtout, plus avec une arme reforgée (Le Glas II et III)
+const ARM_GIB = { shotgun: 0.16, rifle: 0.4, ar: 0.2, lmg: 0.26, smg: 0.08, pistol: 0.06 };
+function armGibChance(def, s) { return (ARM_GIB[def.kind] || 0) + (s && (s.tier || 0) >= 2 ? 0.1 : 0); }
+const _ga = new THREE.Vector3();
+function gibArm(z, side, dx = 0, dz = 0) {
+  if (z.gib & side) return false;
+  _ga.setFromMatrixPosition(z.rig[side === 1 ? 'shL' : 'shR'].matrixWorld);
+  spawnLimb(z, side, dx, dz);
+  z.gib |= side;
+  bloodBurst(_ga.x, _ga.y, _ga.z, dx, dz, 14, 1.3);
+  for (let i = 0; i < 2; i++) spawnDebris(MAT.gib, rand(0.04, 0.08), rand(0.04, 0.1), rand(0.04, 0.08), _ga.x, _ga.y, _ga.z, dx * rand(1, 3) + rand(-1, 1), rand(1, 2.5), dz * rand(1, 3) + rand(-1, 1), 2.5);
+  addDecal('blood', _ga.x + dx * 0.5, z.gy + 0.002, _ga.z + dz * 0.5, 0, 1, 0, rand(0.45, 0.75));
+  Sound.gib(_ga);
+  if (z.alive) zHitReact(z, 'arm', side === 1 ? 1 : -1, true, 1.3);
+  return true;
+}
+/* Bras qui vole : groupe de pièces du modèle (manche, avant-bras, main…), repère au milieu du bras. */
+function makeLimb(shadow = false) {
+  const group = new THREE.Group(), meshes = [];
+  for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(GEO.box, MAT.zCloth); m.visible = false; m.castShadow = shadow; group.add(m); meshes.push(m); }
+  group.visible = false;
+  return { group, meshes, life: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 };
+}
+const _ls = new THREE.Vector3(), _lv = new THREE.Vector3(), _ly = new THREE.Vector3(), _lq = new THREE.Quaternion(), _lq1 = new THREE.Quaternion();
+function dressLimb(L, z, side) {
+  const model = zModelOf(z), geos = zGeoSet(model), shB = side === 1 ? 'shL' : 'shR', elB = side === 1 ? 'elL' : 'elR';
+  let i = 0;
+  for (const def of ZPARTS[model]) {
+    if (def.stump || i >= L.meshes.length) continue;
+    const onSh = def.bone === 'sh' || def.bone === shB, onEl = def.bone === 'el' || def.bone === elB;
+    if (!onSh && !onEl) continue;
+    const m = L.meshes[i++];
+    m.geometry = geos[def.geo]; m.material = MAT[def.mat]; m.visible = true;
+    m.position.set(0, onEl ? 0.3 - ZRIG.upper : 0.3, 0);
+    m.rotation.set(onEl ? -0.45 : 0, 0, 0);
   }
-  let bodyX = 0, bodyY = 0, bodyZ = 0;
-  let neckX = 0.15 + Math.sin(z.t * 0.9 + z.id) * 0.1, neckZ = Math.sin(z.t * 0.6 + z.id * 2) * 0.25;
+  for (; i < L.meshes.length; i++) L.meshes[i].visible = false;
+  z.rig[shB].matrixWorld.decompose(L.group.position, L.group.quaternion, _ls);
+  L.group.position.add(_lv.set(0, -0.3, 0).applyQuaternion(L.group.quaternion));
+  L.group.scale.setScalar(1);
+  L.group.visible = true;
+}
+function spawnLimb(z, side, dx, dz) {
+  if (!FX.limbs.length) return null;
+  const L = FX.limbs.find((e) => e.life <= 0) || FX.limbs[randInt(0, FX.limbs.length - 1)];
+  dressLimb(L, z, side);
+  L.vx = dx * rand(2, 4) + rand(-1, 1); L.vy = rand(1.6, 3.4); L.vz = dz * rand(2, 4) + rand(-1, 1);
+  L.ax = rand(-9, 9); L.ay = rand(-6, 6); L.az = rand(-9, 9);
+  L.life = 7;
+  return L;
+}
+const limbFloor = (x, z, y) => (NL > 1 ? floorBelow(x, z, y + 0.3) : 0);
+/* Un pas du bras qui vole : gravité, rebonds sur le sol et les murs (hit), puis il se couche à plat. */
+function stepLimb(L, dt, floorY, hit) {
+  L.life -= dt;
+  const g = L.group;
+  if (L.life <= 0) { g.visible = false; return; }
+  L.vy -= 12 * dt;
+  let nx = g.position.x + L.vx * dt, nz = g.position.z + L.vz * dt;
+  if (hit(nx, g.position.y, g.position.z, g.position.x, g.position.z)) { L.vx *= -0.35; nx = g.position.x; }
+  if (hit(g.position.x, g.position.y, nz, g.position.x, g.position.z)) { L.vz *= -0.35; nz = g.position.z; }
+  g.position.x = nx; g.position.z = nz; g.position.y += L.vy * dt;
+  g.rotation.x += L.ax * dt; g.rotation.y += L.ay * dt; g.rotation.z += L.az * dt;
+  const fy = floorY(g.position.x, g.position.z, g.position.y);
+  if (g.position.y < fy + 0.07) {
+    g.position.y = fy + 0.07;
+    L.vy = Math.abs(L.vy) > 1 ? Math.abs(L.vy) * 0.25 : 0;
+    L.vx *= 0.5; L.vz *= 0.5; L.ax *= 0.4; L.ay *= 0.5; L.az *= 0.4;
+  }
+  if (g.position.y < fy + 0.1 && Math.abs(L.vy) < 0.5) {
+    // au sol : le bras se couche (son axe devient horizontal)
+    _ly.set(0, 1, 0).applyQuaternion(g.quaternion);
+    _lv.set(_ly.x, 0, _ly.z);
+    if (_lv.lengthSq() < 1e-4) _lv.set(1, 0, 0);
+    _lq.setFromUnitVectors(_ly, _lv.normalize());
+    _lq1.identity().slerp(_lq, 1 - Math.exp(-8 * dt));
+    g.quaternion.premultiply(_lq1);
+  }
+  g.scale.setScalar(L.life < 0.6 ? L.life / 0.6 : 1);
+}
+
+/* ===================================================== Animations des zombies ==
+   (jeu 1.9.0) Poses à clés dans l'esprit du mode Zombies de Call of Duty : World at War et
+   Black Ops 1 dans les premières manches, Black Ops 3 (super-sprinteurs, sprint frénétique) dans
+   les manches avancées. Une pose = angles des os du squelette (makeRig) ; elle se construit par
+   couches : démarche (ou repos), action (sortie de terre, planches, fenêtre, attaque, chute et
+   relevé, trébuchement, reptation, début de mort), réactions aux coups (ressorts selon l'endroit
+   touché), regard vers le joueur, inclinaison dans les virages, puis pieds posés au sol. Après le
+   début de la mort, le corps devient physique (« Ragdoll », plus bas).
+   Repères : x vers la gauche du zombie, y vers le haut, z vers l'avant. Bras et jambes pendent
+   le long de -y : rotation x négative = vers l'avant (bras levé, cuisse fléchie) ; genou : x
+   positif = plié ; coude : x négatif = plié. Bassin et buste : x positif = penché en avant,
+   z positif = penché vers sa droite, y positif = épaule (ou hanche) gauche en arrière.
+   Clés d'une pose (ZPK) : b… corps entier (décalage, bascule), p… bassin (décalage, rotation),
+   t… buste, n… cou, s… épaules, e… coudes, h… hanches, k… genoux ; L/R : gauche, droite. */
+const ZPK = ['bx', 'by', 'bz', 'bRX', 'bRZ', 'py', 'px', 'pz', 'pRX', 'pRY', 'pRZ', 'tRX', 'tRY', 'tRZ', 'nRX', 'nRY', 'nRZ',
+  'sLX', 'sLY', 'sLZ', 'sRX', 'sRY', 'sRZ', 'eL', 'eR', 'hLX', 'hLY', 'hLZ', 'hRX', 'hRY', 'hRZ', 'kL', 'kR'];
+function zPose() { const p = {}; for (const k of ZPK) p[k] = 0; return p; }
+function zPoseSet(o, a) { for (const k of ZPK) o[k] = a[k]; return o; }
+function zPoseMix(o, b, w) {
+  if (w <= 0) return o;
+  if (w >= 1) return zPoseSet(o, b);
+  for (const k of ZPK) o[k] += (b[k] - o[k]) * w;
+  return o;
+}
+/* Courbes : clés [u, valeur] (u de 0 à 1), interpolées par Hermite (Catmull-Rom non uniforme),
+   cuites en tables de 64 valeurs. Périodiques (démarches) ou bornées (clips d'action). */
+const ZCN = 64;
+function zBake(def, periodic = true) {
+  const out = new Float32Array(ZCN + 1);
+  if (typeof def === 'number') { out.fill(def); return out; }
+  if (typeof def === 'function') { for (let i = 0; i <= ZCN; i++) out[i] = def(i / ZCN); return out; }
+  const K = def.slice().sort((a, b) => a[0] - b[0]), m = K.length;
+  if (m === 1) { out.fill(K[0][1]); return out; }
+  const key = (i) => {
+    if (periodic) { const j = ((i % m) + m) % m; return [K[j][0] + Math.floor(i / m), K[j][1]]; }
+    if (i < 0) return [K[0][0] - (K[1][0] - K[0][0]), K[0][1]];
+    if (i >= m) return [K[m - 1][0] + (K[m - 1][0] - K[m - 2][0]), K[m - 1][1]];
+    return K[i];
+  };
+  const tan = (i) => { const a = key(i - 1), b = key(i + 1); return (b[1] - a[1]) / (b[0] - a[0] || 1); };
+  for (let s = 0; s <= ZCN; s++) {
+    const u = s / ZCN;
+    let i = -1;
+    for (let q = 0; q < m; q++) if (K[q][0] <= u) i = q;
+    if (!periodic && (i < 0 || i >= m - 1)) { out[s] = i < 0 ? K[0][1] : K[m - 1][1]; continue; }
+    const p1 = key(i), p2 = key(i + 1), h = p2[0] - p1[0] || 1, t = (u - p1[0]) / h;
+    const t2 = t * t, t3 = t2 * t;
+    out[s] = (2 * t3 - 3 * t2 + 1) * p1[1] + (t3 - 2 * t2 + t) * h * tan(i) + (-2 * t3 + 3 * t2) * p2[1] + (t3 - t2) * h * tan(i + 1);
+  }
+  return out;
+}
+function zSamp(arr, u, periodic = true) {
+  const x = (periodic ? u - Math.floor(u) : clamp(u, 0, 1)) * ZCN;
+  const i = Math.min(ZCN - 1, x | 0), f = x - i;
+  return arr[i] + (arr[i + 1] - arr[i]) * f;
+}
+// raccourcis pour écrire les courbes périodiques
+const zCos = (a, b, ph = 0, f = 1) => (u) => a + b * Math.cos(TAU * (f * u - ph));
+const zSin = (a, b, ph = 0, f = 1) => (u) => a + b * Math.sin(TAU * (f * u - ph));
+const zShift = (keys, d, k = 1, o = 0) => keys.map(([u, v]) => [(u + d) % 1, v * k + o]);
+
+/* ------------------------------------------------------------ Démarches ----
+   Jambe gauche : talon posé à u = 0, pied levé à la fin de l'appui (stance) ; la droite suit
+   d'une demi-période (miroir) sauf démarche boiteuse. Les bras se balancent à l'opposé des jambes.
+   Le bassin monte et descend tout seul : les pieds sont reposés au sol à chaque image. La foulée
+   (m par cycle) est mesurée sur les courbes : la cadence suit la vitesse réelle, les pieds ne
+   glissent pas. */
+const ZLEG = {
+  walk: { h: [[0, -0.46], [0.12, -0.38], [0.32, -0.08], [0.52, 0.2], [0.64, 0.22], [0.75, -0.05], [0.87, -0.44], [0.95, -0.48]],
+    k: [[0, 0.08], [0.12, 0.3], [0.32, 0.12], [0.52, 0.2], [0.64, 0.6], [0.75, 0.88], [0.87, 0.45], [0.95, 0.12]], stance: 0.64 },
+  drag: { h: [[0, -0.22], [0.35, 0.02], [0.68, 0.2], [0.82, 0.06], [0.95, -0.18]],
+    k: [[0, 0.05], [0.35, 0.06], [0.68, 0.16], [0.8, 0.3], [0.92, 0.1]], stance: 0.7 },
+  jog: { h: [[0, -0.6], [0.1, -0.42], [0.28, 0.08], [0.42, 0.42], [0.52, 0.38], [0.68, -0.3], [0.84, -0.72], [0.94, -0.68]],
+    k: [[0, 0.18], [0.1, 0.5], [0.28, 0.28], [0.42, 0.5], [0.56, 1.35], [0.7, 1.7], [0.84, 0.95], [0.94, 0.32]], stance: 0.42 },
+  run: { h: [[0, -0.78], [0.08, -0.58], [0.24, 0.08], [0.34, 0.52], [0.44, 0.55], [0.6, -0.25], [0.78, -1.0], [0.9, -0.92]],
+    k: [[0, 0.28], [0.08, 0.58], [0.24, 0.42], [0.34, 0.75], [0.46, 1.75], [0.6, 2.05], [0.78, 1.25], [0.92, 0.48]], stance: 0.34 },
+};
+const ZG_MIRROR = [['hLX', 'hRX', 1], ['hLY', 'hRY', -1], ['hLZ', 'hRZ', -1], ['kL', 'kR', 1], ['sLX', 'sRX', 1], ['sLY', 'sRY', -1], ['sLZ', 'sRZ', -1], ['eL', 'eR', 1]];
+const ZGAIT_DEFS = [
+  // --- marche (World at War / Black Ops 1)
+  { id: 'fantassin', name: 'Bras tendu, pied traîné', type: 'walk', era: 'waw', stance: 0.67, drag: 0,
+    hLX: ZLEG.drag.h, kL: ZLEG.drag.k, hRX: zShift(ZLEG.walk.h, 0.5), kR: zShift(ZLEG.walk.k, 0.5), hLZ: 0.05, hRZ: -0.04,
+    pRY: zCos(0, -0.06), pRZ: zSin(0, 0.05), px: zSin(0, 0.025),
+    tRX: zSin(0.21, 0.03, 0, 2), tRY: zCos(0, 0.07), tRZ: zSin(0.03, 0.07, 0.05),
+    nRX: zSin(0.2, 0.04, 0.1, 2), nRY: zSin(0, 0.06, 0.2), nRZ: zSin(0.12, 0.06, 0.1),
+    sRX: zSin(-1.24, 0.05, 0, 2), sRZ: -0.32, eR: -0.16, sLX: zCos(0.06, 0.22, 0.05), sLZ: 0.12, eL: zCos(-0.32, 0.08, 0.05),
+    idle: { sRX: -0.95, sRZ: -0.28, eR: -0.25, sLX: 0.05, sLZ: 0.12, eL: -0.3, tRX: 0.19, nRX: 0.18, nRZ: 0.12 } },
+  { id: 'titubant', name: 'Titubant', type: 'walk', era: 'waw', stance: 0.64,
+    hLX: zShift(ZLEG.walk.h, 0, 0.85, -0.04), kL: zShift(ZLEG.walk.k, 0, 1, 0.1), hLZ: 0.07,
+    px: zSin(0, 0.045), pRZ: zSin(0, 0.09), pRY: zCos(0, -0.05),
+    tRX: zSin(0.24, 0.04, 0, 2), tRZ: zSin(0, 0.13, 0.08), tRY: zCos(0, 0.06),
+    nRX: zSin(0.3, 0.06, 0.1, 2), nRZ: zSin(0, 0.24, 0.2), nRY: zSin(0, 0.12, 0.35),
+    sLX: zCos(0.08, 0.16, 0.1), sLZ: zSin(0.16, 0.04, 0.1), eL: -0.36,
+    idle: { tRX: 0.24, nRX: 0.3, nRZ: 0.18, sLX: 0.05, sRX: 0.05, sLZ: 0.16, sRZ: -0.16, eL: -0.36, eR: -0.36 } },
+  { id: 'bras', name: 'Bras tendus', type: 'walk', era: 'waw', stance: 0.65,
+    hLX: zShift(ZLEG.walk.h, 0, 0.9, -0.03), kL: zShift(ZLEG.walk.k, 0, 1, 0.06),
+    pRY: zCos(0, -0.05), pRZ: zSin(0, 0.05),
+    tRX: zSin(0.18, 0.03, 0, 2), tRZ: zSin(0, 0.06), tRY: zCos(0, 0.05),
+    nRX: zSin(0.2, 0.04, 0.1, 2), nRZ: zSin(0, 0.08, 0.25),
+    sLX: zCos(-1.32, 0.09), sLZ: 0.1, eL: zSin(-0.18, 0.06),
+    idle: { sLX: -1.2, sRX: -1.2, sLZ: 0.1, sRZ: -0.1, eL: -0.2, eR: -0.2, tRX: 0.16, nRX: 0.18 } },
+  { id: 'boiteux', name: 'Boiteux', type: 'walk', era: 'waw', stance: 0.67, drag: 1,
+    hLX: ZLEG.walk.h, kL: ZLEG.walk.k, hRX: zShift(ZLEG.drag.h, 0.5, 0.9), kR: [[0.5, 0.04], [0.8, 0.05], [0.12, 0.14], [0.26, 0.2], [0.4, 0.06]], hRZ: -0.1,
+    pRZ: zSin(0, 0.07), px: zSin(0, 0.04), pRY: zCos(0, -0.05),
+    tRX: 0.2, tRZ: zSin(0, 0.14, 0.05), tRY: zCos(0, 0.08),
+    nRX: 0.2, nRZ: zSin(0, 0.1, 0.1),
+    sLX: -0.35, sLZ: 0.1, eL: -0.6, sRX: zCos(-0.85, 0.15, 0.5), sRZ: -0.2, eR: -0.3,
+    idle: { sLX: -0.3, eL: -0.6, sRX: -0.8, sRZ: -0.2, eR: -0.3, tRX: 0.2, tRZ: 0.06, nRX: 0.2 } },
+  // --- trot
+  { id: 'coureur', name: 'Coureur', type: 'jog', era: 'waw', stance: ZLEG.jog.stance,
+    hLX: ZLEG.jog.h, kL: ZLEG.jog.k, pRX: 0.06, pRY: zCos(0, -0.09), pRZ: zSin(0, 0.05),
+    tRX: zSin(0.32, 0.03, 0.1, 2), tRY: zCos(0, 0.12), tRZ: zSin(0, 0.04),
+    nRX: zSin(-0.12, 0.04, 0.1, 2), nRZ: zSin(0, 0.05, 0.2),
+    sLX: zCos(0.1, 0.62), sLZ: 0.18, eL: zCos(-1.35, 0.15, 0.5),
+    idle: { tRX: 0.28, nRX: -0.05, sLX: -0.2, sRX: -0.2, eL: -1.0, eR: -1.0, sLZ: 0.15, sRZ: -0.15 } },
+  { id: 'griffu', name: 'Trot griffu', type: 'jog', era: 'bo1', stance: ZLEG.jog.stance,
+    hLX: zShift(ZLEG.jog.h, 0, 0.95), kL: ZLEG.jog.k, pRY: zCos(0, -0.08), pRZ: zSin(0, 0.05),
+    tRX: zSin(0.38, 0.03, 0.1, 2), tRY: zCos(0, 0.1), nRX: -0.2, nRZ: zSin(0, 0.06),
+    sLX: zCos(-1.2, 0.5), sLZ: 0.08, eL: zCos(-0.35, 0.2, 0.5),
+    idle: { sLX: -1.1, sRX: -1.1, eL: -0.4, eR: -0.4, tRX: 0.3, nRX: -0.1 } },
+  // --- sprint
+  { id: 'sprinteur', name: 'Sprinteur', type: 'run', era: 'waw', stance: ZLEG.run.stance,
+    hLX: ZLEG.run.h, kL: ZLEG.run.k, pRX: 0.12, pRY: zCos(0, -0.12), pRZ: zSin(0, 0.05),
+    tRX: zSin(0.52, 0.04, 0.1, 2), tRY: zCos(0, 0.16), tRZ: zSin(0, 0.05),
+    nRX: zSin(-0.32, 0.05, 0.1, 2), nRZ: zSin(0, 0.06, 0.2),
+    sLX: zCos(-1.25, 0.75), sLZ: zSin(0.25, 0.08), eL: zCos(-0.55, 0.3, 0.5),
+    idle: { tRX: 0.45, nRX: -0.25, sLX: -0.9, sRX: -0.9, eL: -0.6, eR: -0.6, sLZ: 0.2, sRZ: -0.2 } },
+  { id: 'super', name: 'Super-sprinteur', type: 'run', era: 'bo3', stance: 0.32,
+    hLX: zShift(ZLEG.run.h, 0, 1.08), kL: zShift(ZLEG.run.k, 0, 1.05), pRX: 0.18, pRY: zCos(0, -0.1), pRZ: zSin(0, 0.04),
+    tRX: zSin(0.68, 0.04, 0.1, 2), tRY: zCos(0, 0.08), tRZ: zSin(0, 0.04),
+    nRX: zSin(-0.5, 0.05, 0.1, 2), sLX: zCos(0.8, 0.14), sLZ: 0.32, eL: -0.18,
+    idle: { tRX: 0.5, nRX: -0.35, sLX: 0.55, sRX: 0.55, sLZ: 0.3, sRZ: -0.3, eL: -0.2, eR: -0.2 } },
+  { id: 'frenetique', name: 'Frénétique', type: 'run', era: 'bo3', stance: 0.33,
+    hLX: ZLEG.run.h, kL: ZLEG.run.k, pRX: 0.1, pRY: zCos(0, -0.14), pRZ: zSin(0, 0.07),
+    tRX: zSin(0.48, 0.05, 0.1, 2), tRY: zCos(0, 0.26), tRZ: zSin(0, 0.08, 0.1),
+    nRX: zSin(-0.25, 0.08, 0.1, 2), nRY: zSin(0, 0.22, 0, 2), nRZ: zSin(0, 0.14, 0.3, 3),
+    sLX: zCos(-0.55, 1.05), sLZ: (u) => 0.15 - 0.4 * Math.max(0, Math.cos(TAU * (u - 0.5))), eL: zCos(-0.95, 0.35, 0.5),
+    idle: { tRX: 0.42, nRX: -0.2, sLX: -0.6, sRX: -0.6, eL: -0.9, eR: -0.9 } },
+];
+/* Démarche cuite : tables par canal (miroir pour la jambe et le bras droits), moyennes (pour les
+   variations d'amplitude) et foulée mesurée. */
+function zGait(def) {
+  const g = { id: def.id, name: def.name, type: def.type, era: def.era, stance: def.stance, drag: def.drag ?? -1, ch: {}, mean: {}, idle: def.idle || {} };
+  for (const k of ZPK) if (def[k] !== undefined) g.ch[k] = zBake(def[k]);
+  for (const [l, r, sgn] of ZG_MIRROR) {
+    if (!g.ch[l] || g.ch[r]) continue;
+    const a = g.ch[l], b = new Float32Array(ZCN + 1);
+    for (let i = 0; i <= ZCN; i++) b[i] = sgn * a[(i + ZCN / 2) % ZCN];
+    g.ch[r] = b;
+  }
+  g.keys = Object.keys(g.ch);
+  for (const k of g.keys) { let s = 0; for (let i = 0; i < ZCN; i++) s += g.ch[k][i]; g.mean[k] = s / ZCN; }
+  const L1 = ZRIG.thigh, L2 = 0.42, pr = (u) => (g.ch.pRX ? zSamp(g.ch.pRX, u) : 0);
+  const foot = (u, h, kn) => { const a = pr(u) + zSamp(g.ch[h], u), b = a + zSamp(g.ch[kn], u); return -(L1 * Math.sin(a) + L2 * Math.sin(b)); };
+  const s = g.stance, dl = foot(0, 'hLX', 'kL') - foot(s, 'hLX', 'kL'), dr = foot(0.5, 'hRX', 'kR') - foot(0.5 + s, 'hRX', 'kR');
+  // foulée : celle de la jambe qui porte (la jambe traînée glisse, c'est voulu)
+  g.stride = Math.max(0.35, (g.drag === 0 ? dr : g.drag === 1 ? dl : (dl + dr) / 2) / s);
+  return g;
+}
+const ZGAITS = Object.fromEntries(ZGAIT_DEFS.map((d) => [d.id, zGait(d)]));
+const ZGAIT_REF = { walk: 1.15, jog: 2.3, run: 3.8 };   // vitesse de référence (m/s) de chaque allure
+const ZAMP = ['sLX', 'sRX', 'sLZ', 'sRZ', 'tRZ', 'nRZ', 'pRZ'];   // canaux dont l'ampleur varie d'un zombie à l'autre
+/* Démarche d'un zombie : selon l'allure, le modèle et la manche (Black Ops 3 plus fréquent dans les
+   manches avancées). */
+function zPickGait(type, round = 1, model = 'fantassin') {
+  const w = type === 'walk' ? { fantassin: model === 'fantassin' ? 0.45 : 0.12, titubant: 0.3, bras: 0.3, boiteux: 0.15 }
+    : type === 'jog' ? (round < 12 ? { coureur: 0.6, griffu: 0.4 } : { coureur: 0.35, griffu: 0.65 })
+      : round <= 11 ? { sprinteur: 0.8, frenetique: 0.2 } : round < 20 ? { sprinteur: 0.45, super: 0.3, frenetique: 0.25 } : { sprinteur: 0.25, super: 0.4, frenetique: 0.35 };
+  let x = Math.random() * Object.values(w).reduce((a, b) => a + b, 0);
+  for (const id in w) { x -= w[id]; if (x <= 0) return ZGAITS[id]; }
+  return ZGAITS[Object.keys(w)[0]];
+}
+
+/* --------------------------------------------------------------- Clips -----
+   Clips d'action : clés bornées sur k (0 à 1) ; les canaux absents gardent la pose de dessous. */
+function zClip(def) {
+  const c = { ch: {}, keys: [] };
+  for (const k of ZPK) if (def[k] !== undefined) c.ch[k] = zBake(def[k], false);
+  c.keys = Object.keys(c.ch);
+  return c;
+}
+function zClipApply(P, c, k, w = 1) {
+  if (w <= 0) return;
+  for (const key of c.keys) { const v = zSamp(c.ch[key], k, false); P[key] += (v - P[key]) * w; }
+}
+// attaques (0,95 s, coup à 0,42 s) : clés en secondes / 0,95
+const zA = (keys) => keys.map(([t, v]) => [t / 0.95, v]);
+const ZCLIPS = {
+  // sortie de terre (1,3 s) : les mains percent, griffent, le corps s'arrache voûté puis se redresse
+  rise: zClip({
+    sLX: [[0, -2.85], [0.32, -2.75], [0.55, -1.2], [0.75, -0.7], [1, -0.4]], sRX: [[0, -2.7], [0.32, -2.85], [0.55, -1.3], [0.75, -0.8], [1, -0.4]],
+    sLZ: [[0, 0.15], [0.55, 0.35], [1, 0.15]], sRZ: [[0, -0.15], [0.55, -0.35], [1, -0.15]],
+    eL: [[0, -0.25], [0.45, -0.9], [0.75, -0.6], [1, -0.35]], eR: [[0, -0.3], [0.45, -1.0], [0.75, -0.6], [1, -0.35]],
+    tRX: [[0, 0.35], [0.45, 0.8], [0.75, 0.55], [1, 0.18]], nRX: [[0, -0.2], [0.45, -0.45], [1, 0.12]],
+    hLX: [[0, -1.0], [0.55, -0.9], [0.85, -0.3], [1, -0.06]], hRX: [[0, -0.6], [0.55, -0.7], [0.85, -0.15], [1, -0.06]],
+    kL: [[0, 1.2], [0.55, 1.1], [0.85, 0.45], [1, 0.1]], kR: [[0, 1.0], [0.55, 1.1], [0.85, 0.35], [1, 0.1]],
+  }),
+  // enjambement de la fenêtre (1,1 s) : mains sur l'appui, genou dessus, accroupi, passe, réception
+  climb: zClip({
+    tRX: [[0, 0.4], [0.2, 0.7], [0.45, 0.95], [0.65, 0.55], [0.85, 0.5], [1, 0.25]],
+    sLX: [[0, -1.6], [0.2, -1.0], [0.45, -0.4], [0.65, -1.2], [0.85, -0.8], [1, -0.6]],
+    sRX: [[0, -1.6], [0.2, -1.0], [0.45, -0.4], [0.65, -1.0], [0.85, -0.8], [1, -0.6]],
+    sLZ: [[0, 0.12], [0.45, 0.2], [0.65, 0.5], [1, 0.15]], sRZ: [[0, -0.12], [0.45, -0.2], [0.65, -0.5], [1, -0.15]],
+    eL: [[0, -0.3], [0.2, -0.5], [0.45, -0.2], [1, -0.4]], eR: [[0, -0.3], [0.2, -0.5], [0.45, -0.2], [1, -0.4]],
+    hLX: [[0, -0.2], [0.2, -1.55], [0.45, -1.3], [0.65, -0.6], [0.85, -0.9], [1, -0.2]],
+    kL: [[0, 0.3], [0.2, 1.75], [0.45, 1.9], [0.65, 0.8], [0.85, 1.3], [1, 0.3]],
+    hRX: [[0, 0.1], [0.2, 0.15], [0.45, -0.4], [0.65, -1.2], [0.85, -0.7], [1, -0.15]],
+    kR: [[0, 0.2], [0.2, 0.2], [0.45, 1.4], [0.65, 1.3], [0.85, 1.1], [1, 0.25]],
+    py: [[0, 0], [0.2, -0.05], [0.85, -0.12], [1, 0]], nRX: [[0, 0.1], [0.45, -0.3], [1, 0.1]],
+  }),
+  // planches (cycle d'une planche : la secousse culmine quand elle s'arrache, k = 1)
+  tear: zClip({
+    sLX: [[0, -0.9], [0.15, -1.25], [0.4, -1.75], [0.65, -1.6], [0.88, -1.0], [1, -0.7]],
+    sRX: [[0, -1.1], [0.15, -1.0], [0.4, -1.65], [0.65, -1.6], [0.88, -1.05], [1, -0.8]],
+    sLZ: [[0, 0.15], [0.4, 0.1], [1, 0.12]], sRZ: [[0, -0.9], [0.15, -0.5], [0.4, -0.12], [1, -0.15]],
+    eL: [[0, -1.3], [0.15, -0.6], [0.4, -0.35], [0.65, -0.55], [0.88, -1.3], [1, -1.5]],
+    eR: [[0, -0.4], [0.15, -0.45], [0.4, -0.4], [0.65, -0.55], [0.88, -1.25], [1, -1.4]],
+    tRX: [[0, -0.05], [0.15, 0.1], [0.4, 0.35], [0.65, 0.42], [0.88, 0.05], [1, -0.12]],
+    tRY: [[0, 0.25], [0.15, 0.1], [0.4, 0], [1, -0.05]], pz: [[0, -0.06], [0.4, 0.05], [0.65, 0.06], [0.88, -0.05], [1, -0.08]],
+    kL: [[0, 0.25], [0.4, 0.15], [0.88, 0.3], [1, 0.32]], kR: [[0, 0.22], [0.4, 0.12], [0.88, 0.25], [1, 0.28]],
+    nRX: [[0, 0.0], [0.4, 0.15], [0.88, -0.1], [1, -0.15]],
+  }),
+  swipeR: zClip({
+    sRX: zA([[0, -1.1], [0.18, -2.3], [0.36, -2.15], [0.42, -0.7], [0.6, -0.35], [0.95, -1.0]]),
+    sRZ: zA([[0, -0.25], [0.18, -0.85], [0.36, -0.75], [0.42, 0.35], [0.6, 0.55], [0.95, -0.2]]),
+    eR: zA([[0, -0.3], [0.18, -1.25], [0.36, -1.1], [0.42, -0.25], [0.6, -0.6], [0.95, -0.3]]),
+    sLX: zA([[0, -0.6], [0.2, -0.9], [0.42, -0.7], [0.95, -0.6]]), eL: zA([[0, -0.4], [0.42, -0.6], [0.95, -0.4]]),
+    tRY: zA([[0, 0], [0.18, -0.45], [0.42, 0.4], [0.6, 0.45], [0.95, 0]]),
+    tRX: zA([[0, 0.15], [0.18, 0.05], [0.42, 0.38], [0.6, 0.3], [0.95, 0.15]]),
+    pz: zA([[0, 0], [0.42, 0.1], [0.95, 0]]), kL: zA([[0, 0.12], [0.42, 0.32], [0.95, 0.12]]), nRX: zA([[0, 0.1], [0.42, 0.25], [0.95, 0.1]]),
+  }),
+  double: zClip({
+    sLX: zA([[0, -1.0], [0.2, -2.5], [0.36, -2.4], [0.42, -0.9], [0.65, -0.6], [0.95, -1.0]]),
+    sRX: zA([[0, -1.0], [0.2, -2.5], [0.36, -2.4], [0.42, -0.9], [0.65, -0.6], [0.95, -1.0]]),
+    sLZ: zA([[0, 0.12], [0.2, 0.2], [0.42, 0.05], [0.95, 0.12]]), sRZ: zA([[0, -0.12], [0.2, -0.2], [0.42, -0.05], [0.95, -0.12]]),
+    eL: zA([[0, -0.4], [0.2, -0.95], [0.36, -0.9], [0.42, -0.2], [0.95, -0.4]]), eR: zA([[0, -0.4], [0.2, -0.95], [0.36, -0.9], [0.42, -0.2], [0.95, -0.4]]),
+    tRX: zA([[0, 0.15], [0.2, -0.12], [0.42, 0.55], [0.65, 0.45], [0.95, 0.15]]), nRX: zA([[0, 0.1], [0.2, -0.25], [0.42, 0.3], [0.95, 0.1]]),
+    pz: zA([[0, 0], [0.42, 0.12], [0.95, 0]]), kL: zA([[0, 0.1], [0.42, 0.35], [0.95, 0.1]]), kR: zA([[0, 0.1], [0.42, 0.35], [0.95, 0.1]]),
+  }),
+  lunge: zClip({
+    sLX: zA([[0, -1.0], [0.15, -1.3], [0.42, -1.6], [0.7, -1.2], [0.95, -1.0]]), sRX: zA([[0, -1.0], [0.15, -1.3], [0.42, -1.6], [0.7, -1.2], [0.95, -1.0]]),
+    sLZ: zA([[0, 0.12], [0.15, 0.3], [0.42, -0.05], [0.95, 0.12]]), sRZ: zA([[0, -0.12], [0.15, -0.3], [0.42, 0.05], [0.95, -0.12]]),
+    eL: zA([[0, -0.4], [0.42, -0.1], [0.7, -0.8], [0.95, -0.4]]), eR: zA([[0, -0.4], [0.42, -0.1], [0.7, -0.8], [0.95, -0.4]]),
+    tRX: zA([[0, 0.15], [0.15, 0.25], [0.42, 0.5], [0.7, 0.35], [0.95, 0.15]]), nRX: zA([[0, 0.1], [0.42, -0.1], [0.95, 0.1]]),
+    py: zA([[0, 0], [0.15, -0.08], [0.42, -0.03], [0.95, 0]]), pz: zA([[0, 0], [0.15, -0.05], [0.42, 0.25], [0.7, 0.12], [0.95, 0]]),
+    kL: zA([[0, 0.1], [0.15, 0.5], [0.42, 0.25], [0.95, 0.1]]), kR: zA([[0, 0.1], [0.15, 0.45], [0.42, 0.55], [0.95, 0.1]]),
+    hRX: zA([[0, 0], [0.42, 0.35], [0.95, 0]]), hLX: zA([[0, 0], [0.42, -0.35], [0.95, 0]]),
+  }),
+  bite: zClip({
+    nRX: zA([[0, 0.1], [0.2, -0.45], [0.42, 0.55], [0.7, 0.3], [0.95, 0.1]]), tRX: zA([[0, 0.15], [0.2, -0.05], [0.42, 0.5], [0.95, 0.15]]),
+    pz: zA([[0, 0], [0.42, 0.15], [0.95, 0]]), kL: zA([[0, 0.1], [0.42, 0.3], [0.95, 0.1]]),
+  }),
+};
+// coup de griffe gauche : miroir du droit
+{
+  const d = ZCLIPS.swipeR, m = { ch: {}, keys: [] };
+  const map = { sRX: ['sLX', 1], sRZ: ['sLZ', -1], eR: ['eL', 1], sLX: ['sRX', 1], eL: ['eR', 1], tRY: ['tRY', -1], tRX: ['tRX', 1], pz: ['pz', 1], kL: ['kR', 1], nRX: ['nRX', 1] };
+  for (const k of d.keys) { const [to, s] = map[k]; m.ch[to] = d.ch[k].map((v) => v * s); }
+  m.keys = Object.keys(m.ch);
+  ZCLIPS.swipeL = m;
+}
+// hauteur du corps pendant l'enjambement (1,1 s) : il monte sur l'appui, y reste accroupi, redescend
+const ZCLIMB_Y = zBake([[0, 0], [0.18, 0.4], [0.38, 0.78], [0.6, 0.8], [0.8, 0.38], [1, 0]], false);
+const zClimbY = (k) => zSamp(ZCLIMB_Y, k, false);
+
+/* ---------------------------------------------------- État d'animation ----- */
+const ZSPR = ['tRX', 'tRY', 'tRZ', 'nRX', 'nRY', 'nRZ', 'sLX', 'sRX', 'kL', 'kR', 'py', 'pRZ'];
+const ZSPR_I = Object.fromEntries(ZSPR.map((k, i) => [k, i]));
+function zAnimInit(z) {
+  const round = typeof G !== 'undefined' && G.round ? G.round : 1;
+  z.an = {
+    gait: zPickGait(z.speedType || 'walk', round, zModelOf(z)), gaitFor: z.speedType || 'walk', prev: null, gb: 1,
+    u: Math.random(), clock: rand(0, 30), seed: Math.random() * 10,
+    v: { arm: rand(-0.12, 0.12), arm2: rand(-0.12, 0.12), lean: rand(-0.04, 0.08), tilt: rand(-0.12, 0.12), amp: rand(0.88, 1.12), stride: rand(0.93, 1.07) },
+    P: zPose(), L: zPose(), Q: zPose(), wMove: 0, yawPrev: z.yaw || 0, yawRate: 0, lookY: 0, lookX: 0,
+    sx: new Float32Array(ZSPR.length), sv: new Float32Array(ZSPR.length), twT: rand(1, 4),
+    atk: 'swipeR', lastState: '', lastT: 0, fit: 0, fitOn: false, pts: null, ptsPrev: null, ptsN: 0, ptsT: 0, ptsDt: 1 / 60,
+    lock: [{ on: false, x: 0, y: 0, z: 0, y0: 0, fl: 0 }, { on: false, x: 0, y: 0, z: 0, y0: 0, fl: 0 }],
+  };
+  return z.an;
+}
+/* Nouvelle démarche (allure qui change en partie : appel du Glas, par exemple), en fondu. */
+function zRerollGait(z, type) {
+  const a = z.an || zAnimInit(z);
+  a.prev = a.gait; a.gb = 0;
+  a.gait = zPickGait(type || z.speedType || 'walk', typeof G !== 'undefined' && G.round ? G.round : 1, zModelOf(z));
+  a.gaitFor = type || z.speedType || 'walk';
+}
+/* Où le coup a porté : partie ('head', 'arm', 'leg', 'torso') et côté du zombie (1 gauche, -1 droite,
+   0 milieu), d'après le point d'impact (tirs) ou au hasard. */
+function zHitLocal(z, info) {
+  const part = info.head ? 'head' : info.arm ? 'arm' : info.leg ? 'leg' : 'torso';
+  let side;
+  if (info.arm) side = info.arm === 1 ? 1 : -1;
+  else if (info.hx !== undefined) {
+    const lx = (info.hx - z.pos.x) * Math.cos(z.yaw) - (info.hz - z.pos.z) * Math.sin(z.yaw);
+    side = lx > 0.04 ? 1 : lx < -0.04 ? -1 : 0;
+  } else side = Math.random() < 0.5 ? 1 : -1;
+  return { part, side };
+}
+/* Réaction à un coup : impulsions sur les ressorts du buste, de la tête, des bras et des genoux.
+   front : coup venu de face ; mag : force (0,25 à 1,5). */
+function zHitReact(z, part, side, front, mag) {
+  const a = z.an || zAnimInit(z), v = a.sv, I = ZSPR_I, f = front ? 1 : -1;
+  const r = (x) => x * rand(0.8, 1.2) * mag;
+  if (part === 'head') {
+    v[I.nRX] += r(-7) * (front ? 1 : -0.6); v[I.nRY] += r(rand(-3, 3)); v[I.nRZ] += r(rand(-3, 3));
+    v[I.tRX] += r(-2.2) * (front ? 1 : -0.5);
+  } else if (part === 'leg') {
+    const s = side || 1;
+    v[s > 0 ? I.kL : I.kR] += r(9); v[I.py] += r(-1.1); v[I.tRX] += r(2.2); v[I.tRZ] += r(-2.5 * s); v[I.pRZ] += r(-1.2 * s);
+  } else if (part === 'arm') {
+    const s = side || 1;
+    v[s > 0 ? I.sLX : I.sRX] += r(8) * f; v[I.tRY] += r(3 * s) * f; v[I.tRX] += r(-1.2) * f; v[I.nRZ] += r(rand(-2, 2));
+  } else {
+    v[I.tRX] += r(-4.5) * (front ? 1 : -0.8); v[I.tRY] += r(4 * (side || rand(-1, 1))) * f; v[I.tRZ] += r(rand(-2, 2));
+    v[I.nRX] += r(-3) * f; v[I.sLX] += r(rand(1, 4)) * f; v[I.sRX] += r(rand(1, 4)) * f; v[I.py] += r(-0.4);
+  }
+}
+/* Ressorts des réactions (amortis, un peu de rebond) : ajoutés à la pose. */
+function zSprings(z, P, dt) {
+  const a = z.an, x = a.sx, v = a.sv, K = 150, C = 14;
+  const h = Math.min(dt, 1 / 30);
+  for (let i = 0; i < ZSPR.length; i++) {
+    v[i] += (-K * x[i] - C * v[i]) * h;
+    x[i] += v[i] * h;
+    if (Math.abs(x[i]) > 1.6) x[i] = Math.sign(x[i]) * 1.6;
+    P[ZSPR[i]] += x[i];
+  }
+}
+
+/* ------------------------------------------------------- Repos et marche --- */
+function zIdle(z, P) {
+  const a = z.an, g = a.gait, c = a.clock, s = a.seed;
+  for (const k of ZPK) P[k] = 0;
+  P.kL = P.kR = 0.1; P.hLX = P.hRX = -0.05; P.hLZ = 0.05; P.hRZ = -0.05;
+  P.sLZ = 0.1; P.sRZ = -0.1; P.eL = P.eR = -0.25; P.tRX = 0.12; P.nRX = 0.12;
+  for (const k in g.idle) P[k] = g.idle[k];
+  // respiration, balancement, tête qui dodeline
+  P.tRX += 0.025 * Math.sin(c * 1.7 + s) + a.v.lean;
+  P.pRZ += 0.03 * Math.sin(c * 0.7 + s); P.tRZ += 0.04 * Math.sin(c * 0.55 + 1 + s);
+  P.nRZ += 0.08 * Math.sin(c * 0.45 + 2 + s) + a.v.tilt; P.nRY += 0.1 * Math.sin(c * 0.33 + s);
+  P.sLX += 0.05 * Math.sin(c * 1.1 + s) + a.v.arm; P.sRX += 0.05 * Math.sin(c * 0.9 + 1 + s) + a.v.arm2;
+}
+function zGaitPose(a, g, L) {
+  const u = a.u, amp = a.v.amp;
+  for (const k of g.keys) L[k] = zSamp(g.ch[k], u);
+  // variations du zombie : amplitude des bras et du balancement, bras plus hauts, buste, tête
+  for (const k of ZAMP) if (g.ch[k]) L[k] = g.mean[k] + (L[k] - g.mean[k]) * amp;
+  L.sLX += a.v.arm; L.sRX += a.v.arm2; L.tRX += a.v.lean; L.nRZ += a.v.tilt;
+  return L;
+}
+function zLoco(z, P, dt) {
+  const a = z.an, type = z.speedType || 'walk';
+  if (a.gaitFor !== type) zRerollGait(z, type);
+  if (a.gb < 1) a.gb = Math.min(1, a.gb + dt / 0.35);
+  const g = a.gait, mv = z.moving || 0, mix = a.gb < 1 && a.prev;
+  // cadence : la foulée mesurée suit la vitesse réelle (pieds sans glissade)
+  const stride = (mix ? lerp(a.prev.stride, g.stride, a.gb) : g.stride) * a.v.stride;
+  if (mv > 0.02) a.u = (a.u + (mv / stride) * dt) % 1;
+  a.wMove = damp(a.wMove, clamp(mv / (ZGAIT_REF[g.type] * 0.45), 0, 1), 8, dt);
+  zIdle(z, P);
+  if (a.wMove < 0.005) return;
+  const L = zGaitPose(a, g, zPoseSet(a.L, P));
+  if (mix) zPoseMix(L, zGaitPose(a, a.prev, zPoseSet(a.Q, P)), 1 - smooth(a.gb));
+  zPoseMix(P, L, a.wMove);
+}
+/* Le zombie tourne la tête vers le joueur (vers l'objectif dans l'écran « Modèles ») et un peu le
+   buste, dans les limites du cou. */
+function zLook(z, P, dt) {
+  const a = z.an;
+  let ty = 0, tx = 0, tgx = 0, tgy = 0, tgz = 0, on = false;
+  if (z.spec) { if (typeof Models !== 'undefined' && Models.camera) { const c = Models.camera.position; tgx = c.x; tgy = c.y; tgz = c.z; on = true; } }
+  else if (typeof player !== 'undefined' && !z.crawl && (z.state === 'chase' || z.state === 'attack' || z.state === 'approach' || z.state === 'tear')) { tgx = player.pos.x; tgy = player.gy + 1.6; tgz = player.pos.z; on = true; }
+  if (on && !z.crawl) {
+    const dx = tgx - z.pos.x, dz = tgz - z.pos.z, d = Math.hypot(dx, dz);
+    if (d < 12 && d > 0.3) {
+      ty = clamp(wrapAngle(Math.atan2(dx, dz) - z.yaw), -0.85, 0.85);
+      tx = clamp(Math.atan2(tgy - (z.pos.y + 1.6), d), -0.5, 0.5);
+    }
+  }
+  a.lookY = damp(a.lookY, ty, 5, dt); a.lookX = damp(a.lookX, tx, 5, dt);
+  P.nRY += a.lookY * 0.75; P.tRY += a.lookY * 0.2; P.nRX -= a.lookX;
+  // tête qui garde l'horizon quand le buste plonge (sprinteurs)
+  P.nRX -= Math.max(0, P.tRX - 0.3) * 0.45;
+}
+/* Inclinaison dans les virages et tics nerveux. */
+function zTurnTwitch(z, P, dt) {
+  const a = z.an;
+  const yr = dt > 0 ? wrapAngle((z.yaw || 0) - a.yawPrev) / dt : 0;
+  a.yawPrev = z.yaw || 0;
+  a.yawRate = damp(a.yawRate, clamp(yr, -6, 6), 10, dt);
+  if (!z.spec) {
+    const bank = clamp(-a.yawRate * Math.min(z.moving || 0, 4) * 0.05, -0.28, 0.28);
+    P.tRZ += bank; P.pRZ += bank * 0.4;
+  }
+  a.twT -= dt;
+  if (a.twT <= 0) {
+    a.twT = rand(1.4, 4.5);
+    const v = a.sv, I = ZSPR_I;
+    v[I.nRY] += rand(-4, 4); v[I.nRZ] += rand(-3, 3);
+    if (Math.random() < 0.35) v[Math.random() < 0.5 ? I.sLX : I.sRX] += rand(-3, 3);
+  }
+}
+
+/* --------------------------------------------------------------- Actions --- */
+function zAttackPick(z) {
+  const left = !(z.gib & 1), right = !(z.gib & 2);
+  if (!left && !right) return 'bite';
+  if (!left) return Math.random() < 0.8 ? 'swipeR' : 'bite';
+  if (!right) return Math.random() < 0.8 ? 'swipeL' : 'bite';
+  const x = Math.random();
+  return x < 0.32 ? 'swipeR' : x < 0.6 ? 'swipeL' : x < 0.82 ? 'double' : 'lunge';
+}
+/* À terre (renversé par Le Glas, sprinteur qui trébuche) : chute en pivotant sur les pieds (0,28 s ;
+   0,32 s en trébuchant, bras en avant pour amortir), couché (bras qui battent pour Le Glas), relevé
+   (ZGET s : appui sur les bras ou assis, à genoux ou accroupi, debout). Une fois couché, le zombie
+   est déplacé là où gît son bassin (knockShift) : il se relève sur place. */
+const ZGET = 0.7;
+// relevé : bascule du corps (bRX), hauteur du bassin (ph), membres ; le bassin reste au-dessus de la racine
+const ZGETUP = {
+  front: { ph: zBake([[0, 0.106], [0.3, 0.2], [0.55, 0.42], [0.8, 0.68], [1, 0.88]], false), clip: zClip({
+    bRX: [[0, 1.45], [0.3, 1.3], [0.55, 0.75], [0.8, 0.35], [1, 0]],
+    tRX: [[0, 0], [0.3, -0.6], [0.55, 0.15], [0.8, 0.3], [1, 0.12]], nRX: [[0, -0.6], [0.3, -0.4], [0.55, -0.15], [0.8, 0], [1, 0.1]],
+    sLX: [[0, -2.0], [0.3, -1.0], [0.55, -0.6], [0.8, -0.35], [1, -0.1]], sRX: [[0, -2.1], [0.3, -1.0], [0.55, -0.75], [0.8, -0.3], [1, -0.1]],
+    sLZ: [[0, 0.35], [0.3, 0.25], [1, 0.1]], sRZ: [[0, -0.35], [0.3, -0.25], [1, -0.1]],
+    eL: [[0, -1.2], [0.3, -0.15], [0.55, -0.4], [1, -0.25]], eR: [[0, -1.1], [0.3, -0.15], [0.55, -0.4], [1, -0.25]],
+    hLX: [[0, 0.1], [0.3, -0.3], [0.55, -1.35], [0.8, -1.1], [1, -0.05]], hRX: [[0, 0], [0.3, -0.1], [0.55, -0.9], [0.8, -0.2], [1, -0.05]],
+    kL: [[0, 0.3], [0.3, 0.7], [0.55, 2.0], [0.8, 1.25], [1, 0.1]], kR: [[0, 0.1], [0.3, 0.4], [0.55, 1.6], [0.8, 0.6], [1, 0.1]],
+  }) },
+  back: { ph: zBake([[0, 0.106], [0.3, 0.13], [0.55, 0.3], [0.8, 0.68], [1, 0.88]], false), clip: zClip({
+    bRX: [[0, -1.45], [0.3, -1.35], [0.55, -0.6], [0.8, -0.15], [1, 0]],
+    tRX: [[0, 0], [0.3, 1.25], [0.55, 1.2], [0.8, 0.55], [1, 0.12]], nRX: [[0, 0.3], [0.3, -0.1], [0.55, -0.2], [0.8, 0], [1, 0.1]],
+    sLX: [[0, -2.6], [0.3, -0.5], [0.55, -0.9], [0.8, -0.5], [1, -0.1]], sRX: [[0, -2.45], [0.3, -0.6], [0.55, -0.9], [0.8, -0.5], [1, -0.1]],
+    sLZ: [[0, 0.5], [0.3, 0.2], [1, 0.1]], sRZ: [[0, -0.5], [0.3, -0.2], [1, -0.1]],
+    eL: [[0, -0.3], [0.3, -0.5], [0.55, -0.4], [1, -0.25]], eR: [[0, -0.3], [0.3, -0.4], [0.55, -0.4], [1, -0.25]],
+    hLX: [[0, -0.35], [0.3, -0.9], [0.55, -1.4], [0.8, -1.0], [1, -0.05]], hRX: [[0, -0.12], [0.3, -0.5], [0.55, -1.3], [0.8, -0.9], [1, -0.05]],
+    kL: [[0, 0.5], [0.3, 1.7], [0.55, 2.1], [0.8, 1.3], [1, 0.1]], kR: [[0, 0.2], [0.3, 1.1], [0.55, 2.0], [0.8, 1.2], [1, 0.1]],
+  }) },
+};
+function zKnockPose(z) {
+  const el = z.knockDur - z.knockT, dir = z.knockDir || 1, trip = z.knockKind === 'trip';
+  const fall = smooth(clamp(el / (trip ? 0.32 : 0.28), 0, 1)), u = clamp(1 - z.knockT / ZGET, 0, 1);
+  const Q = z.an.Q;
+  for (const k of ZPK) Q[k] = 0;
+  // couché : la racine passe sous le bassin (le corps ne bouge pas à l'écran)
+  if (!z.knockShift && fall >= 0.999) {
+    const d = -dir * ZRIG.hips * Math.sin(1.45), sx = Math.sin(z.yaw) * d, sz = Math.cos(z.yaw) * d;
+    z.pos.x += sx; z.pos.z += sz;
+    z.knockOx = (z.knockOx || 0) + sx; z.knockOz = (z.knockOz || 0) + sz;
+    z.knockShift = true;
+  }
+  if (u > 0 && z.knockShift) {
+    const G = dir > 0 ? ZGETUP.back : ZGETUP.front;
+    zClipApply(Q, G.clip, u);
+    Q.by = zSamp(G.ph, u, false) - ZRIG.hips * Math.cos(Q.bRX); Q.bz = -ZRIG.hips * Math.sin(Q.bRX);
+    z.knockK = 1 - smooth(clamp(u / 0.75, 0, 1));
+    return Q;
+  }
+  Q.bRX = -dir * 1.45 * fall;
+  const fl = trip ? 0 : Math.sin(z.t * 9) * 0.25;
+  if (dir > 0) {
+    // sur le dos : bras qui battent
+    Q.sLX = -2.6 + fl; Q.sRX = -2.45 - fl; Q.sLZ = 0.5; Q.sRZ = -0.5; Q.eL = Q.eR = -0.3;
+    Q.hLX = -0.35; Q.hRX = -0.12; Q.kL = 0.5; Q.kR = 0.2; Q.nRX = 0.3;
+  } else {
+    // face contre terre : bras en avant pour amortir, puis à plat
+    const brace = trip ? 1 - smooth(clamp((el - 0.18) / 0.3, 0, 1)) : 0;
+    Q.sLX = -2.0 - brace * 0.2; Q.sRX = -2.1 - brace * 0.1; Q.sLZ = 0.35; Q.sRZ = -0.35; Q.eL = -1.2 + brace * 0.9; Q.eR = -1.1 + brace * 0.9;
+    Q.nRX = -0.6; Q.hLX = 0.1; Q.kL = 0.3; Q.kR = 0.1;
+  }
+  if (z.knockShift) Q.bz = -ZRIG.hips * Math.sin(Q.bRX);
+  z.knockK = fall;
+  return Q;
+}
+/* Sortie de terre, planches, fenêtre, attaque, chute, trébuchement, reptation : posés sur la marche. */
+function zActions(z, P, dt) {
+  const a = z.an;
+  if (z.state !== a.lastState || (z.state === 'attack' && z.t < a.lastT - 0.2)) {
+    if (z.state === 'attack') a.atk = z.crawl ? 'crawl' : zAttackPick(z);
+    a.lastState = z.state;
+  }
+  a.lastT = z.t;
   switch (z.state) {
     case 'rise': {
-      const k = clamp(z.t / 1.3, 0, 1);
-      shL = -2.7 + Math.sin(z.t * 9) * 0.3; shR = -2.6 - Math.sin(z.t * 9) * 0.3; sdL = 0.12; sdR = -0.12; elL = -0.15; elR = -0.2;
-      lean = -0.2 + k * 0.3;
+      const sh = Math.sin(z.t * 11) * 0.22 * (1 - clamp(z.t / 0.6, 0, 1));
+      zClipApply(P, ZCLIPS.rise, z.t / 1.3);
+      P.sLX += sh; P.sRX -= sh;
       break;
     }
     case 'tear': {
-      const w = Math.sin(z.t * 6.5);
-      shL = -1.65 + w * 0.45; shR = -1.65 - w * 0.45; sdL = 0.12; sdR = -0.12;
-      elL = -0.4 - Math.max(0, w) * 0.5; elR = -0.4 - Math.max(0, -w) * 0.5;
-      lean = 0.3;
+      const p = z.tearDur > 0 ? clamp(1 - z.tearT / z.tearDur, 0, 1) : (z.t * 1.2) % 1;
+      zClipApply(P, ZCLIPS.tear, p, smooth(clamp(z.t / 0.25, 0, 1)));
       break;
     }
-    case 'climb': {
-      const k = Math.sin(clamp(z.t / 1.1, 0, 1) * Math.PI);
-      lean = 0.9 * k + 0.1; hipL = -1.2 * k; knL = 1.4 * k; hipR = -0.6 * k; knR = 0.8 * k;
-      shL = shR = -1.9; sdL = 0.12; sdR = -0.12;
-      break;
-    }
+    case 'climb': zClipApply(P, ZCLIPS.climb, z.t / 1.1); break;
     case 'attack': {
-      const k = z.t / 0.95;
-      shR = k < 0.4 ? lerp(-1.4, -2.9, k / 0.4) : k < 0.55 ? lerp(-2.9, -0.5, (k - 0.4) / 0.15) : lerp(-0.5, -1.4, clamp((k - 0.55) / 0.45, 0, 1));
-      shL = -0.9; elL = -0.6; elR = -0.3; sdR = -0.12;
-      lean = 0.15 + (k > 0.4 && k < 0.6 ? 0.25 : 0);
-      break;
-    }
-    case 'dead': {
-      const k = smooth(clamp(z.t / 0.55, 0, 1));
-      bodyX = -z.fallDir * 1.5 * k;
-      shL = shR = lerp(-1.4, -2.8, k); elL = elR = -0.2; sdL = 0.12; sdR = -0.12;
-      hipL = hipR = 0; knL = knR = 0.1; lean = 0; neckX = 0.4 * k; neckZ = 0; roll = twist = 0;
+      if (a.atk === 'crawl') break;
+      const w = Math.min(smooth(clamp(z.t / 0.12, 0, 1)), smooth(clamp((0.95 - z.t) / 0.12, 0, 1)));
+      zClipApply(P, ZCLIPS[a.atk] || ZCLIPS.swipeR, z.t / 0.95, w);
+      if (z.winAttack) { P.sLX -= 0.25 * w; P.sRX -= 0.25 * w; P.tRX += 0.15 * w; }
       break;
     }
     default: break;
   }
-  // renversé par le Glas : il tombe à la renverse (ou en avant, frappé de dos) en 0,28 s, bat des bras,
-  // et se relève dans les 0,45 dernières secondes
+  // trébuchement : genou qui cède du côté touché, buste en avant, bras écartés
+  if (z.stumbleT > 0 && z.alive) {
+    const e = 1 - z.stumbleT / 0.55, w = Math.sin(clamp(e, 0, 1) * Math.PI), s = z.stumbleSide || 1;
+    if (s > 0) P.kL += 1.0 * w; else P.kR += 1.0 * w;
+    P.py -= 0.08 * w; P.tRX += 0.35 * w; P.tRZ -= 0.18 * s * w; P.sLZ += 0.45 * w; P.sRZ -= 0.45 * w; P.sLX -= 0.5 * w; P.sRX -= 0.5 * w; P.nRX -= 0.2 * w;
+  }
+  // renversé (Le Glas) ou tombé (sprinteur qui trébuche) : à terre puis relevé
   if (z.knockT > 0 && z.alive && !z.crawl) {
-    const el = z.knockDur - z.knockT;
-    const k = Math.min(smooth(clamp(el / 0.28, 0, 1)), smooth(clamp(z.knockT / 0.45, 0, 1)));
-    const fl = Math.sin(z.t * 9) * 0.25 * k;
-    bodyX = lerp(bodyX, -z.knockDir * 1.42, k);
-    shL = lerp(shL, -2.7 + fl, k); shR = lerp(shR, -2.5 - fl, k); sdL = lerp(sdL, 0.5, k); sdR = lerp(sdR, -0.5, k);
-    elL = lerp(elL, -0.3, k); elR = lerp(elR, -0.3, k);
-    hipL = lerp(hipL, 0.35, k); hipR = lerp(hipR, 0.12, k); knL = lerp(knL, 0.5, k); knR = lerp(knR, 0.2, k);
-    lean = lerp(lean, 0, k); neckX = lerp(neckX, 0.3 * z.knockDir, k);
-    z.knockK = k;
-  } else z.knockK = 0;
+    const Q = zKnockPose(z), u = clamp(1 - z.knockT / ZGET, 0, 1);
+    zPoseMix(P, Q, clamp((z.knockDur - z.knockT) / 0.1, 0, 1) * (1 - smooth(clamp((u - 0.75) / 0.25, 0, 1))));
+    if (!z.knockThud && z.knockK > 0.92) { z.knockThud = true; if (typeof Sound !== 'undefined') Sound.bodyFall(z.spec ? null : z.pos, 0.7); }
+  } else if (z.alive) { z.knockK = 0; z.knockThud = false; z.knockShift = false; }
   if (z.reelT > 0 && z.alive) {
     const k = clamp(z.reelT / 0.4, 0, 1);
-    roll += Math.sin(z.t * 13) * 0.22 * k; twist += Math.sin(z.t * 9 + 1) * 0.18 * k; neckZ += Math.sin(z.t * 11) * 0.3 * k;
+    P.tRZ += Math.sin(z.t * 13) * 0.22 * k; P.tRY += Math.sin(z.t * 9 + 1) * 0.18 * k; P.nRZ += Math.sin(z.t * 11) * 0.3 * k;
   }
-  // rampant (jambes déchiquetées) : il tombe en avant en 0,55 s, puis se tire avec les bras, couché
-  // sur le ventre, la tête relevée ; le corps est décalé vers l'arrière pour que la poitrine reste à
-  // sa position (collisions, coups)
-  if (z.crawl) {
-    const k = smooth(clamp(z.crawlT / 0.55, 0, 1));
-    z.crawlPh += mv * dt * 6;
-    const cs = Math.sin(z.crawlPh), m2 = clamp(mv * 2, 0, 1);
-    let cL = -2.55 + cs * 0.5 * m2, cR = -2.55 - cs * 0.5 * m2;
-    let eL = -0.3 - Math.max(0, -cs) * 0.8 * m2, eR = -0.3 - Math.max(0, cs) * 0.8 * m2;
-    if (z.state === 'attack') {
-      const a = clamp(z.t / 0.95, 0, 1);
-      cR = a < 0.4 ? lerp(-2.6, -3.15, a / 0.4) : a < 0.6 ? lerp(-3.15, -2.0, (a - 0.4) / 0.2) : lerp(-2.0, -2.6, (a - 0.6) / 0.4);
-      eR = -0.15; cL = -2.4; eL = -0.5;
-    } else if (z.state === 'tear') {
-      const w = Math.sin(z.t * 6.5);
-      cL = -2.95 + w * 0.3; cR = -2.95 - w * 0.3; eL = eR = -0.45;
-    } else if (z.state === 'dead') { cL = -2.75; cR = -2.4; eL = eR = -0.25; }
-    shL = lerp(shL, cL, k); shR = lerp(shR, cR, k); elL = lerp(elL, eL, k); elR = lerp(elR, eR, k);
-    sdL = lerp(sdL, 0.3, k); sdR = lerp(sdR, -0.3, k);
-    hipL = lerp(hipL, 0.1 + cs * 0.12 * m2, k); hipR = lerp(hipR, 0.1 - cs * 0.12 * m2, k);
-    knL = lerp(knL, 0, k); knR = lerp(knR, 0, k);
-    lean = lerp(lean, 0, k); twist = lerp(twist, cs * 0.14 * m2, k); roll = lerp(roll, cs * 0.06 * m2, k);
-    hipsY = lerp(hipsY, ZRIG.hips, k);
-    neckX = lerp(neckX, z.state === 'dead' ? -0.2 : -1.05 + Math.sin(z.t * 0.9 + z.id) * 0.08, k);
-    neckZ *= 1 - k * 0.5;
-    bodyX = lerp(bodyX, 1.45, k); bodyY = 0.12 * k; bodyZ = -0.85 * k;
+  if (z.crawl) zCrawlPose(z, P, dt);
+}
+/* Reptation (jambes arrachées) : tombe en avant en 0,55 s, puis se tire avec les bras, couché sur le
+   ventre, la tête relevée ; le corps est décalé vers l'arrière pour que la poitrine reste à sa
+   position (collisions, coups). */
+function zCrawlPose(z, P, dt) {
+  const k = smooth(clamp(z.crawlT / 0.55, 0, 1)), mv = z.alive ? z.moving || 0 : 0;
+  z.crawlPh = (z.crawlPh || 0) + mv * dt * 6;
+  const cs = Math.sin(z.crawlPh), m2 = clamp(mv * 2, 0, 1);
+  // bras qui tirent : l'un s'allonge loin devant pendant que l'autre ramène le corps
+  let cL = -2.6 + cs * 0.55 * m2, cR = -2.6 - cs * 0.55 * m2;
+  let eL = -0.25 - Math.max(0, cs) * 1.0 * m2, eR = -0.25 - Math.max(0, -cs) * 1.0 * m2;
+  if (z.state === 'attack') {
+    const a = clamp(z.t / 0.95, 0, 1);
+    cR = a < 0.4 ? lerp(-2.6, -3.15, a / 0.4) : a < 0.6 ? lerp(-3.15, -2.0, (a - 0.4) / 0.2) : lerp(-2.0, -2.6, (a - 0.6) / 0.4);
+    eR = -0.15; cL = -2.4; eL = -0.5;
+    if (z.gib & 2) { cL = cR; eL = eR; cR = -2.4; eR = -0.5; }
+  } else if (z.state === 'tear') {
+    const w = Math.sin(z.t * 6.5);
+    cL = -2.95 + w * 0.3; cR = -2.95 - w * 0.3; eL = eR = -0.45;
   }
+  P.sLX = lerp(P.sLX, cL, k); P.sRX = lerp(P.sRX, cR, k); P.eL = lerp(P.eL, eL, k); P.eR = lerp(P.eR, eR, k);
+  P.sLZ = lerp(P.sLZ, 0.3, k); P.sRZ = lerp(P.sRZ, -0.3, k); P.sLY = lerp(P.sLY, 0, k); P.sRY = lerp(P.sRY, 0, k);
+  P.hLX = lerp(P.hLX, 0.1 + cs * 0.14 * m2, k); P.hRX = lerp(P.hRX, 0.1 - cs * 0.14 * m2, k);
+  P.hLZ = lerp(P.hLZ, 0.12, k); P.hRZ = lerp(P.hRZ, -0.12, k); P.hLY = lerp(P.hLY, 0, k); P.hRY = lerp(P.hRY, 0, k);
+  P.kL = lerp(P.kL, 0.1 + Math.max(0, cs) * 0.3 * m2, k); P.kR = lerp(P.kR, 0.1 + Math.max(0, -cs) * 0.3 * m2, k);
+  P.tRX = lerp(P.tRX, -0.12, k); P.tRY = lerp(P.tRY, cs * 0.18 * m2, k); P.tRZ = lerp(P.tRZ, cs * 0.08 * m2, k);
+  P.pRX = lerp(P.pRX, 0, k); P.pRY = lerp(P.pRY, -cs * 0.1 * m2, k); P.pRZ = lerp(P.pRZ, 0, k);
+  P.py = lerp(P.py, 0, k); P.px = lerp(P.px, 0, k); P.pz = lerp(P.pz, 0, k);
+  P.nRX = lerp(P.nRX, -1.0 + Math.sin(z.t * 0.9 + z.id) * 0.08, k); P.nRZ *= 1 - k * 0.5;
+  P.bRX = lerp(P.bRX, 1.45, k); P.by = lerp(P.by, 0.12, k); P.bz = lerp(P.bz, -0.85, k);
+}
+/* Début de la mort, avant le corps physique (deathStyle, deathClip secondes) : la tête part en
+   arrière, les genoux lâchent, le buste se cambre ou se plie, il pivote, il s'effondre… */
+function zDeathPose(z, P) {
+  const k = clamp(z.t / Math.max(0.05, z.deathClip || 0.2), 0, 1), e = smooth(k), d = z.deathHit || {}, t = z.t;
+  const Q = zPoseSet(z.an.Q, P), s = d.side || (z.id % 2 ? 1 : -1);
+  switch (z.deathStyle) {
+    case 'head':     // la tête part en arrière (en avant, tir dans le dos), le corps lâche d'un coup
+      Q.nRX = d.front === false ? 0.75 : -0.95; Q.nRZ = 0.3 * s; Q.tRX = d.front === false ? 0.3 : -0.22;
+      Q.kL = 0.75; Q.kR = 0.6; Q.hLX = -0.25; Q.hRX = -0.2; Q.py = -0.14;
+      Q.sLX = 0.1; Q.sRX = 0.05; Q.sLZ = 0.28; Q.sRZ = -0.28; Q.eL = Q.eR = -0.12; break;
+    case 'back':     // touché de face : buste cambré, bras qui s'ouvrent, il part à la renverse
+      Q.tRX = -0.4; Q.nRX = -0.35; Q.pRX = -0.12; Q.sLX = -1.3; Q.sRX = -1.1; Q.sLZ = 0.65; Q.sRZ = -0.65; Q.eL = Q.eR = -0.2;
+      Q.kL = 0.35; Q.kR = 0.2; break;
+    case 'spin':     // il pivote sur lui-même, un bras projeté
+      Q.tRY = 0.9 * s; Q.pRY = 0.45 * s; Q.tRZ = -0.25 * s; Q.nRY = 0.5 * s; Q.nRX = -0.2;
+      if (s > 0) { Q.sLX = -1.6; Q.sLZ = 0.9; } else { Q.sRX = -1.6; Q.sRZ = -0.9; }
+      Q.kL = 0.5; Q.kR = 0.35; Q.py = -0.06; break;
+    case 'front':    // touché dans le dos : il se plie et tombe en avant
+      Q.tRX = 0.6; Q.nRX = 0.45; Q.sLX = 0.35; Q.sRX = 0.25; Q.eL = Q.eR = -0.4; Q.kL = 0.6; Q.kR = 0.5; Q.py = -0.1; break;
+    case 'leg':      // la jambe touchée cède, il s'écroule de ce côté
+      if (s > 0) { Q.kL = 1.5; Q.hLX = -0.5; Q.kR = 0.35; } else { Q.kR = 1.5; Q.hRX = -0.5; Q.kL = 0.35; }
+      Q.tRZ = -0.35 * s; Q.pRZ = -0.15 * s; Q.tRX = 0.3; Q.py = -0.12; Q.sLZ = 0.5; Q.sRZ = -0.5; Q.sLX = -0.7; Q.sRX = -0.6; break;
+    case 'stagger':  // l'élan l'emporte : encore un pas ou deux, les genoux lâchent, il pique du nez
+      Q.kL = P.kL + 0.65 * k; Q.kR = P.kR + 0.65 * k; Q.tRX = 0.45 + 0.4 * k; Q.nRX = 0.55 * k; Q.nRZ = 0.3 * s * k;
+      Q.sLX = 0.25; Q.sRX = -0.2 + 0.4 * k; Q.eL = -0.5; Q.eR = -0.3; Q.py = -0.12 * k; break;
+    case 'knife':    // couteau : il se détourne en se tenant le ventre
+      Q.tRY = 0.6 * s; Q.tRZ = 0.3 * s; Q.tRX = 0.35; Q.kL = 0.5; Q.kR = 0.35; Q.nRX = 0.35;
+      Q.sLX = -0.6; Q.sRX = -0.5; Q.eL = Q.eR = -1.3; Q.sLZ = -0.1; Q.sRZ = 0.1; Q.py = -0.06; break;
+    case 'nuke': {   // la Bombe : secousses, puis il s'effondre
+      const sh = 1 - k;
+      Q.tRX = 0.25 + Math.sin(t * 31) * 0.18 * sh; Q.nRX = Math.sin(t * 25) * 0.45 * sh; Q.kL = 0.3 + 0.9 * k; Q.kR = 0.35 + 0.8 * k; Q.py = -0.2 * k;
+      Q.sLX = -0.9 + Math.sin(t * 22) * 0.5 * sh; Q.sRX = -0.8 - Math.sin(t * 21) * 0.5 * sh; Q.sLZ = 0.4; Q.sRZ = -0.4; break;
+    }
+    case 'glas':     // Minuit : il s'effondre sur les genoux, la tête tombe
+      Q.kL = 1.7; Q.kR = 1.6; Q.hLX = -0.85; Q.hRX = -0.75; Q.tRX = 0.55; Q.nRX = 0.7; Q.sLX = 0.15; Q.sRX = 0.1;
+      Q.eL = Q.eR = -0.2; Q.sLZ = 0.15; Q.sRZ = -0.15; Q.py = -0.05; break;
+    default: break;  // 'limp' : il garde sa pose (rampant, à terre, fenêtre, explosion)
+  }
+  zPoseMix(P, Q, e);
+}
+
+/* ---------------------------------------------------------- Application --- */
+const _zft = new THREE.Vector3();
+function zApplyPose(z, P) {
+  const r = z.rig;
   r.root.position.copy(z.pos);
-  r.root.rotation.y = z.yaw;
-  r.body.position.set(0, bodyY, bodyZ);
-  r.body.rotation.x = bodyX;
-  r.hips.position.y = hipsY;
-  r.hips.rotation.set(lean - z.flinch, twist, roll);
-  r.neck.rotation.set(neckX - z.flinch * 0.5, 0, neckZ);
-  r.shL.rotation.set(shL, 0, sdL); r.shR.rotation.set(shR, 0, sdR);
-  r.elL.rotation.x = elL; r.elR.rotation.x = elR;
-  r.hipL.rotation.x = hipL; r.hipR.rotation.x = hipR;
-  r.knL.rotation.x = knL; r.knR.rotation.x = knR;
+  r.root.rotation.set(0, z.yaw || 0, 0);
+  r.body.position.set(P.bx, P.by, P.bz);
+  r.body.rotation.set(P.bRX, 0, P.bRZ);
+  r.pelvis.position.set(P.px, ZRIG.hips + P.py, P.pz);
+  r.pelvis.rotation.set(P.pRX, P.pRY, P.pRZ);
+  r.hips.rotation.set(P.tRX, P.tRY, P.tRZ);
+  r.neck.rotation.set(P.nRX, P.nRY, P.nRZ);
+  r.shL.rotation.set(P.sLX, P.sLY, P.sLZ); r.shR.rotation.set(P.sRX, P.sRY, P.sRZ);
+  r.elL.rotation.set(Math.min(0, P.eL), 0, 0); r.elR.rotation.set(Math.min(0, P.eR), 0, 0);
+  r.hipL.rotation.set(P.hLX, P.hLY, P.hLZ); r.hipR.rotation.set(P.hRX, P.hRY, P.hRZ);
+  r.knL.rotation.set(Math.max(0, P.kL), 0, 0); r.knR.rotation.set(Math.max(0, P.kR), 0, 0);
+}
+/* Point le plus bas des jambes (talons, pointes des pieds, genoux) : il touche le sol du zombie. */
+function zFootMin(z) {
+  const r = z.rig;
+  let m = Infinity;
+  for (const kn of [r.knL, r.knR]) {
+    for (const fz of [-0.085, 0.17]) { _zft.set(0, -0.445, fz).applyMatrix4(kn.matrixWorld); if (_zft.y < m) m = _zft.y; }
+    _zft.set(0, 0, 0.05).applyMatrix4(kn.matrixWorld);
+    if (_zft.y - 0.07 < m) m = _zft.y - 0.07;
+  }
+  return m;
+}
+function animateZombie(z, dt) {
+  const a = z.an || zAnimInit(z), P = a.P, r = z.rig;
+  a.clock += dt;
+  if (z.rd) { zRagdollWrite(z); return; }
+  zLoco(z, P, dt);
+  zActions(z, P, dt);
+  if (!z.alive) zDeathPose(z, P);
+  else { zLook(z, P, dt); zTurnTwitch(z, P, dt); }
+  if (z.flinch) { P.tRX -= z.flinch; P.nRX -= z.flinch * 0.5; }
+  zSprings(z, P, dt);
+  zApplyPose(z, P);
+  r.root.updateMatrixWorld(true);
+  // pieds posés au sol (debout : pas en sortant de terre, à la fenêtre, à terre ni en rampant)
+  const st = z.alive ? z.state : z.deathFrom;
+  if (st !== 'rise' && st !== 'climb' && !z.crawl && !(z.knockK > 0.05) && z.deathMode !== 'sink') {
+    const off = z.pos.y - zFootMin(z);
+    a.fit = !a.fitOn || Math.abs(a.fit - off) > 0.25 ? off : damp(a.fit, off, 30, dt);
+    a.fitOn = true;
+    if (Math.abs(a.fit) > 1e-5) { r.body.position.y += a.fit; r.body.updateMatrixWorld(true); }
+  } else a.fitOn = false;
+  zFootLock(z, dt);
+  // à la marche, un pied au moins touche le sol : le pied retenu peut s'être soulevé après le calage
+  // (talon qui se lève pendant que l'autre pied se pose), le corps descend d'autant
+  if (a.fitOn && z.alive && a.gait.type === 'walk') {
+    const lift = zFootMin(z) - z.pos.y;
+    if (lift > 0.003) { r.body.position.y -= lift; r.body.updateMatrixWorld(true); }
+  }
+  if (!z.alive) zRagdollTrack(z);
+  writeZombieMatrices(z);
+}
+/* Pieds qui ne glissent pas : pendant l'appui, la cheville est retenue là où le pied s'est posé (IK à
+   deux os : écart de la hanche, puis plan de la jambe ; en fondu à l'entrée et à la sortie de
+   l'appui). Le pied se pose, s'aplatit pendant que le corps passe au-dessus, puis le talon se lève.
+   Hors d'atteinte (fin d'appui du sprint), la jambe se tend vers lui. La jambe traînée (Fantassin,
+   boiteux) n'est pas retenue : elle racle le sol. Dans l'écran « Modèles », le sol défile sous le
+   spécimen (marche sur place). */
+const ZIK = { L1: ZRIG.thigh, L2: 0.4 };
+const _ikT = new THREE.Vector3(), _ikM = new THREE.Matrix4();
+function zFootLock(z, dt) {
+  const a = z.an, g = a.gait, r = z.rig;
+  const on = z.alive && !z.crawl && !(z.knockK > 0.05) && !(z.stumbleT > 0) && (z.state === 'chase' || z.state === 'approach') && a.wMove > 0.3 && (z.moving || 0) > 0.05;
+  for (let side = 0; side < 2; side++) {
+    const L = a.lock[side], ph = side ? (a.u + 0.5) % 1 : a.u, st = g.stance;
+    if (!on || ph >= st || side === g.drag) { L.on = false; continue; }
+    const kn = side ? r.knR : r.knL, hip = side ? r.hipR : r.hipL;
+    if (!L.on) {
+      if (ph > st * 0.3) continue;          // appui déjà entamé (reprise) : on attend le suivant
+      _ikT.set(0, -ZIK.L2, 0).applyMatrix4(kn.matrixWorld);
+      L.x = _ikT.x; L.z = _ikT.z; L.y0 = _ikT.y; L.on = true;
+      L.fl = (z.spec ? z.pos.y : floorBelow(L.x, L.z, z.pos.y + 0.3)) + 0.05;   // sol sous le pied (marches comprises)
+    }
+    // le pied se pose (talon, puis à plat sur le sol pendant que le corps passe au-dessus), puis le talon se lève
+    L.y = lerp(L.y0, L.fl, smooth(clamp(ph / (st * 0.15), 0, 1))) + 0.06 * smooth(clamp((ph - st * 0.72) / (st * 0.28), 0, 1));
+    if (z.spec) { L.x -= Math.sin(z.yaw) * z.moving * dt; L.z -= Math.cos(z.yaw) * z.moving * dt; }
+    const w = Math.min(1, a.wMove) * smooth(clamp(ph / (st * 0.12), 0, 1)) * smooth(clamp((st - ph) / (st * 0.2), 0, 1));
+    if (w <= 0.001) continue;
+    const hx = hip.rotation.x, hz = hip.rotation.z, kx = kn.rotation.x;
+    if (!zLegIK(r.pelvis, hip, kn, side, L.x, L.y, L.z, w, hx, hz, kx)) { L.on = false; continue; }
+    // talon ou pointe sous le sol (pied rigide, sans cheville) : la cible remonte d'autant
+    const fl = L.fl - 0.05;
+    let m = Infinity;
+    for (const fz of [-0.085, 0.17]) { _ikT.set(0, -0.445, fz).applyMatrix4(kn.matrixWorld); m = Math.min(m, _ikT.y); }
+    if (m < fl - 0.004) zLegIK(r.pelvis, hip, kn, side, L.x, L.y + (fl - m), L.z, w, hx, hz, kx);
+  }
+}
+/* IK à deux os d'une jambe vers la cheville (x, y, z) : écart de la hanche, plan de la jambe, genou ;
+   mêlée à la pose (hx, hz, kx) selon w. Faux si la cible est hors de portée (téléporté, poussé). */
+function zLegIK(pelvis, hip, kn, side, x, y, z, w, hx, hz, kx) {
+  _ikM.copy(pelvis.matrixWorld).invert();
+  _ikT.set(x, y, z).applyMatrix4(_ikM);
+  const dx = _ikT.x - (side ? -ZRIG.hipX : ZRIG.hipX), dy = _ikT.y, dz = _ikT.z, D = Math.hypot(dx, dy, dz);
+  if (D > ZIK.L1 + ZIK.L2 + 0.3 || D < 0.25) return false;
+  const d = Math.min(D, ZIK.L1 + ZIK.L2 - 1e-3);
+  const k = Math.PI - Math.acos(clamp((ZIK.L1 * ZIK.L1 + ZIK.L2 * ZIK.L2 - d * d) / (2 * ZIK.L1 * ZIK.L2), -1, 1));
+  const th = Math.atan2(-dz, -dy) - Math.acos(clamp((ZIK.L1 * ZIK.L1 + d * d - ZIK.L2 * ZIK.L2) / (2 * ZIK.L1 * d), -1, 1));
+  hip.rotation.x = lerp(hx, th, w);
+  hip.rotation.z = lerp(hz, Math.asin(clamp(dx / D, -0.45, 0.45)), w);
+  kn.rotation.x = Math.max(0, lerp(kx, k, w));
+  hip.updateMatrixWorld(true);
+  return true;
+}
+
+/* ------------------------------------------------------------------ Mort ---
+   Début de la mort animé (deathStyle, deathClip secondes selon le coup), puis corps physique ;
+   mort en sortant de terre : il y retourne. st : état au moment de la mort ; style : imposé
+   (démonstration de l'écran « Modèles »). */
+function zDeathSetup(z, info, st, style = null) {
+  const a = z.an || zAnimInit(z);
+  const kind = info.kind, dx = info.dx || 0, dz = info.dz || 0;
+  const front = Math.sin(z.yaw) * dx + Math.cos(z.yaw) * dz <= 0;
+  const hit = zHitLocal(z, info);
+  z.deathHit = { head: !!info.head, part: hit.part, side: hit.side, front, dx, dz, force: info.force || (kind === 'knife' ? 1.2 : 0.5) };
+  z.deathFrom = st; z.deathMode = null; z.rd = null;
+  a.pts = null; a.ptsN = 0;
+  // élan du corps (pas pour un zombie qui attendait à la fenêtre ou sortait de terre)
+  const run = st === 'chase' || st === 'attack';
+  z.dvx = (run ? z.vx || 0 : 0) + (z.knockX || 0); z.dvz = (run ? z.vz || 0 : 0) + (z.knockZ || 0);
+  const fast = run && Math.hypot(z.dvx, z.dvz) > 1.6;
+  let clip = 0;
+  if (!style) {
+    if (st === 'rise' && z.pos.y < z.gy - 0.35) { z.deathMode = 'sink'; style = info.head ? 'head' : 'back'; }
+    else if (z.crawl || z.knockK > 0.5 || st === 'climb' || kind === 'explosive' || kind === 'blast') style = 'limp';
+    else if (kind === 'nuke') style = 'nuke';
+    else if (kind === 'glas') style = 'glas';
+    else if (kind === 'knife') style = 'knife';
+    else if (info.head) style = 'head';
+    else if (hit.part === 'leg') style = 'leg';
+    else if (fast && (!front || Math.random() < 0.6)) style = 'stagger';
+    else if (!front) style = 'front';
+    else style = Math.random() < 0.25 ? 'spin' : 'back';
+  }
+  if (st === 'rise' && z.deathMode !== 'sink') z.pos.y = z.gy;
+  switch (style) {
+    case 'head': clip = rand(0.08, 0.13); break;
+    case 'back': clip = 0.2; break;
+    case 'spin': clip = 0.3; break;
+    case 'front': clip = 0.22; break;
+    case 'leg': clip = 0.26; break;
+    case 'stagger': clip = rand(0.42, 0.6); break;
+    case 'knife': clip = 0.28; break;
+    case 'nuke': clip = rand(0.4, 0.55); break;
+    case 'glas': clip = rand(0.38, 0.48); break;
+    default: clip = 0;
+  }
+  z.deathStyle = style; z.deathClip = z.deathMode === 'sink' ? 0.35 : clip;
+  if (clip <= 0 && z.deathMode !== 'sink') zRagdollStart(z);
+}
+/* Corps d'un zombie mort (partie et écran « Modèles ») : élan et début de chute, corps physique,
+   puis il s'enfonce dans le sol ; renvoie false quand il a disparu. */
+function zCorpseStep(z, dt) {
+  z.flinch = damp(z.flinch || 0, 0, 10, dt);
+  if (z.deathMode === 'sink') {
+    if (z.t > 0.3) z.pos.y -= dt * 1.4;
+    animateZombie(z, dt);
+    return z.pos.y > z.gy - 1.9;
+  }
+  if (!z.rd) {
+    // l'élan l'emporte encore (pas, glissade), puis le corps devient physique
+    z.pos.x += z.dvx * dt; z.pos.z += z.dvz * dt;
+    z.moving = Math.hypot(z.dvx, z.dvz);
+    z.dvx = damp(z.dvx, 0, 2.5, dt); z.dvz = damp(z.dvz, 0, 2.5, dt);
+    if (!z.spec && !z.outside && z.k >= 0 && z.deathFrom !== 'climb') { settleBody(z, 0.25); z.pos.y = z.gy; }
+    animateZombie(z, dt);
+    if (z.t >= z.deathClip) zRagdollStart(z);
+    return true;
+  }
+  zRagdollStep(z, dt);
+  const ts = z.t - RD.hold;
+  if (ts > 0) z.rd.sink = smooth(clamp(ts / RD.sink, 0, 1)) * (z.sinkD || 0.7);
+  if (ts > RD.sink) return false;
+  animateZombie(z, dt);
+  return true;
+}
+
+/* ---------------------------------------------------------------- Ragdoll ---
+   Corps d'un zombie mort : 16 points (bassin, cou, tête, nez, épaules, coudes, mains, hanches,
+   genoux, chevilles) reliés par des distances (buste rigide, membres articulés, genoux qui plient
+   dans le bon sens), intégration de Verlet à pas fixe (1/120 s), sol (marches, caisses, appui
+   des fenêtres), murs de la carte, frottement au sol. Les pièces du modèle suivent les points. Le
+   corps s'endort une fois posé, reste quelques secondes, puis s'enfonce dans le sol. */
+const RD = { N: 16, h: 1 / 120, g: 12, mu: 8, mui: 0.5, iters: 8, hold: 5, sink: 1.2, vmax: 11, jd: 0.03 };
+const RD_SRC = [['pelvis', 0, 0, 0], ['neck', 0, 0, 0], ['neck', 0, 0.17, 0], ['shL', 0, 0, 0], ['elL', 0, 0, 0], ['elL', 0, -0.31, 0],
+  ['shR', 0, 0, 0], ['elR', 0, 0, 0], ['elR', 0, -0.31, 0], ['hipL', 0, 0, 0], ['knL', 0, 0, 0], ['knL', 0, -0.4, 0],
+  ['hipR', 0, 0, 0], ['knR', 0, 0, 0], ['knR', 0, -0.4, 0], ['neck', 0, 0.165, 0.12]];
+const RD_RAD = [0.13, 0.1, 0.11, 0.1, 0.05, 0.045, 0.1, 0.05, 0.045, 0.09, 0.06, 0.05, 0.09, 0.06, 0.05, 0.035];
+const RD_TORSO = [0, 1, 3, 6, 9, 12];
+let RD_CON = null;
+/* Contraintes [i, j, min, max, raideur, buste] ; buste : longueur prise sur la pose de la mort
+   (il garde sa cambrure). */
+function rdConstraints() {
+  if (RD_CON) return RD_CON;
+  const r = makeRig();
+  r.root.updateMatrixWorld(true);
+  const P = RD_SRC.map(([b, x, y, zz]) => new THREE.Vector3(x, y, zz).applyMatrix4(r[b].matrixWorld));
+  const d = (i, j) => P[i].distanceTo(P[j]);
+  const C = [];
+  const eq = (i, j, live = 0) => C.push([i, j, d(i, j), d(i, j), 1, live]);
+  const rg = (i, j, lo, hi, s = 1) => C.push([i, j, lo, hi, s, 0]);
+  for (let a = 0; a < RD_TORSO.length; a++) for (let b = a + 1; b < RD_TORSO.length; b++) eq(RD_TORSO[a], RD_TORSO[b], 1);
+  eq(1, 2); eq(1, 15); eq(2, 15);
+  for (const s of [3, 6]) { rg(s, 2, d(s, 2) * 0.72, d(s, 2) * 1.2, 0.6); rg(s, 15, d(s, 15) * 0.75, d(s, 15) * 1.2, 0.5); }
+  rg(0, 2, d(0, 2) * 0.86, d(0, 2) * 1.05, 0.6);
+  for (const [s, e, h] of [[3, 4, 5], [6, 7, 8]]) { eq(s, e); eq(e, h); rg(s, h, 0.2, d(s, e) + d(e, h), 1); rg(1, h, 0.16, 9, 0.5); rg(0, h, 0.14, 9, 0.5); }
+  for (const [s, e, h] of [[9, 10, 11], [12, 13, 14]]) { eq(s, e); eq(e, h); rg(s, h, 0.42, d(s, e) + d(e, h), 1); rg(0, e, 0.3, 9, 0.6); rg(1, e, 0.4, 9, 0.5); }
+  rg(11, 14, 0.12, 9, 0.5); rg(10, 13, 0.1, 9, 0.5);
+  RD_CON = C;
+  return C;
+}
+/* Points du squelette animé (mémorisés à chaque image du début de mort, pour les vitesses). */
+const _rdv = new THREE.Vector3();
+function zRagdollTrack(z) {
+  const a = z.an, r = z.rig;
+  if (!a.pts) { a.pts = new Float32Array(RD.N * 3); a.ptsPrev = new Float32Array(RD.N * 3); a.ptsN = 0; }
+  if (a.ptsN > 0) a.ptsPrev.set(a.pts);
+  for (let i = 0; i < RD.N; i++) {
+    const [b, x, y, zz] = RD_SRC[i];
+    _rdv.set(x, y, zz).applyMatrix4(r[b].matrixWorld);
+    a.pts[i * 3] = _rdv.x; a.pts[i * 3 + 1] = _rdv.y; a.pts[i * 3 + 2] = _rdv.z;
+  }
+  if (a.ptsN === 0) a.ptsPrev.set(a.pts);
+  a.ptsDt = a.ptsN > 0 ? Math.max(1 / 240, z.t - a.ptsT) : 1 / 60;
+  a.ptsT = z.t;
+  a.ptsN++;
+}
+/* Le corps devient physique : vitesses du début de mort (ou du zombie), plus l'élan du coup. */
+function zRagdollStart(z) {
+  const a = z.an || zAnimInit(z);
+  if (!a.pts) zRagdollTrack(z);
+  const n = RD.N, h = RD.h, p = new Float32Array(a.pts), q = new Float32Array(n * 3);
+  const d = z.deathHit || {}, dx = d.dx || 0, dz = d.dz || 0, f = d.force || 0.5;
+  const big = z.deathKind === 'explosive' || z.deathKind === 'blast', hist = a.ptsN >= 2, y0 = z.gy || 0;
+  const up = (z.flingVY || 2.5) * rand(0.85, 1.15), kb = rand(0.8, 1.2) * f * 0.55;
+  for (let i = 0; i < n; i++) {
+    const ix = i * 3;
+    let vx, vy, vz;
+    if (hist) { vx = (a.pts[ix] - a.ptsPrev[ix]) / a.ptsDt; vy = (a.pts[ix + 1] - a.ptsPrev[ix + 1]) / a.ptsDt; vz = (a.pts[ix + 2] - a.ptsPrev[ix + 2]) / a.ptsDt; }
+    else { vx = z.dvx || 0; vy = 0; vz = z.dvz || 0; }
+    const hgt = clamp((p[ix + 1] - y0) / 1.7, 0, 1);    // 0 aux pieds, 1 à la tête
+    if (big) { vx += dx * kb * (0.55 + hgt); vz += dz * kb * (0.55 + hgt); vy += up * (0.6 + 0.6 * hgt); }
+    else {
+      const k = (d.head ? (i === 2 || i === 15 ? 2.6 : i === 1 ? 1.4 : 0.3) : hgt > 0.45 ? hgt : 0.2) * (0.6 + f * 0.9);
+      vx += dx * k; vz += dz * k;
+    }
+    const sp = Math.hypot(vx, vy, vz);
+    if (sp > RD.vmax) { const s = RD.vmax / sp; vx *= s; vy *= s; vz *= s; }
+    q[ix] = p[ix] - vx * h; q[ix + 1] = p[ix + 1] - vy * h; q[ix + 2] = p[ix + 2] - vz * h;
+  }
+  // longueurs des contraintes : celles du buste sont prises sur la pose de la mort
+  const C = rdConstraints(), lo = new Float32Array(C.length), hi = new Float32Array(C.length);
+  for (let c = 0; c < C.length; c++) {
+    const [i, j, l0, h0, , live] = C[c];
+    if (live) lo[c] = hi[c] = Math.hypot(p[j * 3] - p[i * 3], p[j * 3 + 1] - p[i * 3 + 1], p[j * 3 + 2] - p[i * 3 + 2]);
+    else { lo[c] = l0; hi[c] = h0; }
+  }
+  // écran « Modèles » : sol plat, toise derrière ; en partie : sol et murs de la carte
+  const spec = !!z.spec;
+  z.rd = { p, q, lo, hi, fl: new Float32Array(n), imp: new Float32Array(n), w: new Float32Array(n * 3), acc: h * 0.999, sleep: 0, asleep: false, t0: z.t, sink: 0,
+    thud: false, down: false, vlast: 1, flat: spec, floor: y0, walls: !spec, wall: spec ? { nx: 0, nz: 1, d: -1.0 } : null };
+  zRagdollWrite(z);
+}
+/* Sol sous un point du corps : surface la plus haute (sol, marches, dessus d'une caisse, appui d'une
+   fenêtre) au niveau de yb, le bas du point (le plus haut entre sa position prévue et la précédente),
+   à 4 cm près. Une caisse ou un appui abordés par le côté ne le soulèvent pas : ce sont des murs
+   (rdWalls). Sinon un point qui passe et repasse le bord de l'appui y remonte d'un coup à chaque fois
+   et le corps ne se pose jamais. */
+const RD_STEP = 0.04;
+function rdFloor(x, z, yb) {
+  let f = floorBelow(x, z, yb + RD_STEP - 0.05);
+  const cx = Math.floor(x), cz = Math.floor(z);
+  if (inb(cx, cz)) for (let li = 0; li < NL; li++) {
+    if (grid[node(li, cx, cz)] !== T.WINDOW) continue;
+    const s = LVY[li] + WIN_LO;
+    if (s <= yb + RD_STEP && s > f) f = s;
+  }
+  return f;
+}
+/* Haut de ce qui occupe la case au niveau de la hauteur y : Infinity (mur, porte fermée),
+   appui de fenêtre, dessus d'une caisse, -Infinity (libre). */
+function rdTop(cx, cz, y) {
+  if (!inb(cx, cz)) return Infinity;
+  const li = levelAtY(y), k = node(li, cx, cz), E = LVY[li];
+  switch (grid[k]) {
+    case T.WALL: case T.PILLAR: return Infinity;
+    case T.DOOR: return doorOpen[k] ? -Infinity : Infinity;
+    case T.WINDOW: return E + WIN_LO;
+    case T.CRATE: case T.PROP: case T.LOW: return E + solidTop[k];
+    default: return -Infinity;
+  }
+}
+/* Un point du corps (rayon r) sort des cases pleines à sa hauteur ; le dessus des caisses et l'appui
+   des fenêtres servent de sol (rdFloor). La poussée ne lui donne pas d'élan (q suit p) et sa vitesse
+   vers le mur est annulée. */
+function rdWalls(p, q, ix, r) {
+  let hit = false;
+  for (let pass = 0; pass < 2; pass++) {
+    const x = p[ix], y = p[ix + 1], zz = p[ix + 2];
+    const x0 = Math.floor(x - r), x1 = Math.floor(x + r), z0 = Math.floor(zz - r), z1 = Math.floor(zz + r);
+    let moved = false;
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
+      if (rdTop(cx, cz, y) <= y - r + RD_STEP) continue;   // posé dessus (rdFloor)
+      const qx = clamp(p[ix], cx, cx + 1), qz = clamp(p[ix + 2], cz, cz + 1);
+      const ddx = p[ix] - qx, ddz = p[ix + 2] - qz, d2 = ddx * ddx + ddz * ddz;
+      if (d2 >= r * r) continue;
+      let nx, nz, push;
+      if (d2 > 1e-10) { const dd = Math.sqrt(d2); nx = ddx / dd; nz = ddz / dd; push = r - dd; }
+      else {
+        const l = p[ix] - cx, rr = cx + 1 - p[ix], t = p[ix + 2] - cz, b = cz + 1 - p[ix + 2], m = Math.min(l, rr, t, b);
+        if (m === l) { nx = -1; nz = 0; push = l + r; } else if (m === rr) { nx = 1; nz = 0; push = rr + r; } else if (m === t) { nx = 0; nz = -1; push = t + r; } else { nx = 0; nz = 1; push = b + r; }
+      }
+      p[ix] += nx * push; p[ix + 2] += nz * push; q[ix] += nx * push; q[ix + 2] += nz * push;
+      const vn = (p[ix] - q[ix]) * nx + (p[ix + 2] - q[ix + 2]) * nz;
+      if (vn < 0) { q[ix] += nx * vn; q[ix + 2] += nz * vn; }
+      moved = true;
+    }
+    if (!moved) break;
+    hit = true;
+  }
+  return hit;
+}
+function zRagdollStep(z, dt) {
+  const R = z.rd;
+  if (!R || R.asleep) return;
+  R.acc = Math.min(R.acc + dt, RD.h * 6);
+  while (R.acc >= RD.h && !R.asleep) { rdStep(z, R); R.acc -= RD.h; }
+  if (R.asleep) R.acc = 0;
+}
+function rdStep(z, R) {
+  const C = rdConstraints(), p = R.p, q = R.q, n = RD.N, h = RD.h, g = RD.g * h * h, lo = R.lo, hi = R.hi;
+  // une fois le buste au sol, les membres perdent leur élan par rapport à l'ensemble du corps (corps
+  // lourd, sans jambes qui se relèvent en l'air) : par rapport à la vitesse moyenne et non à celle du
+  // bassin, qu'un choc du dos peut projeter (tout le corps glissait alors avec lui)
+  const jd = R.down ? RD.jd : 0;
+  let vpx = 0, vpy = 0, vpz = 0;
+  if (jd) {
+    for (let i = 0; i < n * 3; i += 3) { vpx += p[i] - q[i]; vpy += p[i + 1] - q[i + 1]; vpz += p[i + 2] - q[i + 2]; }
+    vpx /= n; vpy /= n; vpz /= n;
+  }
+  // presque immobile une fois au sol : il se pose (les petites oscillations s'éteignent) ; au-delà de
+  // 1,6 s, un corps qui bouge encore (coincé, en équilibre) perd vite son élan
+  const air = !R.down ? 0.999 : R.vlast < 0.6 * h ? 0.9 : z.t - R.t0 > 1.6 ? 0.975 : 0.999;
+  let maxv = 0;
+  for (let i = 0; i < n; i++) {
+    const ix = i * 3;
+    let vx = (p[ix] - q[ix]) * air, vy = (p[ix + 1] - q[ix + 1]) * air, vz = (p[ix + 2] - q[ix + 2]) * air;
+    if (jd) { vx += (vpx - vx) * jd; vy += (vpy - vy) * jd; vz += (vpz - vz) * jd; }
+    q[ix] = p[ix]; q[ix + 1] = p[ix + 1]; q[ix + 2] = p[ix + 2];
+    p[ix] += vx; p[ix + 1] += vy - g; p[ix + 2] += vz;
+    const v = Math.abs(vx) + Math.abs(vy) + Math.abs(vz);
+    if (v > maxv) maxv = v;
+    R.fl[i] = R.flat ? R.floor : rdFloor(p[ix], p[ix + 2], Math.max(p[ix + 1], q[ix + 1]) - RD_RAD[i]);
+    // choc contre le sol : vitesse verticale que le sol va arrêter (pour le frottement, plus bas)
+    const fy0 = R.fl[i] + RD_RAD[i];
+    R.imp[i] = p[ix + 1] < fy0 ? fy0 - p[ix + 1] : 0;
+  }
+  for (let it = 0; it < RD.iters; it++) {
+    for (let c = 0; c < C.length; c++) {
+      const con = C[c], i = con[0] * 3, j = con[1] * 3;
+      const dx = p[j] - p[i], dy = p[j + 1] - p[i + 1], dz = p[j + 2] - p[i + 2];
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+      const tgt = d < lo[c] ? lo[c] : d > hi[c] ? hi[c] : d;
+      if (tgt === d) continue;
+      const k = ((d - tgt) / d) * 0.5 * con[4];
+      p[i] += dx * k; p[i + 1] += dy * k; p[i + 2] += dz * k;
+      p[j] -= dx * k; p[j + 1] -= dy * k; p[j + 2] -= dz * k;
+    }
+    if (it === RD.iters - 1) zRagdollHinges(p);
+    for (let i = 0; i < n; i++) {
+      const ix = i * 3, rr = RD_RAD[i], fy = R.fl[i] + rr;
+      if (p[ix + 1] < fy) {
+        if (i <= 1 || i === 3 || i === 6) R.down = true;
+        // premier contact du buste avec le sol : bruit de chute
+        if (!R.thud && i <= 1 && it === 0 && q[ix + 1] - p[ix + 1] > 1.4 * h) {
+          R.thud = true;
+          if (typeof Sound !== 'undefined') Sound.bodyFall(z.spec ? null : { x: p[ix], y: p[ix + 1], z: p[ix + 2] }, clamp((q[ix + 1] - p[ix + 1]) / h / 5, 0.35, 1));
+        }
+        p[ix + 1] = fy;
+        if (q[ix + 1] < fy) q[ix + 1] = fy;   // remonté sur une marche, une caisse, l'appui : sans élan
+      }
+      // murs : sur les dernières passes (les contraintes ont alors presque fini de bouger les points)
+      if (R.walls) { if (it >= RD.iters - 3 && rdWalls(p, q, ix, rr) && i <= 2) R.down = true; }
+      else if (R.wall) {
+        // toise de l'écran « Modèles » : plan vertical (normale nx, nz)
+        const W = R.wall, sd = p[ix] * W.nx + p[ix + 2] * W.nz - W.d - rr;
+        if (sd < 0) {
+          p[ix] -= W.nx * sd; p[ix + 2] -= W.nz * sd; q[ix] -= W.nx * sd; q[ix + 2] -= W.nz * sd;
+          const vn = (p[ix] - q[ix]) * W.nx + (p[ix + 2] - q[ix + 2]) * W.nz;
+          if (vn < 0) { q[ix] += W.nx * vn; q[ix + 2] += W.nz * vn; }
+          if (i <= 2) R.down = true;
+        }
+      }
+    }
+  }
+  // frottement au sol (Coulomb) : un point posé perd de sa vitesse horizontale, jusqu'à s'arrêter ;
+  // au choc, d'autant plus que le sol arrête une vitesse verticale (impulsion de frottement : un corps
+  // qui heurte le sol n'y glisse pas comme sur de la glace)
+  const dec = RD.mu * h * h;
+  for (let i = 0; i < n; i++) {
+    const ix = i * 3;
+    if (p[ix + 1] > R.fl[i] + RD_RAD[i] + 0.002) continue;
+    const vx = p[ix] - q[ix], vz = p[ix + 2] - q[ix + 2], sp = Math.hypot(vx, vz), dd = dec + RD.mui * R.imp[i];
+    if (sp <= dd) { p[ix] = q[ix]; p[ix + 2] = q[ix + 2]; }
+    else { const k = (sp - dd) / sp; p[ix] = q[ix] + vx * k; p[ix + 2] = q[ix + 2] + vz * k; }
+  }
+  R.vlast = maxv;
+  if (maxv < 0.15 * h) R.sleep += h; else R.sleep = 0;
+  if (R.sleep > 0.4 || z.t - R.t0 > 4) R.asleep = true;
+}
+/* Genoux pliés dans le bon sens : le genou reste devant la ligne hanche-cheville (avant du buste :
+   sa normale). Le genou avance, la hanche et la cheville reculent d'autant : la correction ne donne au
+   corps ni élan ni rotation (poussé seul, le genou relançait les jambes à chaque pas et un corps tombé
+   à la renverse finissait parfois en roulade arrière). */
+const _rf = new THREE.Vector3(), _ru = new THREE.Vector3(), _rl = new THREE.Vector3();
+function zRagdollHinges(p) {
+  _ru.set(p[3] - p[0], p[4] - p[1], p[5] - p[2]);                                   // bassin → cou
+  _rl.set(p[9] + p[27] - p[18] - p[36], p[10] + p[28] - p[19] - p[37], p[11] + p[29] - p[20] - p[38]);   // droite → gauche
+  _rf.crossVectors(_rl, _ru).normalize();                                          // avant (x × y = z)
+  for (const [a, b, c] of [[9, 10, 11], [12, 13, 14]]) {
+    const mx = (p[a * 3] + p[c * 3]) / 2, my = (p[a * 3 + 1] + p[c * 3 + 1]) / 2, mz = (p[a * 3 + 2] + p[c * 3 + 2]) / 2;
+    const dot = (p[b * 3] - mx) * _rf.x + (p[b * 3 + 1] - my) * _rf.y + (p[b * 3 + 2] - mz) * _rf.z;
+    if (dot < 0.01) {
+      const k = Math.min(0.006, (0.01 - dot) * 0.5), kb = k * 2 / 3, ke = k / 3;
+      p[b * 3] += _rf.x * kb; p[b * 3 + 1] += _rf.y * kb; p[b * 3 + 2] += _rf.z * kb;
+      for (const e of [a, c]) { p[e * 3] -= _rf.x * ke; p[e * 3 + 1] -= _rf.y * ke; p[e * 3 + 2] -= _rf.z * ke; }
+    }
+  }
+}
+/* Les pièces suivent les points : repère de chaque os recalculé (axe y le long du membre, x pris sur
+   le buste, le bassin ou l'os parent). Rendu entre les deux derniers pas. */
+const _ra = new THREE.Vector3(), _rb = new THREE.Vector3(), _rc = new THREE.Vector3(), _rt = new THREE.Vector3(), _rp = new THREE.Vector3();
+const _fx = new THREE.Vector3(), _fy = new THREE.Vector3(), _fz = new THREE.Vector3();
+const _xl = new THREE.Vector3(), _xr = new THREE.Vector3(), _xtl = new THREE.Vector3(), _xtr = new THREE.Vector3();
+function rdFrame(m, o, y, xRef) {
+  _fy.copy(y).normalize();
+  _fx.copy(xRef).addScaledVector(_fy, -xRef.dot(_fy));
+  if (_fx.lengthSq() < 1e-8) _fx.set(0, 1, 0).cross(_fy);
+  if (_fx.lengthSq() < 1e-8) _fx.set(1, 0, 0).cross(_fy);
+  _fx.normalize();
+  _fz.crossVectors(_fx, _fy);
+  m.makeBasis(_fx, _fy, _fz).setPosition(o);
+  return _fx;
+}
+function rdLimb(r, w, bone, i, j, ref, out) {
+  _ra.set(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]);
+  _rb.set(w[j * 3], w[j * 3 + 1], w[j * 3 + 2]);
+  _rc.subVectors(_ra, _rb);                         // de l'extrémité vers l'articulation
+  out.copy(rdFrame(r[bone].matrixWorld, _ra, _rc, ref));
+}
+function zRagdollWrite(z) {
+  const R = z.rd, r = z.rig, p = R.p, q = R.q, w = R.w, al = clamp(R.acc / RD.h, 0, 1), sink = R.sink || 0;
+  for (let i = 0; i < RD.N * 3; i++) w[i] = q[i] + (p[i] - q[i]) * al;
+  for (let i = 1; i < RD.N * 3; i += 3) w[i] -= sink;
+  // buste : origine au bassin, y vers le cou, x de l'épaule droite vers la gauche
+  _ra.set(w[0], w[1], w[2]); _rb.set(w[3], w[4], w[5]); _rc.subVectors(_rb, _ra);
+  _rp.set(w[9] - w[18], w[10] - w[19], w[11] - w[20]);
+  _rt.copy(rdFrame(r.hips.matrixWorld, _ra, _rc, _rp));
+  r.pelvis.matrixWorld.copy(r.hips.matrixWorld);
+  // tête : y du cou vers le crâne, x = y × (crâne → nez)
+  _ra.set(w[6] - w[3], w[7] - w[4], w[8] - w[5]);
+  _rc.set(w[45] - w[6], w[46] - w[7], w[47] - w[8]);
+  _rp.crossVectors(_ra, _rc);
+  _rb.set(w[3], w[4], w[5]);
+  rdFrame(r.neck.matrixWorld, _rb, _ra, _rp);
+  // bras (x du buste), jambes (x des hanches), avant-bras et tibias (x de l'os parent)
+  rdLimb(r, w, 'shL', 3, 4, _rt, _xl); rdLimb(r, w, 'elL', 4, 5, _xl, _xl);
+  rdLimb(r, w, 'shR', 6, 7, _rt, _xr); rdLimb(r, w, 'elR', 7, 8, _xr, _xr);
+  _rp.set(w[27] - w[36], w[28] - w[37], w[29] - w[38]);
+  rdLimb(r, w, 'hipL', 9, 10, _rp, _xtl); rdLimb(r, w, 'knL', 10, 11, _xtl, _xtl);
+  rdLimb(r, w, 'hipR', 12, 13, _rp, _xtr); rdLimb(r, w, 'knR', 13, 14, _xtr, _xtr);
+  z.pos.x = w[0]; z.pos.z = w[2];
   writeZombieMatrices(z);
 }
 
@@ -15744,7 +16966,9 @@ function glasKnockdown(x, z, r, dur, li) {
     if (d > r) continue;
     const ux = d > 0.01 ? dx / d : Math.sin(zb.yaw), uz = d > 0.01 ? dz / d : Math.cos(zb.yaw);
     zb.knockT = zb.knockDur = dur + rand(0, 0.2);
+    if (zb.knockShift) zb.knockDur += 0.3;   // déjà couché : il y reste
     zb.knockDir = Math.sin(zb.yaw) * ux + Math.cos(zb.yaw) * uz <= 0 ? 1 : -1;    // de face : il tombe en arrière
+    zb.knockKind = 'glas'; zb.knockThud = false;
     const f = 2.6 * (1 - d / (r + 0.5));
     zb.knockX += ux * f; zb.knockZ += uz * f;
     zb.stagger = Math.max(zb.stagger, dur);
@@ -17370,7 +18594,7 @@ function openStats() {
 /* Fiches des types de zombies (ZOMBIE_TYPES) : le modèle animé, photographié devant
    une toise, et ses caractéristiques tirées des règles du jeu. L'aperçu a son propre
    rendu 3D (petit canevas), dessiné seulement quand l'écran est ouvert. */
-const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', crawl: 'Rampe', attack: 'Attaque', tear: 'Barricade', rise: 'Sortie de terre' };
+const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', frenzy: 'Sprint nerveux', crawl: 'Rampe', attack: 'Attaque', tear: 'Barricade', climb: 'Fenêtre', rise: 'Sortie de terre', stumble: 'Trébuche', death: 'Mort' };
 const MODEL_VIEW = { yaw: -0.5, distMin: 1.9, distMax: 3.8 };
 const Models = {
   open: false, sel: null, anim: 'idle', at: 0, yaw: MODEL_VIEW.yaw, dist: MODEL_VIEW.distMax, idleT: 0, drag: null,
@@ -17515,6 +18739,17 @@ function setupModelViewer() {
   const rim = new THREE.DirectionalLight(0x9cbcff, 1.5);
   rim.position.set(2.7, 2.3, -2.4);
   sc.add(wall, floor, new THREE.HemisphereLight(0xb7c3d6, 0x2a221a, 0.55), key, key.target, rim);
+  // appui de fenêtre (animation « Fenêtre ») : le mur sous la fenêtre, 1 m d'épaisseur comme en partie,
+  // et la traverse du cadre côté intérieur ; il tourne avec le spécimen
+  const sill = new THREE.Group();
+  const block = new THREE.Mesh(new THREE.BoxGeometry(1.0, WIN_LO, 1.0), linearize(new THREE.MeshStandardMaterial({ color: 0x3e3a34, roughness: 1 })));
+  block.position.y = WIN_LO / 2;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.08, 0.12), linearize(new THREE.MeshStandardMaterial({ color: 0x4a3524, roughness: 0.8 })));
+  bar.position.set(0, WIN_LO + 0.04, 0.47);
+  for (const m of [block, bar]) { m.castShadow = true; m.receiveShadow = true; sill.add(m); }
+  sill.visible = false;
+  sc.add(sill);
+  Models.sill = sill;
   // brume au sol, qui dérive lentement autour des pieds
   Models.mist = [];
   for (let i = 0; i < 9; i++) {
@@ -17659,6 +18894,14 @@ function selectSpecimen(id) {
     });
     box.append(shot);
   }
+  const arm = el('button', 'md-chip alt', 'Tir au bras');
+  arm.type = 'button';
+  arm.dataset.action = 'arm';
+  arm.addEventListener('click', () => {
+    Sound.init();
+    if (Models.spec && Models.spec.armShot && Models.spec.armShot()) { Sound.gib(null); Sound.zombie(null, 'death'); }
+  });
+  box.append(arm);
   if (model.legs) {
     const shot = el('button', 'md-chip alt', 'Tir dans les jambes');
     shot.type = 'button';
@@ -17677,7 +18920,8 @@ function setModelAnim(k) {
   for (const b of $('md-anims').children) if (b.dataset.anim) b.setAttribute('aria-pressed', b.dataset.anim === k ? 'true' : 'false');
   // le cri qui va avec (le son démarre au premier geste du joueur)
   Sound.init();
-  if (k === 'attack') Sound.zombie(null, 'attack');
+  if (k === 'attack' || k === 'frenzy') Sound.zombie(null, 'attack');
+  else if (k === 'death') Sound.zombie(null, 'death');
   else if (k === 'rise') Sound.rise(null);
   else if (k !== 'idle') Sound.zombie(null, 'groan');
   else Sound.ui();
@@ -17697,6 +18941,7 @@ function renderModels(dt) {
     M.camera.updateProjectionMatrix();
   }
   M.at += dt;
+  if (M.sill) { M.sill.visible = M.anim === 'climb'; M.sill.rotation.y = M.yaw; }
   if (!M.drag) {
     M.idleT += dt;
     if (M.idleT > 2) M.yaw += dt * 0.32 * Math.min(1, (M.idleT - 2) / 1.5);
@@ -17712,11 +18957,16 @@ function renderModels(dt) {
       m.s.material.rotation += m.rot * dt;
     }
   }
-  // en zoomant, la visée remonte du corps entier vers le visage
+  // en zoomant, la visée remonte du corps entier vers le visage ; elle suit le bassin du spécimen
+  // (fenêtre, chute, corps qui glisse), sans s'éloigner de la toise
   const k = (MODEL_VIEW.distMax - M.dist) / (MODEL_VIEW.distMax - MODEL_VIEW.distMin);
-  const ty = lerp(0.93, 1.5, smooth(clamp(k, 0, 1)));
-  M.camera.position.set(0, ty + 0.14, M.dist);
-  M.camera.lookAt(0, ty, 0);
+  const sc = M.spec.center ? M.spec.center() : null;
+  M.fx = damp(M.fx || 0, sc ? clamp(sc.x, -1.1, 1.1) : 0, 3, dt);
+  M.fz = damp(M.fz || 0, sc ? clamp(sc.z, -0.6, 1.0) : 0, 3, dt);
+  M.fy = damp(M.fy || 0, sc ? clamp(sc.y - 0.95, -0.55, 0.75) * 0.8 : 0, 3, dt);
+  const ty = lerp(0.93, 1.5, smooth(clamp(k, 0, 1))) + M.fy, back = M.fy > 0 ? M.fy * 0.9 : 0;
+  M.camera.position.set(M.fx, ty + 0.14, M.dist + M.fz + back);
+  M.camera.lookAt(M.fx, ty, M.fz);
   M.renderer.render(M.scene, M.camera);
 }
 
