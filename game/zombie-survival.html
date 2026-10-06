@@ -1171,7 +1171,9 @@ const PERKS = {
   souffle: { name: 'Quick Revive', cost: 500, color: '#209784', glow: '#a8f0e4', core: '#f4fffc', glyph: 'Q', power: false, desc: 'Vous vous relevez seul (3 fois)' },
   endurance: { name: 'Staminup', cost: 2000, color: '#519528', glow: '#a8ee7e', core: '#f2ffe8', glyph: 'S', power: true, desc: 'Sprint illimité, +7 % de vitesse' },
 };
-const MAX_PERKS = 4;
+// nombre d'atouts qu'on peut boire : sans limite depuis le jeu 1.8.0 (4 avant, comme dans le mode
+// Zombies) ; un nombre la rétablit (invite « Vous avez déjà N atouts »)
+const MAX_PERKS = Infinity;
 /* Élixirs (jeu 1.8.0, planche « Élixirs — machines d'atouts ») : une machine par atout, même chapelle
    que Le Glas. Gabarit de la planche (h hauteur, w largeur le long du mur, d profondeur depuis le mur),
    hauteur de la fiole, devise, forme de la fiole. Les noms des atouts ne changent pas. */

@@ -161,6 +161,21 @@ const USER = path.join(TMP, 'joueur');
       while (Arms.state === 'drink' && n < 400) { __zs.step(1, 1 / 60); maxPitch = Math.max(maxPitch, camera.rotation.x); n++; }
       ok(player.perks.has('detente') && maxPitch <= 1.531, 'en regardant en l’air : la tête ne passe pas la verticale', r2(maxPitch));
 
+      // ------------------------- plus de limite d'atouts (jeu 1.8.0) : les cinq se boivent
+      player.perks.clear(); HUD.perks(); G.points = 100000;
+      const order = ['souffle', 'cuirasse', 'mainleste', 'detente', 'endurance'], prompts = [];
+      for (const id of order) {
+        const q = goTo(id);
+        const p = q.it.prompt();
+        prompts.push(p && !p.disabled ? p.text : p && `refusé : ${p.text}`);
+        q.it.use();
+        n = 0;
+        while ((Arms.state === 'drink' || FX.bottles.length) && n < 600) { __zs.step(1, 1 / 60); n++; }
+      }
+      ok(player.perks.size === 5 && order.every((id, i) => player.perks.has(id) && prompts[i] === `Appuyez sur F pour boire ${PERKS[id].name}`), 'plus de limite : les cinq atouts se boivent l’un après l’autre, le cinquième aussi', prompts);
+      const icons = [...document.querySelectorAll('#perks .perk')];
+      ok(icons.length === 5 && icons.every((e) => e.offsetTop === icons[0].offsetTop), 'HUD : cinq icônes d’atout sur une ligne', icons.map((e) => e.title));
+
       // --------------------------------------------------- partie suivante
       window.shatterBottle = shatter;
       startGame(null);
