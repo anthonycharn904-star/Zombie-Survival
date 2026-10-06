@@ -87,7 +87,7 @@ body {
   width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
   font-family: var(--font-display); font-weight: 900; font-size: 20px; color: #fff8ea;
   background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), transparent 60%), var(--perk);
-  box-shadow: 0 0 0 2px rgba(255, 240, 210, 0.85), 0 0 12px var(--perk);
+  box-shadow: 0 0 0 2px rgba(255, 240, 210, 0.85), 0 0 12px var(--perk-glow, var(--perk));
 }
 
 #br {
@@ -190,7 +190,7 @@ body {
 #banner.powerup #banner-title { color: var(--toxic); text-shadow: 0 0 18px rgba(141, 255, 116, 0.55), 0 3px 0 rgba(0, 0, 0, 0.6); }
 #banner.warn #banner-title { color: var(--blood-hi); }
 #banner.power #banner-title { color: #ffd76a; text-shadow: 0 0 18px rgba(255, 215, 106, 0.5), 0 3px 0 rgba(0, 0, 0, 0.6); }
-#banner.perk #banner-title { color: var(--brass); }
+#banner.perk #banner-title { color: var(--perk-glow, var(--brass)); text-shadow: 0 0 18px var(--perk-glow, transparent), 0 3px 0 rgba(0, 0, 0, 0.6); }
 @keyframes banner {
   0% { opacity: 0; transform: translate(-50%, 10px) scale(1.04); }
   10% { opacity: 1; transform: translate(-50%, 0); }
@@ -1161,14 +1161,38 @@ for (const id in WEAPONS) WEAPONS[id].id = id;
 /* --------------------------------------------------------------- Atouts -- */
 /* Identifiants inchangés (cartes et sauvegardes) ; noms depuis le jeu 1.6.0 (avant : Cuirasse,
    Main Leste, Double Détente, Second Souffle, Endurance). */
+/* Couleurs depuis le jeu 1.8.0 : celles de la planche « Élixirs » d'Anthony (un atout = une couleur,
+   celle de sa machine) ; glow : la lueur de la planche, core : son cœur ; color : la même teinte,
+   foncée pour porter une lettre blanche (icônes du HUD, plan des Mod Tools). */
 const PERKS = {
-  cuirasse: { name: 'Mastodonte', cost: 2500, color: '#b3231f', glyph: 'M', power: true, desc: 'Encaissez 5 coups au lieu de 2' },
-  mainleste: { name: 'Rechargement rapide', cost: 3000, color: '#1f8f5a', glyph: 'R', power: true, desc: 'Rechargement deux fois plus rapide' },
-  detente: { name: 'Double coup', cost: 2000, color: '#d49a1c', glyph: 'D', power: true, desc: 'Cadence +33 %, dégâts ×1,5' },
-  souffle: { name: 'Quick Revive', cost: 500, color: '#2f6fd1', glyph: 'Q', power: false, desc: 'Vous vous relevez seul (3 fois)' },
-  endurance: { name: 'Staminup', cost: 2000, color: '#e0761c', glyph: 'S', power: true, desc: 'Sprint illimité, +7 % de vitesse' },
+  cuirasse: { name: 'Mastodonte', cost: 2500, color: '#ca3d21', glow: '#ff6a4d', core: '#ffe4da', glyph: 'M', power: true, desc: 'Encaissez 5 coups au lieu de 2' },
+  mainleste: { name: 'Rechargement rapide', cost: 3000, color: '#513dc2', glow: '#b4a6ff', core: '#ece8ff', glyph: 'R', power: true, desc: 'Rechargement deux fois plus rapide' },
+  detente: { name: 'Double coup', cost: 2000, color: '#d97512', glow: '#ffb061', core: '#fff2e0', glyph: 'D', power: true, desc: 'Cadence +33 %, dégâts ×1,5' },
+  souffle: { name: 'Quick Revive', cost: 500, color: '#209784', glow: '#a8f0e4', core: '#f4fffc', glyph: 'Q', power: false, desc: 'Vous vous relevez seul (3 fois)' },
+  endurance: { name: 'Staminup', cost: 2000, color: '#519528', glow: '#a8ee7e', core: '#f2ffe8', glyph: 'S', power: true, desc: 'Sprint illimité, +7 % de vitesse' },
 };
 const MAX_PERKS = 4;
+/* Élixirs (jeu 1.8.0, planche « Élixirs — machines d'atouts ») : une machine par atout, même chapelle
+   que Le Glas. Gabarit de la planche (h hauteur, w largeur le long du mur, d profondeur depuis le mur),
+   hauteur de la fiole, devise, forme de la fiole. Les noms des atouts ne changent pas. */
+const ELIXIRS = {
+  souffle: { key: 'lazare', machine: 'Lazare', h: 3.4, w: 1.3, d: 1.3, vialY: 0.75, motto: 'VENI · FORAS', vial: 'flask' },
+  cuirasse: { key: 'cuirasse', machine: 'Cuirasse', h: 2.8, w: 1.2, d: 0.8, vialY: 1.05, motto: 'NON CEDAM', vial: 'flask' },
+  endurance: { key: 'pelerin', machine: 'Pèlerin', h: 2.5, w: 1.9, d: 1.0, vialY: 1.0, motto: 'ULTREIA', vial: 'gourd' },
+  mainleste: { key: 'vifargent', machine: 'Vif-Argent', h: 2.4, w: 1.7, d: 0.9, vialY: 0.9, motto: 'SOLVE ET COAGULA', vial: 'flask' },
+  detente: { key: 'toccata', machine: 'Toccata', h: 2.7, w: 1.3, d: 0.8, vialY: 1.1, motto: 'PRESTO', vial: 'flask' },
+};
+const ELIXIR_ACT = 2.6;           // animation de consommation : la fiole revient à 2,6 s
+/* Emprise d'un distributeur posé sur la case `cell`, dos au mur du côté opposé à `face` : la machine
+   déborde sur les cases voisines le long du mur quand elle est large (Pèlerin, Vif-Argent : plus de
+   0,3 m de chaque côté), et sa hauteur est réduite sous un plafond trop bas. */
+function elixirFootprint(p, wallH) {
+  const E = ELIXIRS[p.p], [cx, cz] = p.cell, [fx, fz] = p.face;
+  const s = Math.min(1, (wallH - 0.04) / E.h);
+  const over = (E.w * s) / 2 - 0.5;
+  const side = over >= 0.3 ? [[cx + fz, cz - fx], [cx - fz, cz + fx]] : [];
+  return { s, side, cells: [[cx, cz], ...side] };
+}
 
 /* ---------------------------------------------------------------- Bonus -- */
 const POWERUPS = {
@@ -1983,9 +2007,20 @@ function validateMap(m) {
     const [x, z] = w.cell, lv = w.lv | 0;
     if (tileAt(x, z, lv) !== 2 || !floorAt(x + w.n[0], z + w.n[1], lv)) Wn(`Achat mural « ${WEAPONS[w.w].name} » : il doit être sur un mur, tourné vers le sol.`, P(w.cell, lv));
   }
+  const dec = (x) => String(Math.round(x * 100) / 100).replace('.', ',');
   for (const p of m.perks) {
-    if (!floorAt(p.cell[0], p.cell[1], p.lv | 0)) Wn(`Distributeur « ${PERKS[p.p].name} » hors du sol.`, P(p.cell, p.lv));
-    else if (onStairs(p.cell, p.lv)) Wn(`Distributeur « ${PERKS[p.p].name} » posé sur un escalier.`, P(p.cell, p.lv));
+    const name = PERKS[p.p].name, lv = p.lv | 0;
+    if (!floorAt(p.cell[0], p.cell[1], lv)) Wn(`Distributeur « ${name} » hors du sol.`, P(p.cell, p.lv));
+    else if (onStairs(p.cell, p.lv)) Wn(`Distributeur « ${name} » posé sur un escalier.`, P(p.cell, p.lv));
+    else {
+      // élixirs : machines de la planche, plus larges ou plus hautes qu'une case
+      const D = ELIXIRS[p.p], wh = m.ambiance.wallHeight, fp = elixirFootprint(p, wh);
+      const bad = fp.side.find(([x, z]) => !floorAt(x, z, lv) || onStairs([x, z], lv));
+      if (bad) Wn(`Le distributeur ${name} (${D.machine}, ${dec(D.w)} m de large) a besoin de sol libre de chaque côté le long du mur : il déborde ici.`, P(bad, p.lv));
+      const front = [p.cell[0] + p.face[0], p.cell[1] + p.face[1]];
+      if (D.d > 1.05 && !floorAt(front[0], front[1], lv)) Wn(`Le distributeur ${name} (${D.machine}, ${dec(D.d)} m de profondeur) a besoin de sol libre devant lui.`, P(front, p.lv));
+      if (fp.s < 1) Wn(`Le distributeur ${name} (${D.machine}, ${dec(D.h)} m de haut) sera réduit (×${dec(fp.s)}) pour tenir sous des murs de ${dec(wh)} m.`, P(p.cell, p.lv));
+    }
   }
   m.boxes.forEach((b, i) => {
     if (!b.cells.every(([x, z]) => floorAt(x, z, b.lv | 0))) Wn(`Emplacement de boîte mystère n° ${i + 1} hors du sol.`, P(b.cells[0], b.lv));
@@ -2406,10 +2441,10 @@ const Sound = (() => {
   /* Boisson d'atout : capsule qui saute, gorgées, bouteille lancée, verre qui se brise. */
   function perkCap() {
     if (!ctx) return;
-    const t = ctx.currentTime, o = out(null, 0.32);
-    tone('sine', 2600, 900, t, 0.06, 0.5, o);
-    noiseHit(t, 0.2, 0.32, 'highpass', 3500, 6500, 0.7, o, 0.004);
-    tone('triangle', 4300, 4000, t + 0.1, 0.05, 0.12, o);
+    const t = ctx.currentTime, o = out(null, 0.36);
+    tone('sine', 900, 380, t, 0.07, 0.7, o, 0.002);            // bouchon de liège qui saute
+    noiseHit(t, 0.05, 0.4, 'bandpass', 1800, 900, 1.5, o, 0.001);
+    tone('triangle', 3100, 2900, t + 0.11, 0.04, 0.08, o);
   }
   function gulp(i = 0) {
     if (!ctx) return;
@@ -2826,6 +2861,93 @@ const Sound = (() => {
     } catch (e) { /* synthèse vocale indisponible */ }
   }
 
+  /* ----------------------------------------------------------- Élixirs --- */
+  /* Sons de consommation des machines d'atouts (planches 07 à 11), lancés à l'achat (t = 0). */
+  function organNote(t, f, dur, v, dst) {
+    for (const [m, a] of [[0.5, 0.45], [1, 1], [2, 0.55], [3, 0.28], [4, 0.18]]) tone('sine', f * m, f * m, t, dur, v * a, dst, 0.008);
+  }
+  function elixir(key, pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.7, 7); if (!o) return;
+    const t = ctx.currentTime;
+    const wet = ctx.createGain(); wet.gain.value = 0.4; o.connect(wet); wet.connect(reverbSend());
+    if (key === 'lazare') {
+      // inspiration profonde, carillon grave lointain, chuchotement inversé
+      noiseHit(t, 0.6, 0.4, 'bandpass', 360, 1250, 1.2, o, 0.45);
+      bell(t + 0.45, 196, 0.2, wet, 4.5);
+      bell(t + 0.45, 196, 0.05, o, 3);
+      noiseHit(t + 1.0, 0.56, 0.28, 'bandpass', 2600, 5200, 3, o, 0.5);
+      noiseHit(t + 1.0, 0.56, 0.16, 'bandpass', 1150, 850, 5, o, 0.5);
+    } else if (key === 'cuirasse') {
+      // deux battements sourds (et deux encore), souffle de feu, crépitements
+      for (const tb of [0, 0.35, 2.0, 2.35]) { tone('sine', 64, 36, t + tb, 0.24, 0.95, o, 0.005); noiseHit(t + tb, 0.08, 0.3, 'lowpass', 180, null, 1, o, 0.003); }
+      noiseHit(t + 0.2, 1.9, 0.55, 'lowpass', 650, 1400, 0.7, o, 0.12, [1.5, 0.8]);
+      for (let i = 0; i < 18; i++) noiseHit(t + 0.25 + Math.random() * 1.7, 0.03, 0.22, 'highpass', 2600, null, 1, o, 0.001);
+    } else if (key === 'pelerin') {
+      // glouglou de source (0,25 → 1,8 s)
+      noiseHit(t + 0.25, 1.6, 0.16, 'bandpass', 950, 1500, 0.8, o, 0.1);
+      for (let i = 0; i < 30; i++) { const tt = t + 0.25 + (i / 30) * 1.5 + Math.random() * 0.04, f = rand(260, 640); tone('sine', f, f * 1.9, tt, 0.06, 0.2, o, 0.004); }
+    } else if (key === 'vifargent') {
+      // sifflement de vapeur, puis goutte cristalline quand la fiole est pleine
+      noiseHit(t + 0.6, 0.9, 0.22, 'highpass', 4500, 7200, 0.7, o, 0.05);
+      bell(t + 2.55, 2093, 0.08, o, 0.7);
+      tone('sine', 1900, 950, t + 2.53, 0.08, 0.12, o, 0.002);
+    } else if (key === 'toccata') {
+      // toccata d'orgue très rapide (motif de la Toccata en ré mineur de Bach, domaine public)
+      const run = [880, 784, 880, 0, 784, 698.5, 659.3, 587.3, 554.4, 587.3, 0, 440, 392, 440, 0, 392, 349.2, 329.6, 293.7, 277.2, 293.7];
+      run.forEach((f, i) => { if (f) organNote(t + 0.3 + i * 0.076, f, 0.11, 0.09, o); });
+      organNote(t + 0.3 + run.length * 0.076, 146.8, 0.5, 0.12, o);
+    }
+  }
+  /* Coup de hallebarde (Cuirasse) : choc métallique. */
+  function elixirClang(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.42, 6); if (!o) return;
+    const t = ctx.currentTime;
+    for (const [f, a, d] of [[523, 0.3, 0.35], [1397, 0.22, 0.25], [2311, 0.14, 0.18], [3527, 0.08, 0.12]]) tone('sine', f, f * 0.995, t, d, a, o, 0.001);
+    noiseHit(t, 0.05, 0.4, 'bandpass', 3000, 1800, 1.5, o, 0.001);
+  }
+  /* Bourdon de pèlerin contre la pierre ; froissement de feutre (le chapeau). */
+  function elixirKnock(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 6); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.06, 0.6, 'bandpass', 900, 600, 2.5, o, 0.001);
+    tone('sine', 180, 90, t, 0.09, 0.5, o, 0.002);
+  }
+  function elixirFelt(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.3, 5); if (!o) return;
+    noiseHit(ctx.currentTime, 0.18, 0.4, 'lowpass', 1400, 600, 0.8, o, 0.02);
+  }
+  /* Vif-Argent : souffle de forge, cliquetis d'aiguille, gouttes qui remplissent la fiole. */
+  function elixirBellows(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 6); if (!o) return;
+    noiseHit(ctx.currentTime, 0.3, 0.6, 'lowpass', 500, 1600, 0.8, o, 0.06);
+  }
+  function elixirTick(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.3, 5); if (!o) return;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 5; i++) noiseHit(t + i * 0.045 + Math.random() * 0.02, 0.012, 0.4 - i * 0.06, 'highpass', 5000, null, 1, o, 0.001);
+    tone('sine', 3200, 3150, t, 0.2, 0.05, o, 0.001);
+  }
+  function elixirDrip(pos, q = 0) {
+    if (!ctx) return;
+    const o = out(pos, 0.18, 4); if (!o) return;
+    const f = 900 + 700 * q;
+    tone('sine', f, f * 1.6, ctx.currentTime, 0.05, 0.3, o, 0.002);
+  }
+  /* Toccata : claquement de tir étouffé d'une trompette en chamade. */
+  function elixirShot(pos, i = 0) {
+    if (!ctx) return;
+    const o = out(pos, 0.42, 7); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.12, 0.7, 'lowpass', 1100 + i * 60, 260, 0.8, o, 0.001);
+    tone('sine', 140, 60, t, 0.08, 0.55, o, 0.002);
+  }
+
   return {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
@@ -2834,6 +2956,7 @@ const Sound = (() => {
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, creak, say, rankStamp, rankUp, prestige,
     syringe, magPickup,
     glasToll, glasFall, glasImpact, glasRaise, glasOffer, glasChime, glasLost, glasPing, glasMinuit, glasMidnight, glasHum,
+    elixir, elixirClang, elixirKnock, elixirFelt, elixirBellows, elixirTick, elixirDrip, elixirShot,
   };
 })();
 
@@ -3021,59 +3144,33 @@ function genBoxSide(emissive) {
   g.save(); g.translate(w * 0.72, h * 0.5); g.rotate(0.1); g.fillText('?', 0, 0); g.restore();
   return c;
 }
-function genPerkPanel(perk) {
-  const w = 256, h = 512;
-  const c = makeCanvas(w, h), g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, perk.color); gr.addColorStop(1, '#0d0b0a');
-  g.fillStyle = gr; g.fillRect(0, 0, w, h);
-  g.strokeStyle = 'rgba(255,240,210,0.85)'; g.lineWidth = 6; g.strokeRect(12, 12, w - 24, h - 24);
-  g.fillStyle = 'rgba(255,245,225,0.95)';
-  g.beginPath(); g.arc(w / 2, 150, 70, 0, TAU); g.fill();
-  g.fillStyle = perk.color; g.font = `900 110px ${FONT_DISPLAY}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(perk.glyph, w / 2, 156);
-  g.fillStyle = '#fff6e6'; g.textBaseline = 'alphabetic';
-  const words = perk.name.toUpperCase().split(' ');
-  words.forEach((wd, i) => {
-    let size = 46;
-    g.font = `900 ${size}px ${FONT_DISPLAY}`;
-    while (size > 22 && g.measureText(wd).width > w - 44) { size -= 2; g.font = `900 ${size}px ${FONT_DISPLAY}`; }
-    g.fillText(wd, w / 2, 290 + i * 46);
-  });
-  g.font = `700 34px ${FONT_HUD}`; g.fillStyle = 'rgba(255,240,200,0.9)';
-  g.fillText(String(perk.cost), w / 2, h - 50);
-  return c;
-}
-/* Étiquette de la bouteille d'atout, enroulée autour du verre : bandeau de la couleur de
-   l'atout, médaillon avec la lettre devant (u = 0, coupé en deux sur les bords) et derrière
-   (u = 0,5), nom de l'atout sur les deux côtés. Dessin original. */
+/* Étiquette de la fiole d'élixir (jeu 1.8.0) : papier crème, liserés et médaillons à la lettre de
+   l'atout, de sa couleur ; nom de l'atout. Enroulée autour du ventre de la fiole. */
 function genBottleLabel(perk) {
-  const w = 512, h = 160;
+  const w = 512, h = 128;
   const c = makeCanvas(w, h), g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, perk.color); gr.addColorStop(0.6, perk.color); gr.addColorStop(1, '#140e0a');
-  g.fillStyle = gr; g.fillRect(0, 0, w, h);
-  g.fillStyle = 'rgba(0,0,0,0.18)';
-  for (let x = 0; x < w; x += 8) g.fillRect(x, 0, 3, h);
-  g.fillStyle = 'rgba(255,238,205,0.92)';
-  g.fillRect(0, 10, w, 5); g.fillRect(0, h - 15, w, 5);
+  g.fillStyle = '#efe4c8'; g.fillRect(0, 0, w, h);
+  const rnd = mulberry32(perk.glyph.charCodeAt(0));
+  g.fillStyle = 'rgba(120,90,50,0.13)';
+  for (let i = 0; i < 420; i++) g.fillRect(rnd() * w, rnd() * h, 2, 2);
+  g.fillStyle = perk.color; g.fillRect(0, 7, w, 8); g.fillRect(0, h - 15, w, 8);
   g.textAlign = 'center'; g.textBaseline = 'middle';
   const medal = (cx) => {
-    g.fillStyle = '#f3e4c2'; g.beginPath(); g.arc(cx, h / 2, 50, 0, TAU); g.fill();
-    g.strokeStyle = perk.color; g.lineWidth = 5; g.beginPath(); g.arc(cx, h / 2, 41, 0, TAU); g.stroke();
-    g.fillStyle = perk.color; g.font = `900 64px ${FONT_DISPLAY}`;
-    g.fillText(perk.glyph, cx, h / 2 + 3);
+    g.fillStyle = perk.color; g.beginPath(); g.arc(cx, h / 2, 33, 0, TAU); g.fill();
+    g.strokeStyle = '#efe4c8'; g.lineWidth = 3; g.beginPath(); g.arc(cx, h / 2, 27, 0, TAU); g.stroke();
+    g.fillStyle = '#fff6e2'; g.font = `900 44px ${FONT_DISPLAY}`;
+    g.fillText(perk.glyph, cx, h / 2 + 2);
   };
-  medal(0); medal(w); medal(w / 2);
+  medal(w * 0.25); medal(w * 0.75);
   const words = perk.name.toUpperCase().split(' ');
   const lines = words.length > 1 && perk.name.length > 11 ? [words[0], words.slice(1).join(' ')] : [words.join(' ')];
-  g.fillStyle = '#fff3dc';
-  for (const cx of [w / 4, (3 * w) / 4]) {
+  g.fillStyle = '#2b2418';
+  for (const cx of [w / 2, 0, w]) {
     lines.forEach((line, i) => {
-      let size = lines.length > 1 ? 30 : 36;
-      g.font = `900 ${size}px ${FONT_DISPLAY}`;
-      while (size > 14 && g.measureText(line).width > 140) { size -= 2; g.font = `900 ${size}px ${FONT_DISPLAY}`; }
-      g.fillText(line, cx, h / 2 + (lines.length > 1 ? (i - 0.5) * 32 : 2));
+      let size = lines.length > 1 ? 28 : 32;
+      g.font = `700 ${size}px ${FONT_HUD}`;
+      while (size > 14 && g.measureText(line).width > 150) { size -= 2; g.font = `700 ${size}px ${FONT_HUD}`; }
+      g.fillText(line, cx, h / 2 + (lines.length > 1 ? (i - 0.5) * 30 : 2));
     });
   }
   return c;
@@ -4527,13 +4624,8 @@ function buildTextures() {
   TEX.cloth = toTex(genMetal([200, 200, 200], 128, 128));
   TEX.zskin = genZombieSkin();
   TEX.zcloth = genZombieCloth();
-  TEX.perk = {};
   TEX.bottleLabel = {};
-  for (const id in PERKS) {
-    const pc = genPerkPanel(PERKS[id]);
-    TEX.perk[id] = toTex(pc, { clamp: true });
-    TEX.bottleLabel[id] = toTex(genBottleLabel(PERKS[id]), { clamp: true });
-  }
+  for (const id in PERKS) TEX.bottleLabel[id] = toTex(genBottleLabel(PERKS[id]), { clamp: true });
   for (const k in TEX) {
     if (TEX[k] && TEX[k].isTexture) share(TEX[k]);
     else if (TEX[k] && typeof TEX[k] === 'object') Object.values(TEX[k]).forEach(share);
@@ -5999,6 +6091,7 @@ function buildWorld(map, opts = {}) {
   root.add(buildLights());
   root.add(buildLanterns());
   root.add(buildFeatures());
+  root.add(buildElixirLights());
   World.props = buildProps(map, CUR.editor);
   root.add(World.props);
   World.root = root;
@@ -6077,7 +6170,8 @@ function buildMaterials() {
   MAT.blade = std({ color: 0xb8bcc0, roughness: 0.25, metalness: 0.9 });
   MAT.bottleGlass = std({ color: 0x8fa596, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.34, depthWrite: false });
   // capsule : peu métallique (sans reflet d'environnement, un laiton très métallique paraît noir)
-  MAT.bottleCap = std({ color: 0xd9b45c, roughness: 0.35, metalness: 0.25 });
+  MAT.bottleCap = std({ color: 0xa47c4c, roughness: 0.9, metalness: 0 });     // bouchon de liège
+  MAT.bottleCord = std({ color: 0x6b4a2a, roughness: 0.95 });
   // éclats de la bouteille brisée : verre avec un léger reflet, teinté par l'atout (couleur par éclat)
   MAT.glassShard = std({ color: 0xffffff, roughness: 0.08, metalness: 0.35, transparent: true, opacity: 0.88, emissive: 0x26302c, side: THREE.DoubleSide });
   MAT.labelScrap = std({ color: 0xffffff, roughness: 0.75, metalness: 0, side: THREE.DoubleSide });
@@ -6370,105 +6464,1520 @@ function chalkTexture(id) {
 }
 
 /* --------------------------------------------- Machines et éléments ---- */
-function buildPerkMachine(id) {
-  const perk = PERKS[id];
-  const g = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: perk.color, map: TEX.metal, roughness: 0.5, metalness: 0.35 });
-  const body = new THREE.Mesh(GEO.box, bodyMat);
-  body.scale.set(0.9, 2.05, 0.72); body.position.y = 1.025;
-  const panelMat = new THREE.MeshStandardMaterial({ map: TEX.perk[id], emissiveMap: TEX.perk[id], emissive: 0xffffff, emissiveIntensity: 0.06, roughness: 0.4 });
-  const panel = new THREE.Mesh(GEO.plane, panelMat);
-  panel.scale.set(0.68, 1.36, 1); panel.position.set(0, 1.18, 0.362);
-  const signMat = new THREE.MeshStandardMaterial({ color: perk.color, emissive: new THREE.Color(perk.color), emissiveIntensity: 0.05, roughness: 0.4 });
-  const sign = new THREE.Mesh(GEO.box, signMat);
-  sign.scale.set(0.96, 0.24, 0.78); sign.position.y = 2.17;
-  const slot = new THREE.Mesh(GEO.box, MAT.metalDark);
-  slot.scale.set(0.42, 0.16, 0.06); slot.position.set(0, 0.36, 0.37);
-  const feet = new THREE.Mesh(GEO.box, MAT.metalDark);
-  feet.scale.set(0.96, 0.08, 0.78); feet.position.y = 0.04;
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: perk.color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-  glow.scale.set(2.4, 2.4, 1); glow.position.set(0, 1.6, 0.6);
-  g.add(body, panel, sign, slot, feet, glow);
-  return { group: g, panelMat, signMat, glow };
+/* ===== Élixirs : les cinq machines d'atouts de la planche d'Anthony (jeu 1.8.0) =====
+   Lazare (Quick Revive), Cuirasse (Mastodonte), Pèlerin (Staminup), Vif-Argent (Rechargement
+   rapide), Toccata (Double coup). Repère d'une machine : origine au sol, au milieu de sa largeur,
+   contre le mur ; x le long du mur (vers la droite vue de face), y en haut, z vers la pièce. */
+const ELIX_SERIF = '"Times New Roman", Georgia, "DejaVu Serif", serif';
+/* Icônes de la planche (médaillons, plaques de prix) : dessinées au trait dans un carré de côté s. */
+const ELIX_ICONS = {
+  lazare(g, cx, cy, s) {            // la porte ouverte du tombeau, rayons au-dessus
+    g.beginPath();
+    g.moveTo(cx - 0.42 * s, cy + 0.3 * s); g.lineTo(cx + 0.42 * s, cy + 0.3 * s);
+    g.moveTo(cx - 0.27 * s, cy + 0.3 * s); g.lineTo(cx - 0.27 * s, cy + 0.02 * s);
+    g.arc(cx, cy + 0.02 * s, 0.27 * s, Math.PI, 0); g.lineTo(cx + 0.27 * s, cy + 0.3 * s);
+    g.moveTo(cx - 0.1 * s, cy + 0.3 * s); g.lineTo(cx - 0.1 * s, cy + 0.04 * s);
+    g.arc(cx, cy + 0.04 * s, 0.1 * s, Math.PI, 0); g.lineTo(cx + 0.1 * s, cy + 0.3 * s);
+    for (let i = 0; i < 5; i++) {
+      const a = Math.PI * (1.17 + i * 0.165);
+      g.moveTo(cx + Math.cos(a) * 0.36 * s, cy + 0.02 * s + Math.sin(a) * 0.36 * s);
+      g.lineTo(cx + Math.cos(a) * 0.48 * s, cy + 0.02 * s + Math.sin(a) * 0.48 * s);
+    }
+    g.stroke();
+  },
+  cuirasse(g, cx, cy, s) {          // un cœur
+    g.beginPath();
+    g.moveTo(cx, cy + 0.33 * s);
+    g.bezierCurveTo(cx - 0.12 * s, cy + 0.2 * s, cx - 0.4 * s, cy + 0.04 * s, cx - 0.37 * s, cy - 0.14 * s);
+    g.bezierCurveTo(cx - 0.34 * s, cy - 0.34 * s, cx - 0.07 * s, cy - 0.36 * s, cx, cy - 0.17 * s);
+    g.bezierCurveTo(cx + 0.07 * s, cy - 0.36 * s, cx + 0.34 * s, cy - 0.34 * s, cx + 0.37 * s, cy - 0.14 * s);
+    g.bezierCurveTo(cx + 0.4 * s, cy + 0.04 * s, cx + 0.12 * s, cy + 0.2 * s, cx, cy + 0.33 * s);
+    g.stroke();
+  },
+  pelerin(g, cx, cy, s) {           // la coquille Saint-Jacques
+    const hx = cx, hy = cy + 0.3 * s, R = 0.4 * s, n = 9;
+    g.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = Math.PI * (1.08 + (0.84 * i) / n);
+      const x = hx + Math.cos(a) * R, y = hy + Math.sin(a) * R * 1.02;
+      if (i === 0) g.moveTo(x, y);
+      else {
+        const am = Math.PI * (1.08 + (0.84 * (i - 0.5)) / n);
+        g.quadraticCurveTo(hx + Math.cos(am) * R * 1.12, hy + Math.sin(am) * R * 1.14, x, y);
+      }
+    }
+    g.lineTo(hx + 0.07 * s, hy); g.lineTo(hx - 0.07 * s, hy); g.closePath();
+    for (let i = 1; i < n; i++) {
+      const a = Math.PI * (1.08 + (0.84 * i) / n);
+      g.moveTo(hx, hy); g.lineTo(hx + Math.cos(a) * R * 0.98, hy + Math.sin(a) * R);
+    }
+    g.moveTo(hx - 0.07 * s, hy); g.lineTo(hx - 0.17 * s, hy + 0.07 * s); g.lineTo(hx + 0.17 * s, hy + 0.07 * s); g.lineTo(hx + 0.07 * s, hy);
+    g.stroke();
+  },
+  vifargent(g, cx, cy, s) {         // le symbole du mercure ☿
+    g.beginPath();
+    g.arc(cx, cy - 0.04 * s, 0.15 * s, 0, TAU);
+    g.moveTo(cx - 0.17 * s, cy - 0.36 * s); g.arc(cx, cy - 0.36 * s, 0.17 * s, Math.PI, 0, true);
+    g.moveTo(cx, cy + 0.11 * s); g.lineTo(cx, cy + 0.42 * s);
+    g.moveTo(cx - 0.12 * s, cy + 0.28 * s); g.lineTo(cx + 0.12 * s, cy + 0.28 * s);
+    g.stroke();
+  },
+  toccata(g, cx, cy, s) {           // la façade de tuyaux
+    const H = [0.34, 0.5, 0.64, 0.5, 0.34];
+    g.beginPath();
+    H.forEach((h, i) => {
+      const x = cx + (i - 2) * 0.13 * s, y1 = cy + 0.26 * s;
+      g.moveTo(x, y1); g.lineTo(x, y1 - h * s);
+      g.moveTo(x - 0.035 * s, y1 - 0.08 * s); g.lineTo(x + 0.035 * s, y1 - 0.08 * s);
+    });
+    g.moveTo(cx - 0.36 * s, cy + 0.34 * s); g.lineTo(cx + 0.36 * s, cy + 0.34 * s);
+    g.stroke();
+  },
+};
+const _hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const _rgba = (h, a) => { const [r, g, b] = _hex(h); return `rgba(${r},${g},${b},${a})`; };
+/* Textures des élixirs (faites une fois, générateur reproductible : mêmes textures à chaque lancement). */
+function genElixirTextures() {
+  const T = {};
+  const rnd = mulberry32(2611);
+  const img = (W, H, fn, srgb = true) => {
+    const c = makeCanvas(W, H), g = c.getContext('2d'), d = g.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const p = (y * W + x) * 4, v = fn(x, y); d.data[p] = v[0]; d.data[p + 1] = v[1]; d.data[p + 2] = v[2]; d.data[p + 3] = v[3] === undefined ? 255 : v[3]; }
+    g.putImageData(d, 0, 0);
+    return { c, g };
+  };
+  // pierre de taille : assises décalées, joints creux, lichen et taches (teinte par couleurs de sommets)
+  {
+    const W = 256, H = 256, n = seededNoise(W, H, [[8, 8, 1], [32, 32, 0.5], [96, 96, 0.3]], rnd, 1.6);
+    const lich = seededNoise(W, H, [[12, 12, 1], [48, 48, 0.5]], rnd, 3.2);
+    const rows = 4, rh = H / rows, joint = new Float32Array(W * H);
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rh, off = (r % 2) * 61 + r * 13;
+      for (let x = 0; x < W; x++) for (let k = -2; k <= 2; k++) { const y = (y0 + k + H) % H; joint[y * W + x] = Math.max(joint[y * W + x], 1 - Math.abs(k) / 2.6); }
+      for (const bx of [off % W, (off + 128) % W]) for (let y = y0; y < y0 + rh; y++) for (let k = -2; k <= 2; k++) { const x = (bx + k + W) % W; joint[y * W + x] = Math.max(joint[y * W + x], 1 - Math.abs(k) / 2.6); }
+    }
+    const { c } = img(W, H, (x, y) => {
+      const i = y * W + x, a = n[i], j = joint[i], l = 0.55 * smooth(clamp((lich[i] - 0.8) / 0.15, 0, 1));
+      const v = 176 + 56 * a - 96 * j;
+      return [v * (1 - 0.12 * l) + 12 * l, v * (1 - 0.04 * l) + 10 * l, v * (1 - 0.2 * l)];
+    });
+    T.stone = toTex(c);
+  }
+  // ardoises (pyramidion de Lazare)
+  {
+    const W = 128, H = 128, n = seededNoise(W, H, [[16, 16, 1], [64, 64, 0.4]], rnd, 1.5);
+    const { c } = img(W, H, (x, y) => {
+      const row = Math.floor(y / 16), sx = (x + (row % 2) * 12) % 24, sy = y % 16;
+      const edge = sx < 1.5 || sy > 13.5 ? 0.45 : sy > 11 ? 0.8 : 1;
+      const v = (58 + 34 * n[y * W + x]) * edge;
+      return [v * 0.92, v * 0.97, v * 1.08];
+    });
+    T.slate = toTex(c);
+  }
+  // brique (athanor de Vif-Argent) : appareil en panneresses, joints clairs, suie
+  {
+    const W = 256, H = 256, n = seededNoise(W, H, [[16, 16, 1], [64, 64, 0.5]], rnd, 1.7);
+    const tone = []; for (let i = 0; i < 64; i++) tone.push(0.78 + 0.4 * rnd());
+    const { c } = img(W, H, (x, y) => {
+      const row = Math.floor(y / 21.33), by = y - row * 21.33, bx = (x + (row % 2) * 32) % 64;
+      const mortar = by < 2.6 || bx < 3;
+      const t = tone[(row * 4 + Math.floor((x + (row % 2) * 32) / 64)) % 64], a = n[y * W + x];
+      if (mortar) return [118 + 30 * a, 104 + 26 * a, 90 + 20 * a];
+      const k = t * (0.85 + 0.3 * a);
+      return [110 * k + 20, 59 * k + 8, 42 * k + 6];
+    });
+    T.brick = toTex(c);
+  }
+  // cuivre martelé (cucurbite, col de cygne, serpentin)
+  {
+    const W = 256, H = 256, n = seededNoise(W, H, [[8, 8, 1], [32, 32, 0.6]], rnd, 1.4);
+    const dents = []; for (let i = 0; i < 260; i++) dents.push([rnd() * W, rnd() * H, 5 + rnd() * 7]);
+    const sh = new Float32Array(W * H);
+    for (const [dx, dy, r] of dents) for (let y = Math.floor(dy - r); y <= dy + r; y++) for (let x = Math.floor(dx - r); x <= dx + r; x++) {
+      const ux = ((x % W) + W) % W, uy = ((y % H) + H) % H, d = Math.hypot(x - dx, y - dy) / r;
+      if (d < 1) sh[uy * W + ux] += ((x - dx) / r) * 0.5 * (1 - d);
+    }
+    const pat = seededNoise(W, H, [[10, 10, 1], [40, 40, 0.5]], rnd, 3);
+    const { c } = img(W, H, (x, y) => {
+      const i = y * W + x, k = 0.82 + 0.25 * n[i] + 0.5 * sh[i], p = 0.6 * smooth(clamp((pat[i] - 0.86) / 0.1, 0, 1));
+      return [lerp(200 * k, 96, p), lerp(116 * k, 150, p), lerp(62 * k, 118, p)];
+    });
+    T.copper = toTex(c);
+  }
+  // noyer (orgue de Toccata), bois du bourdon et du support
+  {
+    const W = 128, H = 512, n = seededNoise(W, H, [[4, 32, 1], [16, 128, 0.4]], rnd, 1.5);
+    const { c } = img(W, H, (x, y) => {
+      const a = n[y * W + x], gr = 0.5 + 0.5 * Math.sin(x * 0.55 + a * 9 + Math.sin(y * 0.02) * 2);
+      const k = 0.78 + 0.22 * gr + 0.18 * (a - 0.5);
+      return [96 * k, 64 * k, 42 * k];
+    });
+    T.walnut = toTex(c);
+  }
+  // panneaux gothiques du soubassement de l'orgue : deux arcs brisés, trois cercles, filets dorés
+  {
+    const W = 512, H = 384, c = makeCanvas(W, H), g = c.getContext('2d');
+    g.drawImage(T.walnut.image, 0, 0, 128, 512, 0, 0, W, H * 1.3);
+    g.fillStyle = 'rgba(30,18,10,0.35)'; g.fillRect(0, 0, W, H);
+    for (let y = 30; y < H; y += 34) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(0, y, W, 2); }
+    g.strokeStyle = '#c9a25c'; g.lineWidth = 4;
+    for (const cx of [W * 0.25, W * 0.75]) {
+      const w = W * 0.165, top = H * 0.14, bot = H * 0.94;
+      g.beginPath(); g.moveTo(cx - w, bot); g.lineTo(cx - w, H * 0.42);
+      g.quadraticCurveTo(cx - w, top + 10, cx, top); g.quadraticCurveTo(cx + w, top + 10, cx + w, H * 0.42); g.lineTo(cx + w, bot); g.stroke();
+      g.lineWidth = 3;
+      for (const [dx, dy] of [[0, 0.3], [-0.36, 0.44], [0.36, 0.44]]) { g.beginPath(); g.arc(cx + dx * w, H * dy, w * 0.27, 0, TAU); g.stroke(); }
+      g.beginPath(); g.moveTo(cx, H * 0.55); g.lineTo(cx, bot); g.stroke();
+      g.lineWidth = 4;
+    }
+    T.gothic = toTex(c);
+  }
+  // inscriptions (texture et masque de lueur) : lettres capitales espacées
+  const inscription = (text, W, H, o) => {
+    const c = makeCanvas(W, H), g = c.getContext('2d'), e = makeCanvas(W, H), ge = e.getContext('2d');
+    g.fillStyle = o.bg; g.fillRect(0, 0, W, H);
+    if (o.noise) { g.globalAlpha = 0.5; g.drawImage(o.noise, 0, 0, W, H); g.globalAlpha = 1; }
+    if (o.frame) { g.strokeStyle = o.frame; g.lineWidth = Math.max(2, H * 0.06); g.strokeRect(H * 0.08, H * 0.1, W - H * 0.16, H * 0.8); }
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, W, H);
+    const size = Math.round(H * (o.size || 0.56)), sp = size * (o.spacing || 0.28);
+    g.font = ge.font = `${o.weight || 600} ${size}px ${ELIX_SERIF}`;
+    g.textBaseline = ge.textBaseline = 'middle'; g.textAlign = ge.textAlign = 'left';
+    const chars = [...text], ws = chars.map((ch) => g.measureText(ch).width);
+    const total = ws.reduce((a, b) => a + b, 0) + sp * (chars.length - 1);
+    const scale = Math.min(1, (W * 0.9) / total);
+    let x = (W - total * scale) / 2;
+    const spans = [];
+    chars.forEach((ch, i) => {
+      g.save(); ge.save();
+      g.translate(x, H / 2 + H * 0.03); ge.translate(x, H / 2 + H * 0.03);
+      g.scale(scale, 1); ge.scale(scale, 1);
+      if (o.carve) { g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillText(ch, 1.5, 1.5); }
+      g.fillStyle = o.ink; g.fillText(ch, 0, 0);
+      ge.fillStyle = '#fff'; ge.fillText(ch, 0, 0);
+      g.restore(); ge.restore();
+      if (ch.trim()) spans.push([x / W, (x + ws[i] * scale) / W]);
+      x += (ws[i] + sp) * scale;
+    });
+    return { map: toTex(c, { clamp: true }), glow: toTex(e, { clamp: true }), spans };
+  };
+  T.motto = {
+    lazare: inscription('VENI · FORAS', 768, 96, { bg: '#5a5852', noise: T.stone.image, ink: '#1c2624', carve: true, size: 0.6 }),
+    cuirasse: inscription('NON CEDAM', 640, 96, { bg: '#2f2c28', noise: T.stone.image, ink: '#e6bd6e', size: 0.56, spacing: 0.4, weight: 700 }),
+    pelerin: inscription('ULTREIA', 512, 128, { bg: '#857a68', noise: T.stone.image, ink: '#3a3328', carve: true, frame: '#5f5646', size: 0.46, spacing: 0.42 }),
+    vifargent: inscription('SOLVE ET COAGULA', 768, 96, { bg: '#b99558', ink: '#2c1d0e', frame: '#7a5a2a', size: 0.42, spacing: 0.14, weight: 700 }),
+    toccata: inscription('PRESTO', 640, 96, { bg: '#3e271a', ink: '#d9b56c', size: 0.6, spacing: 0.7 }),
+  };
+  // médaillons : anneau de laiton, émail sombre, icône de la couleur de l'atout (et son masque de lueur)
+  T.medal = {}; T.plate = {};
+  for (const id in ELIXIRS) {
+    const E = ELIXIRS[id], P = PERKS[id], S = 256;
+    const c = makeCanvas(S, S), g = c.getContext('2d'), e = makeCanvas(S, S), ge = e.getContext('2d');
+    const rg = g.createRadialGradient(S * 0.4, S * 0.38, 4, S / 2, S / 2, S / 2);
+    rg.addColorStop(0, '#e6c67f'); rg.addColorStop(0.7, '#a77c3c'); rg.addColorStop(1, '#5a3d18');
+    g.fillStyle = rg; g.fillRect(0, 0, S, S);
+    g.fillStyle = '#10181a'; g.beginPath(); g.arc(S / 2, S / 2, S * 0.4, 0, TAU); g.fill();
+    g.strokeStyle = _rgba(P.glow, 0.55); g.lineWidth = 4; g.beginPath(); g.arc(S / 2, S / 2, S * 0.36, 0, TAU); g.stroke();
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, S, S);
+    g.strokeStyle = P.glow; ge.strokeStyle = '#fff';
+    g.lineWidth = ge.lineWidth = S * 0.045; g.lineCap = ge.lineCap = 'round'; g.lineJoin = ge.lineJoin = 'round';
+    ELIX_ICONS[E.key](g, S / 2, S / 2, S * 0.62); ELIX_ICONS[E.key](ge, S / 2, S / 2, S * 0.62);
+    T.medal[id] = { map: toTex(c, { clamp: true }), glow: toTex(e, { clamp: true }) };
+    // plaque de prix émaillée : cadre de laiton, émail de la couleur de l'atout, icône, nom, prix
+    const W = 512, H = 192, pc = makeCanvas(W, H), pg = pc.getContext('2d');
+    const fr = pg.createLinearGradient(0, 0, 0, H);
+    fr.addColorStop(0, '#e2c27c'); fr.addColorStop(0.5, '#9c7434'); fr.addColorStop(1, '#5e4019');
+    pg.fillStyle = fr; pg.fillRect(0, 0, W, H);
+    const en = pg.createLinearGradient(0, 14, 0, H - 14);
+    en.addColorStop(0, P.glow); en.addColorStop(0.45, P.color); en.addColorStop(1, P.color);
+    pg.fillStyle = en; pg.fillRect(14, 14, W - 28, H - 28);
+    pg.fillStyle = 'rgba(0,0,0,0.12)'; pg.fillRect(14, H * 0.55, W - 28, H * 0.45 - 14);
+    pg.fillStyle = '#f2ead6'; pg.beginPath(); pg.arc(H / 2, H / 2, H * 0.3, 0, TAU); pg.fill();
+    pg.strokeStyle = P.color; pg.lineWidth = 9; pg.lineCap = 'round'; pg.lineJoin = 'round';
+    ELIX_ICONS[E.key](pg, H / 2, H / 2, H * 0.44);
+    pg.fillStyle = '#fbf3df'; pg.textAlign = 'left'; pg.textBaseline = 'middle';
+    let size = 54; pg.font = `700 ${size}px ${FONT_HUD}`;
+    const name = P.name.toUpperCase();
+    while (size > 26 && pg.measureText(name).width > W - H - 34) { size -= 2; pg.font = `700 ${size}px ${FONT_HUD}`; }
+    pg.fillText(name, H - 2, H * 0.38);
+    pg.font = `600 40px ${FONT_HUD}`; pg.fillStyle = '#f1d488';
+    pg.fillText(`${String(P.cost).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} POINTS`, H - 2, H * 0.7);
+    T.plate[id] = toTex(pc, { clamp: true });
+  }
+  // grille du cœur de Cuirasse (trous transparents)
+  {
+    const S = 128, c = makeCanvas(S, S), g = c.getContext('2d');
+    g.fillStyle = '#c99a50'; g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, TAU); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.beginPath(); g.arc(S / 2, S / 2, S * 0.4, 0, TAU); g.fill();
+    g.globalCompositeOperation = 'source-over';
+    g.save(); g.beginPath(); g.arc(S / 2, S / 2, S * 0.41, 0, TAU); g.clip();
+    g.strokeStyle = '#2a2622'; g.lineWidth = 7;
+    for (let k = -S; k < 2 * S; k += 20) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + S, S); g.stroke(); g.beginPath(); g.moveTo(k, S); g.lineTo(k + S, 0); g.stroke(); }
+    g.restore();
+    T.grille = toTex(c, { clamp: true });
+  }
+  // cape en lambeaux (alpha : bord déchiré, quelques trous)
+  {
+    const W = 256, H = 512, n = seededNoise(W, H, [[6, 3, 1], [24, 12, 0.5]], rnd, 1.6), tear = [];
+    for (let x = 0; x < W; x++) tear.push(H * (0.78 + 0.16 * Math.abs(Math.sin(x * 0.09 + Math.sin(x * 0.031) * 3)) + 0.04 * rnd()));
+    const holes = []; for (let i = 0; i < 9; i++) holes.push([rnd() * W, H * (0.3 + rnd() * 0.5), 3 + rnd() * 9]);
+    const { c } = img(W, H, (x, y) => {
+      const i = y * W + x, fold = 0.7 + 0.3 * Math.sin(x * 0.12 + n[i] * 2);
+      let a = y < tear[x] ? 255 : 0;
+      for (const [hx, hy, r] of holes) if (Math.hypot(x - hx, (y - hy) * 0.6) < r) a = 0;
+      const k = fold * (0.75 + 0.35 * n[i]) * (1 - 0.35 * (y / H));
+      return [94 * k + 8, 29 * k + 3, 24 * k + 3, a];
+    });
+    T.cape = toTex(c);
+  }
+  // eau : filet (stries verticales qui défilent) et bassin (rides)
+  {
+    const W = 32, H = 256, n = seededNoise(W, H, [[4, 16, 1], [8, 64, 0.6]], rnd, 2.2);
+    T.stream = toTex(img(W, H, (x, y) => { const v = 120 + 135 * n[y * W + x] * (0.6 + 0.4 * Math.sin((x / W) * Math.PI)); return [v, v, v]; }).c);
+    const S = 256, r1 = seededNoise(S, S, [[6, 6, 1], [18, 18, 0.6], [48, 48, 0.3]], rnd, 2.4);
+    T.water = toTex(img(S, S, (x, y) => { const v = 90 + 165 * smooth(clamp(Math.abs(Math.sin(r1[y * S + x] * 14)) , 0, 1)); return [v, v, v]; }).c);
+  }
+  // flamme (cônes émissifs) : chaude en bas, langues qui s'effilent ; faisceau : bandes qui montent
+  {
+    const W = 64, H = 256, n = seededNoise(W, H, [[4, 8, 1], [8, 32, 0.6]], rnd, 1.8);
+    T.flame = toTex(img(W, H, (x, y) => {
+      const v = 1 - y / H, u = Math.sin((x / W) * Math.PI), k = clamp(u * (0.5 + 0.8 * n[y * W + x]) * (1.15 - v) * 1.4 - v * 0.35, 0, 1);
+      const a = Math.round(255 * k);
+      return [a, a, a];
+    }).c, { clamp: true });
+    T.flame.wrapS = THREE.RepeatWrapping;
+    const n2 = seededNoise(W, H, [[2, 8, 1], [4, 32, 0.5]], rnd, 2);
+    T.beam = toTex(img(W, H, (x, y) => { const a = Math.round(255 * (0.3 + 0.7 * n2[y * W + x])); return [a, a, a]; }).c);
+  }
+  // lanterne de Lazare : halo creux au centre (la baie n'en reçoit pas, elle a son propre fond) et
+  // fond lumineux de la lanterne (clair au centre, turquoise sur les bords)
+  {
+    const S = 128, rad = (x, y) => Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / S;
+    T.halo = toTex(img(S, S, (x, y) => {            // même profil que TEX.glow, hors du creux
+      const r = rad(x, y), q = r / 0.5, prof = q < 0.25 ? 1 - 1.6 * q : Math.max(0, 0.6 * (1 - (q - 0.25) / 0.75));
+      const a = Math.round(255 * prof * smooth(clamp((r - 0.09) / 0.08, 0, 1)));
+      return [a, a, a];
+    }).c);
+    T.lanternBack = toTex(img(S, S, (x, y) => { const v = Math.round(255 * (0.28 + 0.72 * Math.exp(-((rad(x, y) / 0.27) ** 2)))); return [v, v, v]; }).c);
+  }
+  // étincelle du serpentin : un point brillant qui court le long du tube
+  {
+    const W = 256, H = 8;
+    T.spark = toTex(img(W, H, (x) => { const d = Math.min(Math.abs(x - 40), W - Math.abs(x - 40)), v = 26 + 229 * Math.exp(-((d / 10) ** 2)); return [v, v, v]; }).c);
+  }
+  // cadran du manomètre
+  {
+    const S = 128, c = makeCanvas(S, S), g = c.getContext('2d');
+    g.fillStyle = '#e9e0c8'; g.fillRect(0, 0, S, S);
+    g.strokeStyle = '#2a2016'; g.lineWidth = 6; g.beginPath(); g.arc(S / 2, S / 2, S * 0.46, 0, TAU); g.stroke();
+    g.strokeStyle = '#b02a1a'; g.lineWidth = 8; g.beginPath(); g.arc(S / 2, S / 2, S * 0.36, -0.25, 0.45); g.stroke();
+    g.strokeStyle = '#2a2016'; g.lineWidth = 2;
+    for (let i = 0; i <= 10; i++) { const a = Math.PI * (0.75 + i * 0.15); g.beginPath(); g.moveTo(S / 2 + Math.cos(a) * S * 0.33, S / 2 + Math.sin(a) * S * 0.33); g.lineTo(S / 2 + Math.cos(a) * S * 0.41, S / 2 + Math.sin(a) * S * 0.41); g.stroke(); }
+    T.gauge = toTex(c, { clamp: true });
+  }
+  // feuille de lierre (stèle de Pèlerin)
+  {
+    const S = 64, c = makeCanvas(S, S), g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.beginPath();
+    for (let i = 0; i <= 5; i++) { const a = -Math.PI / 2 + (i - 2.5) * 0.55, r = i % 2 ? S * 0.44 : S * 0.3; g.lineTo(S / 2 + Math.cos(a) * r, S * 0.62 + Math.sin(a) * r); }
+    g.lineTo(S / 2, S * 0.95); g.closePath(); g.fill();
+    T.leaf = toTex(c, { clamp: true });
+  }
+  // coquille : côtes rayonnantes (bronze), vue de face
+  {
+    const S = 256;
+    T.shell = toTex(img(S, S, (x, y) => {
+      const dx = x - S / 2, dy = S - y, a = Math.atan2(dy, dx), r = Math.hypot(dx, dy) / S;
+      const rib = 0.5 + 0.5 * Math.cos(a * 22), k = 0.62 + 0.38 * rib * (0.6 + 0.4 * r) + 0.06 * Math.sin(r * 90);
+      return [214 * k, 158 * k, 92 * k];
+    }).c, { clamp: true });
+  }
+  // onde au sol : anneau doux
+  {
+    const S = 128;
+    T.ring = toTex(img(S, S, (x, y) => { const r = Math.hypot(x - S / 2, y - S / 2) / (S / 2), a = Math.round(255 * Math.exp(-(((r - 0.86) / 0.07) ** 2)) * (r < 1 ? 1 : 0)); return [a, a, a]; }).c, { clamp: true });
+  }
+  return T;
 }
-/* Bouteille d'atout (dessin original) : verre fumé tourné, liquide de la couleur de l'atout,
-   étiquette enroulée (lettre et nom), capsule dorée. Origine au fond, 20,5 cm de haut. Sert à
-   la vue à la première personne (boisson) et à la bouteille lancée qui se brise. */
-const BOTTLE = { h: 0.205, neck: 0.195, liquidY: 0.006, liquidH: 0.118 };
-let BOTTLE_GEO = null;
-function bottleGeometries() {
-  if (BOTTLE_GEO) return BOTTLE_GEO;
-  const V = (r, y) => new THREE.Vector2(r, y);
-  const glass = new THREE.LatheGeometry([V(0.0001, 0), V(0.027, 0), V(0.0315, 0.005), V(0.032, 0.112), V(0.0285, 0.128),
-    V(0.0195, 0.146), V(0.0128, 0.16), V(0.0122, 0.189), V(0.0138, 0.192), V(0.0138, 0.198), V(0.0108, 0.2), V(0.0001, 0.2)], 22);
-  // sans fonds : bouteille couchée, on ne voit pas un disque plein au bout du liquide
-  const liquid = new THREE.CylinderGeometry(0.0292, 0.0292, 1, 18, 1, true);
-  liquid.translate(0, 0.5, 0);
-  // étiquette au-dessus de la main qui tient la bouteille par le bas
-  const label = new THREE.CylinderGeometry(0.0327, 0.0327, 0.06, 28, 1, true);
-  label.translate(0, 0.08, 0);
-  const cap = new THREE.CylinderGeometry(0.0152, 0.0146, 0.0075, 18);
-  const capOn = cap.clone();
-  capOn.translate(0, 0.2025, 0);
-  BOTTLE_GEO = { glass, liquid, label, cap, capOn };
-  return BOTTLE_GEO;
+/* Ressources partagées des élixirs : textures et matières communes (une fois). */
+const ELIX_R = { T: null, M: null };
+function elixirResources() {
+  if (ELIX_R.M) return ELIX_R;
+  const T = ELIX_R.T = genElixirTextures();
+  const shareAll = (o) => { for (const k in o) { const v = o[k]; if (v && v.isTexture) share(v); else if (v && typeof v === 'object' && !Array.isArray(v)) shareAll(v); } };
+  shareAll(T);
+  const env = genGlasEnv();
+  const std = (o) => linearize(share(new THREE.MeshStandardMaterial(o)));
+  const add = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+  ELIX_R.add = add; ELIX_R.env = env;
+  ELIX_R.M = {
+    stone: std({ map: T.stone, vertexColors: true, roughness: 0.93 }),
+    slate: std({ map: T.slate, roughness: 0.8 }),
+    iron: std({ color: 0x23272b, vertexColors: true, roughness: 0.55, metalness: 0.85, envMap: env, envMapIntensity: 0.6 }),
+    steel: std({ color: 0xb4bec8, vertexColors: true, roughness: 0.34, metalness: 0.85, envMap: env, envMapIntensity: 1.7 }),
+    blade: std({ color: 0xa3acb5, roughness: 0.4, metalness: 0.45, envMap: env, envMapIntensity: 1.1 }),   // fers plats : éclairés par la salle
+    copper: std({ map: T.copper, roughness: 0.36, metalness: 1, envMap: env, envMapIntensity: 1.3 }),
+    brass: std({ color: 0xd2ae66, vertexColors: true, roughness: 0.3, metalness: 1, envMap: env, envMapIntensity: 1.25 }),
+    bronze: std({ map: T.shell, roughness: 0.42, metalness: 1, envMap: env, envMapIntensity: 1.2 }),
+    walnut: std({ map: T.walnut, vertexColors: true, roughness: 0.62 }),
+    gothic: std({ map: T.gothic, roughness: 0.6 }),
+    brick: std({ map: T.brick, roughness: 0.93 }),
+    cape: std({ map: T.cape, side: THREE.DoubleSide, alphaTest: 0.5, roughness: 0.95 }),
+    felt: std({ color: 0x3f342c, vertexColors: true, roughness: 0.95 }),
+    leather: std({ color: 0x5a3a22, roughness: 0.82 }),
+    bone: std({ color: 0xe6d9c0, roughness: 0.45 }),
+    ivy: std({ map: T.leaf, color: 0x45662c, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }),
+    moss: std({ color: 0x33421f, roughness: 1 }),
+    glass: std({ color: 0xc4d6d4, roughness: 0.04, metalness: 0.1, transparent: true, opacity: 0.2, depthWrite: false }),
+    dark: std({ color: 0x0c0b0a, roughness: 1 }),
+    gauge: std({ map: T.gauge, roughness: 0.4 }),
+    keys: std({ color: 0xffffff, roughness: 0.45 }),
+  };
+  return ELIX_R;
+}
+
+/* Fioles d'élixir (planche) : ballon à fond plat, ou gourde à deux renflements (Pèlerin), bouchon de
+   liège, étiquette de papier. Origine au fond, 19 cm de haut (bouchon : 20 cm). Servent à la niche
+   des machines, à la vue à la première personne (boisson) et à la fiole lancée qui se brise.
+   BOTTLE : la fiole par défaut (ballon) ; chaque fiole porte sa forme (userData.shape). */
+const VIALS = {
+  flask: { kind: 'flask', h: 0.2, neck: 0.195, liquidY: 0.006, liquidH: 0.088, corkY: 0.19, label: [0.03, 0.066],
+    outer: [[0.0001, 0], [0.016, 0], [0.024, 0.004], [0.034, 0.013], [0.041, 0.026], [0.0445, 0.042], [0.0445, 0.058], [0.041, 0.074], [0.033, 0.089],
+      [0.022, 0.1], [0.0135, 0.108], [0.0118, 0.118], [0.0115, 0.176], [0.0138, 0.18], [0.0138, 0.187], [0.0108, 0.19], [0.0001, 0.19]],
+    inner: [[0.0001, 0.006], [0.02, 0.006], [0.031, 0.014], [0.0385, 0.026], [0.042, 0.042], [0.042, 0.058], [0.0385, 0.074], [0.03, 0.088], [0.021, 0.094], [0.0001, 0.094]] },
+  gourd: { kind: 'gourd', h: 0.2, neck: 0.195, liquidY: 0.006, liquidH: 0.146, corkY: 0.19, label: [0.028, 0.064],
+    outer: [[0.0001, 0], [0.02, 0], [0.032, 0.006], [0.041, 0.018], [0.046, 0.034], [0.046, 0.05], [0.041, 0.066], [0.031, 0.078], [0.022, 0.088], [0.0205, 0.096],
+      [0.025, 0.106], [0.0295, 0.12], [0.03, 0.132], [0.026, 0.146], [0.018, 0.157], [0.0125, 0.165], [0.0115, 0.176], [0.0138, 0.18], [0.0138, 0.187], [0.0108, 0.19], [0.0001, 0.19]],
+    inner: [[0.0001, 0.006], [0.02, 0.006], [0.03, 0.01], [0.039, 0.02], [0.0435, 0.034], [0.0435, 0.05], [0.0385, 0.066], [0.0285, 0.077], [0.0185, 0.088], [0.0175, 0.096],
+      [0.0225, 0.106], [0.027, 0.12], [0.0275, 0.132], [0.0235, 0.144], [0.015, 0.152], [0.0001, 0.152]] },
+};
+const BOTTLE = VIALS.flask;
+const VIAL_GEO = {};
+function vialRadiusAt(shape, y) {
+  const P = shape.outer;
+  for (let i = 1; i < P.length; i++) if (P[i][1] >= y && P[i - 1][1] <= y && P[i][1] > P[i - 1][1]) return lerp(P[i - 1][0], P[i][0], (y - P[i - 1][1]) / (P[i][1] - P[i - 1][1]));
+  return 0;
+}
+function bottleGeometries(kind = 'flask') {
+  if (VIAL_GEO[kind]) return VIAL_GEO[kind];
+  const S = VIALS[kind], V = (r, y) => new THREE.Vector2(r, y);
+  const glass = share(new THREE.LatheGeometry(S.outer.map(([r, y]) => V(r, y)), 22));
+  // liquide : volume intérieur ramené à une hauteur de 1 (le niveau baisse en l'écrasant)
+  const y0 = S.inner[0][1], y1 = S.inner[S.inner.length - 1][1];
+  const liquid = share(new THREE.LatheGeometry(S.inner.map(([r, y]) => V(r, (y - y0) / (y1 - y0))), 18));
+  // étiquette : bande qui épouse le ventre de la fiole
+  const lab = [];
+  for (let i = 0; i <= 8; i++) { const y = lerp(S.label[0], S.label[1], i / 8); lab.push(V(vialRadiusAt(S, y) + 0.0013, y)); }
+  const label = share(new THREE.LatheGeometry(lab, 28));
+  const cap = share(new THREE.CylinderGeometry(0.0122, 0.0103, 0.021, 14));       // bouchon de liège
+  const capOn = share(cap.clone().translate(0, S.corkY, 0));
+  const parts = { glass, liquid, label, cap, capOn };
+  if (kind === 'gourd') parts.cord = share(new THREE.TorusGeometry(0.0215, 0.0024, 6, 18).rotateX(Math.PI / 2).translate(0, 0.093, 0));
+  VIAL_GEO[kind] = parts;
+  return parts;
 }
 const BOTTLE_MATS = { label: {}, liquid: {} };
 function bottleMats(id) {
   if (!BOTTLE_MATS.label[id]) {
-    BOTTLE_MATS.label[id] = new THREE.MeshStandardMaterial({ map: TEX.bottleLabel[id], roughness: 0.55 });
-    const c = new THREE.Color(PERKS[id].color).convertSRGBToLinear();
-    BOTTLE_MATS.liquid[id] = new THREE.MeshStandardMaterial({ color: c, emissive: c.clone().multiplyScalar(0.35), roughness: 0.25 });
+    BOTTLE_MATS.label[id] = share(new THREE.MeshStandardMaterial({ map: TEX.bottleLabel[id], roughness: 0.65 }));
+    const c = new THREE.Color(PERKS[id].glow).convertSRGBToLinear();
+    BOTTLE_MATS.liquid[id] = share(new THREE.MeshStandardMaterial({ color: c, emissive: c.clone().multiplyScalar(0.55), roughness: 0.2 }));
   }
   return { label: BOTTLE_MATS.label[id], liquid: BOTTLE_MATS.liquid[id] };
 }
+const vialShapeOf = (id) => VIALS[(ELIXIRS[id] && ELIXIRS[id].vial) || 'flask'];
 function buildBottle(id, { full = true, cap = true } = {}) {
-  const G = bottleGeometries(), M = bottleMats(id);
+  const shape = vialShapeOf(id), G = bottleGeometries(shape.kind), M = bottleMats(id);
   const g = new THREE.Group();
   const liquid = new THREE.Mesh(G.liquid, M.liquid);
-  liquid.position.y = BOTTLE.liquidY;
-  liquid.scale.y = BOTTLE.liquidH;
+  liquid.position.y = shape.liquidY;
+  liquid.scale.y = shape.liquidH;
   liquid.visible = full;
   const label = new THREE.Mesh(G.label, M.label);
   const glass = new THREE.Mesh(G.glass, MAT.bottleGlass);
   glass.renderOrder = 2;
   const capM = new THREE.Mesh(G.capOn, MAT.bottleCap);
   capM.visible = cap;
-  g.add(liquid, label, glass, capM);
-  g.userData = { liquid, label, glass, cap: capM };
+  const cord = new THREE.Mesh(G.cord || G.cap, MAT.bottleCord);
+  cord.visible = !!G.cord;
+  g.add(liquid, label, glass, capM, cord);
+  g.userData = { liquid, label, glass, cap: capM, cord, shape };
   return g;
 }
-/* Habille une bouteille aux couleurs d'un atout (la bouteille de la vue à la première personne sert à tous). */
+/* Habille une fiole aux couleurs (et à la forme) d'un atout : la fiole de la vue à la première
+   personne sert à tous. */
 function dressBottle(g, id, full = true) {
-  const M = bottleMats(id), u = g.userData;
+  const M = bottleMats(id), u = g.userData, shape = vialShapeOf(id), G = bottleGeometries(shape.kind);
+  u.shape = shape;
+  u.glass.geometry = G.glass; u.liquid.geometry = G.liquid; u.label.geometry = G.label; u.cap.geometry = G.capOn;
+  u.cord.visible = !!G.cord; if (G.cord) u.cord.geometry = G.cord;
   u.label.material = M.label;
   u.liquid.material = M.liquid;
   u.liquid.visible = full;
-  u.liquid.position.y = BOTTLE.liquidY;
-  u.liquid.scale.y = BOTTLE.liquidH;
+  u.liquid.position.y = shape.liquidY;
+  u.liquid.scale.y = shape.liquidH;
   u.cap.visible = true;
 }
-/* Main droite gantée qui tient la bouteille par le bas (repère de la bouteille : fond au centre,
-   y vers le goulot, +z vers le joueur quand elle est droite) : dos de la main sur le côté droit,
-   doigts enroulés derrière, pouce devant sous l'étiquette. GRIP_WRIST : le poignet, où arrive
+/* Main droite gantée qui tient la fiole par le ventre (repère de la fiole : fond au centre, y vers le
+   goulot, +z vers le joueur quand elle est droite) : dos de la main sur le côté droit, doigts enroulés
+   derrière, pouce devant sous l'étiquette. GRIP_R : rayon tenu ; GRIP_WRIST : le poignet, où arrive
    l'avant-bras. */
-const GRIP_WRIST = [0.058, 0.022, 0.006];
+const GRIP_R = 0.046;
+const GRIP_WRIST = [0.058 + GRIP_R - 0.032, 0.022, 0.006];
 function buildGripHand() {
-  const g = new THREE.Group();
+  const g = new THREE.Group(), o = GRIP_R - 0.032;
   const box = (sx, sy, sz, x, y, z, rz = 0) => {
     const m = new THREE.Mesh(GEO.box, MAT.glove);
     m.scale.set(sx, sy, sz); m.position.set(x, y, z); m.rotation.z = rz;
     g.add(m);
   };
-  box(0.022, 0.066, 0.064, 0.043, 0.034, -0.004);          // paume et dos de la main
-  box(0.03, 0.05, 0.05, 0.058, 0.024, 0.004);              // poignet
+  box(0.022, 0.066, 0.07, 0.043 + o, 0.034, -0.004);       // paume et dos de la main
+  box(0.03, 0.05, 0.05, 0.058 + o, 0.024, 0.004);          // poignet
   for (let i = 0; i < 4; i++) {
     const y = 0.009 + i * 0.0158;
-    box(0.068, 0.0135, 0.017, 0.006, y, -0.039);           // doigt enroulé derrière la bouteille
-    box(0.017, 0.0135, 0.03, -0.031, y, -0.022);           // bout du doigt, sur le côté gauche
+    box(0.068 + 2 * o, 0.0135, 0.017, 0.006, y, -0.039 - o);   // doigt enroulé derrière la fiole
+    box(0.017, 0.0135, 0.03 + o, -0.031 - o, y, -0.022 - o / 2); // bout du doigt, sur le côté gauche
   }
-  box(0.048, 0.017, 0.018, 0.014, 0.032, 0.037, -0.22);    // pouce, devant
+  box(0.048, 0.017, 0.018, 0.014 + o * 0.5, 0.032, 0.037 + o, -0.22);  // pouce, devant
   return g;
+}
+/* Géométries des élixirs : boîtes et cylindres aux UV à l'échelle (k répétitions par mètre), pièces
+   fixes fusionnées par matière (couleurs de sommets), gardées pour toutes les cartes. */
+function boxUV(w, h, d, k = 1.2) {
+  const g = new THREE.BoxGeometry(w, h, d), uv = g.attributes.uv;
+  const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) { const j = f * 4 + i; uv.setXY(j, uv.getX(j) * dims[f][0] * k, uv.getY(j) * dims[f][1] * k); }
+  return g;
+}
+function cylUV(rt, rb, h, seg = 16, k = 1.2, open = false) {
+  const g = new THREE.CylinderGeometry(rt, rb, h, seg, 1, open);
+  return scaleUV(g, Math.PI * (rt + rb) * k, h * k);
+}
+/* Matrice d'un cylindre unité (rayon 1, hauteur 1, axe y) tendu de a à b, de rayon r. */
+const _cbA = new THREE.Vector3(), _cbB = new THREE.Vector3(), _cbQ = new THREE.Quaternion(), _cbY = new THREE.Vector3(0, 1, 0);
+function elixRodMtx(a, b, r) {
+  _cbA.set(...a); _cbB.set(...b);
+  const d = _cbB.clone().sub(_cbA), L = d.length();
+  _cbQ.setFromUnitVectors(_cbY, d.normalize());
+  return new THREE.Matrix4().compose(_cbA.clone().add(_cbB).multiplyScalar(0.5), _cbQ.clone(), new THREE.Vector3(r, L, r));
+}
+/* Teinte de sommet : couleur voulue (sRGB) divisée par la luminosité moyenne de la texture. */
+function elixTint(hex, ref = 0.55) {
+  const c = new THREE.Color(hex).convertSRGBToLinear();
+  return [c.r / ref, c.g / ref, c.b / ref];
+}
+/* Forme percée d'une ouverture en arc (niches, fenêtres, gueule du four) : rectangle w × h (bas au
+   centre), arc de largeur aw dont le seuil est à y0 et la clé à y1. */
+function archedPlate(w, h, aw, y0, y1, depth) {
+  const s = new THREE.Shape();
+  s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(w / 2, h); s.lineTo(-w / 2, h); s.lineTo(-w / 2, 0);
+  const r = aw / 2, yc = y1 - r, hole = new THREE.Path();
+  hole.moveTo(-r, y0); hole.lineTo(-r, yc); hole.absarc(0, yc, r, Math.PI, 0, true); hole.lineTo(r, y0); hole.lineTo(-r, y0);
+  s.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false, curveSegments: 14 });
+  return scaleUV(g, 1.2, 1.2);
+}
+function archShape(aw, y0, y1) {
+  const r = aw / 2, s = new THREE.Shape();
+  s.moveTo(-r, y0); s.lineTo(r, y0); s.lineTo(r, y1 - r); s.absarc(0, y1 - r, r, 0, Math.PI, false); s.lineTo(-r, y0);
+  return s;
+}
+/* Coquille Saint-Jacques en éventail (contour festonné, oreillettes), de face dans le plan xy,
+   charnière en (0, 0) : largeur 2·R, hauteur 1,76·R. UV : côtes rayonnantes de T.shell. */
+function shellGeometry(R, depth) {
+  const s = new THREE.Shape(), cy = 0.76 * R, n = 11;
+  s.moveTo(-0.16 * R, 0);
+  for (let i = 0; i <= n; i++) {
+    const a = Math.PI * (-0.18 + (1.36 * (n - i)) / n), x = Math.cos(a) * R, y = cy + Math.sin(a) * R;
+    if (i === 0) s.lineTo(x, y);
+    else {
+      const am = Math.PI * (-0.18 + (1.36 * (n - i + 0.5)) / n);
+      s.quadraticCurveTo(Math.cos(am) * R * 1.1, cy + Math.sin(am) * R * 1.1, x, y);
+    }
+  }
+  s.lineTo(0.16 * R, 0); s.lineTo(0.42 * R, -0.04 * R); s.lineTo(0.4 * R, -0.16 * R); s.lineTo(-0.4 * R, -0.16 * R); s.lineTo(-0.42 * R, -0.04 * R); s.lineTo(-0.16 * R, 0);
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelThickness: depth * 0.4, bevelSize: R * 0.02, bevelSegments: 1, curveSegments: 6 });
+  const p = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < p.count; i++) uv.setXY(i, 0.5 + p.getX(i) / (2.2 * R), p.getY(i) / (2 * R));
+  return g;
+}
+function elixKit() {
+  const lists = new Map();
+  const put = (mat, geo, m, color) => { if (!lists.has(mat)) lists.set(mat, []); lists.get(mat).push({ geo, matrix: m || new THREE.Matrix4(), color }); };
+  const kit = {
+    put,
+    box(mat, w, h, d, x, y, z, c, r = [0, 0, 0], k = mat === ELIX_R.M.stone ? 0.6 : 1.2) { put(mat, boxUV(w, h, d, k), mtx(x, y, z, r[0], r[1], r[2]), c); },
+    cyl(mat, rt, rb, h, x, y, z, c, r = [0, 0, 0], seg = 16, k = 1.2, open = false) { put(mat, cylUV(rt, rb, h, seg, k, open), mtx(x, y, z, r[0], r[1], r[2]), c); },
+    rod(mat, a, b, rad, c, seg = 8) { put(mat, new THREE.CylinderGeometry(1, 1, 1, seg), elixRodMtx(a, b, rad), c); },
+    sph(mat, r, x, y, z, c, s = [1, 1, 1], seg = 12) { put(mat, new THREE.SphereGeometry(r, seg, Math.max(6, seg >> 1)), mtx(x, y, z, 0, 0, 0, s[0], s[1], s[2]), c); },
+    tor(mat, R, t, x, y, z, c, r = [0, 0, 0], s = [1, 1, 1], arc = TAU, seg = 20) { put(mat, new THREE.TorusGeometry(R, t, 6, seg, arc), mtx(x, y, z, r[0], r[1], r[2], s[0], s[1], s[2]), c); },
+    torAxis(mat, R, t, p, axis, c) { const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...axis).normalize()); put(mat, new THREE.TorusGeometry(R, t, 6, 18), new THREE.Matrix4().compose(new THREE.Vector3(...p), q, new THREE.Vector3(1, 1, 1)), c); },
+    geo(mat, g, m, c) { put(mat, g, m, c); },
+    merge() { const out = []; for (const [mat, list] of lists) out.push([mat, share(mergeGeometries(list))]); return out; },
+  };
+  return kit;
+}
+/* Pièces fixes d'une machine, fusionnées une fois par type puis partagées. */
+const ELIX_GEO = {};
+function elixStatic(key, fill) {
+  if (!ELIX_GEO[key]) { const kit = elixKit(); fill(kit); ELIX_GEO[key] = kit.merge(); }
+  const g = new THREE.Group();
+  for (const [mat, geo] of ELIX_GEO[key]) g.add(new THREE.Mesh(geo, mat));
+  return g;
+}
+/* Plaque de prix émaillée (cadre de laiton) et médaillon : matières propres à la machine (elles
+   s'allument avec le courant). */
+function elixPlate(id, w, h, x, y, z, root, ry = 0) {
+  const { T, M } = elixirResources();
+  const mat = linearize(new THREE.MeshStandardMaterial({ map: T.plate[id], emissiveMap: T.plate[id], emissive: 0xffffff, emissiveIntensity: 0.05, roughness: 0.32, metalness: 0.25 }));
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  p.position.set(x, y, z + 0.007); p.rotation.y = ry;          // devant le cadre (pas de scintillement)
+  const fr = new THREE.Mesh(boxUV(w + 0.024, h + 0.024, 0.008), M.brass);
+  fr.position.set(x, y, z); fr.rotation.y = ry;
+  root.add(fr, p);
+  return mat;
+}
+function elixMedal(id, r, x, y, z, root) {
+  const { T, M } = elixirResources(), P = PERKS[id];
+  const mat = linearize(new THREE.MeshStandardMaterial({ map: T.medal[id].map, emissiveMap: T.medal[id].glow, emissive: new THREE.Color(P.glow), emissiveIntensity: 0, roughness: 0.38, metalness: 0.5, envMap: ELIX_R.env, envMapIntensity: 0.6 }));
+  const d = new THREE.Mesh(new THREE.CircleGeometry(r, 28), mat);
+  d.position.set(x, y, z + 0.012);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.12, 6, 28), M.brass);
+  rim.position.set(x, y, z + 0.01);
+  const back = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.014, 24), M.brass);
+  back.rotation.x = Math.PI / 2; back.position.set(x, y, z + 0.004);
+  root.add(back, rim, d);
+  return mat;
+}
+/* Matière déjà en couleurs linéaires : linearizeTree ne la reconvertit pas. */
+const linDone = (mat) => { _linDone.add(mat); return mat; };
+/* Matière émissive additive d'une machine (lueurs, flammes, faisceaux), de la couleur donnée. */
+function elixGlowMat(hex, opts = {}) {
+  return linDone(new THREE.MeshBasicMaterial(Object.assign({ color: new THREE.Color(hex).convertSRGBToLinear(), transparent: true, opacity: 1, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }, opts)));
+}
+function elixSprite(hex, size, opacity = 1, map = null) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: map || TEX.glow, color: new THREE.Color(hex).convertSRGBToLinear(), transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+  s.scale.set(size, size, 1);
+  return s;
+}
+/* Faisceau de Lazare : cylindre ouvert additif dont les bords s'effacent (vu de biais, la lumière
+   s'amincit) ; bas adouci, haut éteint vers le ciel (topFade 1) ou gardé contre un plafond. */
+function elixBeamMat(hex, map) {
+  const mat = elixGlowMat(hex, { map, opacity: 0 });
+  const topFade = { value: 1 };
+  mat.userData.topFade = topFade;
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.beamTopFade = topFade;
+    const decl = 'varying vec3 vBeamN;\nvarying vec3 vBeamV;\nvarying float vBeamY;\n';
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + decl)
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvBeamN = normalize(normalMatrix * normal);\nvBeamV = -mvPosition.xyz;\nvBeamY = uv.y;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + decl + 'uniform float beamTopFade;\n')
+      .replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\nfloat beamF = abs(dot(normalize(vBeamN), normalize(vBeamV)));\ndiffuseColor.a *= beamF * beamF * smoothstep(0.0, 0.18, vBeamY) * (1.0 - beamTopFade * smoothstep(0.35, 1.0, vBeamY));');
+  };
+  mat.customProgramCacheKey = () => 'elixBeam';
+  return mat;
+}
+/* Onde au sol (anneau doux) : rayon 1 m à l'échelle 1, cachée au repos. */
+function elixRing(hex) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), elixGlowMat(hex, { map: elixirResources().T.ring, opacity: 0 }));
+  m.rotation.x = -Math.PI / 2; m.visible = false;
+  return m;
+}
+/* Fiole posée dans sa niche : sa propre matière de liquide (sombre sans courant). */
+function elixVial(id, x, y, z, root) {
+  const v = buildBottle(id);
+  const liq = linDone(v.userData.liquid.material.clone());
+  v.userData.liquid.material = liq;
+  v.position.set(x, y, z);
+  root.add(v);
+  return v;
+}
+
+/* --------------------------------------------- Lazare (Quick Revive) ---- */
+function buildLazare(id) {
+  const { T, M } = elixirResources(), P = PERKS[id], zc = 0.65;
+  const stone = elixTint('#57544e'), stoneD = elixTint('#4a4843'), iron = [1, 1, 1];
+  const g = elixStatic('lazare', (k) => {
+    k.box(M.stone, 1.3, 0.16, 1.3, 0, 0.08, zc, stoneD);                      // marches usées
+    k.box(M.stone, 1.06, 0.15, 1.06, 0, 0.235, zc, stone);
+    k.box(M.stone, 0.86, 0.8, 0.6, 0, 0.71, zc - 0.13, stone);                // autel (derrière la niche)
+    k.geo(M.stone, archedPlate(0.86, 0.8, 0.38, 0.42, 0.76, 0.26), mtx(0, 0.31, zc + 0.17), stone);
+    k.box(M.dark, 0.38, 0.36, 0.06, 0, 0.91, zc + 0.2);                       // fond de la niche
+    k.box(M.stone, 0.44, 0.03, 0.08, 0, 0.73, zc + 0.44, stoneD);             // appui de la niche
+    for (let i = -2; i <= 2; i++) k.rod(M.iron, [i * 0.065, 0.93, zc + 0.39], [i * 0.065, 1.07 - Math.abs(i) * Math.abs(i) * 0.012, zc + 0.39], 0.006, iron);
+    k.rod(M.iron, [-0.18, 0.95, zc + 0.39], [0.18, 0.95, zc + 0.39], 0.007, iron);   // grille relevée
+    k.box(M.stone, 0.92, 0.15, 0.92, 0, 1.185, zc, stoneD);                   // frise VENI · FORAS
+    k.box(M.stone, 1.0, 0.08, 1.0, 0, 1.3, zc, stone);
+    k.box(M.stone, 0.54, 0.07, 0.54, 0, 1.375, zc, stoneD);
+    k.cyl(M.stone, 0.235, 0.235, 1.02, 0, 1.92, zc, stone, [0, Math.PI / 8, 0], 8);   // fût à 8 pans
+    for (const s of [-1, 1]) {                                                 // anneaux de fer
+      k.tor(M.iron, 0.045, 0.009, s * 0.228, 1.66, zc, iron, [0, Math.PI / 2, 0]);
+      k.box(M.iron, 0.02, 0.03, 0.03, s * 0.222, 1.705, zc, iron);
+    }
+    k.box(M.stone, 0.6, 0.08, 0.6, 0, 2.47, zc, stoneD);                      // lanterne
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(M.stone, 0.07, 0.47, 0.07, sx * 0.245, 2.745, zc + sz * 0.245, stone);
+    for (let f = 0; f < 4; f++) {
+      const a = (f * Math.PI) / 2, m = mtx(Math.sin(a) * 0.245, 2.51, zc + Math.cos(a) * 0.245, 0, a, 0);
+      m.multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.02));
+      k.geo(M.stone, archedPlate(0.42, 0.47, 0.27, 0.06, 0.41, 0.04), m, stone);
+    }
+    k.box(M.stone, 0.66, 0.08, 0.66, 0, 3.02, zc, stoneD);
+    k.geo(M.slate, new THREE.ConeGeometry(0.475, 0.27, 4, 1), mtx(0, 3.195, zc, 0, Math.PI / 4, 0));
+    k.rod(M.iron, [0, 3.32, zc], [0, 3.37, zc], 0.008, iron);
+    k.sph(M.iron, 0.026, 0, 3.385, zc, iron);
+    const moss = [[-0.52, 0.165, zc + 0.6], [-0.3, 0.165, zc + 0.63], [0.45, 0.165, zc + 0.58], [0.1, 0.165, zc + 0.64], [-0.6, 0.165, zc - 0.2], [0.58, 0.165, zc + 0.2], [0.38, 0.31, zc + 0.5], [-0.42, 0.31, zc + 0.47]];
+    for (const [x, y, z] of moss) k.sph(M.moss, 0.035, x, y, z, null, [1.6, 0.25, 0.9], 7);
+  });
+  const root = new THREE.Group(); root.add(g);
+  const glow = P.glow, core = P.core;
+  // niche, inscription, médaillon, plaque, fiole
+  const nicheMat = elixGlowMat(glow, { opacity: 0 });
+  const niche = new THREE.Mesh(new THREE.ShapeGeometry(archShape(0.36, 0.42, 0.75)), nicheMat);
+  niche.position.set(0, 0.31, zc + 0.235); root.add(niche);
+  const frieze = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.13), linearize(new THREE.MeshStandardMaterial({ map: T.motto.lazare.map, roughness: 0.9 })));
+  frieze.position.set(0, 1.185, zc + 0.462); root.add(frieze);
+  const letters = T.motto.lazare.spans.map(([u0, u1]) => {
+    const pg = new THREE.PlaneGeometry((u1 - u0) * 0.86, 0.13), uv = pg.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setX(i, lerp(u0, u1, uv.getX(i)));
+    const l = new THREE.Mesh(pg, elixGlowMat(glow, { map: T.motto.lazare.glow, opacity: 0 }));
+    l.position.set(((u0 + u1) / 2 - 0.5) * 0.86, 1.185, zc + 0.465);
+    root.add(l);
+    return l;
+  });
+  const medal = elixMedal(id, 0.08, 0, 1.92, zc + 0.217, root);
+  const plate = elixPlate(id, 0.28, 0.105, 0, 0.55, zc + 0.43, root);
+  const vial = elixVial(id, 0, 0.745, zc + 0.3, root);
+  // lanterne : fond lumineux (on n'y voit pas la pierre éclairée de trop près), âme au centre,
+  // lueur douce, vitres, halo extérieur creux (il ne s'ajoute pas dans la baie)
+  const backMat = linDone(new THREE.MeshBasicMaterial({ map: T.lanternBack, color: elixLin(glow, 0.1).clone(), side: THREE.BackSide }));
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.4), backMat);
+  back.position.set(0, 2.745, zc); root.add(back);
+  const coreMat = linDone(new THREE.MeshBasicMaterial({ color: new THREE.Color(core).convertSRGBToLinear() }));
+  const soul = new THREE.Mesh(new THREE.SphereGeometry(0.075, 16, 12), coreMat);
+  soul.position.set(0, 2.74, zc); root.add(soul);
+  const soulGlow = elixSprite(glow, 0.5, 0.6); soulGlow.position.set(0, 2.74, zc); root.add(soulGlow);
+  const paneMat = elixGlowMat(glow, { opacity: 0.12 });
+  const panes = [];
+  for (let f = 0; f < 4; f++) {
+    const a = (f * Math.PI) / 2, p = new THREE.Mesh(new THREE.ShapeGeometry(archShape(0.27, 0.06, 0.41)), paneMat);
+    p.position.set(Math.sin(a) * 0.235, 2.51, zc + Math.cos(a) * 0.235); p.rotation.y = a;
+    root.add(p); panes.push(p);
+  }
+  const halo = elixSprite(glow, 2.4, 0.7, T.halo); halo.position.set(0, 2.74, zc); root.add(halo);
+  const lowHalo = elixSprite(glow, 1.1, 0.3); lowHalo.position.set(0, 0.9, zc + 0.5); root.add(lowHalo);
+  // animation : faisceau vers le ciel, âme qui monte, feux follets, onde
+  // faisceau : il part de la lanterne et monte jusqu'au plafond (tache de lumière) ou au ciel
+  const beamMat = elixBeamMat(glow, T.beam);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 1, 24, 1, true).translate(0, 0.5, 0), beamMat);
+  beam.position.set(0, 2.47, zc); beam.visible = false; root.add(beam);
+  const splash = new THREE.Mesh(new THREE.CircleGeometry(0.75, 24), elixGlowMat(glow, { map: TEX.glow, opacity: 0, side: THREE.FrontSide }));
+  splash.rotation.x = Math.PI / 2; splash.visible = false; root.add(splash);
+  const spirit = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 10), linDone(coreMat.clone()));
+  spirit.visible = false; root.add(spirit);
+  const spiritHalo = elixSprite(glow, 0.7, 0.9); spirit.add(spiritHalo);
+  const wisps = [0, 1, 2].map(() => { const w = elixSprite(glow, 0.22, 0); w.visible = false; root.add(w); return w; });
+  const ring = elixRing(glow); ring.position.set(0, 0.012, zc); root.add(ring);
+  return {
+    root, vial, plate, medal,
+    parts: { niche, nicheMat, letters, soul, coreMat, backMat, soulGlow, paneMat, halo, lowHalo, beam, beamMat, splash, spirit, wisps, ring },
+    light: { pos: new THREE.Vector3(0, 2.74, zc), color: glow, range: 7 },
+    boxes: [[-0.65, 0, 0, 0.65, 0.31, 1.3], [-0.46, 0.31, 0.19, 0.46, 1.34, 1.11], [-0.24, 1.34, 0.41, 0.24, 2.43, 0.89], [-0.31, 2.43, 0.34, 0.31, 3.06, 0.96], [-0.33, 3.06, 0.32, 0.33, 3.34, 0.98]],
+  };
+}
+
+/* ----------------------------------------------- Cuirasse (Mastodonte) ---- */
+function halberdGeometry() {
+  const blade = new THREE.Shape();
+  blade.moveTo(0, 0.02); blade.lineTo(0.05, 0.035); blade.quadraticCurveTo(0.2, 0.0, 0.215, -0.1);
+  blade.quadraticCurveTo(0.16, -0.06, 0.05, -0.115); blade.lineTo(0, -0.1); blade.lineTo(0, 0.02);
+  const hook = new THREE.Shape();
+  hook.moveTo(0, -0.02); hook.lineTo(-0.035, -0.01); hook.quadraticCurveTo(-0.09, 0.02, -0.11, 0.07); hook.quadraticCurveTo(-0.08, 0.0, -0.035, -0.06); hook.lineTo(0, -0.06);
+  const ex = { depth: 0.008, bevelEnabled: false, curveSegments: 6 };
+  return { blade: new THREE.ExtrudeGeometry(blade, ex).translate(0, 0, -0.004), hook: new THREE.ExtrudeGeometry(hook, ex).translate(0, 0, -0.004) };
+}
+function buildCuirasse(id) {
+  const { T, M } = elixirResources(), P = PERKS[id], zc = 0.4;
+  const stone = elixTint('#4b4741'), stoneD = elixTint('#3c3934'), steel = [1, 1, 1], dark = [0.55, 0.58, 0.62], wood = elixTint('#5b3a22', 0.45);
+  const A = 0.42;                                     // profondeur de l'armure
+  const g = elixStatic('cuirasse', (k) => {
+    k.box(M.stone, 1.06, 0.11, 0.78, 0, 0.055, zc, stoneD);                  // socle
+    k.box(M.stone, 0.94, 0.69, 0.66, 0, 0.455, zc, stone);
+    k.box(M.stone, 1.02, 0.09, 0.74, 0, 0.845, zc, stoneD);
+    for (const [w, h, x, y] of [[0.8, 0.025, 0, 0.62], [0.8, 0.025, 0, 0.2], [0.025, 0.42, -0.39, 0.41], [0.025, 0.42, 0.39, 0.41]]) k.box(M.stone, w, h, 0.02, x, y, zc + 0.335, stoneD);
+    k.cyl(M.walnut, 0.04, 0.04, 0.3, 0, 1.02, A, wood);                       // poteau du mannequin
+    for (const [y, r] of [[0.93, 0.3], [0.985, 0.285], [1.04, 0.27], [1.1, 0.265], [1.155, 0.27]]) k.tor(M.steel, r, 0.03, 0, y, A, steel, [Math.PI / 2, 0, 0], [1, 0.74, 1]);
+    k.sph(M.steel, 1, 0, 1.56, A, steel, [0.29, 0.48, 0.21], 24);            // plastron
+    k.tor(M.steel, 0.13, 0.032, 0, 2.02, A, steel, [Math.PI / 2, 0, 0], [1, 0.8, 1]);   // gorgerin
+    k.cyl(M.dark, 0.115, 0.12, 0.08, 0, 2.03, A, null, [0, 0, 0], 16, 1, true);
+    k.tor(M.brass, 0.1, 0.012, 0, 1.59, A + 0.214);                           // cadre de la fenêtre-cœur
+    for (const s of [-1, 1]) {
+      for (const [dx, y, r, sy] of [[0.36, 1.97, 0.17, 0.62], [0.39, 1.9, 0.15, 0.6], [0.41, 1.83, 0.13, 0.6]]) k.sph(M.steel, r, s * dx, y, A, steel, [1, sy, 0.92], 16);
+      k.rod(M.steel, [s * 0.4, 1.86, A], [s * 0.42, 1.47, A + 0.02], 0.055, steel, 12);       // bras
+      k.sph(M.steel, 0.072, s * 0.42, 1.46, A + 0.02, dark, [1, 1, 1], 12);                    // coude
+      k.rod(M.steel, [s * 0.42, 1.46, A + 0.02], [s * 0.16, 1.2, A + 0.2], 0.06, steel, 12);   // avant-bras
+      for (const t of [0.3, 0.55, 0.8]) k.torAxis(M.steel, 0.064, 0.012, [s * lerp(0.42, 0.16, t), lerp(1.46, 1.2, t), A + lerp(0.02, 0.2, t)], [-s * 0.26, -0.26, 0.18], dark);
+      k.box(M.steel, 0.09, 0.12, 0.1, s * 0.145, 1.15, A + 0.21, dark, [0, 0, s * 0.3]);       // gantelet
+    }
+    k.box(M.brass, 0.27, 0.022, 0.21, 0, 1.03, A + 0.22);                     // reliquaire : socle, montants, toit
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.rod(M.brass, [sx * 0.115, 1.04, A + 0.22 + sz * 0.09], [sx * 0.115, 1.245, A + 0.22 + sz * 0.09], 0.006);
+    k.geo(M.brass, new THREE.ConeGeometry(0.18, 0.085, 4, 1), mtx(0, 1.29, A + 0.22, 0, Math.PI / 4, 0));
+    k.sph(M.brass, 0.016, 0, 1.345, A + 0.22);
+  });
+  const root = new THREE.Group(); root.add(g);
+  const glass = new THREE.Mesh(boxUV(0.22, 0.2, 0.17), M.glass); glass.position.set(0, 1.143, A + 0.22); glass.renderOrder = 2;
+  root.add(glass);
+  // cape en lambeaux, derrière l'armure (plan courbé)
+  const cg = new THREE.PlaneGeometry(1.14, 1.14, 10, 8), cp = cg.attributes.position;
+  for (let i = 0; i < cp.count; i++) { const x = cp.getX(i), y = cp.getY(i); cp.setZ(i, -0.14 * (1 - (x / 0.57) ** 2) - 0.03 * Math.sin(x * 14) * (0.5 - y / 1.14)); }
+  cg.computeVertexNormals();
+  const cape = new THREE.Mesh(cg, M.cape); cape.position.set(0, 1.45, A - 0.12); root.add(cape);
+  // hallebardes croisées (pivots qui coulissent le long du manche)
+  const HG = halberdGeometry(), halberds = [];
+  for (const s of [-1, 1]) {
+    const foot = new THREE.Vector3(-s * 0.34, 0.94, 0.15), top = new THREE.Vector3(s * 0.42, 2.6, 0.15);
+    const dir = top.clone().sub(foot).normalize(), L = top.distanceTo(foot);
+    const pivot = new THREE.Group(); pivot.position.copy(foot);
+    pivot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const shaft = new THREE.Mesh(cylUV(0.018, 0.018, L + 0.1, 8, 4), M.walnut); shaft.position.y = (L + 0.1) / 2 - 0.05;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.24, 6), M.blade); spike.position.y = L + 0.17;
+    const blade = new THREE.Mesh(HG.blade, M.blade); blade.position.y = L - 0.02; blade.rotation.y = s > 0 ? 0 : Math.PI;
+    const hook = new THREE.Mesh(HG.hook, M.blade); hook.position.y = L - 0.02; hook.rotation.y = s > 0 ? 0 : Math.PI;
+    const langet = new THREE.Mesh(boxUV(0.03, 0.14, 0.03), M.iron); langet.position.y = L - 0.06;
+    pivot.add(shaft, spike, blade, hook, langet);
+    root.add(pivot);
+    halberds.push({ pivot, foot, dir });
+  }
+  // gravure NON CEDAM, plaque, fenêtre-cœur et son foyer, lueur du col, flamme
+  const motto = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.11), linearize(new THREE.MeshStandardMaterial({ map: T.motto.cuirasse.map, emissiveMap: T.motto.cuirasse.glow, emissive: 0xc79a52, emissiveIntensity: 0.35, roughness: 0.6, metalness: 0.2 })));
+  motto.position.set(0, 0.72, zc + 0.332); root.add(motto);
+  const plate = elixPlate(id, 0.27, 0.1, 0, 0.4, zc + 0.332, root);
+  const hearth = new THREE.Mesh(new THREE.CircleGeometry(0.092, 24), linDone(new THREE.MeshBasicMaterial({ color: new THREE.Color(P.glow).convertSRGBToLinear() })));
+  hearth.position.set(0, 1.59, A + 0.211); root.add(hearth);
+  const grille = new THREE.Mesh(new THREE.CircleGeometry(0.1, 24), linearize(new THREE.MeshStandardMaterial({ map: T.grille, transparent: true, alphaTest: 0.4, roughness: 0.4, metalness: 0.7, envMap: ELIX_R.env, envMapIntensity: 0.7 })));
+  grille.position.set(0, 1.59, A + 0.215); root.add(grille);
+  const heartHalo = elixSprite(P.glow, 0.8, 0.5); heartHalo.position.set(0, 1.59, A + 0.3); root.add(heartHalo);
+  const neckGlow = new THREE.Mesh(new THREE.CircleGeometry(0.11, 20), elixGlowMat(P.glow, { opacity: 0.9 }));
+  neckGlow.rotation.x = -Math.PI / 2; neckGlow.position.set(0, 2.0, A); root.add(neckGlow);
+  const flameMat = elixGlowMat(P.glow, { map: elixirResources().T.flame, opacity: 0.85 });
+  const flame = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.11, 0.5, 14, 1, true), flameMat);
+  flame.geometry.translate(0, 0.25, 0); flame.position.set(0, 2.02, A); root.add(flame);
+  const neckHalo = elixSprite(P.glow, 1.3, 0.45); neckHalo.position.set(0, 2.25, A); root.add(neckHalo);
+  const medal = null;
+  const vial = elixVial(id, 0, 1.045, A + 0.22, root);
+  const ring = elixRing(P.glow); ring.position.set(0, 0.012, zc); root.add(ring);
+  return {
+    root, vial, plate, medal,
+    parts: { halberds, hearth, heartHalo, neckGlow, flame, flameMat, neckHalo, ring, glass },
+    light: { pos: new THREE.Vector3(0, 1.59, A + 0.35), color: P.glow, range: 5 },
+    boxes: [[-0.53, 0, 0.01, 0.53, 0.89, 0.79], [-0.5, 0.89, 0.2, 0.5, 2.08, 0.72]],
+  };
+}
+
+/* ------------------------------------------------- Pèlerin (Staminup) ---- */
+function buildPelerin(id) {
+  const { T, M } = elixirResources(), P = PERKS[id], x0 = -0.05;
+  const stone = elixTint('#695f4f'), stoneD = elixTint('#574e41'), bronze = [1, 1, 1], wood = elixTint('#6a4a2c', 0.45), iron = [1, 1, 1];
+  const shellG = shellGeometry(0.25, 0.03);
+  const g = elixStatic('pelerin', (k) => {
+    k.box(M.stone, 1.6, 0.52, 0.78, x0, 0.26, 0.61, stone);                  // bassin
+    k.box(M.stone, 1.67, 0.16, 0.11, x0, 0.6, 0.945, stoneD);
+    k.box(M.stone, 1.67, 0.16, 0.11, x0, 0.6, 0.275, stoneD);
+    for (const s of [-1, 1]) k.box(M.stone, 0.11, 0.16, 0.6, x0 + s * 0.78, 0.6, 0.61, stoneD);
+    k.box(M.dark, 1.45, 0.05, 0.6, x0, 0.565, 0.61);
+    k.box(M.stone, 0.79, 2.1, 0.3, x0, 1.05, 0.15, stone);                   // stèle
+    for (const [w, h, x, y] of [[0.035, 1.26, x0 - 0.33, 1.38], [0.035, 1.26, x0 + 0.33, 1.38], [0.7, 0.035, x0, 2.02]]) k.box(M.stone, w, h, 0.025, x, y, 0.31, stoneD);
+    k.box(M.stone, 0.91, 0.07, 0.38, x0, 2.135, 0.17, stoneD);
+    const roof = new THREE.Shape(); roof.moveTo(-0.48, 0); roof.lineTo(0.48, 0); roof.lineTo(0, 0.29); roof.lineTo(-0.48, 0);
+    k.geo(M.stone, scaleUV(new THREE.ExtrudeGeometry(roof, { depth: 0.42, bevelEnabled: false }), 1.2, 1.2), mtx(x0, 2.17, -0.04), stoneD);
+    k.sph(M.stone, 0.035, x0, 2.47, 0.17, stoneD);
+    k.geo(M.bronze, shellG.clone(), mtx(x0, 1.41, 0.3));                      // coquille Saint-Jacques
+    k.rod(M.bronze, [x0, 1.37, 0.27], [x0, 1.37, 0.38], 0.018, bronze, 10);    // bec de la source
+    k.rod(M.iron, [x0, 0.95, 0.3], [x0, 0.95, 0.37], 0.01, iron);              // crochet de la gourde
+    k.tor(M.iron, 0.032, 0.006, x0, 0.98, 0.37, iron, [Math.PI / 2, 0, 0]);
+    for (const s of [-1, 1]) k.geo(M.stone, shellG.clone().scale(0.42, 0.42, 1.2), mtx(x0 + s * 0.6, 0.2, 1.0), stoneD);   // coquilles sculptées
+    const moss = [[x0 - 0.7, 0.02, 1.02], [x0 - 0.2, 0.02, 1.04], [x0 + 0.45, 0.02, 1.03], [x0 - 0.83, 0.3, 0.8], [x0 + 0.62, 0.69, 0.96]];
+    for (const [x, y, z] of moss) k.sph(M.moss, 0.04, x, y, z, null, [1.6, 0.25, 0.8], 7);
+    // lierre le long du bord gauche de la stèle
+    const stem = new THREE.CatmullRomCurve3([[x0 - 0.42, 0.66, 0.31], [x0 - 0.45, 0.95, 0.32], [x0 - 0.4, 1.25, 0.31], [x0 - 0.44, 1.55, 0.32], [x0 - 0.41, 1.9, 0.31]].map((p) => new THREE.Vector3(...p)));
+    k.geo(M.walnut, new THREE.TubeGeometry(stem, 24, 0.006, 4, false), null, wood);
+    for (let i = 0; i < 16; i++) {
+      const p = stem.getPoint(i / 15), s = 0.06 + 0.03 * Math.sin(i * 2.1);
+      k.geo(M.ivy, new THREE.PlaneGeometry(s, s), mtx(p.x + (i % 2 ? 0.03 : -0.03), p.y, p.z + 0.012, 0.25, (i % 2 ? 0.4 : -0.4), (i % 2 ? -0.5 : 0.5)));
+    }
+  });
+  const root = new THREE.Group(); root.add(g);
+  const glow = P.glow;
+  // eau du bassin, inscription, plaque, filet, trop-plein, flaque
+  const waterMat = elixGlowMat(glow, { map: T.water, opacity: 0.85, side: THREE.FrontSide });
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 0.6), waterMat);
+  water.rotation.x = -Math.PI / 2; water.position.set(x0, 0.645, 0.61); root.add(water);
+  const ripples = [0, 1, 2].map(() => { const r = elixRing(glow); r.position.set(x0, 0.652, 0.37); root.add(r); return r; });
+  const motto = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.15), linearize(new THREE.MeshStandardMaterial({ map: T.motto.pelerin.map, roughness: 0.9 })));
+  motto.position.set(x0, 0.3, 1.002); root.add(motto);
+  const plate = elixPlate(id, 0.24, 0.09, x0 - 0.22, 1.08, 0.3, root);
+  const streamMat = elixGlowMat(glow, { map: T.stream, opacity: 0.9 });
+  const stream = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 1, 10, 1, true), streamMat);
+  root.add(stream);
+  const overflow = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.66, 8, 1, true), streamMat);
+  overflow.position.set(x0 + 0.62, 0.33, 1.006); root.add(overflow);
+  const puddle = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.45), elixGlowMat(glow, { map: TEX.glow, opacity: 0.6, side: THREE.FrontSide }));
+  puddle.rotation.x = -Math.PI / 2; puddle.position.set(x0 + 0.62, 0.006, 1.14); root.add(puddle);
+  const shellMat = elixGlowMat(glow, { map: T.shell, opacity: 0 });
+  const shellGlow = new THREE.Mesh(shellG, shellMat); shellGlow.position.set(x0, 1.41, 0.302); shellGlow.scale.set(1.01, 1.01, 1.4); root.add(shellGlow);
+  const basinHalo = elixSprite(glow, 1.9, 0.38); basinHalo.position.set(x0, 0.9, 0.6); root.add(basinHalo);
+  const vial = elixVial(id, x0, 0.982, 0.37, root);
+  // bourdon de pèlerin : bâton, pommeau, calebasse, coquille, chapeau
+  const foot = new THREE.Vector3(0.88, 0, 0.66), top = new THREE.Vector3(0.43, 2.24, 0.37);
+  const staff = new THREE.Group(); staff.position.copy(foot); root.add(staff);
+  const L = top.distanceTo(foot), sdir = top.clone().sub(foot).normalize();
+  const pole = new THREE.Mesh(cylUV(0.016, 0.019, L, 8, 3), M.walnut); pole.position.copy(sdir.clone().multiplyScalar(L / 2)); pole.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), sdir);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), M.walnut); knob.position.copy(sdir.clone().multiplyScalar(L + 0.02));
+  const at = (d) => sdir.clone().multiplyScalar(d);
+  const gourd1 = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), M.leather); gourd1.position.copy(at(1.78)).add(new THREE.Vector3(0.05, -0.05, 0.02));
+  const gourd2 = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), M.leather); gourd2.position.copy(gourd1.position).add(new THREE.Vector3(0, 0.07, 0));
+  const tinyShell = new THREE.Mesh(shellG, M.bronze); tinyShell.scale.setScalar(0.28); tinyShell.position.copy(at(1.62)).add(new THREE.Vector3(0, 0, 0.03));
+  staff.add(pole, knob, gourd1, gourd2, tinyShell);
+  const hat = new THREE.Group(); hat.position.copy(at(L + 0.05)); staff.add(hat);
+  const hatInner = new THREE.Group(); hatInner.rotation.set(0.15, 0, -0.2); hat.add(hatInner);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.012, 24), M.felt); brim.scale.z = 0.92;
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.095, 0.1, 18), M.felt); crown.position.y = 0.055;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 8, 0, TAU, 0, Math.PI / 2), M.felt); dome.position.y = 0.105;
+  const badge = new THREE.Mesh(shellG, M.bronze); badge.scale.setScalar(0.16); badge.position.set(0, 0.05, 0.092);
+  hatInner.add(brim, crown, dome, badge);
+  const ring = elixRing(glow); ring.position.set(foot.x, 0.012, foot.z); root.add(ring);
+  return {
+    root, vial, plate, medal: null,
+    parts: { water, waterMat, ripples, stream, streamMat, overflow, puddle, shellMat, basinHalo, staff, staffRest: foot.clone(), hat, hatRest: hat.position.clone(), hatInner, ring, x0 },
+    light: { pos: new THREE.Vector3(x0, 0.95, 0.62), color: glow, range: 5 },
+    boxes: [[-0.89, 0, 0.2, 0.79, 0.68, 1.0], [-0.45, 0, 0, 0.35, 2.17, 0.32], [-0.53, 2.1, -0.04, 0.43, 2.5, 0.38]],
+  };
+}
+
+/* ------------------------------------ Vif-Argent (Rechargement rapide) ---- */
+function buildVifArgent(id) {
+  const { T, M } = elixirResources(), P = PERKS[id], zc = 0.43, cx = 0.66;
+  const stoneD = elixTint('#45403a'), iron = [1, 1, 1], wood = elixTint('#5e3e24', 0.45), brass = [1, 1, 1], dark = [0.6, 0.6, 0.6];
+  const curve = new THREE.CubicBezierCurve3(new THREE.Vector3(0.07, 1.74, zc), new THREE.Vector3(0.32, 1.99, zc), new THREE.Vector3(0.62, 1.95, zc), new THREE.Vector3(cx, 1.7, zc));
+  const prof = [[0.001, 1.07], [0.25, 1.07], [0.31, 1.12], [0.355, 1.2], [0.365, 1.3], [0.35, 1.4], [0.31, 1.5], [0.24, 1.58], [0.16, 1.65], [0.1, 1.71], [0.085, 1.76], [0.08, 1.81], [0.06, 1.825], [0.001, 1.825]];
+  const g = elixStatic('vifargent', (k) => {
+    k.box(M.stone, 0.9, 0.09, 0.84, 0, 0.045, zc, stoneD);                   // athanor de brique
+    k.box(M.brick, 0.81, 0.9, 0.4, 0, 0.54, 0.255);
+    for (const sx of [-1, 1]) k.box(M.brick, 0.26, 0.9, 0.27, sx * 0.275, 0.54, 0.59);
+    k.box(M.brick, 0.29, 0.51, 0.27, 0, 0.735, 0.59);
+    k.box(M.brick, 0.29, 0.04, 0.27, 0, 0.11, 0.59);
+    k.geo(M.brick, archedPlate(0.81, 0.9, 0.29, 0.04, 0.39, 0.08), mtx(0, 0.09, 0.725));
+    k.box(M.dark, 0.29, 0.36, 0.02, 0, 0.3, 0.465);
+    k.box(M.iron, 0.9, 0.08, 0.84, 0, 1.03, zc, iron);                         // dalle de fer rivetée
+    for (let i = 0; i < 9; i++) k.sph(M.iron, 0.012, -0.4 + i * 0.1, 1.03, zc + 0.422, dark, [1, 1, 1], 6);
+    k.box(M.iron, 0.3, 0.37, 0.02, 0.145 - 0.15 * Math.cos(2.9), 0.305, 0.805 + 0.15 * Math.sin(2.9) + 0.012, iron, [0, 2.9, 0]);   // porte ouverte, rabattue
+    k.put(M.copper, scaleUV(new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 32), 3, 1.5), mtx(0, 0, zc));  // cucurbite
+    k.tor(M.brass, 0.364, 0.012, 0, 1.26, zc, brass, [Math.PI / 2, 0, 0], [1, 1, 1], TAU, 36);
+    for (let i = 0; i < 3; i++) {                                               // griffes du globe
+      const a = (i * TAU) / 3;
+      k.rod(M.brass, [Math.sin(a) * 0.055, 1.82, zc + Math.cos(a) * 0.055], [Math.sin(a) * 0.085, 1.94, zc + Math.cos(a) * 0.085], 0.006, brass);
+    }
+    k.rod(M.brass, [0, 2.14, zc], [0, 2.22, zc], 0.008, brass);
+    k.geo(M.copper, new THREE.TubeGeometry(curve, 28, 0.022, 10, false));       // col de cygne
+    for (const y of [1.13, 1.69]) k.cyl(M.brass, 0.185, 0.185, 0.035, cx, y, zc, brass, [0, 0, 0], 24);   // condenseur
+    for (let i = 0; i < 3; i++) { const a = (i * TAU) / 3 + 0.4; k.rod(M.brass, [cx + Math.sin(a) * 0.18, 1.13, zc + Math.cos(a) * 0.18], [cx + Math.sin(a) * 0.18, 1.69, zc + Math.cos(a) * 0.18], 0.006, brass); }
+    k.rod(M.brass, [cx, 1.115, zc], [cx, 1.098, zc], 0.011, brass, 8);          // robinet
+    k.box(M.brass, 0.05, 0.012, 0.012, cx + 0.02, 1.106, zc, brass);
+    k.tor(M.brass, 0.034, 0.006, cx, 0.872, zc, brass, [Math.PI / 2, 0, 0]);   // anneau de la fiole
+    k.box(M.brass, 0.012, 0.012, 0.2, cx, 0.87, zc - 0.13, brass);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(M.walnut, 0.035, 1.13, 0.035, cx + sx * 0.15, 0.565, zc + sz * 0.15, wood);   // support
+    for (const sz of [-1, 1]) k.box(M.walnut, 0.33, 0.03, 0.03, cx, 0.5, zc + sz * 0.15, wood);
+    k.box(M.walnut, 0.03, 0.03, 0.33, cx + 0.15, 0.5, zc, wood);
+    k.box(M.walnut, 0.06, 0.22, 0.06, -0.8, 0.11, zc, wood);                    // cale du soufflet
+  });
+  const root = new THREE.Group(); root.add(g);
+  const glow = P.glow;
+  // condenseur : verre, liquide violet, serpentin (étincelle qui court)
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.53, 24, 1, true), M.glass); tube.position.set(cx, 1.41, zc); tube.renderOrder = 2; root.add(tube);
+  const liquidMat = elixGlowMat('#6f52e8', { opacity: 0.6, side: THREE.FrontSide, blending: THREE.NormalBlending });
+  const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.24, 20), liquidMat); liquid.position.set(cx, 1.27, zc); root.add(liquid);
+  const helix = new THREE.Curve(); helix.getPoint = (t) => new THREE.Vector3(cx + Math.cos(t * 8 * Math.PI) * 0.105, 1.64 - t * 0.46, zc + Math.sin(t * 8 * Math.PI) * 0.105);
+  // sans map : la transformation d'UV vient alors de emissiveMap (l'étincelle peut défiler)
+  const coilMat = linearize(new THREE.MeshStandardMaterial({ color: 0xc8743e, emissive: new THREE.Color(glow), emissiveIntensity: 0, roughness: 0.35, metalness: 1, envMap: ELIX_R.env, envMapIntensity: 1.2 }));
+  coilMat.emissiveMap = T.spark.clone(); coilMat.emissiveMap.needsUpdate = true;
+  const coil = new THREE.Mesh(new THREE.TubeGeometry(helix, 120, 0.011, 6, false), coilMat); root.add(coil);
+  // globe de vif-argent, symbole du mercure (épi)
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 16), M.glass); globe.position.set(0, 2.02, zc); globe.renderOrder = 2; root.add(globe);
+  const globeRim = new THREE.Mesh(new THREE.SphereGeometry(0.123, 24, 16), elixGlowMat(glow, { opacity: 0.16, side: THREE.BackSide })); globeRim.position.copy(globe.position); root.add(globeRim);
+  const mercury = new THREE.Mesh(new THREE.SphereGeometry(0.068, 24, 16), linearize(new THREE.MeshStandardMaterial({ color: 0xc9d2de, roughness: 0.08, metalness: 1, envMap: ELIX_R.env, envMapIntensity: 1.6 })));
+  mercury.scale.set(1, 0.92, 1); mercury.position.set(0, 2.02, zc); root.add(mercury);
+  const dent = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), M.dark); dent.position.set(0.05, 0.02, 0.03); mercury.add(dent);
+  const globeHalo = elixSprite(PERKS[id].color, 0.9, 0.8);   // teinte foncée : violette même sur un mur clair globeHalo.position.set(0, 2.02, zc); root.add(globeHalo);
+  const symMat = linearize(new THREE.MeshStandardMaterial({ color: 0xd2ae66, emissive: new THREE.Color(glow), emissiveIntensity: 0, roughness: 0.3, metalness: 1, envMap: ELIX_R.env, envMapIntensity: 1.1 }));
+  const sym = new THREE.Group(); sym.position.set(0, 2.3, zc); root.add(sym);
+  const s1 = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.008, 6, 20), symMat);
+  const s2 = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.008, 6, 12, Math.PI), symMat); s2.position.y = 0.076; s2.rotation.z = Math.PI;
+  const s3 = new THREE.Mesh(boxUV(0.012, 0.075, 0.012), symMat); s3.position.y = -0.075;
+  const s4 = new THREE.Mesh(boxUV(0.055, 0.012, 0.012), symMat); s4.position.y = -0.07;
+  sym.add(s1, s2, s3, s4);
+  // manomètre (aiguille), plaque, médaillon, inscription
+  const gauge = new THREE.Group(); gauge.position.set(-0.15, 1.35, zc + 0.33); gauge.rotation.y = -0.42; root.add(gauge);
+  const gBody = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.03, 20), M.brass); gBody.rotation.x = Math.PI / 2;
+  const gFace = new THREE.Mesh(new THREE.CircleGeometry(0.046, 20), M.gauge); gFace.position.z = 0.0155;
+  const needle = new THREE.Group(); needle.position.z = 0.018;
+  const nd = new THREE.Mesh(boxUV(0.004, 0.04, 0.002), linearize(new THREE.MeshStandardMaterial({ color: 0x8a1a10 }))); nd.position.y = 0.018; needle.add(nd);
+  needle.rotation.z = 2.2;
+  gauge.add(gBody, gFace, needle);
+  const motto = new THREE.Mesh(new THREE.PlaneGeometry(0.66, 0.09), linearize(new THREE.MeshStandardMaterial({ map: T.motto.vifargent.map, roughness: 0.32, metalness: 0.6, envMap: ELIX_R.env, envMapIntensity: 0.7 })));
+  motto.position.set(0, 0.62, zc + 0.377); root.add(motto);
+  const medal = elixMedal(id, 0.065, -0.26, 0.83, zc + 0.375, root);
+  const plate = elixPlate(id, 0.24, 0.09, 0.13, 0.83, zc + 0.376, root);
+  // flammes froides du four, halo
+  const flameMat = elixGlowMat(glow, { map: T.flame, opacity: 0.8 });
+  const flames = [-0.07, 0.02, 0.09].map((x, i) => {
+    const f = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.24), flameMat);
+    f.position.set(x, 0.25, 0.6 + i * 0.03); f.userData.ph = i * 1.7; root.add(f);
+    return f;
+  });
+  const fireHalo = elixSprite(glow, 1.0, 0.5); fireHalo.position.set(0, 0.3, zc + 0.45); root.add(fireHalo);
+  // soufflet de forge (pivot à la charnière, côté four)
+  const bellows = new THREE.Group(); bellows.position.set(-0.41, 0.385, zc); root.add(bellows);
+  // profil en coin : étroit au bec (côté four), ouvert à l'autre bout ; deux planches, cuir entre elles
+  const wedge = new THREE.Shape(); wedge.moveTo(0, 0.03); wedge.lineTo(-0.42, 0.125); wedge.lineTo(-0.42, -0.125); wedge.lineTo(0, -0.03); wedge.lineTo(0, 0.03);
+  const skin = new THREE.Mesh(scaleUV(new THREE.ExtrudeGeometry(wedge, { depth: 0.25, bevelEnabled: false }), 2, 2).translate(0, 0, -0.125), M.leather);
+  const pleat = (x, h) => { const b = new THREE.Mesh(boxUV(0.012, h, 0.262), M.iron); b.position.set(x, 0, 0); return b; };
+  const top = new THREE.Mesh(boxUV(0.47, 0.022, 0.31), M.walnut); top.position.set(-0.215, 0.091, 0); top.rotation.z = -0.222;
+  const bot = new THREE.Mesh(boxUV(0.47, 0.022, 0.31), M.walnut); bot.position.set(-0.215, -0.091, 0); bot.rotation.z = 0.222;
+  const handles = [0.13, -0.13].map((y) => { const h = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.06, 8), M.walnut); h.rotation.z = Math.PI / 2; h.position.set(-0.46, y, 0); return h; });
+  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.028, 0.08, 10), M.brass); nozzle.rotation.z = -Math.PI / 2; nozzle.position.set(0.035, 0, 0);
+  bellows.add(skin, pleat(-0.14, 0.13), pleat(-0.28, 0.19), top, bot, nozzle, ...handles);
+  // goutte et fiole
+  const drop = new THREE.Mesh(new THREE.SphereGeometry(0.008, 8, 6), elixGlowMat(glow, { side: THREE.FrontSide })); drop.visible = false; root.add(drop);
+  const vial = elixVial(id, cx, 0.88, zc, root);
+  return {
+    root, vial, plate, medal,
+    parts: { coilMat, liquidMat, mercury, globeHalo, symMat, needle, flames, flameMat, fireHalo, bellows, drop, cx, zc },
+    light: { pos: new THREE.Vector3(0, 0.34, zc + 0.5), color: glow, range: 5 },
+    boxes: [[-0.45, 0, 0.01, 0.45, 1.07, 0.85], [-0.37, 1.07, 0.06, 0.37, 1.83, 0.8], [0.47, 0, 0.25, 0.85, 1.71, 0.61], [-0.9, 0.2, 0.27, -0.41, 0.56, 0.59]],
+  };
+}
+
+/* --------------------------------------------- Toccata (Double coup) ---- */
+function buildToccata(id) {
+  const { T, M } = elixirResources(), P = PERKS[id];
+  const wal = elixTint('#4a2f1f', 0.45), walD = elixTint('#3a2418', 0.45), brass = [1, 1, 1], iron = [1, 1, 1];
+  // tuyaux de façade : plate-face gauche, tourelle, plate-face droite (bouches alignées à 1,55 m)
+  const pipes = [];
+  for (let i = 0; i < 8; i++) pipes.push([-0.47 + i * 0.036, 0.016, 0.36 + i * 0.037]);
+  for (let i = 0; i < 5; i++) pipes.push([-0.12 + i * 0.06, 0.022, [0.56, 0.62, 0.68, 0.62, 0.56][i]]);
+  for (let i = 0; i < 8; i++) pipes.push([0.47 - i * 0.036, 0.016, 0.36 + i * 0.037]);
+  const trumpets = [];
+  for (let i = 0; i < 7; i++) trumpets.push(-0.39 + i * 0.13);
+  const g = elixStatic('toccata', (k) => {
+    k.box(M.walnut, 1.3, 0.08, 0.78, 0, 0.04, 0.4, walD);                    // socle, pédalier
+    for (let i = 0; i < 9; i++) k.box(M.walnut, 0.05, 0.035, 0.15, -0.36 + i * 0.09, 0.07, 0.75, elixTint('#7a5534', 0.45));
+    k.box(M.walnut, 1.3, 0.86, 0.7, 0, 0.51, 0.4, wal);                      // buffet bas
+    k.box(M.walnut, 1.0, 0.05, 0.3, 0, 0.965, 0.66, walD);                   // tablette du clavier
+    for (const s of [-1, 1]) k.box(M.walnut, 0.04, 0.08, 0.3, s * 0.48, 1.0, 0.66, walD);
+    k.box(M.walnut, 0.95, 0.34, 0.29, 0, 1.18, 0.235, wal);                  // pupitre, niche creuse
+    for (const s of [-1, 1]) k.box(M.walnut, 0.345, 0.34, 0.13, s * 0.3025, 1.18, 0.445, wal);
+    k.box(M.walnut, 0.26, 0.09, 0.13, 0, 1.055, 0.445, wal);
+    k.box(M.walnut, 0.26, 0.02, 0.13, 0, 1.34, 0.445, wal);
+    k.geo(M.walnut, archedPlate(0.95, 0.34, 0.26, 0.09, 0.33, 0.03), mtx(0, 1.01, 0.51), walD);
+    k.box(M.dark, 0.26, 0.25, 0.02, 0, 1.22, 0.39);
+    for (let i = -2; i <= 2; i++) k.rod(M.iron, [i * 0.045, 1.27, 0.525], [i * 0.045, 1.335 - Math.abs(i) * 0.012, 0.525], 0.004, iron);
+    for (const s of [-1, 1]) for (const xx of [0.3, 0.38]) for (const y of [1.08, 1.17, 1.26]) {   // tirants de jeux
+      k.rod(M.bone, [s * xx, y, 0.54], [s * xx, y, 0.58], 0.016, null, 10);
+      k.tor(M.brass, 0.019, 0.004, s * xx, y, 0.541, brass, [0, 0, 0], [1, 1, 1], TAU, 12);
+    }
+    for (const s of [-1, 1]) k.box(M.walnut, 0.07, 1.03, 0.44, s * 0.53, 1.865, 0.3, walD);   // buffet haut
+    k.box(M.walnut, 1.0, 1.03, 0.04, 0, 1.865, 0.1, walD);
+    k.box(M.brass, 0.99, 0.022, 0.022, 0, 1.42, 0.45, brass);                // barre des tuyaux
+    for (const [x, r, L] of pipes) {
+      k.cyl(M.brass, r, 0.003, 0.15, x, 1.475, 0.42, brass, [0, 0, 0], 10);  // pied conique
+      k.cyl(M.brass, r, r, L, x, 1.55 + L / 2, 0.42, brass, [0, 0, 0], 10);
+    }
+    for (const s of [-1, 1]) k.tor(M.brass, 0.16, 0.007, s * 0.33, 2.0, 0.465, brass, [0, 0, 0], [1, 1, 1], Math.PI, 16);
+    for (const x of trumpets) {                                                // trompettes en chamade
+      k.rod(M.brass, [x, 2.3, 0.3], [x, 2.3, 0.6], 0.011, brass, 8);
+      k.geo(M.brass, new THREE.CylinderGeometry(0.048, 0.012, 0.08, 16, 1, true), mtx(x, 2.3, 0.64, Math.PI / 2, 0, 0), brass);
+    }
+    k.box(M.walnut, 1.22, 0.075, 0.5, 0, 2.415, 0.3, walD);                  // corniche PRESTO
+    k.box(M.walnut, 0.12, 0.06, 0.1, 0, 2.48, 0.32, walD);
+    for (const [x, h] of [[-0.55, 0.22], [0.55, 0.22], [-0.17, 0.17], [0.17, 0.17]]) {   // flèches dorées
+      k.geo(M.brass, new THREE.ConeGeometry(0.032, h, 4, 1), mtx(x, 2.455 + h / 2, 0.3, 0, Math.PI / 4, 0), brass);
+      k.sph(M.brass, 0.018, x, 2.465 + h, 0.3, brass, [1, 1, 1], 8);
+      k.tor(M.brass, 0.03, 0.006, x, 2.47, 0.3, brass, [Math.PI / 2, 0, 0], [1, 1, 1], TAU, 10);
+    }
+  });
+  const root = new THREE.Group(); root.add(g);
+  const glow = P.glow;
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.8), M.gothic); front.position.set(0, 0.52, 0.752); root.add(front);
+  const presto = new THREE.Mesh(new THREE.PlaneGeometry(1.16, 0.07), linearize(new THREE.MeshStandardMaterial({ map: T.motto.toccata.map, roughness: 0.55, metalness: 0.3 })));
+  presto.position.set(0, 2.415, 0.552); root.add(presto);
+  const plate = elixPlate(id, 0.2, 0.075, 0, 0.68, 0.752, root);
+  const medal = elixMedal(id, 0.075, 0, 2.58, 0.36, root);
+  // clavier : touches instanciées (blanches, puis noires)
+  const white = 22, keysB = [];
+  for (let i = 0; i < white - 1; i++) if ([0, 1, 3, 4, 5].includes(i % 7)) keysB.push(i);
+  const keys = new THREE.InstancedMesh(boxUV(1, 1, 1), M.keys, white + keysB.length);
+  const keyRest = [];
+  for (let i = 0; i < white; i++) keyRest.push([-0.42 + i * 0.04, 1.0, 0.735, 0.037, 0.016, 0.13, 0xece4d0]);
+  for (const i of keysB) keyRest.push([-0.42 + i * 0.04 + 0.02, 1.012, 0.7, 0.022, 0.02, 0.08, 0x1a1410]);
+  const _o = new THREE.Object3D(), _c = new THREE.Color();
+  keyRest.forEach(([x, y, z, sx, sy, sz, c], i) => {
+    _o.position.set(x, y, z); _o.rotation.set(0, 0, 0); _o.scale.set(sx, sy, sz); _o.updateMatrix(); keys.setMatrixAt(i, _o.matrix);
+    keys.setColorAt(i, _c.setHex(c).convertSRGBToLinear());
+  });
+  root.add(keys);
+  const keyGlow = elixSprite(glow, 0.3, 0); keyGlow.position.set(0, 1.04, 0.74); root.add(keyGlow);
+  // bouches orangées des tuyaux (une instance par tuyau, éclat réglé par couleur)
+  const mouths = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), elixGlowMat(glow, { side: THREE.FrontSide }), pipes.length);
+  pipes.forEach(([x, r], i) => { _o.position.set(x, 1.57, 0.42 + r + 0.002); _o.rotation.set(0, 0, 0); _o.scale.set(r * 1.25, 0.035, 1); _o.updateMatrix(); mouths.setMatrixAt(i, _o.matrix); mouths.setColorAt(i, _c.setRGB(0.4, 0.4, 0.4)); });
+  root.add(mouths);
+  // pavillons des trompettes : fond lumineux, éclair au tir
+  const bellMat = elixGlowMat(glow, { opacity: 0.55, side: THREE.FrontSide });
+  const bells = trumpets.map((x) => { const b = new THREE.Mesh(new THREE.CircleGeometry(0.042, 18), bellMat); b.position.set(x, 2.3, 0.675); root.add(b); return b; });
+  const flashes = trumpets.map((x) => { const f = elixSprite(P.core, 0.4, 0, TEX.flare || TEX.glow); f.position.set(x, 2.3, 0.75); f.visible = false; root.add(f); return f; });
+  const nicheMat = elixGlowMat(glow, { opacity: 0 });
+  const niche = new THREE.Mesh(new THREE.ShapeGeometry(archShape(0.25, 0.09, 0.33)), nicheMat); niche.position.set(0, 1.01, 0.4015); root.add(niche);
+  const pipeHalo = elixSprite(glow, 1.6, 0.3); pipeHalo.position.set(0, 1.6, 0.6); root.add(pipeHalo);
+  const vial = elixVial(id, 0, 1.1, 0.445, root);
+  const ring = elixRing(glow); ring.position.set(0, 0.012, 0.45); root.add(ring);
+  return {
+    root, vial, plate, medal,
+    parts: { keys, keyRest, keyGlow, mouths, pipes, bells, bellMat, flashes, trumpets, nicheMat, pipeHalo, ring },
+    light: { pos: new THREE.Vector3(0, 1.62, 0.62), color: glow, range: 5 },
+    boxes: [[-0.65, 0, 0.05, 0.65, 0.99, 0.82], [-0.48, 0.99, 0.09, 0.48, 1.35, 0.6], [-0.6, 1.35, 0.09, 0.6, 2.45, 0.72], [-0.6, 2.45, 0.1, 0.6, 2.7, 0.5]],
+  };
+}
+const ELIX_BUILD = { lazare: buildLazare, cuirasse: buildCuirasse, pelerin: buildPelerin, vifargent: buildVifArgent, toccata: buildToccata };
+/* Distributeur d'atout : la machine de la planche pour cet atout. group : machine posée (origine au
+   sol contre le mur), root : réduite sous un plafond bas (échelle s). */
+function buildPerkMachine(id, s = 1) {
+  const E = ELIXIRS[id], m = ELIX_BUILD[E.key](id);
+  // pièces propres à la machine sur une matière à couleurs de sommets (laiton, noyer, feutre...) :
+  // sommets blancs, sinon WebGL les lit à zéro et la pièce sort noire
+  m.root.traverse((o) => {
+    if (!o.isMesh || !o.material || !o.material.vertexColors || o.geometry.attributes.color) return;
+    o.geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(o.geometry.attributes.position.count * 3).fill(1), 3));
+  });
+  const group = new THREE.Group();
+  m.root.scale.setScalar(s);
+  group.add(m.root);
+  return Object.assign(m, { group, key: E.key, s, act: -1, litK: 0, lit: false, flash: 0, lightI: 0, lightPos: new THREE.Vector3() });
+}
+/* ------------------------------------------- Élixirs : vie des machines ---- */
+/* Repos (machine éteinte → allumée par le courant, k de 0 à 1) et animation de consommation (planches
+   07 à 11) : t en secondes depuis l'achat ; la fiole quitte sa niche à 0 s et revient à 2,6 s.
+   Lumière : position (repère de la machine) et intensité, données au plus proche des deux lumières
+   réservées aux machines (ElixirLights). */
+const _ec = new THREE.Color();
+const elixLin = (hex, k = 1) => _ec.set(hex).convertSRGBToLinear().multiplyScalar(k);
+const elixPulse = (t, at, w) => Math.exp(-(((t - at) / w) ** 2));
+const elixWin = (t, a, b, fade = 0.15) => clamp((t - a) / fade, 0, 1) * clamp((b - t) / fade, 0, 1);
+function elixVialShow(m, t, from, dur = 0.18) {
+  const v = m.vial;
+  if (t < from) { v.visible = false; return; }
+  v.visible = true;
+  const q = clamp((t - from) / dur, 0, 1);
+  v.scale.setScalar(q < 1 ? 0.35 + 0.65 * smooth(q) + 0.12 * Math.sin(q * Math.PI) : 1);
+}
+function elixVialGlow(m, k) {
+  const L = m.vial.userData.liquid.material;
+  L.emissive.copy(elixLin(PERKS[m.id].glow, 0.55 * (0.15 + 0.85 * k)));
+}
+const ELIX_RUN = {
+  lazare: {
+    idle(m, time, k) {
+      const p = m.parts, P = PERKS[m.id], fl = 1 + 0.05 * Math.sin(time * 7.3) * Math.sin(time * 3.1);
+      p.coreMat.color.copy(elixLin(P.core, 0.12 + 0.78 * k * fl));
+      p.backMat.color.copy(elixLin(P.glow, 0.06 + 0.94 * k * fl)); p.soulGlow.material.opacity = 0.55 * k * fl;
+      p.paneMat.opacity = 0.03 + 0.1 * k * fl; p.halo.material.opacity = 0.7 * k * fl; p.halo.scale.setScalar(2.4);
+      p.lowHalo.material.opacity = 0.3 * k; p.nicheMat.opacity = 0.5 * k;
+      for (const l of p.letters) l.material.opacity = 0.62 * k;
+      m.medal.emissiveIntensity = 0.55 * k; m.plate.emissiveIntensity = 0.08 + 0.55 * k;
+      elixVialGlow(m, k);
+      m.lightLocal.copy(m.light.pos); m.lightI = 1.6 * k * fl;
+    },
+    act(m, t, dt, t0) {
+      const p = m.parts, P = PERKS[m.id], zc = 0.65, n = p.letters.length;
+      elixVialShow(m, t, ELIXIR_ACT);
+      // lueur qui passe sur VENI · FORAS, lettre après lettre ; le médaillon s'allume
+      p.letters.forEach((l, i) => { const ti = 0.15 + (0.4 * i) / Math.max(1, n - 1); l.material.opacity = Math.max(l.material.opacity, clamp((t - ti) / 0.05, 0, 1) * (t < 2.2 ? 1 : clamp(1 - (t - 2.2) / 0.4, 0.62, 1)) * (0.8 + 0.2 * elixPulse(t, ti + 0.04, 0.06)) * 1.6); });
+      m.medal.emissiveIntensity = Math.max(m.medal.emissiveIntensity, 2.4 * elixWin(t, 0.55, 2.3, 0.08));
+      // la lanterne s'embrase, faisceau vers le ciel, onde au pied des marches
+      const flare = elixPulse(t, 0.5, 0.12), emptied = elixWin(t, 0.6, 2.2, 0.2), relight = clamp((t - 2.0) / 0.4, 0, 1);
+      const there = 1 - emptied + emptied * relight;          // l'âme est dans la lanterne (0 : partie)
+      p.coreMat.color.copy(elixLin(P.core, (0.9 + 0.5 * flare) * (0.15 + 0.85 * there)));
+      p.backMat.color.copy(elixLin(P.glow, (1 + 0.8 * flare) * (0.45 + 0.55 * there)));
+      p.soulGlow.material.opacity = 0.55 * (1 + flare) * there;
+      p.halo.scale.setScalar(2.4 + 1.4 * flare); p.halo.material.opacity = Math.min(1, 0.7 + 0.3 * flare);
+      const bq = clamp((t - 0.45) / 0.3, 0, 1), top = Math.min(m.ceilY, 9) - 2.47, bo = smooth(bq) * clamp((2.1 - t) / 0.5, 0, 1);
+      p.beam.visible = t >= 0.45 && t < 2.1;
+      p.beam.scale.set(1, Math.max(0.001, top * smooth(bq)), 1);
+      p.beamMat.opacity = 0.7 * bo; p.beamMat.userData.topFade.value = m.ceilY < 9 ? 0.3 : 1;
+      p.beamMat.map.offset.y -= dt * 1.6;
+      p.splash.visible = p.beam.visible && m.ceilY < 9 && bq > 0.8;
+      if (p.splash.visible) { p.splash.position.set(0, m.ceilY - 0.015, 0.65); p.splash.material.opacity = 0.75 * bo; }
+      const rq = (t - 0.45) / 0.9;
+      p.ring.visible = rq >= 0 && rq < 1;
+      if (p.ring.visible) { p.ring.scale.setScalar(0.75 + 1.9 * rq); p.ring.material.opacity = 1 - rq; }
+      // l'âme monte le long du faisceau (0,7 m en 0,75 s) puis éclate en 80 particules
+      // (elle sort par la baie de la lanterne pour monter devant le toit, sous le plafond)
+      const sq = (t - 0.55) / 0.75, rise = Math.min(0.7, m.ceilY - 0.2 - 2.74);
+      p.spirit.visible = sq >= 0 && sq < 1;
+      if (p.spirit.visible) p.spirit.position.set(0, 2.74 + rise * smooth(sq), zc + 0.42 * smooth(Math.min(1, sq * 2.5)));
+      if (t0 < 1.3 && t >= 1.3) {
+        const w = new THREE.Vector3(0, 2.74 + rise, zc + 0.42); m.root.localToWorld(w);
+        const c = elixLin(P.glow);
+        for (let i = 0; i < 80; i++) { const a = rand(0, TAU), e = rand(-0.9, 1), sp = rand(0.6, 1.7), h = Math.sqrt(1 - e * e); FX.motes.emit(w.x, w.y, w.z, Math.cos(a) * h * sp, e * sp, Math.sin(a) * h * sp, rand(0.6, 1.2), c.r, c.g, c.b); }
+      }
+      // trois feux follets s'enroulent autour du fût (rayon 0,3 m, un tour et demi, 1,6 s)
+      p.wisps.forEach((w, i) => {
+        const q = (t - 1.3) / 1.6;
+        w.visible = q >= 0 && q < 1;
+        if (!w.visible) return;
+        const a = i * (TAU / 3) + q * 3 * Math.PI;
+        w.position.set(Math.cos(a) * 0.3, 2.5 - 1.1 * q, zc + Math.sin(a) * 0.3);
+        w.material.opacity = Math.sin(q * Math.PI) * 0.95;
+      });
+      // la lumière suit l'âme, puis se rallume dans la lanterne
+      if (p.spirit.visible) { m.lightLocal.copy(p.spirit.position); m.lightI = 2.6; }
+      else m.lightI = 1.6 * (1 + 1.3 * flare) * (1 - 0.65 * emptied + 0.65 * emptied * relight);
+    },
+    end(m) { const p = m.parts; p.beam.visible = false; p.splash.visible = false; p.spirit.visible = false; p.ring.visible = false; p.wisps.forEach((w) => { w.visible = false; }); },
+  },
+  cuirasse: {
+    idle(m, time, k) {
+      const p = m.parts, P = PERKS[m.id], u = time % 1.3, beat = elixPulse(u, 0.1, 0.07) + 0.7 * elixPulse(u, 0.36, 0.07);
+      p.hearth.material.color.copy(elixLin(P.glow, 0.12 + k * (0.45 + 0.55 * beat)));
+      p.heartHalo.material.opacity = k * (0.25 + 0.3 * beat);
+      const fl = 0.9 + 0.15 * Math.sin(time * 11) * Math.sin(time * 4.7);
+      p.flame.visible = k > 0.02; p.flame.scale.set(1, fl, 1); p.flameMat.opacity = 0.85 * k;
+      p.neckGlow.material.opacity = 0.9 * k; p.neckHalo.material.opacity = 0.45 * k;
+      m.plate.emissiveIntensity = 0.08 + 0.55 * k;
+      elixVialGlow(m, k);
+      if (k > 0.5 && Math.random() < 0.07) {
+        const w = new THREE.Vector3(rand(-0.06, 0.06), 2.06, 0.42); m.root.localToWorld(w);
+        const c = elixLin(P.glow); FX.embers.emit(w.x, w.y, w.z, rand(-0.12, 0.12), rand(0.5, 1.1), rand(-0.12, 0.12), rand(0.6, 1.2), c.r, c.g, c.b);
+      }
+      m.lightLocal.copy(m.light.pos); m.lightI = k * (0.55 + 0.45 * beat);
+    },
+    act(m, t, dt, t0) {
+      const p = m.parts, P = PERKS[m.id];
+      // la fiole quitte le reliquaire, une nouvelle s'y matérialise à 2,6 s
+      elixVialShow(m, t, ELIXIR_ACT, 0.3);
+      // cœur : double battement à 0 s et 0,35 s, puis à 2,0 s et 2,35 s (intensité ×6)
+      const beat = elixPulse(t, 0.05, 0.06) + elixPulse(t, 0.4, 0.06) + elixPulse(t, 2.0, 0.06) + elixPulse(t, 2.35, 0.06);
+      p.hearth.material.color.copy(elixLin(P.glow, 0.6 + 1.6 * beat));
+      p.heartHalo.material.opacity = Math.min(1, 0.4 + 0.8 * beat);
+      // colonne de feu rouge (cône ×2,8) et 200 braises de 0,2 s à 2,0 s
+      const col = smooth(clamp((t - 0.2) / 0.15, 0, 1)) * (1 - smooth(clamp((t - 2.0) / 0.35, 0, 1)));
+      p.flame.visible = true; p.flame.scale.set(1 + 0.35 * col, 1 + 1.8 * col, 1 + 0.35 * col); p.flameMat.opacity = 0.85 + 0.15 * col;
+      p.neckHalo.material.opacity = 0.45 + 0.5 * col; p.neckHalo.scale.setScalar(1.3 + 1.2 * col);
+      if (t >= 0.2 && t < 2.0) {
+        const n = Math.floor(t * 111) - Math.floor(t0 * 111), w = new THREE.Vector3(0, 2.05, 0.42), c = elixLin(P.glow);
+        m.root.localToWorld(w);
+        for (let i = 0; i < n; i++) FX.embers.emit(w.x + rand(-0.06, 0.06), w.y, w.z + rand(-0.06, 0.06), rand(-0.3, 0.3), rand(2.6, 3.4), rand(-0.3, 0.3), 0.8, c.r, c.g * rand(0.6, 1.2), c.b);
+      }
+      // onde rouge au pied du socle
+      const rq = (t - 0.2) / 0.9;
+      p.ring.visible = rq >= 0 && rq < 1;
+      if (p.ring.visible) { p.ring.scale.setScalar(0.4 + 1.9 * rq); p.ring.material.opacity = 1 - rq; }
+      // hallebardes : quatre coups chacune, en alternance (pivot qui coulisse le long du manche)
+      p.halberds.forEach((h, i) => {
+        const c0 = (t - 0.25 - i * 0.2) / 0.4;
+        let off = 0;
+        if (c0 >= 0 && c0 < 4) {
+          const u = c0 % 1, first = c0 < 1;
+          off = u < 0.6 ? lerp(first ? 0 : -0.05, 0.09, smooth(u / 0.6)) : lerp(0.09, -0.05, ((u - 0.6) / 0.4) ** 2);
+          const c1 = (t0 - 0.25 - i * 0.2) / 0.4;
+          if (Math.floor(c1) < Math.floor(c0) && c1 >= 0) Sound.elixirClang(m.worldPos);
+        } else if (c0 >= 4 && c0 < 4.4) off = lerp(-0.05, 0, smooth((c0 - 4) / 0.4));
+        if (c0 >= 4 && (t0 - 0.25 - i * 0.2) / 0.4 < 4) Sound.elixirClang(m.worldPos);
+        h.pivot.position.copy(h.foot).addScaledVector(h.dir, off);
+      });
+      m.lightLocal.copy(m.light.pos); m.lightI = 0.6 + 3.0 * beat + 1.2 * col;
+    },
+    end(m) {
+      const p = m.parts;
+      p.ring.visible = false; p.neckHalo.scale.setScalar(1.3);
+      p.halberds.forEach((h) => h.pivot.position.copy(h.foot));
+    },
+  },
+  pelerin: {
+    idle(m, time, k, dt) {
+      const p = m.parts;
+      p.waterMat.opacity = 0.85 * (0.2 + 0.8 * k); p.waterMat.map.offset.x += dt * 0.02; p.waterMat.map.offset.y += dt * 0.013;
+      p.stream.visible = p.overflow.visible = k > 0.03;
+      p.streamMat.opacity = 0.9 * k; p.streamMat.map.offset.y += dt * 1.4;
+      p.stream.scale.set(1, 0.725, 1); p.stream.position.set(p.x0, 1.0075, 0.37);
+      p.puddle.material.opacity = 0.6 * k; p.shellMat.opacity = 0.06 * k; p.basinHalo.material.opacity = 0.38 * k;
+      m.plate.emissiveIntensity = 0.08 + 0.55 * k;
+      elixVialGlow(m, k);
+      m.lightLocal.copy(m.light.pos); m.lightI = 1.1 * k;
+    },
+    act(m, t, dt, t0) {
+      const p = m.parts, P = PERKS[m.id];
+      elixVialShow(m, t, ELIXIR_ACT);
+      // la source jaillit : filet trois fois plus large, rides et éclaboussures, coquille illuminée
+      const gush = smooth(clamp((t - 0.25) / 0.2, 0, 1)) * (1 - smooth(clamp((t - 1.8) / 0.25, 0, 1)));
+      p.stream.visible = true; p.stream.scale.set(1 + 2 * gush, 0.725, 1 + 2 * gush); p.streamMat.opacity = 0.9 + 0.1 * gush;
+      p.streamMat.map.offset.y += dt * 2.2 * gush;
+      p.shellMat.opacity = 0.06 + 0.55 * gush;
+      p.ripples.forEach((r, i) => {
+        const q = (t - 0.3 - i * 0.35) / 0.8;
+        r.visible = q >= 0 && q < 1 && t < 2.2;
+        if (r.visible) { r.scale.setScalar(0.06 + 0.42 * q); r.material.opacity = 0.85 * (1 - q); }
+      });
+      if (t >= 0.3 && t < 1.8) {
+        const n = Math.floor(t * 40) - Math.floor(t0 * 40), w = new THREE.Vector3(p.x0, 0.66, 0.37), c = elixLin(P.glow);
+        m.root.localToWorld(w);
+        for (let i = 0; i < n; i++) { const a = rand(0, TAU), r = rand(0.3, 0.8); FX.splash.emit(w.x, w.y, w.z, Math.cos(a) * r, rand(1, 2), Math.sin(a) * r, rand(0.4, 0.7), c.r, c.g, c.b); }
+      }
+      // le bourdon frappe deux fois le sol (0,9 s et 1,25 s) ; une onde verte part de son pied
+      let lift = 0;
+      for (const ts of [0.9, 1.25]) {
+        const q = (t - (ts - 0.14)) / 0.14;
+        if (q >= 0 && q <= 1) lift = 0.06 * (q < 0.7 ? smooth(q / 0.7) : 1 - ((q - 0.7) / 0.3) ** 2);
+        if (t0 < ts && t >= ts) Sound.elixirKnock(m.worldPos);
+      }
+      p.staff.position.copy(p.staffRest); p.staff.position.y += lift;
+      const rq = t >= 1.25 ? (t - 1.25) / 0.6 : (t - 0.9) / 0.6;
+      p.ring.visible = rq >= 0 && rq < 1;
+      if (p.ring.visible) { p.ring.scale.setScalar(0.15 + 1.0 * rq); p.ring.material.opacity = 1 - rq; }
+      // au second coup, le chapeau saute (2,5 m/s, gravité réelle), tourne et retombe sur le pommeau
+      const tau = t - 1.25, land = 2.5 / 4.905;
+      p.hat.position.copy(p.hatRest);
+      p.hatInner.rotation.set(0.15, 0, -0.2);
+      if (tau >= 0 && tau < land) {
+        p.hat.position.y += 2.5 * tau - 4.905 * tau * tau;
+        p.hatInner.rotation.z = -0.2 - 0.384 * Math.sin((Math.PI * tau) / land);
+        p.hatInner.rotation.y = TAU * (tau / land);
+      } else if (tau >= land && tau < land + 0.16) p.hat.position.y += 0.025 * Math.sin((Math.PI * (tau - land)) / 0.16);
+      if (t0 < 1.25 + land && t >= 1.25 + land) Sound.elixirFelt(m.worldPos);
+      m.lightLocal.copy(m.light.pos); m.lightI = 1.1 + 1.2 * gush;
+    },
+    end(m) {
+      const p = m.parts;
+      p.ripples.forEach((r) => { r.visible = false; }); p.ring.visible = false;
+      p.staff.position.copy(p.staffRest); p.hat.position.copy(p.hatRest); p.hatInner.rotation.set(0.15, 0, -0.2);
+    },
+  },
+  vifargent: {
+    idle(m, time, k, dt) {
+      const p = m.parts, fl = 1 + 0.12 * Math.sin(time * 9) * Math.sin(time * 3.3);
+      p.flames.forEach((f) => { f.visible = k > 0.03; f.scale.set(1, (0.8 + 0.25 * Math.sin(time * 9 + f.userData.ph)) * (0.3 + 0.7 * k), 1); });
+      p.flameMat.opacity = 0.8 * k;
+      p.fireHalo.material.opacity = 0.5 * k * fl; p.fireHalo.scale.setScalar(1);
+      p.coilMat.emissiveIntensity = 0.12 * k;
+      p.liquidMat.opacity = 0.6 * (0.45 + 0.55 * k);
+      p.mercury.rotation.y += dt * 0.4 * k; p.mercury.position.y = 2.02 + 0.008 * Math.sin(time * 1.7) * k;
+      p.globeHalo.material.opacity = 0.8 * k; p.symMat.emissiveIntensity = 0.12 * k;
+      p.needle.rotation.z = 2.2 - 0.03 * k + 0.012 * Math.sin(time * 13) * k;
+      p.bellows.scale.y = 1;
+      m.medal.emissiveIntensity = 0.55 * k; m.plate.emissiveIntensity = 0.08 + 0.55 * k;
+      elixVialGlow(m, k);
+      m.lightLocal.copy(m.light.pos); m.lightI = 1.0 * k * fl;
+    },
+    act(m, t, dt, t0) {
+      const p = m.parts, P = PERKS[m.id];
+      // la fiole est retirée ; une nouvelle reparaît à 1,8 s et se remplit goutte à goutte
+      if (t < 1.8) m.vial.visible = false;
+      else {
+        m.vial.visible = true; m.vial.scale.setScalar(1);
+        const L = m.vial.userData.liquid, S = m.vial.userData.shape, q = clamp((t - 1.85) / 0.75, 0, 1);
+        L.visible = q > 0.01; L.scale.y = S.liquidH * Math.max(0.01, q);
+        const dq = ((t - 1.8) % 0.11) / 0.11;
+        p.drop.visible = t < 2.58; p.drop.position.set(p.cx, 1.098 - 0.03 * dq * dq, p.zc);
+        if (Math.floor((t - 1.8) / 0.11) > Math.floor((t0 - 1.8) / 0.11) && t0 >= 1.8) Sound.elixirDrip(m.worldPos, q);
+      }
+      // trois coups de soufflet (0,4 · 0,8 · 1,2 s) : les flammes froides s'embrasent (lumière ×4)
+      let comp = 0, boost = 0;
+      for (const tp of [0.4, 0.8, 1.2]) { comp = Math.max(comp, Math.sin(Math.PI * clamp((t - tp + 0.2) / 0.4, 0, 1))); boost += elixPulse(t, tp + 0.04, 0.09); if (t0 < tp && t >= tp) { Sound.elixirBellows(m.worldPos); const w = new THREE.Vector3(0, 0.3, 0.7), c = elixLin(P.glow); m.root.localToWorld(w); for (let i = 0; i < 18; i++) FX.embers.emit(w.x + rand(-0.1, 0.1), w.y, w.z, rand(-0.25, 0.25), rand(0.8, 1.8), rand(0.1, 0.6), rand(0.4, 0.8), c.r, c.g, c.b); } }
+      p.bellows.scale.y = 1 - 0.45 * comp;
+      p.flames.forEach((f) => { f.visible = true; f.scale.set(1 + 0.4 * boost, (0.9 + 0.2 * Math.sin(t * 20 + f.userData.ph)) * (1 + 1.3 * boost), 1); });
+      p.flameMat.opacity = Math.min(1, 0.8 + 0.3 * boost); p.fireHalo.scale.setScalar(1 + 0.8 * boost); p.fireHalo.material.opacity = Math.min(1, 0.5 + 0.5 * boost);
+      // manomètre : l'aiguille bondit au maximum à 0,6 s (ressort amorti), tremble, puis redescend
+      const rest = 2.2, top = rest - (80 * Math.PI) / 180, tau = t - 0.6;
+      let a = rest;
+      if (tau >= 0) a = top + (rest - top) * Math.exp(-13 * tau) * Math.cos(18 * tau) + (tau < 1.4 ? 0.03 * Math.sin(t * 47) : 0);
+      if (t > 2.0) a = lerp(a, rest, smooth(clamp((t - 2.0) / 0.6, 0, 1)));
+      p.needle.rotation.z = a;
+      if (t0 < 0.6 && t >= 0.6) Sound.elixirTick(m.worldPos);
+      // une étincelle dévale le serpentin (0,4 → 1,5 s)
+      const sq = (t - 0.4) / 1.1;
+      p.coilMat.emissiveIntensity = sq >= 0 && sq < 1 ? 2.2 : 0.12;
+      p.coilMat.emissiveMap.offset.x = 0.156 - clamp(sq, 0, 1);
+      // le globe tourne trois fois (accélération puis freinage) ; le symbole du mercure s'allume à la fin
+      p.mercury.rotation.y = m.spin0 + 3 * TAU * smooth(clamp((t - 0.3) / 1.7, 0, 1));
+      p.symMat.emissiveIntensity = 0.12 + 2.6 * clamp((t - 1.9) / 0.15, 0, 1) * Math.exp(-Math.max(0, t - 2.05) * 2.2);
+      p.globeHalo.material.opacity = 0.8 + 0.2 * elixWin(t, 0.3, 2.0, 0.3);
+      m.lightLocal.copy(m.light.pos); m.lightI = 1.0 * (1 + 3 * boost);
+    },
+    end(m) { const p = m.parts; p.drop.visible = false; p.bellows.scale.y = 1; m.vial.userData.liquid.scale.y = m.vial.userData.shape.liquidH; m.vial.userData.liquid.visible = true; },
+  },
+  toccata: {
+    idle(m, time, k) {
+      const p = m.parts;
+      for (let i = 0; i < p.pipes.length; i++) p.mouths.setColorAt(i, _ec.setScalar((0.32 + 0.08 * Math.sin(time * 2 + i)) * k));
+      p.mouths.instanceColor.needsUpdate = true;
+      p.bellMat.opacity = 0.26 * k; p.pipeHalo.material.opacity = 0.3 * k; p.nicheMat.opacity = 0.5 * k;
+      p.keyGlow.material.opacity = 0;
+      m.medal.emissiveIntensity = 0.5 * k; m.plate.emissiveIntensity = 0.08 + 0.55 * k;
+      elixVialGlow(m, k);
+      m.lightLocal.copy(m.light.pos); m.lightI = 0.9 * k;
+    },
+    act(m, t, dt, t0) {
+      const p = m.parts;
+      elixVialShow(m, t, ELIXIR_ACT);
+      // une toccata se joue toute seule : lueur qui court sur le clavier (aller-retour), touches en vague
+      const play = elixWin(t, 0.3, 1.9, 0.1);
+      const ph = Math.max(0, t - 0.3) / 0.4, tri = ph % 2 < 1 ? ph % 1 : 1 - (ph % 1), gx = -0.42 + 0.84 * tri;
+      p.keyGlow.position.x = gx; p.keyGlow.material.opacity = 0.9 * play;
+      const _o = m.keyObj || (m.keyObj = new THREE.Object3D());
+      p.keyRest.forEach(([x, y, z, sx, sy, sz], i) => {
+        _o.position.set(x, y, z); _o.scale.set(sx, sy, sz);
+        _o.rotation.set(-0.07 * play * Math.exp(-(((x - gx) / 0.035) ** 2)), 0, 0); _o.updateMatrix();
+        p.keys.setMatrixAt(i, _o.matrix);
+      });
+      p.keys.instanceMatrix.needsUpdate = true;
+      for (let i = 0; i < p.pipes.length; i++) p.mouths.setColorAt(i, _ec.setScalar(lerp(0.32, 0.6 + 0.4 * Math.sin(t * 25 + i * 1.7), play)));
+      p.mouths.instanceColor.needsUpdate = true;
+      // les sept trompettes tirent en rafale, de gauche à droite puis de droite à gauche (toutes les 0,12 s)
+      let lit = -1, litQ = 0;
+      p.flashes.forEach((f, i) => {
+        let q = -1;
+        for (const ft of [0.5 + i * 0.12, 1.35 + (6 - i) * 0.12]) {
+          const u = (t - ft) / 0.1;
+          if (u >= 0 && u < 1) q = u;
+          if (t0 < ft && t >= ft) Sound.elixirShot(m.worldPos, i);
+        }
+        f.visible = q >= 0;
+        if (f.visible) { f.scale.setScalar(0.15 + 0.5 * Math.sin(q * Math.PI)); f.material.opacity = 1 - q * 0.6; if (q > litQ || lit < 0) { lit = i; litQ = q; } }
+      });
+      p.bellMat.opacity = 0.26 + 0.5 * elixWin(t, 0.5, 2.1, 0.1);
+      // tout le buffet tremble : secousse légère de la caméra du joueur proche (pas du maillage)
+      if (t >= 1.35 && t < 2.1 && m.worldPos.distanceTo(camera.position) < 5) { FX.rumbleT = Math.max(FX.rumbleT, 0.05); FX.rumbleA = 0.01; }
+      // le médaillon s'embrase (2,0 → 2,2 s)
+      m.medal.emissiveIntensity = Math.max(0.5, 3.2 * elixWin(t, 2.0, 2.45, 0.1));
+      if (lit >= 0) { m.lightLocal.set(p.trumpets[lit], 2.3, 0.8); m.lightI = 3.2; }
+      else { m.lightLocal.copy(m.light.pos); m.lightI = 0.9 + 0.6 * play; }
+    },
+    end(m) {
+      const p = m.parts, _o = new THREE.Object3D();
+      p.keyRest.forEach(([x, y, z, sx, sy, sz], i) => { _o.position.set(x, y, z); _o.scale.set(sx, sy, sz); _o.updateMatrix(); p.keys.setMatrixAt(i, _o.matrix); });
+      p.keys.instanceMatrix.needsUpdate = true;
+      p.flashes.forEach((f) => { f.visible = false; });
+    },
+  },
+};
+/* Allume (courant) ou éteint une machine. ramp : la machine s'éveille en 0,8 s au lieu de s'allumer
+   d'un coup (rétablissement du courant en partie). */
+function lightMachine(m, on, ramp = false) {
+  m.lit = on;
+  if (!ramp) { m.litK = on ? 1 : 0; elixApplyIdle(m, 0); }
+}
+function elixApplyIdle(m, dt) {
+  ELIX_RUN[m.key].idle(m, G.time || 0, m.litK, dt);
+}
+/* Achat : l'animation de consommation commence (et ses sons). */
+function elixirPlay(m) {
+  m.act = 0; m.actPrev = 0; m.spin0 = m.parts.mercury ? m.parts.mercury.rotation.y : 0;
+  Sound.elixir(m.key, m.worldPos);
+}
+function elixReset(m) {
+  if (m.act >= 0) ELIX_RUN[m.key].end(m);
+  m.act = -1;
+  m.vial.visible = true; m.vial.scale.setScalar(1);
+}
+function updateElixir(m, dt) {
+  m.litK = m.lit ? Math.min(1, m.litK + dt * 1.25) : Math.max(0, m.litK - dt * 2);
+  if (m.sinkT >= 0) m.litK *= Math.max(0, 1 - m.sinkT / 1.2);
+  elixApplyIdle(m, dt);
+  if (m.act >= 0) {
+    const t0 = m.actPrev;
+    m.act += dt;
+    ELIX_RUN[m.key].act(m, m.act, dt, t0);
+    m.actPrev = m.act;
+    if (m.act > 3.0) elixReset(m);
+  }
+  m.group.updateMatrixWorld(true);
+  m.lightPos.copy(m.lightLocal); m.root.localToWorld(m.lightPos);
+}
+/* Deux lumières réelles pour toutes les machines : données aux plus proches de la caméra qui
+   éclairent (celle qui s'anime d'abord). Créées avec le monde : leur nombre ne change pas en partie. */
+const ElixirLights = { lights: [] };
+function buildElixirLights() {
+  const g = new THREE.Group();
+  ElixirLights.lights = [];
+  if (!LAYOUT.perks || !LAYOUT.perks.length) return g;
+  for (let i = 0; i < 2; i++) {
+    const l = new THREE.PointLight(0xffffff, 0, 6, 2);
+    l.position.set(0, -60, 0);
+    g.add(l);
+    ElixirLights.lights.push(l);
+  }
+  return g;
+}
+function updateElixirLights() {
+  const L = ElixirLights.lights;
+  if (!L.length) return;
+  const c = camera.position;
+  const cand = Features.perkMachines.filter((m) => m.group.visible && m.lightI > 0.02);
+  const score = (m) => m.lightPos.distanceToSquared(c) - (m.act >= 0 ? 400 : 0);
+  cand.sort((a, b) => score(a) - score(b));
+  L.forEach((l, i) => {
+    const m = cand[i];
+    if (!m) { l.intensity = 0; return; }
+    l.position.copy(m.lightPos);
+    l.color.set(PERKS[m.id].glow);
+    l.intensity = m.lightI;
+    l.distance = m.light.range * m.s;
+    if (NL > 1) l.decay = lightBandDecay(m.lightPos.y, m.li);
+  });
+}
+
+/* Distributeurs d'atout : leurs cases (celle de la machine et ses voisines quand elle déborde)
+   arrêtent les tirs et les déplacements ; le verre se brise et rebondit contre la machine elle-même
+   (ses boîtes). machineAt : machine dont l'emprise contient le point (x, y, z) ; inMachine : le point
+   est dans une de ses boîtes (marge r) ; machineHit : face de sortie la plus proche. */
+const _ml = new THREE.Vector3();
+function machineLocal(m, x, y, z) {
+  const g = m.group, c = Math.cos(g.rotation.y), s = Math.sin(g.rotation.y), dx = x - g.position.x, dz = z - g.position.z;
+  return _ml.set((dx * c - dz * s) / m.s, (y - g.position.y) / (m.s * g.scale.y), (dx * s + dz * c) / m.s);
+}
+function machineAt(x, z, y) {
+  for (const m of Features.perkMachines) {
+    if (!m.group.visible) continue;
+    const D = ELIXIRS[m.id], p = machineLocal(m, x, y, z);
+    if (Math.abs(p.x) < D.w / 2 + 0.1 && p.z > -0.1 && p.z < D.d + 0.1 && p.y > -0.5 && p.y < D.h + 0.3) return m;
+  }
+  return null;
+}
+function inMachine(m, x, y, z, r) {
+  const p = machineLocal(m, x, y, z), q = r / m.s;
+  return m.boxes.some((b) => p.x > b[0] - q && p.x < b[3] + q && p.y > b[1] - q && p.y < b[4] + q && p.z > b[2] - q && p.z < b[5] + q);
+}
+/* Dessus de la machine sous le point (marches, socles, bassins) : les éclats s'y posent. */
+function machineTopBelow(x, y, z) {
+  const m = machineAt(x, z, y);
+  if (!m) return -Infinity;
+  const p = machineLocal(m, x, y, z);
+  let top = -Infinity;
+  for (const b of m.boxes) if (p.x > b[0] && p.x < b[3] && p.z > b[2] && p.z < b[5] && b[4] <= p.y + 0.05) top = Math.max(top, b[4]);
+  return top === -Infinity ? top : m.group.position.y + top * m.s * m.group.scale.y;
+}
+function machineHit(m, x, y, z, r) {
+  const p = machineLocal(m, x, y, z), q = r / m.s;
+  let best = null;
+  for (const b of m.boxes) {
+    if (!(p.x > b[0] - q && p.x < b[3] + q && p.y > b[1] - q && p.y < b[4] + q && p.z > b[2] - q && p.z < b[5] + q)) continue;
+    // faces de sortie : côtés, dessus, devant (pas le dessous ni le dos contre le mur)
+    const faces = [[p.x - (b[0] - q), -1, 0, 0], [b[3] + q - p.x, 1, 0, 0], [b[4] + q - p.y, 0, 1, 0], [b[5] + q - p.z, 0, 0, 1]];
+    for (const f of faces) if (!best || f[0] < best[0]) best = [f[0], f[1], f[2], f[3], b];
+  }
+  if (!best) return null;
+  const [d, lx, ly, lz] = best, g = m.group, c = Math.cos(g.rotation.y), s = Math.sin(g.rotation.y), k = m.s;
+  const o = (d - q) * k + 0.01;              // posée à 1 cm devant la face
+  return { nx: lx * c + lz * s, ny: ly, nz: -lx * s + lz * c, x: x + (lx * c + lz * s) * o, y: y + ly * ((d - q) * k * g.scale.y + 0.01), z: z + (-lx * s + lz * c) * o };
 }
 function buildBoxModel() {
   const g = new THREE.Group();
@@ -11034,6 +12543,7 @@ const FX = {
   decals: [], decalIdx: 0, debris: [], helmets: [], sprites: [], projectiles: [], grenades: [], bottles: [], glass: null,
   shake: 0, muzzleLight: null, boomLight: null, boomT: 0,
   joltT: 0, joltA: 0,                         // secousse brève (coups du Glas) : durée restante, amplitude
+  rumbleT: 0, rumbleA: 0,                     // tremblement léger (orgue de Toccata) : durée restante, amplitude en m
 };
 
 class PointPool {
@@ -11088,7 +12598,12 @@ function buildFX() {
   FX.blood = new PointPool(420, new THREE.PointsMaterial({ color: 0x6e0408, size: 0.07, map: TEX.glow, alphaTest: 0.35, transparent: false }), 9.8, false);
   FX.sparks = new PointPool(360, new THREE.PointsMaterial({ size: 0.06, map: TEX.glow, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 6, true);
   FX.dirt = new PointPool(200, new THREE.PointsMaterial({ color: 0x2e261c, size: 0.09, map: TEX.glow, alphaTest: 0.35 }), 9.8, false);
-  group.add(FX.blood.points, FX.sparks.points, FX.dirt.points);
+  // élixirs : braises et flammes qui montent, âme qui éclate, éclaboussures de la source
+  const glowPts = (size) => new THREE.PointsMaterial({ size, map: TEX.glow, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  FX.embers = new PointPool(420, glowPts(0.075), -0.6, true);
+  FX.motes = new PointPool(160, glowPts(0.06), 0.35, true);
+  FX.splash = new PointPool(160, glowPts(0.035), 9.8, true);
+  group.add(FX.blood.points, FX.sparks.points, FX.dirt.points, FX.embers.points, FX.motes.points, FX.splash.points);
 
   const decalGeo = new THREE.PlaneGeometry(1, 1);
   const dm = (o) => new THREE.MeshStandardMaterial(Object.assign({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, roughness: 0.9 }, o));
@@ -11184,22 +12699,6 @@ function surfaceBelow(x, z, y) {
   if ((ty === T.CRATE || ty === T.PROP || ty === T.LOW) && y >= solidTop[k] - 0.03) return solidTop[k];
   return 0;
 }
-/* Distributeurs d'atout : leur case entière arrête les tirs et les déplacements, mais le verre se
-   brise et rebondit contre la machine elle-même, plus étroite que sa case. machineAt : distributeur
-   de la case du point (x, y, z) ; inMachine : le point est dans la machine (marge r). */
-function machineAt(x, z, y) {
-  const cx = Math.floor(x), cz = Math.floor(z);
-  for (const m of Features.perkMachines) if (m.cell[0] === cx && m.cell[1] === cz && m.group.visible && y > m.E - 1.5 && y < m.E + 3.5) return m;
-  return null;
-}
-function machineHalf(m, r) {
-  const side = Math.abs(Math.sin(m.group.rotation.y)) > 0.5;
-  return [(side ? 0.36 : 0.45) + r, (side ? 0.45 : 0.36) + r, 2.29 * m.group.scale.y + r];
-}
-function inMachine(m, x, y, z, r) {
-  const p = m.group.position, [hx, hz, top] = machineHalf(m, r);
-  return Math.abs(x - p.x) < hx && Math.abs(z - p.z) < hz && y > p.y - r && y < p.y + top;
-}
 function glassBlocked(x, y, z, ox, oz) {
   const m = machineAt(x, z, y);
   return m ? inMachine(m, x, y, z, 0.004) : debrisHit(x, y, z, ox, oz);
@@ -11208,7 +12707,7 @@ function glassBlocked(x, y, z, ox, oz) {
    bouteille dans la main) : elle culbute en vol et se brise au premier choc. */
 function throwBottle(id, x, y, z, vx, vy, vz, quat = null) {
   const b = buildBottle(id, { full: false, cap: false });
-  b.position.y = -BOTTLE.h / 2;                 // tourne autour de son milieu
+  b.position.y = -b.userData.shape.h / 2;       // tourne autour de son milieu
   const g = new THREE.Group();
   g.add(b);
   g.position.set(x, y, z);
@@ -11218,7 +12717,7 @@ function throwBottle(id, x, y, z, vx, vy, vz, quat = null) {
   FX.bottles.push({ g, id, x, y, z, vx, vy, vz, ax: -rand(9, 14), az: rand(-3, 3), t: 0 });
 }
 function updateBottles(dt) {
-  const R = 0.035;
+  const R = 0.045;
   for (let i = FX.bottles.length - 1; i >= 0; i--) {
     const b = FX.bottles[i];
     b.t += dt;
@@ -11234,16 +12733,10 @@ function updateBottles(dt) {
     }
     if (!hit) {
       b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
-      const m = machineAt(b.x, b.z, b.y);
-      if (m && inMachine(m, b.x, b.y, b.z, R)) {
+      const m = machineAt(b.x, b.z, b.y), h = m && inMachine(m, b.x, b.y, b.z, R) ? machineHit(m, b.x, b.y, b.z, R) : null;
+      if (h) {
         // contre la face de la machine la moins enfoncée
-        const p = m.group.position, [hx, hz, top] = machineHalf(m, R);
-        const dx = b.x - p.x, dz = b.z - p.z;
-        const px = hx - Math.abs(dx), pz = hz - Math.abs(dz), py = p.y + top - b.y;
-        hit = true; nx = 0; ny = 0; nz = 0;
-        if (py < px && py < pz) { ny = 1; b.y = p.y + top - R; }
-        else if (px < pz) { nx = Math.sign(dx) || 1; b.x = p.x + nx * (hx - R + 0.01); }
-        else { nz = Math.sign(dz) || 1; b.z = p.z + nz * (hz - R + 0.01); }
+        hit = true; nx = h.nx; ny = h.ny; nz = h.nz; b.x = h.x; b.y = h.y; b.z = h.z;
       } else {
         const fy = surfaceBelow(b.x, b.z, b.y + 0.25);
         if (b.y <= fy + 0.06) { hit = true; b.y = fy; nx = 0; ny = 1; nz = 0; }
@@ -11263,7 +12756,7 @@ function updateBottles(dt) {
 function shatterBottle(id, x, y, z, nx, ny, nz, vx, vz) {
   Sound.glassBreak({ x, y, z });
   for (let i = 0; i < 8; i++) FX.sparks.emit(x, y + 0.03, z, rand(-1.2, 1.2), rand(0.4, 1.6), rand(-1.2, 1.2), rand(0.1, 0.25), 0.75, 0.85, 0.8);
-  const tint = new THREE.Color(PERKS[id] ? PERKS[id].color : '#ffffff');
+  const tint = new THREE.Color(PERKS[id] ? PERKS[id].glow : '#ffffff');
   const piece = (kind, sx, sy, sz) => {
     const G = FX.glass;
     const mesh = kind === 'chunk' ? G.chunks : kind === 'scrap' ? G.scraps : G.shards;
@@ -11297,8 +12790,8 @@ function shatterBottle(id, x, y, z, nx, ny, nz, vx, vz) {
     piece('shard', sz * rand(0.7, 1.3), sz * rand(0.5, 1), sz * rand(0.7, 1.3));
   }
   for (let i = 0; i < GLASS.scraps; i++) piece('scrap', rand(0.022, 0.04), 0.0016, rand(0.016, 0.03));
-  piece('chunk', 0.031, 0.024, 0.031);              // le fond de la bouteille
-  piece('chunk', 0.0125, 0.055, 0.0125);            // le goulot
+  piece('chunk', 0.034, 0.022, 0.034);              // le fond de la fiole
+  piece('chunk', 0.0122, 0.06, 0.0122);             // le goulot
 }
 function writeGlass(e) {
   _glassObj.position.set(e.x, e.y, e.z);
@@ -11327,7 +12820,7 @@ function updateGlass(dt) {
     e.x = nx; e.z = nz; e.y += e.vy * dt;
     e.rx += e.wx * dt; e.ry += e.wy * dt; e.rz += e.wz * dt;
     const half = (e.kind === 'chunk' ? Math.min(e.sx, e.sy) : glassHalf(e)) + 0.002;
-    const fy = surfaceBelow(e.x, e.z, e.y + 0.25);
+    const fy = Math.max(surfaceBelow(e.x, e.z, e.y + 0.25), machineTopBelow(e.x, e.y, e.z));
     if (e.y < fy + half) {
       e.y = fy + half;
       if (Math.abs(e.vy) > 0.7 && e.kind !== 'scrap') {
@@ -11586,6 +13079,7 @@ function updateGrenades(dt) {
 
 function updateFX(dt) {
   FX.blood.update(dt); FX.sparks.update(dt); FX.dirt.update(dt);
+  FX.embers.update(dt); FX.motes.update(dt); FX.splash.update(dt);
   updateBottles(dt);
   updateGlass(dt);
   for (const d of FX.debris) {
@@ -11860,6 +13354,11 @@ function updateCamera(dt) {
     camera.rotation.z += Math.cos(G.time * 71) * a * 0.6;
     camera.position.y += Math.sin(G.time * 83) * a * 0.4;
   }
+  if (FX.rumbleT > 0) {
+    FX.rumbleT = Math.max(0, FX.rumbleT - dt);
+    const a = FX.rumbleA;
+    camera.position.x += Math.sin(G.time * 61) * a; camera.position.y += Math.sin(G.time * 47 + 1) * a * 0.6; camera.position.z += Math.sin(G.time * 53 + 2) * a;
+  }
   // champ de vision horizontal → vertical, avec zoom de visée
   const slot = curSlot();
   const zoom = slot ? lerp(1, WEAPONS[slot.id].zoom, p.ads) : 1;
@@ -11927,7 +13426,7 @@ function buildViewmodel() {
   const handle = new THREE.Mesh(GEO.box, MAT.gunWoodDark); handle.scale.set(0.024, 0.034, 0.1); handle.position.z = 0.02;
   const guard = new THREE.Mesh(GEO.box, MAT.gunMetal); guard.scale.set(0.02, 0.06, 0.012); guard.position.z = -0.03;
   Arms.knife.add(blade, handle, guard); Arms.knife.visible = false;
-  // bouteille d'atout (habillée aux couleurs de l'atout acheté) et sa capsule qui saute
+  // fiole d'élixir (habillée aux couleurs de l'atout acheté) et son bouchon qui saute
   Arms.bottle = buildBottle('souffle');
   Arms.bottle.visible = false;
   Arms.cap = new THREE.Mesh(bottleGeometries().cap, MAT.bottleCap);
@@ -12077,11 +13576,11 @@ function startDrink(perkId) {
   Arms.cap.visible = false;
   Sound.swap();
 }
-/* Le pouce fait sauter la capsule : elle part en tournant (vue de l'arme). */
+/* Le pouce fait sauter le bouchon : il part en tournant (vue de l'arme). */
 function flickCap() {
   const c = Arms.bottle.userData.cap;
   Arms.bottle.updateMatrixWorld(true);
-  _v1.set(0, 0.2025, 0).applyMatrix4(Arms.bottle.matrixWorld);
+  _v1.set(0, Arms.bottle.userData.shape.corkY, 0).applyMatrix4(Arms.bottle.matrixWorld);
   Arms.cap.position.copy(_v1);
   Arms.cap.rotation.copy(Arms.bottle.rotation);
   c.visible = false;
@@ -12472,9 +13971,9 @@ function updateViewmodel(dt) {
     B.rotation.set(P.th, P.ps, P.la - 0.06 * flick, 'ZXY');
     // le liquide baisse à chaque gorgée ; bouteille couchée, il reste du côté du goulot
     const level = 1 - DRINK.gulps.reduce((m, g) => m + smooth(clamp((t - g + 0.04) / 0.2, 0, 1)), 0) / DRINK.gulps.length;
-    const L = B.userData.liquid;
-    L.scale.y = BOTTLE.liquidH * Math.max(0.001, level);
-    L.position.y = BOTTLE.liquidY + (t >= DRINK.mouth ? BOTTLE.liquidH * (1 - level) : 0);
+    const L = B.userData.liquid, S = B.userData.shape;
+    L.scale.y = S.liquidH * Math.max(0.001, level);
+    L.position.y = S.liquidY + (t >= DRINK.mouth ? S.liquidH * (1 - level) : 0);
     L.visible = level > 0.01;
     B.updateMatrixWorld(true);
     // tête en arrière pendant que le joueur boit (secousse à chaque gorgée), petit coup de tête vers
@@ -13597,27 +15096,46 @@ function unlockDigipass() {
 }
 
 /* ------------------------------------------------------------ Atouts --- */
-function lightMachine(m, on) {
-  m.panelMat.emissiveIntensity = on ? 0.95 : 0.06;
-  m.signMat.emissiveIntensity = on ? 0.9 : 0.05;
-  m.glow.material.opacity = on ? 0.5 : 0;
+/* Distributeurs d'atout (élixirs) : chaque machine dos au mur, du côté opposé à sa façade ; sa case
+   arrête tirs et déplacements jusqu'à sa hauteur, et ses voisines le long du mur quand elle déborde
+   (moins haut sous le bassin de Pèlerin et le soufflet de Vif-Argent). On achète devant elle. */
+const ELIX_SIDE_TOP = { pelerin: [0.7, 0.7], vifargent: [1.75, 0.6] };   // [droite, gauche] vue de face
+function setMachineProps(m) {
+  const top = Math.min(WALL_H, ELIXIRS[m.id].h * m.s), side = ELIX_SIDE_TOP[m.key] || [top, top];
+  setProp(m.li, m.cell[0], m.cell[1], top);
+  m.side.forEach(([x, z], i) => setProp(m.li, x, z, Math.min(top, side[i] * m.s)));
+}
+function clearMachineProps(m) {
+  clearProp(m.li, m.cell[0], m.cell[1]);
+  for (const [x, z] of m.side) clearProp(m.li, x, z);
 }
 function buildPerks(group) {
   for (const pm of LAYOUT.perks) {
-    const built = buildPerkMachine(pm.p);
     const [cx, cz] = pm.cell, [fx, fz] = pm.face;
     const li = Math.max(0, levelIndex(pm.lv || 0)), E = LVY[li];
-    built.group.position.set(cx + 0.5 - fx * 0.1, E, cz + 0.5 - fz * 0.1);
+    const fp = elixirFootprint(pm, WALL_H), D = ELIXIRS[pm.p];
+    const built = buildPerkMachine(pm.p, fp.s);
+    const wx = cx + 0.5 - fx * 0.5, wz = cz + 0.5 - fz * 0.5;      // milieu du bord de la case, côté mur
+    built.group.position.set(wx, E, wz);
     built.group.rotation.y = Math.atan2(fx, fz);
     built.group.userData.lv = LV[li];
     group.add(built.group);
-    setProp(li, cx, cz, 2.1);
+    // voisines fermées seulement si elles sont du sol libre (on les rouvre quand Quick Revive s'en va)
+    const side = fp.side.filter(([x, z]) => inb(x, z) && grid[node(li, x, z)] === T.FLOOR);
+    const depth = D.d * fp.s;
     // retirée (Quick Revive) : elle s'enfonce dans la terre, ou se tasse sur une dalle d'étage
-    const m = Object.assign(built, { id: pm.p, active: true, cell: [cx, cz], sinkT: -1, li, E, deep: riseDepth(li, cx + 0.5, cz + 0.5) > 1 });
+    const m = Object.assign(built, {
+      id: pm.p, active: true, cell: [cx, cz], side, sinkT: -1, li, E, deep: riseDepth(li, cx + 0.5, cz + 0.5) > 1,
+      lightLocal: built.light.pos.clone(), worldPos: new THREE.Vector3(wx + fx * depth * 0.5, E + 1.2, wz + fz * depth * 0.5),
+      ceilY: (noCeil[node(li, cx, cz)] ? 40 : WALL_H) / fp.s,
+    });
+    setMachineProps(m);
+    built.group.updateMatrixWorld(true);
     lightMachine(m, !PERKS[pm.p].power);
+    updateElixir(m, 0);
     Features.perkMachines.push(m);
     Features.interactables.push({
-      kind: 'perk', x: cx + 0.5 + fx * 1.0, z: cz + 0.5 + fz * 1.0, y: E, r: 1.5,
+      kind: 'perk', machine: m, x: wx + fx * (depth + 0.5), z: wz + fz * (depth + 0.5), y: E, r: 1.5,
       prompt() {
         if (!m.active || (Arms.state === 'drink' && Arms.drinkId === m.id)) return null;
         const perk = PERKS[m.id];
@@ -13629,7 +15147,7 @@ function buildPerks(group) {
       use() {
         if (!m.active || armsBusy() || player.perks.has(m.id) || player.perks.size >= MAX_PERKS) return;
         if (PERKS[m.id].power && !G.power) return;
-        if (trySpend(PERKS[m.id].cost)) { startDrink(m.id); Life.add('perks'); }
+        if (trySpend(PERKS[m.id].cost)) { startDrink(m.id); elixirPlay(m); Life.add('perks'); }
       },
     });
   }
@@ -13640,6 +15158,7 @@ function grantPerk(id) {
   if (id === 'cuirasse') { player.maxHp = RULES.cuirasseHp; player.hp = player.maxHp; }
   Sound.perkJingle(id);
   HUD.perks();
+  HUD.el.banner.style.setProperty('--perk-glow', PERKS[id].glow);
   HUD.banner(PERKS[id].name, PERKS[id].desc, 'perk');
 }
 Features.retireSouffle = function () {
@@ -13650,13 +15169,16 @@ Features.retireSouffle = function () {
 };
 function updatePerkMachines(dt) {
   for (const m of Features.perkMachines) {
-    if (m.sinkT < 0) continue;
-    m.sinkT += dt;
-    const k = smooth(clamp(m.sinkT / 2.5, 0, 1));
-    if (m.deep) m.group.position.y = m.E - k * 2.4;
-    else m.group.scale.y = Math.max(0.02, 1 - k);
-    if (m.sinkT > 2.5 && m.group.visible) { m.group.visible = false; clearProp(m.li, m.cell[0], m.cell[1]); Zombies.flowT = 0; }
+    if (m.sinkT >= 0) {
+      m.sinkT += dt;
+      const k = smooth(clamp(m.sinkT / 2.5, 0, 1));
+      if (m.deep) m.group.position.y = m.E - k * (ELIXIRS[m.id].h * m.s + 0.2);
+      else m.group.scale.y = Math.max(0.02, 1 - k);
+      if (m.sinkT > 2.5 && m.group.visible) { m.group.visible = false; clearMachineProps(m); Zombies.flowT = 0; }
+    }
+    if (m.group.visible) updateElixir(m, dt);
   }
+  updateElixirLights();
 }
 
 /* --------------------------------------------------- Boîte mystère ---- */
@@ -13850,7 +15372,7 @@ function activatePower() {
   setPoweredLights();
   Features.perkMachines.forEach((m, i) => {
     if (!PERKS[m.id].power || !m.active) return;
-    schedule(0.7 + i * 0.4, () => { lightMachine(m, true); Sound.perkJingle(m.id, { x: m.group.position.x, y: m.E, z: m.group.position.z }); });
+    schedule(0.7 + i * 0.4, () => { lightMachine(m, true, true); Sound.perkJingle(m.id, m.worldPos); });
   });
   const a = Features.amp;
   if (a) schedule(1.2, () => glasWake(false));
@@ -14599,7 +16121,8 @@ function resetFeatures() {
   }
   for (const m of Features.perkMachines) {
     m.active = true; m.sinkT = -1; m.group.visible = true; m.group.position.y = m.E; m.group.scale.y = 1;
-    setProp(m.li, m.cell[0], m.cell[1], 2.1);
+    elixReset(m);
+    setMachineProps(m);
     lightMachine(m, !PERKS[m.id].power);
   }
   G.power = false;
@@ -14957,7 +16480,7 @@ const HUD = {
   perks() {
     this.el.perks.innerHTML = [...player.perks].map((id) => {
       const p = PERKS[id];
-      return `<span class="perk" style="--perk:${p.color}" title="${p.name}">${p.glyph}</span>`;
+      return `<span class="perk" style="--perk:${p.color};--perk-glow:${p.glow}" title="${p.name}">${p.glyph}</span>`;
     }).join('');
   },
   weapon() {

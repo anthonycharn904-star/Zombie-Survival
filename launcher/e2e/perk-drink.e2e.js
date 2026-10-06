@@ -1,11 +1,11 @@
 'use strict';
-/* Boisson d'atout (jeu 1.6.0), dans la fenêtre du jeu du launcher : noms des atouts et du
-   Pack-A-Punch, achat au distributeur, déroulé de l'animation (arme baissée, bouteille aux couleurs
-   de l'atout tenue en main, capsule qui saute, goulot à la bouche, gorgées, tête en arrière, atout
-   accordé après la dernière gorgée), bouteille jetée au sol qui se brise au premier choc, éclats et
-   bouts d'étiquette posés là où elle s'est cassée et qui y restent, bouteille qui se brise contre la
-   machine elle-même (pas contre sa case), joueur à terre pendant la boisson, tête jamais renversée
-   au-delà de la verticale, éclats effacés à la partie suivante.
+/* Boisson d'atout (jeu 1.6.0 ; fiole d'élixir depuis le jeu 1.8.0), dans la fenêtre du jeu du
+   launcher : noms des atouts et du Pack-A-Punch, achat au distributeur, déroulé de l'animation (arme
+   baissée, fiole aux couleurs de l'atout tenue en main, bouchon qui saute, goulot à la bouche,
+   gorgées, tête en arrière, atout accordé après la dernière gorgée), fiole jetée au sol qui se brise
+   au premier choc, éclats et bouts d'étiquette posés là où elle s'est cassée et qui y restent, fiole
+   qui se brise contre la machine elle-même (pas contre sa case), joueur à terre pendant la boisson,
+   tête jamais renversée au-delà de la verticale, éclats effacés à la partie suivante.
      xvfb-run -a node e2e/perk-drink.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -54,7 +54,7 @@ const USER = path.join(TMP, 'joueur');
       // -------------------------------------------------- achat et boisson
       const machine = (id) => {
         const m = Features.perkMachines.find((pm) => pm.id === id);
-        const it = Features.interactables.find((i) => i.kind === 'perk' && Math.hypot(i.x - (m.cell[0] + 0.5), i.z - (m.cell[1] + 0.5)) < 1.2);
+        const it = Features.interactables.find((i) => i.kind === 'perk' && i.machine === m);
         return { m, it, yaw: Math.atan2(-(m.cell[0] + 0.5 - it.x), -(m.cell[1] + 0.5 - it.z)) };
       };
       const goTo = (id, pitch = -0.08) => {
@@ -78,15 +78,15 @@ const USER = path.join(TMP, 'joueur');
       qr.it.use();
       ok(Arms.state === 'drink' && Arms.drinkId === 'souffle' && G.points === pts - 500, 'achat : 500 points payés, la boisson commence', { st: Arms.state, d: pts - G.points });
       ok(qr.it.prompt() === null, 'pendant la boisson : plus d’invite pour ce distributeur');
-      ok(B.userData.label.material.map === TEX.bottleLabel.souffle && B.userData.cap.visible, 'bouteille aux couleurs de Quick Revive, capsule en place');
+      ok(B.userData.label.material.map === TEX.bottleLabel.souffle && B.userData.cap.visible && B.userData.shape.kind === 'flask', 'fiole (ballon) aux couleurs de Quick Revive, bouchon en place');
       at(DRINK.lower + 0.03);
       const hip = Arms.gun.userData.info.hip[1];
-      ok(Arms.holder.position.y < hip - 0.45 && B.visible && Arms.grip.visible, 'arme baissée, bouteille en main', { y: r2(Arms.holder.position.y), hip });
+      ok(Arms.holder.position.y < hip - 0.45 && B.visible && Arms.grip.visible, 'arme baissée, fiole en main', { y: r2(Arms.holder.position.y), hip });
       at(DRINK.bring);
       const pb = view(0, 0.08, 0);
-      ok(B.visible && pb.z < -0.3 && Math.abs(pb.x) < 0.2 && Math.abs(pb.y) < 0.16, 'bouteille présentée devant le joueur (étiquette à l’écran)', [r2(pb.x), r2(pb.y), r2(pb.z)]);
+      ok(B.visible && pb.z < -0.3 && Math.abs(pb.x) < 0.2 && Math.abs(pb.y) < 0.16, 'fiole présentée devant le joueur (étiquette à l’écran)', [r2(pb.x), r2(pb.y), r2(pb.z)]);
       at(DRINK.cap + 0.03);
-      ok(Arms.cap.visible && !B.userData.cap.visible, 'capsule qui saute');
+      ok(Arms.cap.visible && !B.userData.cap.visible, 'bouchon qui saute');
       at(1.3);
       const neck = view(0, BOTTLE.neck, 0);
       const dm = neck.distanceTo(new THREE.Vector3(...DRINK_MOUTH));
@@ -99,13 +99,13 @@ const USER = path.join(TMP, 'joueur');
       ok(document.querySelector('#hud .perk[title="Quick Revive"]') || /title="Quick Revive"/.test(HUD.el.perks.innerHTML), 'icône de l’atout : « Quick Revive »', HUD.el.perks.innerHTML);
       at(DRINK.release + 0.02);
       const b0 = FX.bottles[0];
-      ok(FX.bottles.length === 1 && !B.visible && b0 && Math.hypot(b0.x - camera.position.x, b0.y - camera.position.y, b0.z - camera.position.z) < 0.7, 'bouteille lâchée devant le joueur', b0 && [r2(b0.x), r2(b0.y), r2(b0.z)]);
+      ok(FX.bottles.length === 1 && !B.visible && b0 && Math.hypot(b0.x - camera.position.x, b0.y - camera.position.y, b0.z - camera.position.z) < 0.7, 'fiole lâchée devant le joueur', b0 && [r2(b0.x), r2(b0.y), r2(b0.z)]);
       let n = 0;
       while (FX.bottles.length && n < 180) { __zs.step(1, 1 / 60); n++; }
       const h = hits[0];
       const rx = Math.cos(player.yaw), rz = -Math.sin(player.yaw);
       const side = h ? (h.x - player.pos.x) * rx + (h.z - player.pos.z) * rz : 0;
-      ok(hits.length === 1 && h.id === 'souffle' && h.n[1] === 1 && h.y < 0.02, 'bouteille brisée au sol, au premier choc', h);
+      ok(hits.length === 1 && h.id === 'souffle' && h.n[1] === 1 && h.y < 0.02, 'fiole brisée au sol, au premier choc', h);
       ok(h && side > 0.3 && Math.hypot(h.x - player.pos.x, h.z - player.pos.z) < 1.6, 'jetée devant à droite, près du joueur', { side: r2(side) });
       at(DRINK.end + 0.1);
       ok(Arms.state === 'idle' && Arms.holder.position.y > hip - 0.05, 'fin : l’arme est revenue', r2(Arms.holder.position.y));
@@ -125,7 +125,9 @@ const USER = path.join(TMP, 'joueur');
       // ------------------------------- contre la machine, pas contre sa case
       const mq = machine('souffle'), g = mq.m.group;
       const fx = Math.sin(g.rotation.y), fz = Math.cos(g.rotation.y);
-      const face = g.position.x * Math.abs(fx) + g.position.z * Math.abs(fz) + 0.36 * (fx + fz);
+      // façade de la machine à hauteur de la fiole lancée (boîte la plus avancée qui couvre l'axe)
+      const front = Math.max(...mq.m.boxes.filter((b) => b[1] <= 1.05 && b[4] >= 1.05 && b[0] <= 0 && b[3] >= 0).map((b) => b[5])) * mq.m.s;
+      const face = g.position.x * Math.abs(fx) + g.position.z * Math.abs(fz) + front * (fx + fz);
       hits.length = 0;
       const sx = mq.it.x, sz = mq.it.z;
       throwBottle('souffle', sx, 1.1, sz, -fx * 4, 0.6, -fz * 4);
@@ -133,7 +135,7 @@ const USER = path.join(TMP, 'joueur');
       while (FX.bottles.length && n < 120) { __zs.step(1, 1 / 60); n++; }
       const hm = hits[0];
       const along = hm ? hm.x * Math.abs(fx) + hm.z * Math.abs(fz) : NaN;
-      ok(hm && Math.abs(along - face) < 0.05 && Math.abs(hm.n[0] - fx) < 1e-6 && Math.abs(hm.n[2] - fz) < 1e-6, 'lancée contre le distributeur : brisée sur sa façade (pas 24 cm devant)', { along: r2(along), face: r2(face), n: hm && hm.n });
+      ok(hm && Math.abs(along - face) < 0.05 && Math.abs(hm.n[0] - fx) < 1e-6 && Math.abs(hm.n[2] - fz) < 1e-6, 'lancée contre le distributeur : brisée sur sa façade (pas devant sa case)', { along: r2(along), face: r2(face), n: hm && hm.n });
       __zs.step(480, 1 / 60);
       const inside = FX.glass.list.filter((e) => inMachine(mq.m, e.x, e.y, e.z, -0.01)).length;
       ok(inside === 0, 'aucun éclat dans la machine', inside);
@@ -146,7 +148,7 @@ const USER = path.join(TMP, 'joueur');
       goDown();
       n = 0;
       while ((Arms.state === 'drink' || FX.bottles.length) && n < 400) { __zs.step(1, 1 / 60); n++; }
-      ok(player.down && hits.length === 1 && hits[0].id === 'endurance' && !player.perks.has('endurance'), 'à terre pendant la boisson : la bouteille tombe et se brise, Staminup n’est pas accordé', { down: player.down, hits: hits.length });
+      ok(player.down && hits.length === 1 && hits[0].id === 'endurance' && !player.perks.has('endurance'), 'à terre pendant la boisson : la gourde tombe et se brise, Staminup n’est pas accordé', { down: player.down, hits: hits.length });
       ok(Arms.state === 'idle', 'à terre : la boisson s’arrête');
       __zs.step(360, 1 / 60);
       ok(!player.down, 'relevé par Quick Revive');
@@ -177,6 +179,6 @@ const USER = path.join(TMP, 'joueur');
     if (app) await app.close().catch(() => {});
     fs.rmSync(TMP, { recursive: true, force: true });
   }
-  console.log(failures ? `${failures} échec(s).` : 'Atouts : boisson, bouteille et éclats conformes.');
+  console.log(failures ? `${failures} échec(s).` : 'Atouts : boisson, fiole et éclats conformes.');
   process.exit(failures ? 1 : 0);
 })();
