@@ -5,8 +5,8 @@
    d'emprise), cases fermées ; muette sans courant, réveillée par le courant ; offrande, chute, un à
    trois coups payés (F maintenue), relève, reprise ou perte au bout de 10 s ; paliers Tocsin,
    Bourdon, Glas (dégâts ×2, ×2,5, ×3, chargeur +50 %) ; onde de choc du premier coup, appel des
-   morts, Résonance, Minuit, douzième coup ; secousse, sauvegarde, finitions des armes, avertissements
-   des Mod Tools, pas d'erreur.
+   morts, Résonance, Minuit, douzième coup ; secousse, sauvegarde, finitions des armes, mod de munition
+   dans le HUD (à gauche des munitions, nom de l'arme immobile), avertissements des Mod Tools, pas d'erreur.
      xvfb-run -a node e2e/glas.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -312,6 +312,49 @@ const USER = path.join(TMP, 'joueur');
       return out;
     })).forEach(report);
 
+    // ------------------------------------------------- interface : mod de munition à gauche des munitions
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      const run = (sec) => { const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { __realUpdate(1 / 60); endFrameInput(); } };
+      const $id = (id) => document.getElementById(id);
+      const box = (o) => { const b = o.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+      const textBox = (el) => { const g = document.createRange(); g.selectNodeContents(el); return box(g); };
+      const same = (a, b) => ['l', 't', 'r', 'b'].every((k) => Math.abs(a[k] - b[k]) < 0.5);
+      const mod = $id('w-mod'), nameEl = $id('w-name');
+      const view = (tier) => {
+        __zs.give('mp40', tier); run(0.1); HUD.weapon();
+        const b = mod.querySelector('b');
+        return { name: nameEl.textContent, up: nameEl.classList.contains('up'), hidden: mod.hidden, text: mod.textContent.replace(/ /g, ' '),
+          bold: b ? b.textContent : null, nameBox: textBox(nameEl) };
+      };
+      ok(!$id('hud').hidden, 'HUD affiché');
+      const v = [0, 1, 2, 3].map(view);
+      ok(v[0].hidden && v[0].name === 'MP40' && !v[0].up, 'arme de base : pas de ligne de mod de munition', v[0]);
+      ok(v[1].hidden && v[1].name === 'MP40 Brûleur' && v[1].up, 'palier I (Tocsin) : nom doré, pas de mod de munition', v[1]);
+      ok(!v[2].hidden && v[2].text === 'Mod de munition : Résonance' && v[2].bold === 'Résonance' && v[2].name === 'MP40 Brûleur',
+        'palier II : « Mod de munition : Résonance », le nom reste « MP40 Brûleur »', v[2]);
+      ok(!v[3].hidden && v[3].text === 'Mod de munition : Minuit' && v[3].bold === 'Minuit' && v[3].name === 'MP40 Brûleur',
+        'palier III : « Mod de munition : Minuit », le nom reste « MP40 Brûleur »', v[3]);
+      ok(same(v[1].nameBox, v[2].nameBox) && same(v[1].nameBox, v[3].nameBox), 'le nom de l’arme ne bouge pas d’un palier à l’autre', v.map((x) => x.nameBox));
+      const modB = box(mod), magB = box($id('w-mag')), ammoB = box($id('w-ammo')), nameB = textBox(nameEl);
+      ok(modB.r < magB.l && magB.l - modB.r > 12 && magB.l - modB.r < 30 && modB.t >= nameB.b - 0.5 && modB.b <= ammoB.b + 0.5 && Math.abs(modB.b - magB.b) < 6,
+        'place : à gauche du chargeur (20 px), sur la ligne des munitions, sous le nom', { modB, magB, nameB });
+      mod.hidden = true;
+      const nameWithout = textBox(nameEl);
+      mod.hidden = false;
+      ok(same(nameWithout, nameB), 'la ligne du mod ne déplace pas le nom', { nameWithout, nameB });
+      const s = curSlot(), keep = [s.mag, s.res];
+      s.mag = 3; s.res = 7; HUD.weapon();
+      const modLow = box(mod);
+      s.mag = keep[0]; s.res = keep[1]; HUD.weapon();
+      ok(same(modLow, modB), 'le mod ne bouge pas quand le compte baisse (48 → 3, 384 → 7)', { modLow, modB });
+      ok(wstat(s, 'name') === 'MP40 Brûleur · Glas', 'invites (munitions, cloche) : nom complet avec le palier', wstat(s, 'name'));
+      Arms.slots = [null, null]; Arms.cur = 0; HUD.weapon();
+      ok(mod.hidden && nameEl.textContent === 'Mains nues', 'mains nues : pas de mod de munition');
+      return out;
+    })).forEach(report);
+
     // ------------------------------------------------- sauvegarde, finitions, Mod Tools
     (await game.evaluate(() => {
       const out = [];
@@ -325,6 +368,9 @@ const USER = path.join(TMP, 'joueur');
       restoreSave(save);
       const s = Arms.slots.find((x) => x && x.id === 'mp40');
       ok(s && s.tier === 2 && wstat(s, 'name') === 'MP40 Brûleur · Bourdon' && G.glasMidnight, 'reprise de la sauvegarde : MP40 Brûleur · Bourdon', s);
+      Arms.cur = Arms.slots.indexOf(s); HUD.weapon();
+      ok(document.getElementById('w-mod').textContent.replace(/ /g, ' ') === 'Mod de munition : Résonance' && document.getElementById('w-name').textContent === 'MP40 Brûleur',
+        'reprise : le HUD montre « Mod de munition : Résonance »', document.getElementById('w-mod').textContent);
       restoreSave(Object.assign({}, save, { slots: [{ id: 'thompson', up: true, mag: 50, res: 300 }, null], glas: undefined }));
       const o = Arms.slots[0];
       ok(o && o.tier === 1 && o.mag === 45 && wstat(o, 'name') === 'Thompson Chicago Rouge' && G.glasTolls === 0, 'ancienne sauvegarde (Pack-A-Punch) : l’arme améliorée vaut le palier I', o);

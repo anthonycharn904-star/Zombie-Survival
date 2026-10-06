@@ -121,7 +121,15 @@ body {
 #w-ammo { font-variant-numeric: tabular-nums; display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
 #w-mag { font-weight: 700; font-size: 46px; line-height: 1; }
 #w-sep, #w-res { font-size: 26px; color: var(--steel); font-weight: 600; }
+#w-mag, #w-res { text-align: right; }
 #w-ammo.low #w-mag { color: var(--blood-hi); }
+/* Mod de munition de l'arme reforgée par Le Glas : à gauche des munitions, sur leur ligne de base */
+#w-mod {
+  margin-right: 16px; font-size: 16px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--paper-2); white-space: nowrap;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95), 0 0 9px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(0, 0, 0, 0.8);   /* lisible sur l'arme */
+}
+#w-mod b { font-weight: 700; color: #ffd27a; text-shadow: 0 0 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(255, 186, 72, 0.5), 0 1px 0 rgba(0, 0, 0, 0.8); }
 #w-gren { display: flex; gap: 5px; justify-content: flex-end; min-height: 13px; }
 #w-gren i { width: 9px; height: 13px; border-radius: 45% 45% 40% 40%; background: var(--steel); box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.35); }
 
@@ -590,7 +598,7 @@ body {
     <div id="points-wrap"><div id="points-pops"></div><div id="points">500</div></div>
     <div id="weapon">
       <div id="w-name">M1911</div>
-      <div id="w-ammo"><span id="w-mag">8</span><span id="w-sep">/</span><span id="w-res">80</span></div>
+      <div id="w-ammo"><span id="w-mod" hidden></span><span id="w-mag">8</span><span id="w-sep">/</span><span id="w-res">80</span></div>
       <div id="w-gren"></div>
     </div>
   </div>
@@ -1194,8 +1202,9 @@ const GLAS = {
   tiers: [
     null,
     { id: 'tocsin', name: 'Tocsin', roman: 'I', cost: 5000, dmg: 2, desc: 'dégâts ×2, chargeur +50 %' },
-    { id: 'bourdon', name: 'Bourdon', roman: 'II', cost: 10000, dmg: 2.5, desc: 'dégâts ×2,5 et Résonance' },
-    { id: 'glas', name: 'Glas', roman: 'III', cost: 20000, dmg: 3, desc: 'dégâts ×3 et Minuit' },
+    { id: 'bourdon', name: 'Bourdon', roman: 'II', cost: 10000, dmg: 2.5, desc: 'dégâts ×2,5 et Résonance', mod: 'Résonance' },
+    // la Résonance reste active au palier III ; le HUD montre le mod propre au palier
+    { id: 'glas', name: 'Glas', roman: 'III', cost: 20000, dmg: 3, desc: 'dégâts ×3 et Minuit', mod: 'Minuit' },
   ],
   magMult: 1.5,
   // rituel : glissade de l'arme, chute, intervalle entre deux coups, relève, fenêtre de reprise
@@ -14924,7 +14933,7 @@ function restoreSave(s) {
 const HUD = {
   el: {}, last: {}, bannerT: 0, hintT: 0, zoneT: 0, hitT: 0, dmg: 0, flashK: 0, lastPop: null, lastPopT: 0,
   init() {
-    for (const id of ['hud', 'round', 'perks', 'points', 'points-pops', 'w-name', 'w-mag', 'w-res', 'w-gren', 'w-ammo',
+    for (const id of ['hud', 'round', 'perks', 'points', 'points-pops', 'w-name', 'w-mod', 'w-mag', 'w-res', 'w-gren', 'w-ammo',
       'crosshair', 'hitmarker', 'banner', 'banner-title', 'banner-sub', 'zone-name', 'prompt', 'prompt-text', 'prompt-cost',
       'prompt-sub', 'hint', 'pu-active', 'dmg', 'flash', 'downed', 'down-fill', 'lockhint']) this.el[id] = $(id);
   },
@@ -14953,8 +14962,38 @@ const HUD = {
   },
   weapon() {
     const s = curSlot();
-    const name = s ? wstat(s, 'name') : 'Mains nues';
-    if (this.last.name !== name) { this.el['w-name'].textContent = name; this.el['w-name'].classList.toggle('up', !!(s && s.up)); this.last.name = name; }
+    const tier = s ? s.tier || 0 : 0;
+    // nom sans le palier, à sa place habituelle ; le palier se lit au mod de munition, à gauche des munitions
+    const name = s ? tierStats(s.id, Math.min(tier, 1)).name : 'Mains nues', up = !!(s && s.up);
+    if (this.last.name !== name || this.last.up !== up) {
+      this.el['w-name'].textContent = name; this.el['w-name'].classList.toggle('up', up);
+      this.last.name = name; this.last.up = up;
+    }
+    const mod = (s && GLAS.tiers[tier] && GLAS.tiers[tier].mod) || '';
+    if (this.last.mod !== mod) {
+      this.el['w-mod'].innerHTML = mod ? `Mod de munition&nbsp;: <b>${mod}</b>` : '';
+      this.el['w-mod'].hidden = !mod;
+      this.last.mod = mod;
+    }
+    // place réservée aux chiffres de l'arme en main (mesurée, en em pour suivre la taille du texte) :
+    // le mod ne bouge pas quand le compte baisse ; HUD caché, mesure remise au prochain appel
+    const key = s ? `${s.id}:${tier}` : '';
+    if (this.last.key !== key) {
+      const fit = (id, max) => {
+        const el = this.el[id];
+        el.style.minWidth = '';
+        if (!s) return true;
+        const keep = el.textContent;
+        el.textContent = '0'.repeat(String(max).length);
+        const w = el.getBoundingClientRect().width, fs = parseFloat(getComputedStyle(el).fontSize);
+        el.textContent = keep;
+        if (!(w > 0 && fs > 0)) return false;
+        el.style.minWidth = `${(w / fs).toFixed(4)}em`;
+        return true;
+      };
+      const okMag = fit('w-mag', s && wstat(s, 'mag')), okRes = fit('w-res', s && wstat(s, 'res'));
+      this.last.key = okMag && okRes ? key : undefined;
+    }
     const mag = s ? s.mag : '–', res = s ? s.res : '–';
     if (this.last.mag !== mag) { this.el['w-mag'].textContent = mag; this.last.mag = mag; }
     if (this.last.res !== res) { this.el['w-res'].textContent = res; this.last.res = res; }
