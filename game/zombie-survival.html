@@ -928,7 +928,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.7.0';
+const GAME_VERSION = '1.8.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 2;
 
@@ -990,9 +990,9 @@ const BUNKER7 = {
   ],
   zones: [
     { name: "Salle d'arrivée", seed: [24, 20], tint: [1, 0.96, 0.9] },
-    { name: "Entrepôt", seed: [40, 20], tint: [1.05, 0.9, 0.74] },
-    { name: "Infirmerie", seed: [9, 15], tint: [0.84, 0.98, 0.9] },
-    { name: "Salle des machines", seed: [25, 5], tint: [0.8, 0.87, 1.02] },
+    { name: "Entrepôt", seed: [40, 20], tint: [1.05, 0.9, 0.74], zombie: "sentinelle" },
+    { name: "Infirmerie", seed: [9, 15], tint: [0.84, 0.98, 0.9], zombie: "savant" },
+    { name: "Salle des machines", seed: [25, 5], tint: [0.8, 0.87, 1.02], zombie: "lacere" },
   ],
   spawn: { pos: [24.5, 22.5], yaw: 0 },
   wallbuys: [
@@ -1237,7 +1237,7 @@ function speedMixForRound(r) {
    calculées d'après les règles du jeu pour rester exactes. */
 const ZOMBIE_TYPES = [
   {
-    id: 'fantassin', name: 'Le Fantassin', cls: 'Zombie standard', from: 1, model: 'fantassin', facts: 'standard', maps: null,
+    id: 'fantassin', num: '00', name: 'Le Fantassin', cls: 'Zombie standard', from: 1, model: 'fantassin', facts: 'standard', maps: null,
     desc: 'Un soldat tombé au front et relevé par l’infection. Seul, il est lent et prévisible\u00a0; en horde, il submerge.',
     // ×1 : la référence du bestiaire (points de vie, vitesse et dégâts des règles générales)
     mult: { hp: 1, speed: 1, damage: 1 },
@@ -1245,9 +1245,41 @@ const ZOMBIE_TYPES = [
     helmet: true,       // le casque encaisse le premier tir à la tête, puis tombe
     ability: 'Horde',   // accélère au fil des manches (speedMixForRound)
   },
+  /* Variantes du Fantassin (fiches d'Anthony, 6 octobre 2026) : mêmes règles, autre apparence.
+     Elles sortent des fenêtres et des apparitions au sol des pièces qui les nomment (zones[].zombie).
+     sign : signe distinctif · crawler : un tir dans les jambes le met à terre, il rampe ensuite ·
+     drop : objet lâché à sa mort (chance) · lantern : lanterne allumée (lumière réelle, 3 au plus). */
+  {
+    id: 'lacere', num: '00-A', name: 'Le Lacéré', cls: 'Variante du Fantassin', from: 1, model: 'lacere', facts: 'variant', maps: null,
+    desc: 'Un soldat pris dans l’explosion de sa propre grenade. Uniforme en lambeaux, il s’est relevé quand même.',
+    sign: 'Tête nue, veste ouverte sur les côtes, une manche arrachée.',
+    mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
+    crawler: true,
+  },
+  {
+    id: 'savant', num: '00-C', name: 'Le Savant', cls: 'Variante du Fantassin', from: 1, model: 'savant', facts: 'variant', maps: null,
+    desc: 'Un chercheur du laboratoire où tout a commencé. Sa dernière seringue est encore plantée dans son bras.',
+    sign: 'Blouse claire jusqu’aux genoux et lunettes rondes : repérable de loin dans le noir.',
+    mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
+    drop: { item: 'syringe', chance: 0.35 },
+  },
+  {
+    id: 'sentinelle', num: '00-D', name: 'La Sentinelle', cls: 'Variante du Fantassin', from: 1, model: 'sentinelle', facts: 'variant', maps: null,
+    desc: 'Un garde de nuit mort de froid à son poste. Sa lanterne brûle encore à sa ceinture.',
+    sign: 'Longue capote et lanterne allumée : on voit sa lumière avant de le voir.',
+    mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
+    drop: { item: 'mag', chance: 0.25 }, lantern: true,
+  },
 ];
-/* Type des zombies qui sortent de terre (le seul pour l'instant). */
+/* Type par défaut : celui d'une pièce qui n'en précise pas. */
 const BASE_TYPE = ZOMBIE_TYPES[0];
+const ZOMBIE_TYPE_BY_ID = Object.fromEntries(ZOMBIE_TYPES.map((t) => [t.id, t]));
+/* Objets lâchés par les variantes. heal : part des PV max rendue par une seringue (0,25 %, demande
+   d'Anthony) ; life : secondes au sol avant de disparaître. */
+const PICKUPS = {
+  syringe: { name: 'Seringue', heal: 0.0025, life: 30 },
+  mag: { name: 'Chargeur', life: 30 },
+};
 
 /* -------------------------------------------------------------- Cartes ---
    Une carte est un objet de données (fichier .json dans les Mod Tools).
@@ -1367,7 +1399,9 @@ function stairOpenings(plan, wallH) {
    dans les Mod Tools (avec ses objets) remplace la Bunker 7 intégrée dans les paquets publiés :
    - digi pass (jeu 1.5.1) : elle n'en avait pas (enregistrée avant le jeu 1.4.0) ; elle reprend
      celui de la carte intégrée quand le mur qui le porte est toujours là, entouré des mêmes cases ;
-   - abords (jeu 1.7.0) : elle reprend ceux de la carte intégrée (ils s'adaptent à sa grille).
+   - abords (jeu 1.7.0) : elle reprend ceux de la carte intégrée (ils s'adaptent à sa grille) ;
+   - zombies par pièce (jeu 1.8.0) : si aucune de ses pièces n'en nomme, chaque pièce de même nom
+     reprend celui de la carte intégrée (Infirmerie : Savant, machines : Lacéré, Entrepôt : Sentinelle).
    Le reste de la carte de l'auteur est gardé tel quel ; un élément écrit dans la carte l'emporte,
    et la valeur null le retire. */
 function withBuiltinAdditions(raw) {
@@ -1386,6 +1420,12 @@ function withBuiltinAdditions(raw) {
     if (same) out = { ...out, digipass: { cell: dp.cell.slice(), n: dp.n.slice(), off: dp.off, y: dp.y } };
   }
   if (raw.outskirts === undefined && base.outskirts) out = { ...out, outskirts: { ...base.outskirts } };
+  // zombies par pièce (jeu 1.8.0) : une Bunker 7 dont aucune pièce n'en nomme reprend ceux de la carte
+  // intégrée, pièce par pièce (même nom)
+  const types = new Map(base.zones.filter((z) => z.zombie).map((z) => [z.name, z.zombie]));
+  if (types.size && Array.isArray(raw.zones) && raw.zones.every((z) => !z || z.zombie === undefined) && raw.zones.some((z) => z && types.has(z.name))) {
+    out = { ...out, zones: raw.zones.map((z) => (z && types.has(z.name) ? { ...z, zombie: types.get(z.name) } : z)) };
+  }
   return out;
 }
 
@@ -1475,6 +1515,8 @@ function normalizeMap(raw) {
     };
     withLv(o, lv);
     for (const L of ['floor', 'wall', 'ceil']) if (z[L]) o[L] = texId(z[L], undefined);
+    // type de zombie des fenêtres et apparitions au sol de la pièce (jeu 1.8.0 ; absent : le Fantassin)
+    if (typeof z.zombie === 'string' && ZOMBIE_TYPE_BY_ID[z.zombie]) o.zombie = z.zombie;
     return o;
   }).filter(Boolean);
 
@@ -2428,6 +2470,20 @@ const Sound = (() => {
     noiseHit(t, 1.2, 0.6, 'bandpass', 300, 3000, 1.5, o, 0.4);
     tone('sine', 200, 1200, t, 1.2, 0.2, o, 0.3);
   }
+  /* Seringue ramassée : clic du verre, injection. Chargeur ramassé : deux clics métalliques. */
+  function syringe() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.35);
+    tone('sine', 3100, 2900, t, 0.05, 0.25, o, 0.001);
+    noiseHit(t + 0.05, 0.22, 0.35, 'highpass', 4500, 7000, 0.6, o, 0.02);
+  }
+  function magPickup() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.38);
+    noiseHit(t, 0.04, 0.6, 'bandpass', 2600, 1800, 3, o, 0.001);
+    noiseHit(t + 0.09, 0.05, 0.7, 'bandpass', 2000, 1400, 3, o, 0.001);
+    tone('triangle', 900, 700, t + 0.09, 0.06, 0.2, o);
+  }
   function powerupSpawn(pos) {
     if (!ctx) return;
     const o = out(pos, 0.4, 6); if (!o) return;
@@ -2537,6 +2593,7 @@ const Sound = (() => {
     zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say, rankStamp, rankUp, prestige,
+    syringe, magPickup,
   };
 })();
 
@@ -5676,6 +5733,7 @@ function buildWorld(map, opts = {}) {
   root.add(buildLevelGeometry());
   root.add(buildDecor());
   root.add(buildLights());
+  root.add(buildLanterns());
   root.add(buildFeatures());
   World.props = buildProps(map, CUR.editor);
   root.add(World.props);
@@ -5765,6 +5823,7 @@ function buildMaterials() {
   MAT.zCloth = std({ map: TEX.zcloth, vertexColors: true, roughness: 0.95, emissive: 0x20241c, emissiveIntensity: 1 });
   MAT.zEyes = new THREE.MeshBasicMaterial({ color: 0xffcf3f, fog: false });
   MAT.zHelmet = std({ color: 0xffffff, roughness: 0.58, metalness: 0.4, vertexColors: true, emissive: 0x0e100e, side: THREE.DoubleSide });
+  MAT.zLantern = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, fog: false });   // vitre de la lanterne (émissive)
   // bonus
   MAT.powerup = std({ color: 0x9dff7a, emissive: 0x2fdc40, emissiveIntensity: 0.9, roughness: 0.4, metalness: 0.2 });
   MAT.powerupDark = std({ color: 0x14361a, emissive: 0x0a3010, emissiveIntensity: 0.6, roughness: 0.6 });
@@ -9174,27 +9233,469 @@ function zombieGeometries() {
   };
   return ZGEO;
 }
-/* Jeu d'instances R pour n zombies : un appel de dessin par pièce, couleur et matrice par
-   instance (la horde du jeu : ZR ; l'écran « Modèles » a le sien). */
-function zombieInstances(R, n) {
-  const geos = zombieGeometries();
-  const defs = [
-    ['torso', MAT.zCloth, 1], ['head', MAT.zSkin, 1], ['eyes', MAT.zEyes, 1], ['helmet', MAT.zHelmet, 1], ['cuff', MAT.zCloth, 1],
-    ['upper', MAT.zCloth, 2], ['fore', MAT.zSkin, 2], ['thigh', MAT.zCloth, 2], ['shin', MAT.zCloth, 2],
+/* ------------------------------------------- Variantes du Fantassin (rendu) --
+   Fiches d'Anthony (6 octobre 2026) : Le Lacéré (N°00-A), Le Savant (N°00-C), La Sentinelle
+   (N°00-D). Même squelette et mêmes repères que le Fantassin (ZRIG) : buste sur l'os du bassin
+   (y vers le haut, z vers l'avant, x vers la gauche du zombie), tête sur l'os du cou, bras sur
+   les épaules et les coudes, jambes sur les hanches et les genoux. Couleurs des fiches dans les
+   sommets (palettes des fiches), nuancées par la teinte de chaque instance. */
+function zKit() {
+  // sRGB → linéaire, éclairci de k (les textures du tissu et de la peau assombrissent d'un quart)
+  const C = (hex, k = 1.3) => { const c = new THREE.Color(hex).convertSRGBToLinear(); return [c.r * k, c.g * k, c.b * k]; };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const box = (w, h, d, x, y, z, color, rx = 0, ry = 0, rz = 0) => ({ geo: GEO.box, matrix: mtx(x, y, z, rx, ry, rz, w, h, d), color });
+  const cyl = (rt, rb, h, x, y, z, color, sz = 1, rx = 0, ry = 0, rz = 0, n = 10) =>
+    ({ geo: new THREE.CylinderGeometry(rt, rb, h, n), matrix: mtx(x, y, z, rx, ry, rz, 1, 1, sz), color });
+  const ell = (a, b, c, x, y, z, color, rx = 0, ry = 0, rz = 0, ws = 10, hs = 7) =>
+    ({ geo: new THREE.SphereGeometry(1, ws, hs), matrix: mtx(x, y, z, rx, ry, rz, a, b, c), color });
+  const tor = (r, t, x, y, z, color, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1, n = 18) =>
+    ({ geo: new THREE.TorusGeometry(r, t, 6, n), matrix: mtx(x, y, z, rx, ry, rz, sx, sy, sz), color });
+  // calotte : haut d'une sphère (angle depuis le pôle), pour les cheveux et les bonnets
+  const cap = (open, a, b, c, x, y, z, color, rx = 0) =>
+    ({ geo: new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, open), matrix: mtx(x, y, z, rx, 0, 0, a, b, c), color });
+  // pièce tendue de a à b : sangle plate (w × t) ou cylindre (rayons w en a → rb en b)
+  const seg = (a, b, color, w, t, round = false, rb = w) => {
+    const dir = b.clone().sub(a), len = dir.length();
+    const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), dir.normalize());
+    const m = new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, round ? V(1, len, 1) : V(w, len, t));
+    return { geo: round ? new THREE.CylinderGeometry(rb, w, 1, 8) : GEO.box, matrix: m, color };
+  };
+  // point de la surface d'un tronc elliptique (demi-largeur rx, profondeur rx × depth) à l'abscisse x :
+  // position décalée de out vers l'extérieur et orientation (ry) de la normale
+  const on = (x, rx, depth, out = 0) => {
+    const rz = rx * depth, u = clamp(x / rx, -0.97, 0.97), z = rz * Math.sqrt(1 - u * u);
+    const ry = Math.atan2(x / (rx * rx), z / (rz * rz));
+    return { x: x + Math.sin(ry) * out, z: z + Math.cos(ry) * out, ry };
+  };
+  return { C, V, box, cyl, ell, tor, cap, seg, on };
+}
+/* Tête commune (cou, crâne, mâchoire tombante, bouche ouverte, orbites, nez, dents, oreilles). */
+function zHeadCore(k, K) {
+  const { box, cyl, ell } = k, H = ZRIG.head;
+  const h = [
+    cyl(0.05, 0.058, 0.13, 0, 0.02, 0, K.skin),
+    ell(0.096, 0.118, 0.106, 0, H, 0.004, K.skin, 0, 0, 0, 14, 10),
+    ell(0.07, 0.034, 0.066, 0, H - 0.11, 0.028, K.skin, 0.28),
+    ell(0.042, 0.03, 0.014, 0, H - 0.08, 0.086, K.mouth),
+    ell(0.031, 0.023, 0.016, -0.04, H - 0.004, 0.096, K.socket),
+    ell(0.031, 0.023, 0.016, 0.04, H - 0.004, 0.096, K.socket),
+    box(0.017, 0.026, 0.012, 0, H - 0.034, 0.103, K.mouth, -0.2),
+    ell(0.012, 0.028, 0.02, -0.097, H - 0.012, -0.01, K.skin), ell(0.012, 0.028, 0.02, 0.097, H - 0.012, -0.01, K.skin),
+    ell(0.022, 0.016, 0.006, -0.06, H - 0.055, 0.082, K.skinD, 0, -0.55, 0),
   ];
+  for (let i = 0; i < 5; i++) {
+    const x = (i - 2) * 0.0115;
+    h.push(box(0.0098, 0.016, 0.008, x, H - 0.064, 0.097 - Math.abs(x) * 0.25, K.teeth));
+    h.push(box(0.0098, 0.014, 0.008, x * 0.92, H - 0.096, 0.094 - Math.abs(x) * 0.25, K.teeth, 0.2));
+  }
+  return h;
+}
+/* Main nue aux doigts écartés et griffus (comme celle du Fantassin), au bout de l'avant-bras. */
+function zClawHand(k, K, y0 = -0.3) {
+  const { box, seg, V } = k, out = [box(0.06, 0.075, 0.026, 0, y0, 0.004, K.skin)];
+  for (let i = 0; i < 4; i++) {
+    const x = -0.022 + i * 0.0147, a = V(x, y0 - 0.033, 0.008), b = V(x * 1.35, y0 - 0.105, 0.03 + Math.abs(x) * 0.2);
+    out.push(seg(a, b, K.skin, 0.0085, 0, true, 0.0085), seg(b, b.clone().add(V(x * 0.2, -0.02, 0.012)), K.claw, 0.006, 0, true, 0.001));
+  }
+  const a = V(0.03, y0 + 0.022, 0.012), b = V(0.05, y0 - 0.03, 0.032);
+  out.push(seg(a, b, K.skin, 0.0095, 0, true, 0.0095), seg(b, b.clone().add(V(0.006, -0.018, 0.01)), K.claw, 0.0065, 0, true, 0.001));
+  return out;
+}
+/* Couleurs partagées par les variantes (peau, sang, bouche, dents). */
+function zCommonK(C) {
+  return {
+    skin: C(0x7c8574, 1.0), skinD: C(0x4c5245, 1.0), blood: C(0x6e1a14), bloodD: C(0x3e0f0b), mouth: C(0x140c0a),
+    socket: C(0x0d0f0b), teeth: C(0xc9bf9f), claw: C(0x141210), bone: C(0xd8cfb4), wound: C(0x2a1512),
+  };
+}
+/* Sang qui coule de la bouche sur le menton. */
+function zMouthBlood(k, K, long = 0.075) {
+  const { box } = k, H = ZRIG.head;
+  return [box(0.007, 0.05, 0.006, -0.01, H - 0.122, 0.09, K.blood, 0.25), box(0.006, long, 0.006, 0.012, H - 0.135, 0.083, K.blood, 0.25)];
+}
+
+const ZVGEO = {};
+/* Géométries d'une variante (créées une fois). */
+function variantGeometries(model) {
+  if (ZVGEO[model]) return ZVGEO[model];
+  const k = zKit(), { C, V, box, cyl, ell, tor, cap, seg, on } = k, H = ZRIG.head;
+  const merge = (o) => { const out = {}; for (const key in o) out[key] = mergeGeometries(o[key]); return out; };
+  let G = null;
+
+  if (model === 'lacere') {
+    /* ---------- Le Lacéré : veste ouverte sur les côtes, tête nue, manche gauche arrachée,
+       pantalon déchiré ; quand ses jambes sont déchiquetées, il ne lui reste que des moignons. */
+    const K = {
+      ...zCommonK(C), uni: C(0x4b5146), low: C(0x454a40), flap: C(0x3f443b), belt: C(0x1f1a16), pouch: C(0x1d1814),
+      strap: C(0x2b241e), metal: C(0x7d8078, 0.95), boot: C(0x1c1814), sole: C(0x110e0b), hair: C(0x23211d),
+      flesh: C(0x7a2a22), fleshD: C(0x3a0d0a), rag: C(0x8a8574), skinP: C(0x8a8574, 1.0),
+    };
+    const chestR = (y) => lerp(0.2, 0.22, clamp((y - 0.06) / 0.42, 0, 1)), BELT = 0.209;
+    const sT = (x, y, out = 0) => on(x, chestR(y), 0.6, out);
+    const T = [
+      cyl(0.22, 0.2, 0.42, 0, 0.27, 0, K.uni, 0.6, 0, 0, 0, 14),
+      ell(0.24, 0.088, 0.135, 0, 0.45, 0, K.uni, 0, 0, 0, 14, 8),
+      cyl(0.2, 0.218, 0.18, 0, -0.06, 0, K.low, 0.64, 0, 0, 0, 14),
+      cyl(BELT, BELT, 0.055, 0, 0.035, 0, K.belt, 0.645, 0, 0, 0, 16),
+    ];
+    // pans de la veste ouverts : bords relevés de part et d'autre du buste à vif, col arraché
+    for (const side of [-1, 1]) {
+      for (const [y, w, h] of [[0.36, 0.034, 0.24], [0.17, 0.03, 0.17]]) {
+        const p = sT(side * 0.09, y, 0.007);
+        T.push(box(w, h, 0.016, p.x, y, p.z, K.flap, 0, p.ry, side * 0.05));
+      }
+      const c = sT(side * 0.07, 0.49, 0.012);
+      T.push(box(0.07, 0.05, 0.014, c.x, 0.49, c.z, K.flap, -0.35, c.ry, side * 0.5));
+      // cartouchières
+      for (let i = 0; i < 3; i++) {
+        const q = on(side * (0.064 + i * 0.047), BELT, 0.645, 0.016);
+        T.push(box(0.04, 0.072, 0.032, q.x, 0.02, q.z, K.pouch, 0, q.ry, 0));
+        T.push(box(0.043, 0.012, 0.034, q.x, 0.05, q.z + 0.001, K.strap, 0, q.ry, 0));
+      }
+      // poches basses
+      const lp = on(side * 0.1, 0.21, 0.64, 0.004);
+      T.push(box(0.105, 0.08, 0.01, lp.x, -0.07, lp.z, K.low, 0, lp.ry, 0));
+    }
+    { const p = on(0, BELT, 0.645, 0.006); T.push(box(0.068, 0.052, 0.014, 0, 0.035, p.z, K.metal)); }
+    // patte d'épaule à droite ; à gauche, la manche arrachée laisse des lambeaux
+    T.push(box(0.1, 0.014, 0.05, -0.16, 0.515, 0, K.flap, 0, 0, 0.3));
+    for (const [a, l] of [[-0.6, 0.06], [0.2, 0.08], [1.0, 0.05], [1.8, 0.07]]) {
+      T.push(box(0.035, l, 0.008, 0.245 + Math.sin(a) * 0.012, 0.47 - l / 2, Math.cos(a) * 0.06, K.uni, 0.15, a, -0.25));
+    }
+    // sang : larges taches sur la veste, impacts
+    for (const [x, y, a, b] of [[0.15, 0.3, 0.05, 0.07], [-0.16, 0.22, 0.045, 0.06], [0.13, 0.1, 0.03, 0.04], [-0.12, 0.42, 0.035, 0.028]]) {
+      const p = sT(x, y, 0.003);
+      T.push(ell(a, b, 0.008, p.x, y, p.z, K.blood, 0, p.ry, 0.3, 8, 6));
+      T.push(box(0.007, b * 1.4, 0.005, p.x, y - b * 1.1, p.z + 0.001, K.bloodD, 0, p.ry, 0));
+    }
+    for (const [x, y] of [[-0.15, 0.32], [0.17, 0.4]]) { const q = sT(x, y, 0.007); T.push(ell(0.009, 0.009, 0.005, q.x, y, q.z, K.mouth, 0, q.ry, 0, 6, 4)); }
+    // buste à vif entre les pans (peau grise, chair, côtes, sternum, plaie au ventre) : matière de la peau
+    const chest = [];
+    { const z0 = sT(0, 0.28).z;
+      chest.push(ell(0.085, 0.2, 0.02, 0, 0.29, z0 - 0.008, K.skinP, 0, 0, 0, 12, 8));
+      chest.push(ell(0.066, 0.15, 0.02, 0, 0.29, z0 - 0.002, K.flesh, 0, 0, 0, 12, 8));
+      chest.push(box(0.016, 0.2, 0.012, 0, 0.32, z0 + 0.012, K.bone));
+      for (let i = 0; i < 5; i++) {
+        const y = 0.41 - i * 0.045, w = 0.055 - i * 0.002;
+        for (const s of [-1, 1]) chest.push(box(w, 0.013, 0.012, s * 0.035, y - 0.006, z0 + 0.011 - Math.abs(s) * 0.002, K.bone, 0, s * 0.35, s * -0.32));
+      }
+      chest.push(ell(0.05, 0.04, 0.014, 0.004, 0.13, z0 - 0.001, K.fleshD, 0, 0, 0, 10, 6));
+      chest.push(box(0.008, 0.07, 0.006, -0.02, 0.08, z0 + 0.004, K.blood), box(0.007, 0.05, 0.006, 0.025, 0.09, z0 + 0.003, K.blood));
+    }
+    // tête nue : cheveux ras, plaie au crâne, joue arrachée
+    const head = zHeadCore(k, K).concat(zMouthBlood(k, K, 0.09), [
+      cap(Math.PI * 0.44, 0.1, 0.123, 0.111, 0, H + 0.004, -0.006, K.hair, -0.32),
+      ell(0.03, 0.026, 0.012, 0.066, H + 0.075, 0.05, K.blood, 0, 0.75, 0.6, 9, 6),
+      ell(0.02, 0.017, 0.012, 0.069, H + 0.078, 0.053, K.fleshD, 0, 0.75, 0.6, 8, 5),
+      ell(0.009, 0.008, 0.008, 0.071, H + 0.079, 0.058, K.bone, 0, 0.75, 0.6, 6, 4),
+      box(0.005, 0.06, 0.005, 0.086, H + 0.03, 0.055, K.blood, 0, 0.7, 0.12),
+      box(0.004, 0.04, 0.005, 0.075, H + 0.04, 0.07, K.blood, 0, 0.6, 0.05),
+      ell(0.019, 0.026, 0.012, 0.07, H - 0.066, 0.068, K.flesh, 0, 0.8, 0.35),
+      box(0.018, 0.0035, 0.005, 0.075, H - 0.058, 0.077, K.teeth, 0, 0.8, 0),
+    ]);
+    // bras gauche nu (épaule et avant-bras), coupé de plaies ; bras droit dans sa manche
+    const cuts = (r, y0) => [[0.4, y0, 0.3], [1.3, y0 - 0.06, -0.4], [2.4, y0 - 0.12, 0.2]].map(([a, y, rz]) =>
+      box(0.005, 0.05, 0.006, Math.sin(a) * r, y, Math.cos(a) * r, K.blood, 0, a, rz));
+    const upperL = [ell(0.062, 0.06, 0.062, 0, -0.005, 0, K.skin), cyl(0.05, 0.043, 0.3, 0, -0.155, 0, K.skin), ...cuts(0.049, -0.1),
+      ell(0.03, 0.022, 0.01, 0.03, -0.2, 0.035, K.skinD, 0, 0.7, 0)];
+    const upperR = [ell(0.072, 0.068, 0.072, 0, -0.005, 0, K.uni), cyl(0.066, 0.055, 0.31, 0, -0.155, 0, K.uni), cyl(0.056, 0.056, 0.03, 0, -0.3, 0, K.low),
+      ...cuts(0.064, -0.08).map((p) => ({ ...p, color: K.blood }))];
+    const fore = [cyl(0.044, 0.035, 0.25, 0, -0.14, 0, K.skin), ell(0.016, 0.03, 0.01, 0.03, -0.12, 0.014, K.skinD),
+      box(0.004, 0.035, 0.004, 0.036, -0.15, 0.004, K.blood, 0, 0, 0.4), box(0.004, 0.03, 0.004, -0.02, -0.2, 0.03, K.blood, 0, 0, -0.3),
+      ...zClawHand(k, K)];
+    const cuff = [cyl(0.057, 0.051, 0.235, 0, -0.118, 0, K.uni), cyl(0.053, 0.053, 0.025, 0, -0.232, 0, K.flap),
+      ell(0.03, 0.04, 0.008, 0.0, -0.1, 0.055, K.blood, 0, 0, 0, 8, 6)];
+    // pantalon déchiré : genou gauche ouvert, cuisse droite entaillée
+    const legBase = () => [cyl(0.094, 0.07, 0.44, 0, -0.22, 0, K.low), ell(0.1, 0.13, 0.094, 0, -0.13, 0, K.low)];
+    const thighL = legBase().concat([
+      ell(0.05, 0.045, 0.014, 0.005, -0.38, 0.068, K.skinP, -0.1, 0, 0, 10, 6),
+      ell(0.03, 0.026, 0.012, 0.01, -0.39, 0.074, K.blood, -0.1, 0, 0, 8, 5),
+      box(0.004, 0.06, 0.005, -0.01, -0.42, 0.075, K.blood),
+      ...[[-0.04, -0.34, 0.6], [0.045, -0.35, -0.5], [-0.035, -0.43, -0.3], [0.04, -0.43, 0.4]].map(([x, y, rz]) => box(0.025, 0.018, 0.006, x, y, 0.072, K.low, -0.1, 0, rz)),
+    ]);
+    const thighR = legBase().concat([
+      ell(0.022, 0.07, 0.012, -0.075, -0.2, 0.03, K.skinP, 0, -1.2, 0, 8, 6),
+      ell(0.014, 0.05, 0.012, -0.08, -0.2, 0.032, K.blood, 0, -1.2, 0, 8, 5),
+      ell(0.03, 0.04, 0.01, 0.03, -0.1, 0.085, K.blood, 0, 0.3, 0, 8, 5),
+    ]);
+    // tibias : bas du pantalon en lambeaux sur des bottes courtes
+    const shin = [cyl(0.074, 0.07, 0.16, 0, -0.08, 0, K.low), cyl(0.068, 0.062, 0.26, 0, -0.27, 0, K.boot),
+      cyl(0.07, 0.07, 0.016, 0, -0.145, 0, K.sole),
+      box(0.105, 0.08, 0.24, 0, -0.39, 0.045, K.boot), ell(0.053, 0.04, 0.05, 0, -0.395, 0.162, K.boot),
+      box(0.11, 0.02, 0.27, 0, -0.43, 0.05, K.sole), box(0.1, 0.03, 0.075, 0, -0.415, -0.055, K.sole),
+      box(0.006, 0.05, 0.005, 0.03, -0.25, 0.066, K.blood)];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * TAU + 0.3, l = 0.03 + ((i * 37) % 5) * 0.008;
+      shin.push(box(0.028, l, 0.006, Math.sin(a) * 0.072, -0.16 - l / 2, Math.cos(a) * 0.072, K.low, 0.12 * Math.cos(a), a, 0.2 * ((i % 3) - 1)));
+    }
+    // moignons (jambes déchiquetées) : chair, os, lambeaux du pantalon
+    const stump = [ell(0.072, 0.04, 0.07, 0, -0.012, 0, K.flesh, 0, 0, 0, 12, 7), ell(0.05, 0.03, 0.05, 0, -0.03, 0, K.fleshD, 0, 0, 0, 10, 6),
+      cyl(0.02, 0.016, 0.07, 0.008, -0.05, 0.004, K.bone), ell(0.024, 0.016, 0.022, 0.008, -0.085, 0.004, K.bone),
+      box(0.006, 0.07, 0.006, -0.03, -0.05, 0.05, K.blood), box(0.006, 0.05, 0.006, 0.04, -0.045, -0.04, K.blood)];
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * TAU, l = 0.035 + (i % 3) * 0.015;
+      stump.push(box(0.03, l, 0.006, Math.sin(a) * 0.072, -0.01 - l / 2, Math.cos(a) * 0.072, K.low, 0.15 * Math.cos(a), a, 0.25 * ((i % 3) - 1)));
+    }
+    G = merge({ torso: T, chest, head, upperL, upperR, fore, cuff, thighL, thighR, shin, stump });
+    G.eyes = zombieGeometries().eyes;
+
+  } else if (model === 'savant') {
+    /* ---------- Le Savant : blouse claire jusqu'aux genoux, chemise et cravate, poche à stylos,
+       lunettes rondes, masque chirurgical baissé, gants, seringue plantée dans le bras droit. */
+    const K = {
+      ...zCommonK(C), coat: C(0xb8b4a8), coatD: C(0x8c887c), coatL: C(0xc8c4b8), shirt: C(0xd6d2c6), tie: C(0x2a2c34),
+      glove: C(0x3a2a26), trousers: C(0x2f2c2a), shoe: C(0x241c16), sole: C(0x110e0b), hair: C(0x1c1916),
+      stain: C(0x9a8a4a), pen1: C(0x2b3d78), pen2: C(0x1a1a1a), pen3: C(0xc8c8c0), clip: C(0x9aa0a4, 1.0),
+      mask: C(0xcfd3cc), button: C(0xe0ddd2), rim: C(0x2f2c2a, 1.0), glass: C(0xa8c0c8, 1.0), metal: C(0xb0b6ba, 1.0),
+      liquid: C(0x8e1810, 1.1), plunger: C(0xe8e8e4, 1.0),
+    };
+    const R1 = (y) => lerp(0.2, 0.215, clamp((y - 0.06) / 0.42, 0, 1)), R2 = (y) => lerp(0.225, 0.2, clamp((y + 0.24) / 0.3, 0, 1));
+    const sT = (x, y, out = 0) => (y >= 0.06 ? on(x, R1(y), 0.62, out) : on(x, R2(y), 0.66, out));
+    const T = [
+      cyl(0.215, 0.2, 0.42, 0, 0.27, 0, K.coat, 0.62, 0, 0, 0, 14),
+      ell(0.235, 0.085, 0.135, 0, 0.45, 0, K.coat, 0, 0, 0, 14, 8),
+      cyl(0.2, 0.225, 0.3, 0, -0.09, 0, K.coat, 0.66, 0, 0, 0, 14),
+      cyl(0.085, 0.1, 0.06, 0, 0.53, -0.012, K.coat, 0.9),
+    ];
+    // encolure : chemise, cravate, revers en V, col de chemise
+    { const z = sT(0, 0.43).z;
+      T.push(ell(0.05, 0.1, 0.012, 0, 0.44, z - 0.001, K.shirt, 0, 0, 0, 10, 6));
+      T.push(box(0.026, 0.15, 0.008, 0, 0.4, z + 0.011, K.tie), ell(0.016, 0.016, 0.01, 0, 0.485, z + 0.012, K.tie), box(0.019, 0.019, 0.008, 0, 0.325, z + 0.011, K.tie, 0, 0, Math.PI / 4));
+      for (const s of [-1, 1]) {
+        const p = sT(s * 0.052, 0.41, 0.006);
+        T.push(box(0.044, 0.2, 0.012, p.x, 0.41, p.z, K.coatL, 0, p.ry, -s * 0.33));
+        T.push(box(0.03, 0.022, 0.008, s * 0.03, 0.515, 0.07, K.shirt, -0.3, s * 0.4, s * 0.5));
+      } }
+    // boutonnage, couture, poches, stylos
+    for (const y of [0.27, 0.15, 0.03]) { const p = sT(0, y, 0.004); T.push(ell(0.011, 0.011, 0.006, 0, y, p.z, K.button, 0, 0, 0, 8, 5)); }
+    { const a = sT(0, 0.2), b = sT(0, -0.12);
+      T.push(box(0.005, 0.3, 0.004, 0, 0.17, a.z + 0.001, K.coatD), box(0.005, 0.26, 0.004, 0, -0.11, b.z + 0.001, K.coatD)); }
+    { const p = sT(-0.1, 0.33, 0.003);
+      T.push(box(0.086, 0.082, 0.006, p.x, 0.33, p.z, K.coatD, 0, p.ry, 0), box(0.08, 0.012, 0.007, p.x, 0.366, p.z + 0.001, K.coat, 0, p.ry, 0));
+      for (const [dx, col, h] of [[-0.022, K.pen1, 0.075], [0, K.pen2, 0.068], [0.02, K.pen3, 0.06]]) {
+        const q = sT(-0.1 + dx, 0.37, 0.006);
+        T.push(cyl(0.0055, 0.0055, h, q.x, 0.37 + h / 2 - 0.03, q.z, col, 1, 0, q.ry, 0, 8));
+        T.push(box(0.003, 0.025, 0.003, q.x + Math.sin(q.ry) * 0.006, 0.385, q.z + Math.cos(q.ry) * 0.006, K.clip, 0, q.ry, 0));
+      } }
+    for (const s of [-1, 1]) { const p = sT(s * 0.125, -0.12, 0.003); T.push(box(0.1, 0.012, 0.006, p.x, -0.12, p.z, K.mouth, 0, p.ry, s * 0.06)); }
+    // sang sur la poitrine (côté gauche), main ensanglantée en bas à gauche, tache jaunâtre à droite
+    for (const [x, y, a] of [[0.11, 0.3, 0.032], [0.14, 0.36, 0.014], [0.08, 0.24, 0.012], [0.16, 0.22, 0.016], [0.12, 0.42, 0.01], [0.06, 0.33, 0.008]]) {
+      const p = sT(x, y, 0.003);
+      T.push(ell(a, a * 0.85, 0.006, p.x, y, p.z, K.blood, 0, p.ry, 0, 8, 5));
+    }
+    for (const [x, y, l] of [[0.105, 0.26, 0.07], [0.125, 0.27, 0.05], [0.14, 0.2, 0.04]]) { const p = sT(x, y, 0.004); T.push(box(0.006, l, 0.005, p.x, y - l / 2, p.z, K.blood, 0, p.ry, 0)); }
+    { const p = sT(0.13, -0.16, 0.003);
+      T.push(ell(0.03, 0.034, 0.006, p.x, -0.16, p.z, K.blood, 0, p.ry, 0.2, 8, 6));
+      for (let i = 0; i < 4; i++) { const fx = 0.112 + i * 0.013; const q = sT(fx, -0.11, 0.003); T.push(box(0.009, 0.036, 0.005, q.x, -0.112 + Math.abs(i - 1.5) * -0.004, q.z, K.blood, 0, q.ry, (i - 1.5) * 0.12)); }
+      const t = sT(0.1, -0.16, 0.003); T.push(box(0.009, 0.03, 0.005, t.x, -0.155, t.z, K.blood, 0, t.ry, 0.9));
+      const s2 = sT(-0.12, -0.19, 0.003); T.push(ell(0.045, 0.03, 0.006, s2.x, -0.19, s2.z, K.stain, 0, s2.ry, 0.4, 8, 6)); }
+    // tête : cheveux plaqués, masque baissé sous le menton, sang à la bouche
+    const head = zHeadCore(k, K).concat(zMouthBlood(k, K, 0.05), [
+      cap(Math.PI * 0.47, 0.101, 0.124, 0.112, 0, H + 0.002, -0.008, K.hair, -0.38),
+      box(0.008, 0.035, 0.018, -0.096, H - 0.012, 0.03, K.hair), box(0.008, 0.035, 0.018, 0.096, H - 0.012, 0.03, K.hair),
+      ell(0.072, 0.04, 0.084, 0, 0.042, 0.012, K.mask, 0, 0, 0, 12, 7),
+      box(0.06, 0.004, 0.006, 0, 0.05, 0.096, K.coatD), box(0.06, 0.004, 0.006, 0, 0.032, 0.093, K.coatD),
+      ell(0.016, 0.012, 0.005, 0.018, 0.055, 0.094, K.blood, 0, 0, 0, 7, 5),
+      seg(V(0.07, 0.05, 0.0), V(0.097, H - 0.02, -0.01), K.mask, 0.004, 0.003), seg(V(-0.07, 0.05, 0.0), V(-0.097, H - 0.02, -0.01), K.mask, 0.004, 0.003),
+    ]);
+    // lunettes rondes (montures et verres) : matière brillante
+    const specs = [];
+    for (const s of [-1, 1]) {
+      specs.push(tor(0.03, 0.0045, s * 0.042, H - 0.002, 0.114, K.rim));
+      specs.push(cyl(0.029, 0.029, 0.003, s * 0.042, H - 0.002, 0.1125, K.glass, 1, Math.PI / 2, 0, 0, 16));
+      specs.push(seg(V(s * 0.072, H + 0.002, 0.112), V(s * 0.099, H, -0.005), K.rim, 0.004, 0.004));
+    }
+    specs.push(box(0.026, 0.006, 0.006, 0, H + 0.006, 0.117, K.rim));
+    // yeux jaunes derrière les verres
+    const eyes = [ell(0.0195, 0.0175, 0.004, -0.042, H - 0.002, 0.1158, null, 0, 0, 0, 12, 6), ell(0.0195, 0.0175, 0.004, 0.042, H - 0.002, 0.1158, null, 0, 0, 0, 12, 6)];
+    const upper = [ell(0.07, 0.066, 0.07, 0, -0.005, 0, K.coat), cyl(0.064, 0.056, 0.31, 0, -0.155, 0, K.coat), cyl(0.0565, 0.0565, 0.012, 0, -0.3, 0, K.coatD)];
+    // avant-bras dans la manche de la blouse, main gantée
+    const fore = [cyl(0.057, 0.051, 0.25, 0, -0.12, 0, K.coat), cyl(0.053, 0.053, 0.02, 0, -0.24, 0, K.coatD),
+      cyl(0.04, 0.042, 0.04, 0, -0.262, 0, K.glove), box(0.064, 0.08, 0.03, 0, -0.31, 0.004, K.glove)];
+    for (let i = 0; i < 4; i++) {
+      const x = -0.023 + i * 0.0155, a = V(x, -0.345, 0.008), b = V(x * 1.35, -0.418, 0.032 + Math.abs(x) * 0.2);
+      fore.push(seg(a, b, K.glove, 0.0098, 0, true, 0.0088));
+    }
+    fore.push(seg(V(0.031, -0.285, 0.012), V(0.052, -0.338, 0.034), K.glove, 0.0105, 0, true, 0.0095));
+    // seringue plantée au-dessus du coude droit, vers l'extérieur (os de l'épaule droite)
+    const syr = [];
+    { const tip = V(-0.03, -0.235, 0.012), d = V(-1, 0.55, 0.28).normalize();
+      const at = (t) => tip.clone().addScaledVector(d, t);
+      syr.push(seg(at(0), at(0.045), K.metal, 0.0018, 0, true, 0.0018));
+      syr.push(seg(at(0.045), at(0.055), K.plunger, 0.0062, 0, true, 0.0045));
+      syr.push(seg(at(0.055), at(0.105), K.liquid, 0.0118, 0, true, 0.0118));
+      syr.push(seg(at(0.105), at(0.14), K.glass, 0.0122, 0, true, 0.0122));
+      for (const t of [0.07, 0.085, 0.1, 0.115, 0.13]) syr.push(seg(at(t), at(t + 0.0022), K.rim, 0.0126, 0, true, 0.0126));
+      syr.push(seg(at(0.14), at(0.145), K.plunger, 0.021, 0, true, 0.021));
+      syr.push(seg(at(0.145), at(0.18), K.plunger, 0.004, 0, true, 0.004));
+      syr.push(seg(at(0.18), at(0.185), K.plunger, 0.013, 0, true, 0.013));
+      syr.push(ell(0.016, 0.012, 0.006, -0.05, -0.24, 0.025, K.blood, 0, -1.2, 0, 7, 5)); }
+    // cuisses : pantalon sombre et pan de blouse évasé jusqu'aux genoux
+    const thigh = [cyl(0.09, 0.068, 0.44, 0, -0.22, 0, K.trousers), ell(0.098, 0.12, 0.092, 0, -0.13, 0, K.trousers),
+      cyl(0.135, 0.17, 0.42, 0, -0.25, 0, K.coat, 1, 0, 0, 0, 16), cyl(0.171, 0.172, 0.022, 0, -0.452, 0, K.coatD, 1, 0, 0, 0, 16)];
+    const shin = [cyl(0.07, 0.064, 0.37, 0, -0.18, 0, K.trousers), cyl(0.066, 0.066, 0.018, 0, -0.362, 0, K.trousers),
+      box(0.1, 0.07, 0.24, 0, -0.4, 0.045, K.shoe), ell(0.05, 0.036, 0.052, 0, -0.405, 0.158, K.shoe),
+      box(0.105, 0.018, 0.262, 0, -0.432, 0.048, K.sole), box(0.1, 0.028, 0.07, 0, -0.418, -0.055, K.sole),
+      box(0.03, 0.004, 0.08, 0, -0.364, 0.09, K.coatD)];
+    G = merge({ torso: T, head, specs, eyes, upper, fore, syringe: syr, thigh, shin });
+
+  } else if (model === 'sentinelle') {
+    /* ---------- La Sentinelle : longue capote croisée, ceinturon, écharpe, bonnet enneigé,
+       neige sur les épaules et les bottes, lanterne allumée à la ceinture. */
+    const K = {
+      ...zCommonK(C), coat: C(0x3f453b), coatD: C(0x2f342c), coatL: C(0x4a5145), button: C(0x8a826a, 0.95),
+      belt: C(0x2a221c), leather: C(0x4a4038), scarf: C(0x4a4038), scarfD: C(0x3a312a), snow: C(0xd6dee8, 1.0),
+      boot: C(0x1c1814), sole: C(0x110e0b), metal: C(0x6a665e, 1.0), frame: C(0x2a2622, 1.0), cap: C(0x3f453b), capD: C(0x30352d),
+      glow: C(0xffb347, 1.25), flame: C(0xfff0c0, 1.3),
+    };
+    const R1 = (y) => lerp(0.208, 0.228, clamp((y - 0.06) / 0.42, 0, 1)), R2 = (y) => lerp(0.238, 0.212, clamp((y + 0.26) / 0.32, 0, 1));
+    const sT = (x, y, out = 0) => (y >= 0.06 ? on(x, R1(y), 0.64, out) : on(x, R2(y), 0.68, out));
+    const T = [
+      cyl(0.228, 0.208, 0.42, 0, 0.27, 0, K.coat, 0.64, 0, 0, 0, 14),
+      ell(0.25, 0.095, 0.142, 0, 0.45, 0, K.coat, 0, 0, 0, 14, 8),
+      cyl(0.212, 0.238, 0.32, 0, -0.1, 0, K.coat, 0.68, 0, 0, 0, 14),
+      cyl(0.09, 0.106, 0.1, 0, 0.53, -0.006, K.coat, 0.95),
+      cyl(0.219, 0.219, 0.06, 0, 0.03, 0, K.belt, 0.69, 0, 0, 0, 16),
+    ];
+    // capote croisée : deux rangées de boutons, bord du pan qui croise
+    for (const s of [-1, 1]) for (const y of [0.37, 0.27, 0.17]) { const p = sT(s * 0.064, y, 0.004); T.push(ell(0.0125, 0.0125, 0.007, p.x, y, p.z, K.button, 0, p.ry, 0, 8, 5)); }
+    { const p = sT(0.02, 0.27, 0.002), q = sT(0.02, -0.12, 0.002);
+      T.push(box(0.012, 0.38, 0.005, p.x, 0.27, p.z, K.coatD, 0, p.ry, 0), box(0.012, 0.26, 0.005, q.x, -0.13, q.z, K.coatD, 0, q.ry, 0)); }
+    // ceinturon : boucle, deux cartouchières
+    { const p = sT(0, 0.03, 0.012); T.push(box(0.06, 0.05, 0.014, 0, 0.03, p.z, K.metal)); }
+    for (const s of [-1, 1]) { const p = sT(s * 0.13, 0.02, 0.018); T.push(box(0.055, 0.065, 0.035, p.x, 0.02, p.z, K.leather, 0, p.ry, 0), box(0.058, 0.014, 0.037, p.x, 0.05, p.z + 0.001, K.belt, 0, p.ry, 0)); }
+    // écharpe : un tour au cou, deux pans sur la poitrine
+    T.push(tor(0.078, 0.028, 0, 0.565, 0.012, K.scarf, Math.PI / 2, 0, 0, 1, 0.9, 1, 14));
+    { const p = sT(-0.035, 0.44, 0.02), q = sT(0.025, 0.47, 0.03);
+      T.push(box(0.056, 0.22, 0.016, p.x, 0.44, p.z, K.scarf, 0, p.ry, 0.08));
+      T.push(box(0.05, 0.16, 0.016, q.x, 0.47, q.z, K.scarfD, 0, q.ry, -0.12));
+      T.push(ell(0.035, 0.03, 0.022, -0.01, 0.53, sT(-0.01, 0.53, 0.03).z, K.scarf, 0, 0, 0, 8, 6));
+      for (let i = 0; i < 5; i++) T.push(box(0.008, 0.03, 0.008, p.x - 0.026 + i * 0.013, 0.316, p.z + 0.002, K.scarfD, 0, p.ry, 0.08));
+      T.push(ell(0.022, 0.03, 0.008, q.x - 0.005, 0.51, q.z + 0.012, K.blood, 0, q.ry, 0, 8, 5)); }
+    // neige sur les épaules et le col
+    for (const s of [-1, 1]) {
+      T.push(ell(0.1, 0.024, 0.086, s * 0.165, 0.528, 0, K.snow, 0, 0, -s * 0.28, 10, 6));
+      T.push(ell(0.04, 0.015, 0.035, s * 0.06, 0.585, -0.04, K.snow, 0, 0, 0, 8, 5));
+    }
+    // deux impacts de balles qui saignent
+    for (const [x, y] of [[0.12, 0.32], [-0.1, 0.14]]) {
+      const p = sT(x, y, 0.003), q = sT(x, y, 0.007);
+      T.push(ell(0.022, 0.022, 0.006, p.x, y, p.z, K.blood, 0, p.ry, 0, 8, 5), ell(0.009, 0.009, 0.005, q.x, y, q.z, K.mouth, 0, q.ry, 0, 6, 4));
+      T.push(box(0.007, 0.06, 0.005, p.x, y - 0.045, p.z + 0.001, K.blood, 0, p.ry, 0));
+    }
+    // lanterne à la hanche gauche, pendue au ceinturon : armature (la vitre lumineuse est à part)
+    const c = sT(0.165, -0.13, 0.07), L = V(c.x, -0.13, c.z), lan = [];
+    T.push(seg(V(0.15, 0.02, sT(0.15, 0.02, 0.015).z), V(L.x, L.y + 0.12, L.z), K.leather, 0.016, 0.006));
+    T.push(cyl(0.028, 0.046, 0.03, L.x, L.y + 0.075, L.z, K.frame, 1, 0, 0, 0, 12), cyl(0.014, 0.018, 0.022, L.x, L.y + 0.1, L.z, K.frame, 1, 0, 0, 0, 8));
+    T.push(tor(0.026, 0.0035, L.x, L.y + 0.12, L.z, K.frame, 0, Math.PI / 2, 0, 1, 1, 1, 12));
+    T.push(cyl(0.048, 0.046, 0.024, L.x, L.y - 0.072, L.z, K.frame, 1, 0, 0, 0, 12));
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + Math.PI / 4; T.push(box(0.008, 0.125, 0.008, L.x + Math.sin(a) * 0.04, L.y, L.z + Math.cos(a) * 0.04, K.frame, 0, a, 0)); }
+    lan.push(cyl(0.037, 0.037, 0.12, L.x, L.y, L.z, K.glow, 1, 0, 0, 0, 12));
+    // tête : bonnet de laine à revers, enneigé, insigne ; sang qui coule sur l'écharpe
+    const head = zHeadCore(k, K).concat(zMouthBlood(k, K, 0.1));
+    const bonnet = [cap(Math.PI * 0.5, 0.106, 0.115, 0.114, 0, H + 0.022, -0.004, K.cap, -0.06),
+      cyl(0.107, 0.109, 0.034, 0, H + 0.03, -0.004, K.capD, 1.075, -0.06, 0, 0, 18),
+      ell(0.07, 0.024, 0.07, 0, H + 0.13, -0.014, K.snow, 0, 0, 0, 10, 6),
+      ell(0.028, 0.012, 0.03, 0.055, H + 0.105, 0.05, K.snow, 0, 0, 0.55, 8, 5),
+      cyl(0.011, 0.011, 0.005, 0, H + 0.03, 0.118, K.metal, 1, Math.PI / 2 - 0.06, 0, 0, 10)];
+    const upper = [ell(0.078, 0.072, 0.078, 0, -0.005, 0, K.coat), cyl(0.07, 0.061, 0.31, 0, -0.155, 0, K.coat), cyl(0.062, 0.062, 0.012, 0, -0.302, 0, K.coatD)];
+    const fore = [cyl(0.062, 0.056, 0.2, 0, -0.1, 0, K.coat), cyl(0.067, 0.066, 0.05, 0, -0.195, 0, K.coatD)];
+    const hand = [cyl(0.036, 0.034, 0.06, 0, -0.235, 0, K.skin), ...zClawHand(k, K)];
+    // cuisses : pantalon et long pan de capote jusqu'à mi-mollet
+    const thigh = [cyl(0.09, 0.068, 0.44, 0, -0.22, 0, K.coatD), ell(0.098, 0.12, 0.092, 0, -0.13, 0, K.coatD),
+      cyl(0.142, 0.2, 0.7, 0, -0.39, 0, K.coat, 1, 0, 0, 0, 16), cyl(0.201, 0.202, 0.03, 0, -0.73, 0, K.coatD, 1, 0, 0, 0, 16)];
+    const shin = [cyl(0.074, 0.071, 0.04, 0, -0.01, 0, K.coatD), cyl(0.075, 0.075, 0.018, 0, -0.032, 0, K.sole),
+      cyl(0.071, 0.061, 0.33, 0, -0.2, 0, K.boot), box(0.105, 0.08, 0.24, 0, -0.39, 0.045, K.boot), ell(0.053, 0.04, 0.05, 0, -0.395, 0.162, K.boot),
+      box(0.11, 0.02, 0.27, 0, -0.43, 0.05, K.sole), box(0.1, 0.03, 0.075, 0, -0.415, -0.055, K.sole),
+      ell(0.046, 0.014, 0.05, 0, -0.352, 0.13, K.snow, -0.25, 0, 0, 8, 5), ell(0.03, 0.01, 0.03, 0.02, -0.37, 0.175, K.snow, -0.5, 0, 0, 8, 5)];
+    G = merge({ torso: T, lantern: lan, head, cap: bonnet, upper, fore, hand, thigh, shin });
+    G.eyes = zombieGeometries().eyes;
+    G.lanternPos = L.clone();     // centre de la vitre, repère du bassin (lumière réelle)
+  }
+  ZVGEO[model] = G;
+  return G;
+}
+
+/* Pièces de chaque modèle : géométrie, os suivi, matière, teinte d'instance. bone : un os (hips,
+   neck, shL, shR, elL, elR, hipL, hipR, knL, knR) ou une paire gauche-droite (sh, el, hip, kn).
+   head : cachée quand la tête a sauté · helmet : le casque · legs : cachée quand le zombie rampe
+   (jambes déchiquetées) · stump : visible seulement alors. Les bras arrachés (gib) cachent les
+   pièces des épaules et des coudes de leur côté. */
+const ZPARTS = {
+  fantassin: [
+    { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'head', bone: 'neck', mat: 'zSkin', tint: 'skin', head: true },
+    { geo: 'eyes', bone: 'neck', mat: 'zEyes', tint: 'eyes', head: true },
+    { geo: 'helmet', bone: 'neck', mat: 'zHelmet', tint: 'helmet', head: true, helmet: true },
+    { geo: 'cuff', bone: 'elR', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'upper', bone: 'sh', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'fore', bone: 'el', mat: 'zSkin', tint: 'skin' },
+    { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth' },
+  ],
+  lacere: [
+    { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'chest', bone: 'hips', mat: 'zSkin', tint: 'skin' },
+    { geo: 'head', bone: 'neck', mat: 'zSkin', tint: 'skin', head: true },
+    { geo: 'eyes', bone: 'neck', mat: 'zEyes', tint: 'eyes', head: true },
+    { geo: 'upperL', bone: 'shL', mat: 'zSkin', tint: 'skin' },
+    { geo: 'upperR', bone: 'shR', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'fore', bone: 'el', mat: 'zSkin', tint: 'skin' },
+    { geo: 'cuff', bone: 'elR', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'thighL', bone: 'hipL', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'thighR', bone: 'hipR', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth', legs: true },
+    { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
+  ],
+  savant: [
+    { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'head', bone: 'neck', mat: 'zSkin', tint: 'skin', head: true },
+    { geo: 'specs', bone: 'neck', mat: 'zHelmet', tint: 'white', head: true },
+    { geo: 'eyes', bone: 'neck', mat: 'zEyes', tint: 'eyes', head: true },
+    { geo: 'upper', bone: 'sh', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'fore', bone: 'el', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'syringe', bone: 'shR', mat: 'zHelmet', tint: 'white' },
+    { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth' },
+  ],
+  sentinelle: [
+    { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'lantern', bone: 'hips', mat: 'zLantern', tint: 'white' },
+    { geo: 'head', bone: 'neck', mat: 'zSkin', tint: 'skin', head: true },
+    { geo: 'cap', bone: 'neck', mat: 'zCloth', tint: 'cloth', head: true },
+    { geo: 'eyes', bone: 'neck', mat: 'zEyes', tint: 'eyes', head: true },
+    { geo: 'upper', bone: 'sh', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'fore', bone: 'el', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'hand', bone: 'el', mat: 'zSkin', tint: 'skin' },
+    { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
+    { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth' },
+  ],
+};
+const ZBONES = { sh: ['shL', 'shR'], el: ['elL', 'elR'], hip: ['hipL', 'hipR'], kn: ['knL', 'knR'] };
+const zGeoSet = (model) => (model === 'fantassin' ? zombieGeometries() : variantGeometries(model));
+const zModelOf = (z) => z.model || (z.type && z.type.model) || 'fantassin';
+/* Jeu d'instances R pour n zombies : un appel de dessin par pièce et par modèle, couleur et
+   matrice par instance (la horde du jeu : ZR, tous les modèles ; l'écran « Modèles » : un seul). */
+function zombieInstances(R, n, models = Object.keys(ZPARTS)) {
   const group = new THREE.Group();
   const white = new THREE.Color(1, 1, 1);
   R.N = n;
   R.parts = [];
-  for (const [name, mat, mul] of defs) {
-    const m = new THREE.InstancedMesh(geos[name], mat, n * mul);
-    m.userData.mul = mul;
-    m.frustumCulled = false;
-    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    for (let i = 0; i < n * mul; i++) { m.setMatrixAt(i, ZERO_M); m.setColorAt(i, white); }
-    R[name] = m;
-    R.parts.push(m);
-    group.add(m);
+  R.models = {};
+  for (const model of models) {
+    const geos = zGeoSet(model), list = R.models[model] = [];
+    for (const def of ZPARTS[model]) {
+      const pair = !!ZBONES[def.bone], mul = pair ? 2 : 1;
+      const m = new THREE.InstancedMesh(geos[def.geo], MAT[def.mat], n * mul);
+      m.userData.mul = mul;
+      m.userData.model = model;
+      m.frustumCulled = false;
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      for (let i = 0; i < n * mul; i++) { m.setMatrixAt(i, ZERO_M); m.setColorAt(i, white); }
+      list.push({ def, m, pair });
+      R.parts.push(m);
+      group.add(m);
+    }
   }
   return group;
 }
@@ -9218,54 +9719,62 @@ function makeRig() {
 const _skinTints = [0xffffff, 0xf0fae8, 0xfff2e4, 0xe2eae0, 0xf6f4ee];
 const _clothTints = [0xffffff, 0xf0f5e8, 0xfbf4e6, 0xe4e8e0];
 const _helmets = [0x3b403a, 0x42473e, 0x353a34];
-function paintZombieSlot(s, look, R = ZR) {
+function paintZombieSlot(s, look, R = ZR, model = 'fantassin') {
   const c = new THREE.Color();
-  const L = (hex) => c.setHex(hex).convertSRGBToLinear();
-  R.torso.setColorAt(s, L(look.cloth));
-  R.cuff.setColorAt(s, L(look.cloth));
-  R.head.setColorAt(s, L(look.skin));
-  R.eyes.setColorAt(s, c.setHex(look.eyes));
-  R.helmet.setColorAt(s, L(look.helmetColor));
-  for (const k of [0, 1]) {
-    R.upper.setColorAt(s * 2 + k, L(look.cloth));
-    R.fore.setColorAt(s * 2 + k, L(look.skin));
-    R.thigh.setColorAt(s * 2 + k, L(look.cloth));
-    R.shin.setColorAt(s * 2 + k, L(look.cloth));
+  for (const { def, m, pair } of R.models[model] || []) {
+    if (def.tint === 'eyes') c.setHex(look.eyes);
+    else if (def.tint === 'white') c.setRGB(1, 1, 1);
+    else c.setHex(def.tint === 'skin' ? look.skin : def.tint === 'helmet' ? look.helmetColor : look.cloth).convertSRGBToLinear();
+    if (pair) { m.setColorAt(s * 2, c); m.setColorAt(s * 2 + 1, c); } else m.setColorAt(s, c);
+    m.instanceColor.needsUpdate = true;
   }
-  for (const m of R.parts) m.instanceColor.needsUpdate = true;
 }
 function randomZombieLook() {
   return { skin: pick(_skinTints), cloth: pick(_clothTints), eyes: 0xffffff, helmet: true, helmetColor: pick(_helmets) };
 }
+/* Pièce visible ? side : 0 gauche, 1 droite, -1 au milieu. */
+function zPartVisible(z, def, side) {
+  if (def.head && z.headless) return false;
+  if (def.helmet && !(z.look.helmet && z.helmetOn !== false)) return false;
+  if (def.legs && z.crawl) return false;
+  if (def.stump && !z.crawl) return false;
+  if (side >= 0 && z.gib && (def.bone.startsWith('sh') || def.bone.startsWith('el')) && (z.gib & (side ? 2 : 1))) return false;
+  return true;
+}
 function writeZombieMatrices(z) {
   const R = z.R || ZR, r = z.rig, s = z.slot;
   r.root.updateMatrixWorld(true);
-  R.torso.setMatrixAt(s, r.hips.matrixWorld);
-  if (z.headless) { R.head.setMatrixAt(s, ZERO_M); R.eyes.setMatrixAt(s, ZERO_M); R.helmet.setMatrixAt(s, ZERO_M); }
-  else {
-    R.head.setMatrixAt(s, r.neck.matrixWorld);
-    R.eyes.setMatrixAt(s, r.neck.matrixWorld);
-    R.helmet.setMatrixAt(s, z.look.helmet && z.helmetOn !== false ? r.neck.matrixWorld : ZERO_M);
+  for (const { def, m, pair } of R.models[zModelOf(z)]) {
+    if (pair) {
+      const [bl, br] = ZBONES[def.bone];
+      m.setMatrixAt(s * 2, zPartVisible(z, def, 0) ? r[bl].matrixWorld : ZERO_M);
+      m.setMatrixAt(s * 2 + 1, zPartVisible(z, def, 1) ? r[br].matrixWorld : ZERO_M);
+    } else {
+      const side = def.bone.endsWith('L') ? 0 : def.bone.endsWith('R') ? 1 : -1;
+      m.setMatrixAt(s, zPartVisible(z, def, side) ? r[def.bone].matrixWorld : ZERO_M);
+    }
   }
-  R.upper.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.shL.matrixWorld);
-  R.upper.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.shR.matrixWorld);
-  R.fore.setMatrixAt(s * 2, z.gib & 1 ? ZERO_M : r.elL.matrixWorld);
-  R.fore.setMatrixAt(s * 2 + 1, z.gib & 2 ? ZERO_M : r.elR.matrixWorld);
-  R.cuff.setMatrixAt(s, z.gib & 2 ? ZERO_M : r.elR.matrixWorld);
-  R.thigh.setMatrixAt(s * 2, r.hipL.matrixWorld);
-  R.thigh.setMatrixAt(s * 2 + 1, r.hipR.matrixWorld);
-  R.shin.setMatrixAt(s * 2, r.knL.matrixWorld);
-  R.shin.setMatrixAt(s * 2 + 1, r.knR.matrixWorld);
 }
 function hideZombieSlot(s, R = ZR) {
-  for (const name of ['torso', 'head', 'eyes', 'helmet', 'cuff']) R[name].setMatrixAt(s, ZERO_M);
-  for (const name of ['upper', 'fore', 'thigh', 'shin']) { R[name].setMatrixAt(s * 2, ZERO_M); R[name].setMatrixAt(s * 2 + 1, ZERO_M); }
+  for (const m of R.parts) {
+    if (m.userData.mul === 2) { m.setMatrixAt(s * 2, ZERO_M); m.setMatrixAt(s * 2 + 1, ZERO_M); } else m.setMatrixAt(s, ZERO_M);
+  }
 }
-/* Seuls les emplacements occupés sont dessinés (les places libres sont prises par le bas). */
+/* Seuls les emplacements occupés sont dessinés, modèle par modèle (les places libres sont prises
+   par le bas) ; un modèle sans zombie n'est pas dessiné du tout. */
 function flushZombieMatrices(R = ZR) {
-  let used = R.N;
-  if (R === ZR) { used = 0; for (const z of Zombies.list) if (!z.removed && z.slot >= used) used = z.slot + 1; }
-  for (const m of R.parts) { m.count = used * m.userData.mul; m.instanceMatrix.needsUpdate = true; }
+  const used = {};
+  if (R === ZR) { for (const z of Zombies.list) if (!z.removed) { const md = zModelOf(z); used[md] = Math.max(used[md] || 0, z.slot + 1); } }
+  for (const m of R.parts) {
+    const u = R === ZR ? used[m.userData.model] || 0 : R.N;
+    m.count = u * m.userData.mul;
+    m.visible = m.count > 0;
+    if (m.count) {
+      m.instanceMatrix.updateRange.offset = 0;
+      m.instanceMatrix.updateRange.count = m.count * 16;
+      m.instanceMatrix.needsUpdate = true;
+    }
+  }
 }
 
 /* Modèles de l'écran « Modèles » (un par type de ZOMBIE_TYPES). make() crée un
@@ -9278,7 +9787,7 @@ const SPECIMEN_MODELS = {
     helmet: true,
     make() {
       const R = {};
-      const root = zombieInstances(R, 1);
+      const root = zombieInstances(R, 1, ['fantassin']);
       for (const m of R.parts) m.castShadow = true;
       const z = {
         id: 3, slot: 0, R, rig: makeRig(), look: randomZombieLook(), helmetOn: true, alive: true, state: 'idle', t: 0,
@@ -9345,7 +9854,69 @@ const SPECIMEN_MODELS = {
       };
     },
   },
+  lacere: { anims: ['idle', 'walk', 'jog', 'run', 'crawl', 'attack', 'tear', 'rise'], legs: true, make: () => variantSpecimen('lacere') },
+  savant: { anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'], make: () => variantSpecimen('savant') },
+  sentinelle: { anims: ['idle', 'walk', 'jog', 'run', 'attack', 'tear', 'rise'], make: () => variantSpecimen('sentinelle') },
 };
+
+/* Spécimen d'une variante : même squelette et mêmes animations que le Fantassin ; le Lacéré
+   rampe (animation « Rampe », ou 5 s après un tir dans les jambes) ; la lanterne de la Sentinelle
+   éclaire vraiment. */
+const _lanternW = new THREE.Vector3();
+function variantSpecimen(model) {
+  const R = {};
+  const root = zombieInstances(R, 1, [model]);
+  for (const m of R.parts) m.castShadow = true;
+  const type = ZOMBIE_TYPES.find((t) => t.model === model) || BASE_TYPE;
+  const look = () => ({ ...randomZombieLook(), helmet: false });
+  const z = {
+    id: 5, slot: 0, R, model, type, rig: makeRig(), look: look(), helmetOn: false, alive: true, state: 'idle', t: 0,
+    pos: new THREE.Vector3(), yaw: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false, crawl: false, crawlT: 0, crawlPh: 0,
+  };
+  paintZombieSlot(0, z.look, R, model);
+  const geos = zGeoSet(model);
+  let light = null;
+  if (geos.lanternPos) { light = new THREE.PointLight(0xffb347, 1.3, 3.2, 2); root.add(light); }
+  const legs = { t: -1 };
+  return {
+    root,
+    restyle() { z.look = look(); paintZombieSlot(0, z.look, R, model); },
+    crawling: () => z.crawl,
+    legShot() {
+      if (!type.crawler || legs.t >= 0) return false;
+      legs.t = 0; z.flinch = 0.45;
+      return true;
+    },
+    pose(anim, t, dt, yaw) {
+      z.yaw = yaw; z.pos.y = 0; z.moving = 0; z.state = 'idle'; z.speedType = 'walk'; z.t = t;
+      if (anim === 'walk' || anim === 'jog' || anim === 'run') {
+        z.state = 'chase'; z.speedType = anim; z.moving = (SPEEDS[anim][0] + SPEEDS[anim][1]) / 2;
+      } else if (anim === 'crawl') { z.state = 'chase'; z.moving = 0.55; }
+      else if (anim === 'attack') { z.state = 'attack'; z.t = t % 1.4; }
+      else if (anim === 'tear') z.state = 'tear';
+      else if (anim === 'rise') {
+        const k = t % 3.6;
+        if (k < 1.7) {
+          z.state = 'rise'; z.t = Math.max(0, k - 0.4);
+          z.pos.y = lerp(-1.7, 0, smooth(clamp(z.t / 1.3, 0, 1)));
+        } else z.t = k;
+      }
+      // reptation : l'animation « Rampe », ou les 5 s qui suivent un tir dans les jambes
+      if (legs.t >= 0) { legs.t += dt; if (legs.t > 5) legs.t = -1; }
+      const crawl = anim === 'crawl' || legs.t >= 0;
+      if (crawl && !z.crawl) { z.crawl = true; z.crawlT = anim === 'crawl' ? 1 : 0; }
+      else if (!crawl) z.crawl = false;
+      if (z.crawl) { z.crawlT += dt; if (z.state === 'rise') z.state = 'chase'; }
+      z.flinch = damp(z.flinch, 0, 6, dt);
+      animateZombie(z, dt);
+      flushZombieMatrices(R);
+      if (light) {
+        light.position.copy(_lanternW.copy(geos.lanternPos).applyMatrix4(z.rig.hips.matrixWorld));
+        light.intensity = 1.25 + 0.22 * Math.sin(t * 9.3) * Math.sin(t * 4.1 + 1) + 0.07 * Math.sin(t * 27);
+      }
+    },
+  };
+}
 
 /* ================================================================= 06 EFFETS ==
    Particules (sang, étincelles, terre), impacts, débris, traçantes,
@@ -10520,7 +11091,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
   for (const z of Zombies.list) {
     if (!z.alive) continue;
     const t = rayHitZombie(z, ox, oy, oz, dx, dy, dz, 0);
-    if (t >= 0 && t < wallT) _hits.push({ z, t, head: _hitHead });
+    if (t >= 0 && t < wallT) _hits.push({ z, t, head: _hitHead, leg: _hitLeg });
   }
   _hits.sort((a, b) => a.t - b.t);
   let dmg = wstat(s, 'dmg') * (player.perks.has('detente') ? 1.5 : 1);
@@ -10547,6 +11118,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
     bloodBurst(hx, hy, hz, dx, dz, h.head ? 7 : 4, 1);
     Arms.shotHit = true;
     const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5 });
+    if (!killed && h.leg && (h.z.type || BASE_TYPE).crawler) startCrawl(h.z, dx, dz);
     HUD.hitmarker(killed);
     if (boom) explode(hx, hy, hz, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds' });
     if (k >= pen) { endT = h.t; stopped = true; break; }
@@ -10860,7 +11432,7 @@ function updateViewmodel(dt) {
    ============================================================================ */
 const Zombies = { list: [], flowT: 0, lastCell: -1, seq: 0 };
 const SPEEDS = { walk: [1.0, 1.35], jog: [2.1, 2.55], run: [3.5, 4.1] };
-let _hitHead = false;
+let _hitHead = false, _hitLeg = false;
 const _zh = new THREE.Vector3();
 const _fd = { x: 0, z: 0 };
 
@@ -10881,7 +11453,7 @@ function zombieHead(z, out) { return out.set(0, ZRIG.head, 0.02).applyMatrix4(z.
 /* Rayon contre zombie : sphère pour la tête, cylindre vertical pour le corps. */
 function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
   let best = -1;
-  _hitHead = false;
+  _hitHead = false; _hitLeg = false;
   if (!z.headless) {
     zombieHead(z, _zh);
     const R = 0.17 + extra;
@@ -10892,14 +11464,15 @@ function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
       if (t >= 0) { best = t; _hitHead = true; }
     }
   }
-  const Rb = 0.26 + extra;
+  // corps : cylindre vertical (couché, celui du rampant est bas et large) ; sous 0,72 m, les jambes
+  const Rb = (z.crawl ? 0.32 : 0.26) + extra, top = z.crawl ? 0.5 : 1.5;
   const px = ox - z.pos.x, pz = oz - z.pos.z, a = dx * dx + dz * dz;
   if (a > 1e-9) {
     const b = px * dx + pz * dz, c = px * px + pz * pz - Rb * Rb, disc = b * b - a * c;
     if (disc >= 0) {
       const t = (-b - Math.sqrt(disc)) / a;
       const y = oy + dy * t;
-      if (t >= 0 && y >= z.pos.y - 0.05 && y <= z.pos.y + 1.5 && (best < 0 || t < best - 0.06)) { best = t; _hitHead = false; }
+      if (t >= 0 && y >= z.pos.y - 0.05 && y <= z.pos.y + top && (best < 0 || t < best - 0.06)) { best = t; _hitHead = false; _hitLeg = !z.crawl && y < z.pos.y + 0.72; }
     }
   }
   return best;
@@ -10946,9 +11519,10 @@ function spawnZombie(sp, hp) {
     removeZombie(corpse);
   }
   const slot = ZR.free.pop();
-  const type = BASE_TYPE;
+  const type = zoneZombieType(sp.zone);
   const look = randomZombieLook();
-  paintZombieSlot(slot, look);
+  look.helmet = !!type.helmet;
+  paintZombieSlot(slot, look, ZR, type.model);
   hp *= type.mult.hp;
   const z = {
     id: ++Zombies.seq, slot, type, rig: makeRig(), look, helmetOn: !!type.helmet, alive: true, outside: true,
@@ -10958,6 +11532,7 @@ function spawnZombie(sp, hp) {
     stagger: 0, flinch: 0, knockX: 0, knockZ: 0, losT: 0, los: false,
     stuckT: 4, stuck: 0, lastX: 0, lastZ: 0, farT: 0, tearT: 1, climbFrom: null,
     deathKind: null, fallDir: 1, flingVY: 0, nukeT: 0,
+    crawl: false, crawlT: 0, crawlPh: 0, crawlSpeed: 0,
   };
   z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]) * type.mult.speed;
   if (sp.riser) {
@@ -10984,6 +11559,29 @@ function spawnZombie(sp, hp) {
   Zombies.list.push(z);
   animateZombie(z, 0);
   return z;
+}
+/* Type de zombie d'une pièce (zones[].zombie de la carte) ; le Fantassin par défaut. */
+function zoneZombieType(zi) {
+  const zone = zi >= 0 ? LAYOUT.zones[zi] : null;
+  return (zone && zone.zombie && ZOMBIE_TYPE_BY_ID[zone.zombie]) || BASE_TYPE;
+}
+/* Jambes déchiquetées (Lacéré touché aux jambes) : il tombe et continue en rampant, plus lentement.
+   Pas pendant qu'il sort de terre ou enjambe une fenêtre. */
+function startCrawl(z, dx = 0, dz = 0) {
+  if (z.crawl || !z.alive || z.state === 'rise' || z.state === 'climb') return false;
+  z.crawl = true; z.crawlT = 0; z.crawlPh = 0;
+  z.crawlSpeed = clamp(z.speed * 0.45, 0.4, 0.85);
+  z.stagger = Math.max(z.stagger, 0.6);
+  if (z.state === 'attack' && !z.winAttack) { z.state = 'chase'; z.t = 0; }
+  const s = Math.sin(z.yaw), c = Math.cos(z.yaw);
+  for (const side of [-1, 1]) {
+    const x = z.pos.x + c * side * 0.1, zz = z.pos.z - s * side * 0.1;
+    bloodBurst(x, z.gy + 0.35, zz, dx, dz, 10, 1.2);
+    for (let i = 0; i < 2; i++) spawnDebris(MAT.gib, rand(0.05, 0.1), rand(0.06, 0.14), rand(0.05, 0.1), x, z.gy + 0.3, zz, rand(-1.5, 1.5) + dx * 1.5, rand(1, 2.5), rand(-1.5, 1.5) + dz * 1.5, 2.5);
+  }
+  addDecal('blood', z.pos.x, z.gy + 0.002, z.pos.z, 0, 1, 0, rand(0.7, 1.1));
+  Sound.zombie(z.pos, 'death');
+  return true;
 }
 function removeZombie(z) {
   if (z.removed) return;
@@ -11028,6 +11626,7 @@ function killZombie(z, info) {
   z.state = 'dead';
   z.t = 0;
   z.deathKind = info.kind;
+  const dropWin = z.outside ? z.win : null;
   if (z.win) leaveWindow(z);
   let pts = RULES.pointsKill;
   if (info.kind === 'knife') pts = RULES.pointsKnife;
@@ -11035,7 +11634,7 @@ function killZombie(z, info) {
   else if (info.head) pts = RULES.pointsHead;
   if (pts) addPoints(pts);
   G.stats.kills++;
-  Life.kill(info);
+  Life.kill(info, z.type);
   Rank.kill(info);
   if (info.head && info.kind === 'bullet') {
     G.stats.headshots++;
@@ -11063,6 +11662,7 @@ function killZombie(z, info) {
   z.sinkD = riseDepth(zli, z.pos.x, z.pos.z) > 1 ? 0.7 : 0.3;
   if (!z.outside || (z.k >= 0 && zoneOf[z.k] >= 0)) addDecal('blood', z.pos.x - dx * 0.6, z.gy + 0.002, z.pos.z - dz * 0.6, 0, 1, 0, rand(0.9, 1.5));
   else addDecal('blood', z.pos.x, z.gy + 0.002, z.pos.z, 0, 1, 0, rand(0.8, 1.3));
+  if (info.kind !== 'nuke') maybeDropItem(z, dropWin);
   onZombieKilled(z, info);
 }
 
@@ -11089,6 +11689,7 @@ function updateZombies(dt) {
     const z = Zombies.list[i];
     if (z) updateZombie(z, dt);
   }
+  updateLanterns(G.time);
   flushZombieMatrices();
 }
 
@@ -11101,6 +11702,7 @@ function updateZombie(z, dt) {
   }
   z.flinch = damp(z.flinch, 0, 10, dt);
   if (z.stagger > 0) z.stagger -= dt;
+  if (z.crawl) z.crawlT += dt;
   z.groanT -= dt;
   if (z.groanT <= 0) { z.groanT = rand(3.5, 8); Sound.zombie(z.pos, 'groan'); }
   switch (z.state) {
@@ -11116,7 +11718,7 @@ function updateZombie(z, dt) {
       windowSpot(z.win, k, _fd);
       const dx = _fd.x - z.pos.x, dz = _fd.z - z.pos.z, d = Math.hypot(dx, dz);
       if (d > 0.06) {
-        const st = Math.min(d, z.speed * dt);
+        const st = Math.min(d, (z.crawl ? (z.crawlT < 0.55 ? 0 : z.crawlSpeed) : z.speed) * dt);
         z.pos.x += (dx / d) * st; z.pos.z += (dz / d) * st;
         z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 8 * dt);
         z.moving = z.speed;
@@ -11192,7 +11794,7 @@ function chase(z, dt) {
       sx += (ox / od) * (0.71 - od); sz += (oz / od) * (0.71 - od);
     }
   }
-  let sp = z.speed * (z.stagger > 0 ? 0.25 : 1);
+  let sp = z.crawl ? (z.crawlT < 0.55 ? 0 : z.crawlSpeed) : z.speed * (z.stagger > 0 ? 0.25 : 1);
   if (player.down) sp *= 0.4;
   const tvx = mx * sp + sx * 4, tvz = mz * sp + sz * 4;
   z.vx = damp(z.vx, tvx, 8, dt);
@@ -11207,7 +11809,7 @@ function chase(z, dt) {
   z.pos.y = z.gy;
   z.moving = Math.hypot(z.vx, z.vz);
   z.yaw = turnTo(z.yaw, z.los || z.moving < 0.2 ? Math.atan2(dx, dz) : Math.atan2(z.vx, z.vz), 7 * dt);
-  if (d < 1.25 && sameFloor && !player.down && z.stagger <= 0) {
+  if (d < (z.crawl ? 1.05 : 1.25) && sameFloor && !player.down && z.stagger <= 0) {
     z.state = 'attack'; z.t = 0; z.attackHit = false; z.winAttack = false;
     if (Math.random() < 0.6) Sound.zombie(z.pos, 'attack');
   }
@@ -11227,7 +11829,7 @@ function attack(z, dt) {
   z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 10 * dt);
   z.moving = 0;
   if (!z.winAttack && d > 0.8) {
-    const st = Math.min(d - 0.8, 0.9 * dt);
+    const st = Math.min(d - 0.8, (z.crawl ? 0.45 : 0.9) * dt);
     z.pos.x += (dx / d) * st; z.pos.z += (dz / d) * st;
     settleBody(z, 0.28);
     z.pos.y = z.gy;
@@ -11289,7 +11891,7 @@ function animateZombie(z, dt) {
     twist = (-0.06 + s * 0.05) * mk;
     hipsY = ZRIG.hips - (0.012 + Math.max(0, s) * 0.03) * mk;
   }
-  let bodyX = 0;
+  let bodyX = 0, bodyY = 0, bodyZ = 0;
   let neckX = 0.15 + Math.sin(z.t * 0.9 + z.id) * 0.1, neckZ = Math.sin(z.t * 0.6 + z.id * 2) * 0.25;
   switch (z.state) {
     case 'rise': {
@@ -11327,8 +11929,36 @@ function animateZombie(z, dt) {
     }
     default: break;
   }
+  // rampant (jambes déchiquetées) : il tombe en avant en 0,55 s, puis se tire avec les bras, couché
+  // sur le ventre, la tête relevée ; le corps est décalé vers l'arrière pour que la poitrine reste à
+  // sa position (collisions, coups)
+  if (z.crawl) {
+    const k = smooth(clamp(z.crawlT / 0.55, 0, 1));
+    z.crawlPh += mv * dt * 6;
+    const cs = Math.sin(z.crawlPh), m2 = clamp(mv * 2, 0, 1);
+    let cL = -2.55 + cs * 0.5 * m2, cR = -2.55 - cs * 0.5 * m2;
+    let eL = -0.3 - Math.max(0, -cs) * 0.8 * m2, eR = -0.3 - Math.max(0, cs) * 0.8 * m2;
+    if (z.state === 'attack') {
+      const a = clamp(z.t / 0.95, 0, 1);
+      cR = a < 0.4 ? lerp(-2.6, -3.15, a / 0.4) : a < 0.6 ? lerp(-3.15, -2.0, (a - 0.4) / 0.2) : lerp(-2.0, -2.6, (a - 0.6) / 0.4);
+      eR = -0.15; cL = -2.4; eL = -0.5;
+    } else if (z.state === 'tear') {
+      const w = Math.sin(z.t * 6.5);
+      cL = -2.95 + w * 0.3; cR = -2.95 - w * 0.3; eL = eR = -0.45;
+    } else if (z.state === 'dead') { cL = -2.75; cR = -2.4; eL = eR = -0.25; }
+    shL = lerp(shL, cL, k); shR = lerp(shR, cR, k); elL = lerp(elL, eL, k); elR = lerp(elR, eR, k);
+    sdL = lerp(sdL, 0.3, k); sdR = lerp(sdR, -0.3, k);
+    hipL = lerp(hipL, 0.1 + cs * 0.12 * m2, k); hipR = lerp(hipR, 0.1 - cs * 0.12 * m2, k);
+    knL = lerp(knL, 0, k); knR = lerp(knR, 0, k);
+    lean = lerp(lean, 0, k); twist = lerp(twist, cs * 0.14 * m2, k); roll = lerp(roll, cs * 0.06 * m2, k);
+    hipsY = lerp(hipsY, ZRIG.hips, k);
+    neckX = lerp(neckX, z.state === 'dead' ? -0.2 : -1.05 + Math.sin(z.t * 0.9 + z.id) * 0.08, k);
+    neckZ *= 1 - k * 0.5;
+    bodyX = lerp(bodyX, 1.45, k); bodyY = 0.12 * k; bodyZ = -0.85 * k;
+  }
   r.root.position.copy(z.pos);
   r.root.rotation.y = z.yaw;
+  r.body.position.set(0, bodyY, bodyZ);
   r.body.rotation.x = bodyX;
   r.hips.position.y = hipsY;
   r.hips.rotation.set(lean - z.flinch, twist, roll);
@@ -12256,9 +12886,147 @@ function applyPowerup(type) {
   }
 }
 function clearPowerups() {
+  clearPickups();
   for (const p of Powerups.list) scene.remove(p.m);
   Powerups.list.length = 0;
   Powerups.bag = []; Powerups.drops = 0; Powerups.acc = 0; Powerups.threshold = 2000;
+}
+
+/* ------------------------------------------- Objets lâchés par les variantes --
+   Seringue du Savant : rend PICKUPS.syringe.heal des PV max ; on ne la ramasse que blessé.
+   Chargeur de la Sentinelle : un chargeur de plus pour l'arme en main (ou l'autre, si la réserve de
+   l'arme en main est pleine). Ils restent PICKUPS.*.life secondes au sol, clignotent les 5 dernières.
+   Un zombie tué dehors, derrière une fenêtre, lâche l'objet juste devant elle, à l'intérieur. */
+const Pickups = { list: [], assets: null };
+function pickupAssets() {
+  if (Pickups.assets) return Pickups.assets;
+  const { C, V, box, seg } = zKit();
+  const K = { glass: C(0xa8c0c8, 1), liquid: C(0x8e1810, 1.1), white: C(0xe8e8e4, 1), metal: C(0xb0b6ba, 1), rim: C(0x2f2c2a, 1),
+    body: C(0x2c2e2c, 1), steel: C(0x5a5d5f, 1), brass: C(0xc09040, 1.1) };
+  // seringue couchée le long de x, aiguille vers -x
+  const at = (t) => V(-0.095 + t, 0, 0), syr = [
+    seg(at(0), at(0.045), K.metal, 0.0018, 0, true, 0.0018), seg(at(0.045), at(0.055), K.white, 0.0062, 0, true, 0.0045),
+    seg(at(0.055), at(0.11), K.liquid, 0.0118, 0, true, 0.0118), seg(at(0.11), at(0.145), K.glass, 0.0122, 0, true, 0.0122),
+    seg(at(0.145), at(0.15), K.white, 0.021, 0, true, 0.021), seg(at(0.15), at(0.185), K.white, 0.004, 0, true, 0.004),
+    seg(at(0.185), at(0.19), K.white, 0.013, 0, true, 0.013),
+  ];
+  for (const t of [0.075, 0.09, 0.105, 0.12, 0.135]) syr.push(seg(at(t), at(t + 0.0022), K.rim, 0.0126, 0, true, 0.0126));
+  // chargeur couché sur le flanc : boîtier d'acier, fond, lèvres et deux balles en laiton
+  const mag = [box(0.13, 0.026, 0.05, 0, 0, 0, K.body), box(0.012, 0.03, 0.054, -0.064, 0, 0, K.steel), box(0.01, 0.028, 0.05, 0.064, 0, 0, K.steel)];
+  for (const dz of [-0.011, 0.011]) mag.push(seg(V(0.066, 0, dz), V(0.092, 0, dz), K.brass, 0.0085, 0, true, 0.0055));
+  Pickups.assets = {
+    syringe: share(mergeGeometries(syr)), mag: share(mergeGeometries(mag)),
+    mat: share(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.3 })),
+    glow: { syringe: 0xbfffd2, mag: 0xffcf86 }, lift: { syringe: 0.013, mag: 0.026 },
+  };
+  return Pickups.assets;
+}
+function spawnPickup(item, x, z, gy = 0) {
+  const A = pickupAssets();
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(A[item], A.mat);
+  mesh.rotation.y = rand(0, TAU);
+  mesh.position.y = A.lift[item];
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: A.glow[item], transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.scale.set(0.42, 0.42, 1);
+  halo.position.y = 0.07;
+  g.add(mesh, halo);
+  g.position.set(x, gy + 0.004, z);
+  scene.add(g);
+  const p = { item, g, halo, x, z, gy, t: 0, life: PICKUPS[item].life, ph: rand(0, TAU) };
+  Pickups.list.push(p);
+  return p;
+}
+function maybeDropItem(z, win) {
+  const d = z.type && z.type.drop;
+  if (!d || Math.random() >= d.chance) return null;
+  let x = z.pos.x, zz = z.pos.z, gy = z.gy;
+  if (win) {
+    const r = rand(-0.25, 0.25);
+    x = win.x + 0.5 - win.nx * 0.85 - win.nz * r; zz = win.z + 0.5 - win.nz * 0.85 + win.nx * r; gy = LVY[win.li];
+  } else if (zoneAt(x, zz, gy) < 0) return null;
+  return spawnPickup(d.item, x, zz, gy);
+}
+/* Effet d'un objet ramassé ; false s'il ne sert à rien maintenant (il reste au sol). */
+function usePickup(item) {
+  if (item === 'syringe') {
+    if (player.hp >= player.maxHp) return false;
+    const heal = player.maxHp * PICKUPS.syringe.heal;
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    Sound.syringe();
+    HUD.hint(`${PICKUPS.syringe.name} : +${fmtNum(heal, 2)} PV`, 1.4);
+    return true;
+  }
+  if (item === 'mag') {
+    for (const i of [Arms.cur, 1 - Arms.cur]) {
+      const s = Arms.slots[i];
+      if (!s) continue;
+      const max = wstat(s, 'res');
+      if (s.res >= max) continue;
+      const add = Math.min(wstat(s, 'mag'), max - s.res);
+      s.res += add;
+      HUD.weapon();
+      Sound.magPickup();
+      HUD.hint(`${PICKUPS.mag.name} : +${add} (${wstat(s, 'name')})`, 1.4);
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+function removePickup(i) {
+  const p = Pickups.list[i];
+  scene.remove(p.g);
+  p.halo.material.dispose();
+  Pickups.list.splice(i, 1);
+}
+function updatePickups(dt) {
+  for (let i = Pickups.list.length - 1; i >= 0; i--) {
+    const p = Pickups.list[i];
+    p.t += dt;
+    const left = p.life - p.t;
+    p.g.visible = left > 5 || Math.floor(p.t * (left < 2 ? 10 : 5)) % 2 === 0;
+    p.halo.material.opacity = 0.26 + 0.12 * Math.sin(p.t * 3 + p.ph);
+    const near = left > 0 && !player.down && Math.hypot(player.pos.x - p.x, player.pos.z - p.z) < 0.95 && Math.abs(player.gy - p.gy) < 1.2;
+    if (left <= 0 || (near && usePickup(p.item))) removePickup(i);
+  }
+}
+function clearPickups() { while (Pickups.list.length) removePickup(Pickups.list.length - 1); }
+
+/* Lanternes des Sentinelles : 3 lumières réelles au plus, données aux Sentinelles les plus proches
+   du joueur (les autres lanternes brillent seulement). Créées avec le monde quand une pièce de la
+   carte a des Sentinelles : le nombre de lumières ne change pas en partie (pas de recompilation des
+   matières). */
+const Lanterns = { lights: [], max: 3 };
+function buildLanterns() {
+  const g = new THREE.Group();
+  Lanterns.lights = [];
+  const used = LAYOUT.zones.some((zn) => zn.zombie && ZOMBIE_TYPE_BY_ID[zn.zombie] && ZOMBIE_TYPE_BY_ID[zn.zombie].lantern);
+  if (!used) return g;
+  for (let i = 0; i < Lanterns.max; i++) {
+    const light = new THREE.PointLight(0xffb347, 0, 5, 2);
+    light.position.set(0, -60, 0);
+    g.add(light);
+    Lanterns.lights.push({ light, ph: i * 2.3, z: null });
+  }
+  return g;
+}
+const _lantern = new THREE.Vector3();
+function updateLanterns(time) {
+  if (!Lanterns.lights.length) return;
+  const L = variantGeometries('sentinelle').lanternPos, px = player.pos.x, pz = player.pos.z;
+  const cand = Zombies.list.filter((z) => !z.removed && z.type.lantern && (z.alive || z.t < 3));
+  cand.sort((a, b) => Math.hypot(a.pos.x - px, a.pos.z - pz) - Math.hypot(b.pos.x - px, b.pos.z - pz));
+  Lanterns.lights.forEach((o, i) => {
+    const z = cand[i] || null;
+    o.z = z;
+    if (!z) { o.light.intensity = 0; return; }
+    _lantern.copy(L).applyMatrix4(z.rig.hips.matrixWorld);
+    o.light.position.copy(_lantern);
+    const f = 0.82 + 0.13 * Math.sin(time * 9.3 + o.ph) * Math.sin(time * 4.1 + o.ph * 2) + 0.05 * Math.sin(time * 27 + o.ph);
+    o.light.intensity = 1.35 * f * (z.alive ? 1 : clamp(1 - z.t / 3, 0, 1));
+    if (NL > 1) o.light.decay = lightBandDecay(_lantern.y, levelAtY(z.gy + 0.1));
+  });
 }
 
 /* ------------------------------------------------------- Interactions -- */
@@ -12293,6 +13061,7 @@ function updateFeatures(dt) {
   updateAmp(dt);
   updatePerkMachines(dt);
   updatePowerups(dt);
+  updatePickups(dt);
   updateDigipass(dt);
 }
 
@@ -12366,12 +13135,15 @@ const Life = {
   data: null, dirty: false, saveT: 0,
   load() {
     const raw = store.get(LIFE_KEY, null);
-    const d = { v: 1, since: null, bestRound: 0, maps: {} };
+    const d = { v: 1, since: null, bestRound: 0, maps: {}, types: {} };
     for (const k of LIFE_COUNTERS) d[k] = 0;
     if (raw && typeof raw === 'object') {
       for (const k of LIFE_COUNTERS) if (Number.isFinite(raw[k]) && raw[k] >= 0) d[k] = raw[k];
       if (Number.isFinite(raw.bestRound) && raw.bestRound > 0) d.bestRound = raw.bestRound;
       if (typeof raw.since === 'string') d.since = raw.since;
+      if (raw.types && typeof raw.types === 'object') {
+        for (const t of ZOMBIE_TYPES) if (t !== BASE_TYPE && Number.isFinite(raw.types[t.id]) && raw.types[t.id] >= 0) d.types[t.id] = raw.types[t.id];
+      }
       if (raw.maps && typeof raw.maps === 'object') {
         for (const id of Object.keys(raw.maps)) {
           const m = raw.maps[id];
@@ -12389,9 +13161,10 @@ const Life = {
     this.dirty = true;
   },
   /* Une élimination, rangée selon ce qui l'a causée. */
-  kill(info) {
+  kill(info, type) {
     if (!this.on) return;
     this.add('kills');
+    if (type && type !== BASE_TYPE) { this.data.types[type.id] = (this.data.types[type.id] || 0) + 1; }
     const k = info.kind;
     if (k === 'knife') this.add('killsMelee');
     else if (k === 'nuke') this.add('killsNuke');
@@ -13366,7 +14139,7 @@ function openStats() {
 /* Fiches des types de zombies (ZOMBIE_TYPES) : le modèle animé, photographié devant
    une toise, et ses caractéristiques tirées des règles du jeu. L'aperçu a son propre
    rendu 3D (petit canevas), dessiné seulement quand l'écran est ouvert. */
-const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', attack: 'Attaque', tear: 'Barricade', rise: 'Sortie de terre' };
+const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', crawl: 'Rampe', attack: 'Attaque', tear: 'Barricade', rise: 'Sortie de terre' };
 const MODEL_VIEW = { yaw: -0.5, distMin: 1.9, distMax: 3.8 };
 const Models = {
   open: false, sel: null, anim: 'idle', at: 0, yaw: MODEL_VIEW.yaw, dist: MODEL_VIEW.distMax, idleT: 0, drag: null,
@@ -13374,10 +14147,15 @@ const Models = {
 };
 // espace insécable ordinaire entre les milliers (l'espace fine manque à certaines polices)
 const fmtNum = (n, digits = 2) => n.toLocaleString('fr-FR', { maximumFractionDigits: digits }).replace(/\u202f/g, '\u00a0');
-/* Éliminations par type : pour l'instant, tous les zombies tués sont des Fantassins.
-   (Un nouveau type aura son propre compteur dans les statistiques du joueur.) */
-function specimenKills(type) { return type === BASE_TYPE && Life.data ? Math.round(Life.data.kills) : 0; }
-const specimenNum = (i) => `N°${String(i).padStart(2, '0')}`;
+/* Éliminations par type : les variantes ont leur compteur (depuis le jeu 1.8.0) ; le Fantassin a
+   tout le reste (avant le jeu 1.8.0, tous les zombies étaient des Fantassins). */
+function specimenKills(type) {
+  if (!Life.data) return 0;
+  const by = Life.data.types || {};
+  if (type !== BASE_TYPE) return Math.round(by[type.id] || 0);
+  return Math.max(0, Math.round(Life.data.kills - Object.values(by).reduce((a, b) => a + b, 0)));
+}
+const specimenNum = (type) => `N°${type.num || '00'}`;
 const fmtMult = (m) => `×${m.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
 /* Contenu chiffré des fiches, calculé d'après les règles du jeu :
    bars : [libellé, multiplicateur] (×1 = référence du bestiaire) · ref : la référence ·
@@ -13406,6 +14184,37 @@ const SPECIMEN_FACTS = {
         ['Cartes', type.maps ? maps.join(', ') || '–' : 'toutes', '', type.maps ? '' : maps.join(' · ')],
         ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
       ],
+    };
+  },
+  /* Variante du Fantassin : mêmes règles ; pièces où elle apparaît (cartes du jeu), signe distinctif
+     et bonus de sa fiche. */
+  variant(type) {
+    const base = SPECIMEN_FACTS.standard(type);
+    const pct = (x) => `${fmtNum(x * 100, 2)} %`;
+    const where = [];
+    for (const id of MAPS.list) {
+      const m = MAPS.byId[id];
+      const zones = ((m && m.zones) || []).filter((zn) => zn.zombie === type.id).map((zn) => zn.name);
+      if (zones.length) where.push(`${m.name} : ${zones.join(', ')}`);
+    }
+    const d = type.drop;
+    const bonus = type.crawler ? 'Jambes déchiquetées : un tir aux jambes le met à terre, il continue en rampant.'
+      : d && d.item === 'syringe' ? `Laisse parfois tomber une seringue : chacune rend ${pct(PICKUPS.syringe.heal)} des PV.`
+      : d && d.item === 'mag' ? 'Laisse parfois tomber un chargeur : petit bonus de munitions.' : '';
+    const details = [
+      ['Apparaît', where.length ? where.join(' · ') : 'aucune pièce', '', 'Fenêtres et apparitions au sol des pièces qui le nomment'],
+      ...base.details.filter(([k]) => k !== 'Cartes'),
+      ['Tête', `dégâts ×${fmtNum(type.headMult)}`, '', 'Sans casque : rien n’arrête le premier tir à la tête'],
+    ];
+    if (d && d.item === 'syringe') details.push(['Seringue', `${pct(d.chance)} des Savants`, '', `+${pct(PICKUPS.syringe.heal)} des PV max (${fmtNum(RULES.playerHp * PICKUPS.syringe.heal, 2)} PV sur ${RULES.playerHp}), ramassée si vous êtes blessé · ${PICKUPS.syringe.life} s au sol`]);
+    if (d && d.item === 'mag') details.push(['Chargeur', `${pct(d.chance)} des Sentinelles`, '', `Un chargeur de plus pour l’arme en main (ou l’autre si sa réserve est pleine) · ${PICKUPS.mag.life} s au sol`]);
+    if (type.lantern) details.push(['Lanterne', 'allumée', '', `Éclaire pour les ${Lanterns.max} Sentinelles les plus proches de vous, brille seulement au-delà`]);
+    if (type.crawler) details.push(['À terre', `${fmtNum(SPEEDS.walk[0] * 0.45 * type.mult.speed)} à ${fmtNum(0.85 * type.mult.speed)} m/s`, '', 'Après un tir dans les jambes, il rampe : coups à 1 m, mêmes dégâts']);
+    return {
+      bars: base.bars,
+      ref: 'Stats identiques au Fantassin : seule l’apparence change.',
+      cards: [['Signe distinctif', type.sign], ['Bonus', bonus]],
+      details,
     };
   },
 };
@@ -13529,7 +14338,7 @@ function openModels() {
     b.dataset.id = type.id;
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-controls', 'md-sheet');
-    b.append(el('span', '', specimenNum(i)), el('b', '', type.name));
+    b.append(el('span', '', specimenNum(type)), el('b', '', type.name));
     b.addEventListener('click', () => { if (Models.sel !== type.id) Sound.ui(); selectSpecimen(type.id); });
     tabs.append(b);
   });
@@ -13553,9 +14362,9 @@ function selectSpecimen(id) {
   // fiche
   const sheet = $('md-sheet');
   sheet.textContent = '';
-  sheet.append(el('span', 'stamp', `Spécimen ${specimenNum(i).toLowerCase()}`));
+  sheet.append(el('span', 'stamp', `Spécimen ${specimenNum(type).toLowerCase()}`));
   const tag = el('p', 'md-tagline');
-  for (const part of [specimenNum(i), type.cls, type.from ? `Dès la manche ${type.from}` : null].filter(Boolean)) tag.append(el('span', '', part));
+  for (const part of [specimenNum(type), type.cls, type.from ? `Dès la manche ${type.from}` : null].filter(Boolean)) tag.append(el('span', '', part));
   sheet.append(tag, el('p', 'md-name', type.name));
   const kills = el('p', 'md-kills', 'Éliminés par vous\u00a0: ');
   kills.append(el('b', '', fmtNum(specimenKills(type), 0)));
@@ -13584,7 +14393,7 @@ function selectSpecimen(id) {
     }
     sheet.append(cards, el('h3', '', 'Détails'), ledgerList(facts.details));
   }
-  $('md-plate-num').textContent = `Spécimen ${specimenNum(i).toLowerCase()}`;
+  $('md-plate-num').textContent = `Spécimen ${specimenNum(type).toLowerCase()}`;
   $('md-plate-name').textContent = type.name;
   $('md-canvas').setAttribute('aria-label', `Modèle 3D : ${type.name}. Glisser pour le faire tourner, molette pour zoomer.`);
   // modèle (créé une fois par type)
@@ -13616,6 +14425,16 @@ function selectSpecimen(id) {
     shot.addEventListener('click', () => {
       Sound.init();
       if (Models.spec && Models.spec.knockHelmet()) Sound.helmet(null);
+    });
+    box.append(shot);
+  }
+  if (model.legs) {
+    const shot = el('button', 'md-chip alt', 'Tir dans les jambes');
+    shot.type = 'button';
+    shot.dataset.action = 'legs';
+    shot.addEventListener('click', () => {
+      Sound.init();
+      if (Models.spec && Models.spec.legShot && Models.spec.legShot()) { Sound.headshot(); Sound.zombie(null, 'death'); }
     });
     box.append(shot);
   }
@@ -14244,7 +15063,7 @@ async function boot(data) {
 window.ZS = {
   version: GAME_VERSION, editorApi: EDITOR_API, ready: false,
   get scene() { return scene; }, get camera() { return camera; }, get renderer() { return renderer; },
-  TEXLIB, TEX_CATS, MODELS, MODEL_CATS, WEAPONS, PERKS, TILES, DOOR_TYPES, DOOR_VERBS, LIGHT_FIXTURES, PAL_CHARS,
+  TEXLIB, TEX_CATS, MODELS, MODEL_CATS, WEAPONS, PERKS, ZOMBIE_TYPES, TILES, DOOR_TYPES, DOOR_VERBS, LIGHT_FIXTURES, PAL_CHARS,
   DEFAULT_TEXTURES, DEFAULT_AMBIANCE, DEFAULT_RULES, MAP_MIN, MAP_MAX, BUNKER7, MAPS, CUR, World, Features, G, LAYOUT_REF: () => LAYOUT,
   normalizeMap, serializeMap, validateMap, analyzeMap, blankMap, buildWorld, disposeWorld, textureThumb, modelParts, PropBatch,
   propMatrix, levelMaterial, registerCustomTextures, colorHex, parseColor, mtx, unitGeo, famMaterial, share, linearizeTree,

@@ -184,6 +184,20 @@ async function author(userData) {
       return { c0, c1, gone, back: !!back && back.cell.join() === c0.join() && MT.state.map.w === ZS.BUNKER7.grid[0].length };
     });
     ok(!!dp.c0 && !!dp.c1 && dp.c1[0] === dp.c0[0] + 2 && dp.c1[1] === dp.c0[1] + 1 && dp.gone && dp.back, `Mod Tools : le digi pass suit l’agrandissement et part avec son mur ${JSON.stringify(dp)}`);
+    // zombies par pièce (jeu 1.8.0) : l'inspecteur d'une pièce choisit son type de zombie
+    const zt = await mt.evaluate(async () => {
+      MT.openMap(ZS.normalizeMap(JSON.parse(JSON.stringify(ZS.BUNKER7))), { id: 'bunker7', source: 'game' });
+      const i = MT.state.map.zones.findIndex((z) => z.name === 'Infirmerie');
+      MT.setTool('select'); MT.select({ kind: 'zone', i }); MT.ui.setTab('sel');
+      await new Promise((r) => setTimeout(r, 250));
+      const sel = document.querySelector('#mt-panel select[data-field="zombie"]');
+      const before = sel && sel.value, options = sel ? [...sel.options].map((o) => o.value).join() : null;
+      if (sel) { sel.value = 'lacere'; sel.dispatchEvent(new Event('change')); }
+      const after = MT.state.map.zones[i].zombie, out = ZS.serializeMap(MT.state.map).zones[i].zombie;
+      MT.undo();
+      return { before, options, after, out, undone: MT.state.map.zones[i].zombie };
+    });
+    ok(zt.before === 'savant' && zt.options === 'fantassin,lacere,savant,sentinelle' && zt.after === 'lacere' && zt.out === 'lacere' && zt.undone === 'savant', `Mod Tools : type de zombie d’une pièce (Infirmerie : Savant → Lacéré, enregistré, annulable) ${JSON.stringify(zt)}`);
     await floors(mt, userData);
     ok(!mtErrors.length, `étages : aucune erreur dans la console des Mod Tools ${mtErrors.slice(0, 3).join(' | ')}`);
     // carte enregistrée dans l'atelier, image importée, liste de publication

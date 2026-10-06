@@ -83,7 +83,25 @@ Depuis le jeu 1.4.0, le zombie de base est **Le Fantassin** : « Un soldat tomb�
 - Capacité « Horde » : marche seule jusqu'à la manche 3, trot dès la 4, sprint dès la 8 (`speedMixForRound`).
 - Faiblesse : la tête, dégâts ×2 quelle que soit l'arme. Le casque encaisse le premier tir à la tête (0 dégât, +10 points), puis tombe et roule au sol ; sous Mort instantanée, il saute sans rien encaisser. Les explosions peuvent aussi l'arracher.
 
-Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : nom, catégorie, première manche, description, multiplicateurs `mult` des PV, de la vitesse et des dégâts par rapport au Fantassin, multiplicateur de la tête, casque, capacité, cartes où il apparaît), son modèle dans `SPECIMEN_MODELS` (section 05) et ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
+### Variantes du Fantassin : zombies par pièce (jeu 1.8.0)
+
+Fiches d'Anthony (6 octobre 2026). Mêmes règles que le Fantassin (PV, vitesse, dégâts ×1,0, tête ×2), même squelette et mêmes animations ; seule l'apparence change, plus un bonus chacune. Sur Bunker 7, chaque pièce fait sortir son zombie de ses fenêtres (et de ses apparitions au sol) :
+
+| Pièce de Bunker 7 | Zombie | Bonus |
+|---|---|---|
+| Salle d'arrivée | N°00 · Le Fantassin | — |
+| Salle des machines | **N°00-A · Le Lacéré** : soldat pris dans l'explosion de sa propre grenade ; tête nue, veste ouverte sur les côtes (côtes, chair), manche gauche arrachée, pantalon déchiré | Jambes déchiquetées : un tir dans les jambes (sous 0,72 m) qui ne le tue pas le met à terre ; il continue en rampant (0,45 à 0,85 m/s), frappe depuis le sol (30 dégâts) et passe toujours les fenêtres ; ses tibias laissent place à des moignons. |
+| Infirmerie | **N°00-C · Le Savant** : chercheur du laboratoire ; blouse claire jusqu'aux genoux, chemise et cravate, poche à stylos, lunettes rondes, masque chirurgical baissé, gants, seringue plantée dans le bras droit | Seringue (au lieu de la note de labo de la fiche) : 35 % des Savants en lâchent une ; elle rend 0,25 % des PV max (0,25 PV sur 100), ramassée en passant dessus si l'on est blessé ; 30 s au sol. |
+| Entrepôt | **N°00-D · La Sentinelle** : garde de nuit mort de froid ; bonnet de laine enneigé, écharpe, longue capote croisée, neige sur les épaules et les bottes, lanterne allumée à la ceinture | Chargeur : 25 % des Sentinelles en lâchent un ; un chargeur de plus pour l'arme en main (ou l'autre si sa réserve est pleine), jusqu'à la réserve maximale ; 30 s au sol. Lanterne : une vraie lumière vacillante pour les 3 Sentinelles les plus proches du joueur, la vitre brille seulement au-delà. |
+
+- Sans casque, le premier tir à la tête des variantes n'est pas encaissé (×2 directement).
+- Un objet lâché par un zombie tué dehors, derrière une fenêtre, tombe juste devant elle, à l'intérieur. Une Bombe ne fait rien lâcher.
+- La « part de la horde » des fiches (Fantassin 40, Lacéré 20, Notable 15, Sentinelle 15, Savant 10) est remplacée par la règle des pièces ; Le Notable (N°00-B) n'a pas encore de fiche.
+- Écran Modèles : quatre onglets (N°00, 00-A, 00-C, 00-D), avec les textes des fiches, les pièces où chaque variante apparaît, ses éliminations (comptées par type depuis le jeu 1.8.0 ; avant, tous les zombies tués étaient des Fantassins). Le Lacéré a l'animation « Rampe » et le bouton « Tir dans les jambes ».
+- Format de carte : `zones[].zombie` facultatif (`fantassin`, `lacere`, `savant`, `sentinelle` ; absent : le Fantassin). Une Bunker 7 dont aucune pièce n'en nomme (celle d'Anthony, publiée jusqu'au jeu 1.7.0) reprend ceux de la carte intégrée, pièce par pièce (même nom). Mod Tools : sélecteur « Zombies » dans l'inspecteur d'une pièce, dans le code du launcher (pas encore dans une version compilée) ; avec le launcher 1.2.6, le champ se change dans le fichier de la carte.
+- Rendu : un maillage instancié par pièce et par modèle (40 pour les quatre modèles) ; un modèle sans zombie n'est pas dessiné.
+
+Pour ajouter un type de zombie : une entrée dans `ZOMBIE_TYPES` (section 01 : numéro, nom, catégorie, première manche, description, signe distinctif, multiplicateurs `mult` des PV, de la vitesse et des dégâts par rapport au Fantassin, multiplicateur de la tête, casque, capacité, bonus `crawler`, `drop`, `lantern`), ses pièces dans `ZPARTS` et sa géométrie dans `variantGeometries` (section 05), son modèle dans `SPECIMEN_MODELS` et ses rubriques dans `SPECIMEN_FACTS` (section 11). L'ordre de `ZOMBIE_TYPES` est celui des onglets.
 
 ## Rang : niveaux et prestiges
 
@@ -159,7 +177,7 @@ Prérequis : Node.js 22 ou plus récent. Sous Windows, rien d'autre. Sous Linux,
 cd launcher
 npm install
 npm test            # tests unitaires (signature des mises à jour, paquetage du jeu, publication, historique des notes de version, atelier des Mod Tools)
-npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable, étages et escaliers compris), menu du jeu, statistiques et rang, publication en un clic contre un faux GitHub et historique des mises à jour chez le joueur, zombies et joueur dans les escaliers d'une carte à trois niveaux, règles du rang, boisson des atouts, abords de Bunker 7 (sous Linux : xvfb-run -a npm run test:e2e)
+npm run test:e2e    # essais de bout en bout dans Electron : Mod Tools (clé de test jetable, étages et escaliers compris), menu du jeu, statistiques et rang, publication en un clic contre un faux GitHub et historique des mises à jour chez le joueur, zombies et joueur dans les escaliers d'une carte à trois niveaux, règles du rang, boisson des atouts, abords de Bunker 7, zombies par pièce (sous Linux : xvfb-run -a npm run test:e2e)
 npm start           # lance le launcher en mode développement
 npm run modtools    # ouvre directement les Mod Tools (il faut la clé de l'auteur sur le PC)
 npm run dist:win    # fabrique dist/Zombie-Survival-Setup-<version>.exe
@@ -199,6 +217,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **6 octobre 2026 — jeu 1.8.0** : zombies par pièce sur Bunker 7 (fiches d'Anthony) : Le Lacéré dans la salle des machines (un tir dans les jambes le fait ramper), Le Savant dans l'Infirmerie (seringues : 0,25 % des PV), La Sentinelle dans l'Entrepôt (chargeurs, lanterne qui éclaire) ; la salle d'arrivée garde le Fantassin. Modèles 3D sur le squelette du Fantassin, fiches N°00-A, 00-C et 00-D dans l'écran Modèles, éliminations par type. Champ de carte `zones[].zombie`, repris par la Bunker 7 d'Anthony. Essai de bout en bout `launcher/e2e/zone-zombies.e2e.js` ; sélecteur dans les Mod Tools (code du launcher).
 - **5 octobre 2026 — jeu 1.7.0** : les abords de Bunker 7 (voir « Abords de Bunker 7 ») : 22 bâtiments abandonnés tous différents, environ 175 arbres sombres de six essences, lianes, lierre, sous-bois, épaves et débris tout autour de la carte, un couloir de vue dégagé devant chaque fenêtre et une façade au bout ; brume bleutée de clair de lune hors de la carte. La Bunker 7 d'Anthony les reprend. Nouvelle catégorie d'objets « Bâtiments en ruine », arbres, fougères, lianes et lierre dans « Nature », quatre textures (dont la catégorie « Toitures »). Élément de carte facultatif `outskirts`. Essai de bout en bout `launcher/e2e/outskirts.e2e.js`.
 - **5 octobre 2026 — jeu 1.6.0** : atouts renommés (Mastodonte, Rechargement rapide, Double coup, Quick Revive, Staminup ; identifiants inchangés : cartes et sauvegardes compatibles) ; l'Amplificateur devient le Pack-A-Punch. Animation de boisson des atouts : bouteille aux couleurs de l'atout tenue en main, capsule, goulot à la bouche et trois gorgées, puis bouteille jetée au sol qui se brise au premier choc ; ses éclats et des bouts d'étiquette restent là où elle s'est cassée. Contient la correction du digi pass (1.5.1). Essai de bout en bout `launcher/e2e/perk-drink.e2e.js`. Les libellés « Pack-A-Punch » des Mod Tools sont dans le code du launcher, pas encore dans une version publiée.
 - **5 octobre 2026 — jeu 1.5.1** : le digi pass revient. La Bunker 7 publiée avec les jeux 1.4.0 et 1.5.0 (modifiée dans les Mod Tools avant l'ajout du digi pass) remplaçait la carte intégrée et n'en avait pas ; elle reprend maintenant celui de la carte intégrée, en gardant ses objets.

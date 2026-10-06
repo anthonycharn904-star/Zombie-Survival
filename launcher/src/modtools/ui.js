@@ -989,12 +989,20 @@
     const cells = zi >= 0 && A.zones[zi] ? A.zones[zi].cells : 0;
     const tintHex = ZS.colorHex(((Math.round(clamp(z.tint[0] / 1.2, 0, 1) * 255) << 16) | (Math.round(clamp(z.tint[1] / 1.2, 0, 1) * 255) << 8) | Math.round(clamp(z.tint[2] / 1.2, 0, 1) * 255)) >>> 0);
     const set = (label, fn) => commit(label, 'all', (mm) => fn(mm.zones[i]));
+    // zombies de la pièce (moteur du jeu 1.8.0 ou plus récent) : le Fantassin par défaut
+    const types = ZS.ZOMBIE_TYPES;
+    let zombieSel = null;
+    if (types && types.length > 1) {
+      zombieSel = select({ value: z.zombie || types[0].id, options: types.map((t, k) => [t.id, `${t.name}${k ? '' : ' (par défaut)'}`]), onChange: (v) => set('Zombies de la pièce', (zz) => { zz.zombie = v; }) });
+      zombieSel.dataset.field = 'zombie';
+    }
     return [
       selHead(z.name, `Pièce de ${cells} case${cells > 1 ? 's' : ''}`, [delBtn()]),
       section('Nom',
         field('Nom', text({ value: z.name, maxLength: 40, onCommit: (v) => set('Nom de la pièce', (zz) => { zz.name = v.trim() || 'Pièce'; }) }), 'Affiché en jeu quand on y entre'),
         field('Teinte', color({ value: tintHex, onCommit: (v) => set('Teinte de la pièce', (zz) => { const n = ZS.parseColor(v, 0xffffff); zz.tint = [round(((n >> 16) & 255) / 255 * 1.2, 3), round(((n >> 8) & 255) / 255 * 1.2, 3), round((n & 255) / 255 * 1.2, 3)]; }) }), 'Assombrit ou colore les murs et le sol de la pièce'),
         btn('Teinte neutre', () => set('Teinte de la pièce', (zz) => { zz.tint = [1, 1, 1]; }))),
+      ...(zombieSel ? [section('Zombies', field('Type', zombieSel, 'Ceux qui sortent des fenêtres et des apparitions au sol de la pièce'))] : []),
       section('Textures de la pièce',
         h('p', { class: 'p-note' }, 'Remplacent les textures par défaut de la carte dans cette pièce (la peinture case par case reste prioritaire).'),
         texField('Sol', z.floor, (id) => set('Sol de la pièce', (zz) => { if (id) zz.floor = id; else delete zz.floor; }), { allowDefault: true, defaultLabel: `Carte : ${MT.tools.texName(m.textures.floor)}` }),
