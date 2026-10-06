@@ -45,10 +45,11 @@ const USER = path.join(TMP, 'joueur');
       G.points = 50000;
       const amp = Features.interactables.find((i) => i.kind === 'amp');
       const ap = amp && amp.prompt();
-      ok(ap && ap.text === "Le Pack-A-Punch n'a pas de courant", 'Pack-A-Punch sans courant : son invite', ap);
+      ok(ap && ap.text === 'Le Glas est muet : il faut du courant' && ap.disabled, 'Le Glas (le Pack-A-Punch) sans courant : muet', ap);
       __zs.power();
+      __zs.step(60 * 4, 1 / 60);
       const ap2 = amp && amp.prompt();
-      ok(ap2 && /^Appuyez sur F pour passer .+ au Pack-A-Punch$/.test(ap2.text), 'Pack-A-Punch avec courant : « passer … au Pack-A-Punch »', ap2);
+      ok(ap2 && ap2.text === 'Appuyez sur F pour faire une offrande' && ap2.cost === 5000, 'Le Glas réveillé par le courant : « faire une offrande », 5 000', ap2);
 
       // -------------------------------------------------- achat et boisson
       const machine = (id) => {

@@ -117,7 +117,7 @@ body {
 @keyframes pop { from { opacity: 1; transform: translate(0, 0); } to { opacity: 0; transform: translate(var(--dx, 0), -46px); } }
 #weapon { text-align: right; }
 #w-name { font-weight: 600; font-size: 18px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8); }
-#w-name.up { color: #d9adff; text-shadow: 0 0 10px rgba(180, 100, 255, 0.65); }
+#w-name.up { color: #ffd27a; text-shadow: 0 0 10px rgba(255, 186, 72, 0.6); }
 #w-ammo { font-variant-numeric: tabular-nums; display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
 #w-mag { font-weight: 700; font-size: 46px; line-height: 1; }
 #w-sep, #w-res { font-size: 26px; color: var(--steel); font-weight: 600; }
@@ -135,6 +135,7 @@ body {
   font-family: var(--font-hud); font-weight: 700; display: inline-block; min-width: 1.3em; padding: 0 0.3em;
   border: 1px solid var(--paper); border-radius: 3px; background: rgba(232, 223, 200, 0.12); line-height: 1.25;
 }
+#prompt.hold kbd { background: var(--paper); color: #0b0d0c; text-shadow: none; }
 #prompt-cost { display: block; font-weight: 700; color: var(--brass); font-size: 18px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 #prompt-cost.short { color: var(--blood-hi); }
 #prompt-sub { font-size: 15px; color: var(--paper-2); }
@@ -640,7 +641,7 @@ body {
         <dt>Clic gauche</dt><dd>Tirer</dd>
         <dt>Clic droit</dt><dd>Viser</dd>
         <dt>R</dt><dd>Recharger</dd>
-        <dt>F</dt><dd>Acheter, utiliser · maintenir pour réparer</dd>
+        <dt>F</dt><dd>Acheter, utiliser · maintenir pour réparer ou faire sonner Le Glas</dd>
         <dt>V ou E</dt><dd>Couteau</dd>
         <dt>G</dt><dd>Grenade</dd>
         <dt>Maj</dt><dd>Sprinter</dd>
@@ -653,7 +654,7 @@ body {
         <li>Reclouez les planches des fenêtres : 10 points par planche.</li>
         <li>Les armes dessinées à la craie s'achètent au mur, munitions comprises.</li>
         <li id="tip-box">La boîte mystère donne une arme au hasard pour 950 points.</li>
-        <li id="tip-power">Rétablissez le courant dans la salle des machines pour les atouts et le Pack-A-Punch.</li>
+        <li id="tip-power">Rétablissez le courant dans la salle des machines pour les atouts et Le Glas, la cloche qui reforge les armes.</li>
       </ul>
     </aside>
   </div>
@@ -1058,7 +1059,8 @@ let LAYOUT = { zones: [], doors: {}, wallbuys: [], perks: [], boxes: [], boxStar
    spread/ads = dispersion en degrés hanche/visée ; pen = zombies traversés
    box = poids dans la boîte mystère (0 = absent) ; wall = prix habituel au mur (toutes les
    armes, spéciales comprises, se posent au mur dans les Mod Tools ; une carte peut changer
-   le prix de chaque achat mural) ; up = statistiques après le Pack-A-Punch                 */
+   le prix de chaque achat mural) ; up = nom, cadence, réserve et projectiles après Le Glas,
+   la machine d'amélioration (dégâts et chargeur : voir GLAS et tierStats)                  */
 const WEAPONS = {
   m1911: {
     name: 'M1911', kind: 'pistol', auto: false, rpm: 420, dmg: 40, mag: 8, res: 80, reload: 1.6,
@@ -1177,11 +1179,74 @@ const RULES = {
   // points de vie du zombie de référence (×1 du bestiaire) : base, +step par manche
   // jusqu'à la manche until, puis ×growth par manche
   zombieHp: { base: 100, step: 50, until: 9, growth: 1.1 },
-  boxCost: 950, ampCost: 5000, ampAmmoCost: 4500,
+  boxCost: 950, ampAmmoCost: 4500,
   pointsHit: 10, pointsKill: 50, pointsHead: 100, pointsKnife: 130, pointsBoard: 10, repairCap: 500,
   nukePoints: 400, carpenterPoints: 200,
   maxGrenades: 4,
 };
+/* ------------------------------------------------------------- Le Glas ---
+   La machine d'amélioration des armes (le Pack-A-Punch des cartes), d'après la planche « Le Glas »
+   (concept v1, octobre 2026) : on couche son arme sur le berceau, la cloche s'abat et sonne. Chaque
+   coup payé la reforge d'un palier (F maintenue : un coup de plus ; relâcher arrête) et appelle les
+   morts. Dégâts et chargeur comptés depuis l'arme de base ; nom, cadence, plombs, réserve et
+   projectiles depuis WEAPONS[].up. Temps en secondes, distances en mètres. */
+const GLAS = {
+  tiers: [
+    null,
+    { id: 'tocsin', name: 'Tocsin', roman: 'I', cost: 5000, dmg: 2, desc: 'dégâts ×2, chargeur +50 %' },
+    { id: 'bourdon', name: 'Bourdon', roman: 'II', cost: 10000, dmg: 2.5, desc: 'dégâts ×2,5 et Résonance' },
+    { id: 'glas', name: 'Glas', roman: 'III', cost: 20000, dmg: 3, desc: 'dégâts ×3 et Minuit' },
+  ],
+  magMult: 1.5,
+  // rituel : glissade de l'arme, chute, intervalle entre deux coups, relève, fenêtre de reprise
+  slide: 0.3, fall: 0.8, gap: 1.5, raise: 0.8, keep: 10,
+  lipUp: 2.15, lipDown: 0.905,                // hauteur de la lèvre : levée, posée sur le socle
+  shock: { r: 5, t: 1.5 },                    // 1er coup : zombies renversés
+  call: 30,                                   // chaque coup : zombies appelés (jusqu'à la relève)
+  resonance: { r: 3, t: 0.9 },                // palier II et plus : chaque élimination fait chanceler
+  minuit: { kills: 12, r: 6, t: 1.5 },        // palier III : toutes les 12 éliminations, tout est renversé
+  midnight: 12,                               // 12e coup de la partie : les zombies à l'écran s'effondrent
+};
+/* Statistiques d'une arme à un palier du Glas (0 : arme de base), calculées une fois. */
+const TIER_STATS = Object.create(null);
+function tierStats(id, tier) {
+  const d = WEAPONS[id];
+  if (!tier) return d;
+  const cache = TIER_STATS[id] || (TIER_STATS[id] = []);
+  if (cache[tier]) return cache[tier];
+  const T = GLAS.tiers[tier], up = d.up || {};
+  const s = Object.assign({}, d, up);
+  s.dmg = d.dmg * T.dmg;
+  s.mag = Math.max(d.mag + 1, Math.round(d.mag * GLAS.magMult));
+  s.res = up.res !== undefined ? up.res : d.res * 2;
+  s.name = tier === 1 ? (up.name || d.name) : `${up.name || d.name} · ${T.name}`;
+  // éclats explosifs et projectiles : leurs dégâts d'origine (Pack-A-Punch) valent le palier I (×2)
+  if (up.explosive) s.explosive = Object.assign({}, up.explosive, { dmg: Math.round((up.explosive.dmg * T.dmg) / 2) });
+  if (up.proj) s.proj = Object.assign({}, up.proj, { dmg: Math.round((up.proj.dmg * T.dmg) / 2), direct: Math.round((up.proj.direct * T.dmg) / 2) });
+  s.tier = tier;
+  cache[tier] = s;
+  return s;
+}
+/* Emprise du Glas autour de ses deux cases (amp.cells, amp.face : le côté du joueur) : le centre,
+   l'orientation, le passage du repère de la machine (x en largeur, z vers le joueur) au monde, et les
+   cases du rectangle de 6 × 3 m qu'occupent le beffroi et le socle (fermées aux déplacements, et
+   ouvertes au plafond quand la machine est au dernier niveau). */
+function glasFootprint(amp) {
+  const [c0, c1] = amp.cells;
+  const cx = (c0[0] + c1[0]) / 2 + 0.5, cz = (c0[1] + c1[1]) / 2 + 0.5;
+  const rot = Math.atan2(amp.face[0], amp.face[1]);
+  const co = Math.cos(rot), si = Math.sin(rot);
+  const toWorld = (lx, lz) => [cx + lx * co + lz * si, cz - lx * si + lz * co];
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [lx, lz] of [[-3, -1.5], [3, -1.5], [-3, 1.5], [3, 1.5]]) {
+    const [x, z] = toWorld(lx, lz);
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+  }
+  [x0, x1, z0, z1] = [x0, x1, z0, z1].map(Math.round);
+  const cells = [];
+  for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) cells.push([x, z]);
+  return { cx, cz, rot, toWorld, cells, box: [x0, z0, x1, z1] };
+}
 /* --------------------------------------------------------------- Rang ---
    Niveaux 1 à 55 et 20 prestiges (règles d'Anthony, 5 octobre 2026). Passer du
    niveau n au suivant demande base × croissance^(n−1) XP (500, 1 000, 2 000…),
@@ -1919,6 +1984,13 @@ function validateMap(m) {
   });
   if (!m.boxes.length) Wn('Pas de boîte mystère sur cette carte.');
   if (m.amp && !m.amp.cells.every(([x, z]) => floorAt(x, z, m.amp.lv | 0) && !onStairs([x, z], m.amp.lv))) Wn("Le Pack-A-Punch doit être posé sur le sol (pas sur un escalier).", P(m.amp.cells[0], m.amp.lv));
+  else if (m.amp) {
+    // Le Glas : beffroi et socle sur 6 × 3 m ; sous un étage, le beffroi est réduit pour tenir sous le plafond
+    const lv = m.amp.lv | 0, fp = glasFootprint(m.amp);
+    const bad = fp.cells.find(([x, z]) => !floorAt(x, z, lv) || onStairs([x, z], lv));
+    if (bad) Wn("Le Pack-A-Punch (Le Glas) a besoin de 6 × 3 m de sol libre autour de ses deux cases : son beffroi déborde ici.", P(bad, m.amp.lv));
+    if (lv !== A.levels[A.levels.length - 1]) Wn(`Le Pack-A-Punch (Le Glas) est sous un étage : son beffroi de 5,6 m sera réduit pour tenir sous le plafond${where(lv)}.`, P(m.amp.cells[0], m.amp.lv));
+  }
   if (m.power && (tileAt(m.power.cell[0], m.power.cell[1], m.power.lv | 0) !== 2 || !floorAt(m.power.cell[0] + m.power.n[0], m.power.cell[1] + m.power.n[1], m.power.lv | 0))) Wn("L'interrupteur du courant doit être sur un mur, tourné vers le sol.", P(m.power.cell, m.power.lv));
   if (!m.power && !m.rules.powerOn) {
     const need = m.perks.filter((p) => PERKS[p.p].power).map((p) => PERKS[p.p].name);
@@ -2534,15 +2606,172 @@ const Sound = (() => {
       .forEach(([dt, f]) => { tone('sawtooth', f, f, t + dt, 1.6, 0.08, o, 0.05); tone('triangle', f, f, t + dt, 1.8, 0.18, o, 0.03); });
     bell(t + 1, 1046.5, 0.25, o, 3);
   }
-  function ampWork(pos) {
-    if (!ctx) return;
-    const o = out(pos, 0.6, 6); if (!o) return;
-    const t = ctx.currentTime;
-    for (let i = 0; i < 10; i++) {
-      noiseHit(t + i * 0.3, 0.18, 0.5, 'bandpass', 400 + (i % 3) * 300, null, 3, o);
-      tone('square', 110 + (i % 4) * 30, 90, t + i * 0.3, 0.12, 0.12, o);
+  /* ------------------------------------------------------------ Le Glas --- */
+  /* Réverbération (salle de pierre, environ 5 s), créée au premier coup. */
+  let verb = null;
+  function reverbSend() {
+    if (verb) return verb;
+    const sr = ctx.sampleRate, len = Math.floor(sr * 4.6);
+    const ir = ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / sr, k = 0.55 - 0.4 * Math.min(1, t / 3);         // de plus en plus sourde
+        lp += (Math.random() * 2 - 1 - lp) * k;
+        d[i] = lp * Math.exp(-t / 0.95) * (t < 0.012 ? t / 0.012 : 1);
+      }
     }
-    tone('sawtooth', 80, 320, t + 3.0, 0.6, 0.25, o, 0.1);
+    const conv = ctx.createConvolver();
+    conv.buffer = ir;
+    const g = ctx.createGain(); g.gain.value = 0.5;
+    g.connect(conv); conv.connect(sfxBus);
+    verb = g;
+    return verb;
+  }
+  /* Glas : cloche d'église (bourdon, fondamentale, tierce mineure, quinte, nominale, partiels aigus),
+     chaque partiel doublé et légèrement désaccordé (battements). tier 1 à 3 : un ton plus bas à
+     chaque palier ; 0 : le réveil (plus haut, plus doux). */
+  const GLAS_PARTIALS = [[0.5, 0.5, 7.5], [1, 0.5, 5.2], [1.2, 0.4, 4.2], [1.5, 0.2, 2.8], [2, 0.55, 3.4], [2.5, 0.15, 1.8], [2.667, 0.12, 1.4], [4, 0.12, 1.1], [5.4, 0.05, 0.5]];
+  function glasToll(pos, tier = 1, vol = 1) {
+    if (!ctx) return;
+    const o = out(pos, 0.85 * vol, 14); if (!o) return;
+    const t = ctx.currentTime;
+    const f = 130.81 * Math.pow(2, (-2 * (tier - 1)) / 12);
+    const v = ctx.createGain(); v.gain.value = 1;
+    v.connect(o);
+    const w = ctx.createGain(); w.gain.value = Math.min(1, o.gain.value * 1.4);
+    v.connect(w); w.connect(reverbSend());
+    for (const [m, a, dec] of GLAS_PARTIALS) {
+      const fm = f * m;
+      tone('sine', fm - 0.35, fm - 0.35, t, dec, a * 0.5, v, 0.004);
+      tone('sine', fm + 0.35, fm + 0.35, t, dec * 0.92, a * 0.5, v, 0.004);
+    }
+    // battant contre la cloche
+    noiseHit(t, 0.07, 0.55, 'bandpass', 2600, 1400, 1.4, v, 0.001);
+    tone('sine', 92, 46, t, 0.3, 0.6, v, 0.003);
+  }
+  /* Chute : la chaîne file sur la poulie (cliquetis de plus en plus serrés), le cliquet du treuil. */
+  function glasFall(pos, dur = 0.8) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 9); if (!o) return;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 16; i++) {
+      const k = i / 16, tt = t + dur * Math.sqrt(k) * 0.98;
+      noiseHit(tt, 0.025, 0.5 + k * 0.4, 'bandpass', rand(3000, 5200), null, 4, o, 0.001);
+      if (i % 3 === 0) tone('square', 60, 40, tt, 0.04, 0.12, o, 0.002);
+    }
+    noiseHit(t, dur, 0.18, 'bandpass', 900, 2600, 2, o, 0.2);
+  }
+  /* La cloche se pose sur le socle : choc sourd du métal sur la pierre, raclement. */
+  function glasImpact(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.9, 10); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.55, 1.0, 'lowpass', 900, 70, 0.8, o, 0.002, [0.06, 0.4]);
+    tone('sine', 58, 28, t, 0.7, 1.0, o, 0.002);
+    noiseHit(t + 0.02, 0.3, 0.35, 'bandpass', 1300, 500, 1.5, o, 0.01);
+  }
+  /* Relève : le treuil remonte la cloche (cliquet régulier, chaîne). */
+  function glasRaise(pos, dur = 0.8) {
+    if (!ctx) return;
+    const o = out(pos, 0.4, 8); if (!o) return;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 9; i++) {
+      noiseHit(t + i * (dur / 9), 0.03, 0.6, 'bandpass', 2200, 1500, 5, o, 0.001);
+      noiseHit(t + i * (dur / 9) + 0.04, 0.02, 0.35, 'bandpass', 4200, null, 4, o, 0.001);
+    }
+  }
+  /* Offrande : pièces dans le tronc, la fente s'embrase. */
+  function glasOffer(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.45, 6); if (!o) return;
+    const t = ctx.currentTime;
+    [[0, 2637], [0.08, 3136], [0.19, 2349], [0.27, 2794]].forEach(([dt, f]) => tone('sine', f, f * 0.995, t + dt, 0.22, 0.32, o, 0.001));
+    noiseHit(t + 0.2, 0.45, 0.3, 'bandpass', 300, 1400, 1.2, o, 0.15);
+  }
+  /* Reprise de l'arme : tintement clair et court. */
+  function glasChime(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 6); if (!o) return;
+    const t = ctx.currentTime;
+    bell(t, 1567.98, 0.3, o, 1.3);
+    bell(t + 0.07, 2093, 0.16, o, 0.9);
+  }
+  /* L'arme n'a pas été reprise : la cloche la garde (coup étouffé). */
+  function glasLost(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 8); if (!o) return;
+    const t = ctx.currentTime;
+    tone('sine', 98, 92, t, 1.6, 0.6, o, 0.01);
+    tone('sine', 196, 190, t, 0.9, 0.25, o, 0.01);
+    noiseHit(t, 0.4, 0.3, 'lowpass', 600, 120, 0.7, o, 0.01);
+  }
+  /* Résonance : petite onde à chaque élimination (palier II et plus). */
+  function glasPing(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.22, 7); if (!o) return;
+    bell(ctx.currentTime, rand(820, 960), 0.22, o, 0.7);
+  }
+  /* Minuit (palier III) : l'arme sonne un coup grave autour du joueur. */
+  function glasMinuit() {
+    if (!ctx) return;
+    const o = out(null, 0.5); const t = ctx.currentTime;
+    const f = 130.81 * Math.pow(2, -4 / 12);
+    for (const [m, a, dec] of GLAS_PARTIALS.slice(0, 6)) tone('sine', f * m, f * m, t, dec * 0.6, a * 0.7, o, 0.004);
+    const w = ctx.createGain(); w.gain.value = 0.6; o.connect(w); w.connect(reverbSend());
+    tone('sine', 70, 35, t, 0.5, 0.8, o, 0.004);
+  }
+  /* Le douzième coup : la cloche sonne minuit (accord grave qui monte, grand coup). */
+  function glasMidnight() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.9, 4, musicBus);
+    [65.41, 98, 130.81, 155.56, 196].forEach((f, i) => {
+      const s = ctx.createOscillator(); s.type = 'sawtooth'; s.frequency.value = f; s.detune.value = (i - 2) * 5;
+      const lp = filt('lowpass', 420, 1); const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 1.2);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 5.5);
+      s.connect(lp); lp.connect(g); g.connect(o); s.start(t); s.stop(t + 5.6);
+    });
+    noiseHit(t, 2.4, 0.7, 'lowpass', 1800, 60, 0.7, o, 0.01, [0.2, 0.3]);
+  }
+  /* Bourdonnement de la cloche au repos (très grave, audible jusqu'à 15 m environ), pulsé sur 4 s.
+     level : 0 (muette) à 1 ; appelé à chaque image, le gain suit en douceur. */
+  let hum = null, humLast = 0, humV = -1, humP = 0;
+  function glasHum(level, pos) {
+    if (!ctx || ctx.state !== 'running') return;
+    if (!hum) {
+      if (level <= 0) return;
+      const g = ctx.createGain(); g.gain.value = 0;
+      const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      const pulse = ctx.createGain(); pulse.gain.value = 0.7;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.25;
+      const lg = ctx.createGain(); lg.gain.value = 0.3;
+      lfo.connect(lg); lg.connect(pulse.gain);
+      const lp = filt('lowpass', 320, 0.7);
+      for (const [type, f, a] of [['sine', 55, 0.8], ['sine', 82.6, 0.35], ['triangle', 110.2, 0.4], ['sine', 164.6, 0.12]]) {
+        const s = ctx.createOscillator(); s.type = type; s.frequency.value = f;
+        const sg = ctx.createGain(); sg.gain.value = a;
+        s.connect(sg); sg.connect(lp); s.start();
+      }
+      lp.connect(pulse); pulse.connect(g);
+      if (p) { g.connect(p); p.connect(sfxBus); } else g.connect(sfxBus);
+      lfo.start();
+      hum = { g, p };
+    }
+    const now = ctx.currentTime;
+    let v = 0, pan = 0;
+    if (level > 0 && pos) {
+      const dx = pos.x - L.x, dz = pos.z - L.z;
+      let d = Math.hypot(dx, dz);
+      if (NL > 1 && pos.y !== undefined) d = Math.hypot(d, pos.y - (L.y || 0));
+      v = level * 0.22 / (1 + Math.pow(Math.max(0, d - 1) / 5, 1.7)) * clamp((18 - d) / 5, 0, 1);
+      if (d > 0.05) pan = clamp((dx * Math.cos(L.yaw) - dz * Math.sin(L.yaw)) / d, -1, 1) * 0.6;
+    }
+    if (now - humLast < 0.08 && Math.abs(v - humV) < 0.01) return;
+    humLast = now;
+    if (Math.abs(v - humV) > 0.0005) { hum.g.gain.setTargetAtTime(v, now, 0.25); humV = v; }
+    if (hum.p && Math.abs(pan - humP) > 0.02) { hum.p.pan.setTargetAtTime(pan, now, 0.1); humP = pan; }
   }
 
   function startAmbient() {
@@ -2593,8 +2822,9 @@ const Sound = (() => {
     gun, empty, reload, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
     zombie, rise, helmet, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
-    boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, ampWork, creak, say, rankStamp, rankUp, prestige,
+    boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, creak, say, rankStamp, rankUp, prestige,
     syringe, magPickup,
+    glasToll, glasFall, glasImpact, glasRaise, glasOffer, glasChime, glasLost, glasPing, glasMinuit, glasMidnight, glasHum,
   };
 })();
 
@@ -4398,8 +4628,20 @@ function parseMapGrid(map) {
     }
     for (const [x, z] of st.open) { const h = node(st.liUp, x, z); hole[h] = 1; holeZone[h] = st.zoneHi >= 0 ? st.zoneHi : st.zoneLo; }
   }
+  // Le Glas (5,6 m de haut) : au dernier niveau, le plafond s'ouvre au-dessus de son beffroi ;
+  // sous un étage, la machine est réduite (buildAmpFeature)
+  CUR.glasOpen = null;
+  const glasOpenK = new Set();
+  if (map.amp) {
+    const li = levelIndex(map.amp.lv || 0);
+    if (li >= 0 && li === NL - 1) {
+      const fp = glasFootprint(map.amp);
+      for (const [x, z] of fp.cells) if (inb(x, z) && interior[node(li, x, z)]) glasOpenK.add(node(li, x, z));
+      if (glasOpenK.size) CUR.glasOpen = fp.box;
+    }
+  }
   for (let k = 0; k < grid.length; k++) {
-    if (interior[k] && cellTex(k, 'ceil') === 'none') noCeil[k] = 1;
+    if (interior[k] && (cellTex(k, 'ceil') === 'none' || glasOpenK.has(k))) noCeil[k] = 1;
     const li = levelOfNode(k), holeUp = li < NL - 1 && hole[k + GN];
     ceilOn[k] = interior[k] && !noCeil[k] && !holeUp ? 1 : 0;
     // au-dessus d'une trémie, la cage d'escalier a le plafond de la pièce du haut
@@ -6043,7 +6285,7 @@ const GUN_MODELS = {
     return { muzzle: [0, 0.03, -0.3], lh: [0, -0.06, 0.03], sight: 0.1, hip: [0.15, -0.19, -0.42], one: true };
   },
   blaster(b, M, up) {
-    const glow = up ? MAT.glowViolet : MAT.glowCyan;
+    const glow = up ? glasResources().M.glowGold : MAT.glowCyan;
     b.box(M.metal2, 0.08, 0.1, 0.3, 0, 0.03, -0.08);
     b.cylZ(M.metal, 0.11, 0.22, 0, 0.03, -0.33, null, -1);
     for (const [z, r] of [[-0.25, 0.08], [-0.33, 0.095], [-0.41, 0.11]]) b.ring(glow, r, 0.012, 0, 0.03, z);
@@ -6054,20 +6296,57 @@ const GUN_MODELS = {
   },
 };
 
-function gunMats(upgraded) {
-  if (upgraded) {
-    const c = MAT.camo;
-    return { metal: c, metal2: c, wood: c, woodDark: c, bakelite: MAT.bakelite, ray: c, rayRed: MAT.rayRed };
+/* Matières d'une arme : de base, ou reforgée par Le Glas (palier 1 : airain poli ; 2 : patine
+   vert-de-gris ; 3 : airain noirci fêlé d'or). */
+function gunMats(tier) {
+  if (tier) {
+    const M = glasResources().M, m = tier === 1 ? M.gun1 : tier === 2 ? M.gun2 : M.gun3, w = tier === 1 ? M.gun1b : m;
+    return { metal: m, metal2: m, wood: w, woodDark: w, bakelite: w, ray: m, rayRed: MAT.rayRed };
   }
   return { metal: MAT.gunMetal, metal2: MAT.gunMetal2, wood: MAT.gunWood, woodDark: MAT.gunWoodDark, bakelite: MAT.bakelite, ray: MAT.rayBody, rayRed: MAT.rayRed };
 }
-function buildGun(id, upgraded = false) {
+/* Ornements du Glas sur une arme reforgée (pièces fixes seulement) : cerclages gravés comme les
+   moulures de la cloche (I), plaque VOCO allumée de chaque côté (II et III), agrafes de fer (III). */
+function glasFinish(b, tier) {
+  const M = glasResources().M;
+  const moving = new Set(Object.values(b.parts));
+  const add = (geo, mat, x, y, z, sx, sy, sz, rx = 0, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.set(rx, ry, 0);
+    b.g.add(m);
+    return m;
+  };
+  let main = null, best = 0;
+  for (const m of b.g.children.slice()) {
+    if (!m.isMesh || moving.has(m)) continue;
+    const s = m.scale, p = m.position;
+    if (m.geometry === GEO.cyl && Math.abs(Math.abs(m.rotation.x) - Math.PI / 2) < 0.01 && s.y > 0.1) {
+      const r = s.x, z0 = p.z - s.y / 2;
+      if (tier === 1) for (const f of [0.18, 0.5, 0.82]) add(GEO.torus, M.gunBand, p.x, p.y, z0 + s.y * f, r * 1.12, r * 1.12, 0.06);
+      if (tier === 3) for (const f of [0.3, 0.72]) add(GEO.box, M.gunIron, p.x, p.y + r * 0.6, z0 + s.y * f, r * 2.3, r, 0.012);
+    } else if (m.geometry === GEO.box && Math.abs(m.rotation.x) < 0.12 && s.z > 0.12) {
+      if (s.x * s.y * s.z > best) { best = s.x * s.y * s.z; main = m; }
+      if (tier === 1) for (const f of [-0.3, 0.3]) add(GEO.box, M.gunBand, p.x, p.y, p.z + s.z * f, s.x * 1.08, s.y * 1.08, 0.01, m.rotation.x);
+    }
+  }
+  if (!main) return;
+  const s = main.scale, p = main.position;
+  if (tier >= 2) {
+    const w = Math.min(s.z * 0.5, 0.1), h = Math.min(s.y * 0.6, 0.04);
+    for (const side of [-1, 1]) add(GEO.plane, M.voco, p.x + side * (s.x / 2 + 0.0015), p.y, p.z, w, h, 1, 0, (side * Math.PI) / 2);
+  }
+  if (tier === 3) for (const f of [-0.25, 0.25]) add(GEO.box, M.gunIron, p.x, p.y + s.y / 2 + 0.002, p.z + s.z * f, s.x * 1.15, 0.006, 0.012);
+}
+/* Modèle d'une arme ; tier : palier du Glas (0 : arme de base ; true vaut 1). */
+function buildGun(id, tier = 0) {
+  tier = tier === true ? 1 : tier | 0;
   const b = new GunBuilder();
-  const info = GUN_MODELS[id](b, gunMats(upgraded), upgraded);
+  const info = GUN_MODELS[id](b, gunMats(tier), tier > 0);
+  if (tier) glasFinish(b, tier);
   const muzzle = new THREE.Object3D();
   muzzle.position.fromArray(info.muzzle);
   b.g.add(muzzle);
-  b.g.userData = { id, upgraded, muzzle, parts: b.parts, info, prims: b.prims };
+  b.g.userData = { id, upgraded: tier > 0, tier, muzzle, parts: b.parts, info, prims: b.prims };
   for (const k in b.parts) b.parts[k].userData.rest = b.parts[k].position.clone();
   return b.g;
 }
@@ -6207,35 +6486,726 @@ function buildBeam() {
   m.position.y = 0.75 + 2.75 / 2;
   return m;
 }
-function buildAmp() {
+/* ---------------------------------------------------------------- Le Glas ---
+   Modèle d'après la planche « Le Glas » (vue de face, gabarit, matières) : beffroi de chêne noirci
+   coiffé d'un toit à pignon (5,6 m avec la girouette), cloche de 1,6 m fêlée et agrafée (profil de
+   la planche, LatheGeometry à 48 segments), socle de pierre de 0,9 m, berceau à deux fourches,
+   tronc, corde, treuil, bougies et cercles brûlés au sol. Repère : origine au pied du socle, x en
+   largeur, y en hauteur, z vers le joueur. Textures, matières et géométries fixes sont faites une
+   fois et partagées entre les cartes ; buildGlas() assemble une machine. */
+const GLAS_PROFILE = [[0.81, 0], [0.80, 0.03], [0.77, 0.11], [0.71, 0.22], [0.64, 0.35], [0.59, 0.55], [0.56, 0.80], [0.55, 1.03], [0.53, 1.14], [0.45, 1.21], [0.37, 1.25], [0, 1.25]];
+const GLAS_FONTE = new THREE.Color(0xffc861).convertSRGBToLinear();   // fonte vive, l'unique point chaud
+// poulie de la cloche (sous la poutre maîtresse) et anneau au-dessus du joug (repère de la cloche)
+const GLAS_PULLEY_Y = 4.33, GLAS_RING_Y = 1.78, GLAS_LINK = 0.07;
+// treuil (chaîne enroulée sur le tambour, roue tournée vers le joueur) et corde
+const GLAS_WINCH = [1.36, 1.85, 1.15], GLAS_ROPE = [-1.02, 0.14];
+// bougies au pied du socle : [x, z, hauteur, rayon]
+const GLAS_CANDLES = [[-0.62, 1.30, 0.40, 0.04], [-0.78, 1.22, 0.30, 0.036], [-0.93, 1.34, 0.20, 0.034], [-0.70, 1.47, 0.16, 0.03], [-1.02, 1.17, 0.13, 0.03], [-0.52, 1.43, 0.25, 0.034],
+  [0.60, 1.32, 0.44, 0.04], [0.76, 1.20, 0.27, 0.036], [0.90, 1.38, 0.34, 0.036], [0.68, 1.50, 0.15, 0.03], [1.00, 1.22, 0.18, 0.03], [0.50, 1.45, 0.22, 0.034]];
+/* Rayon de la cloche à la hauteur y (depuis la lèvre) et normale extérieure du profil (nr, ny). */
+function glasR(y) {
+  const P = GLAS_PROFILE;
+  if (y <= 0) return P[0][0];
+  for (let i = 1; i < P.length; i++) {
+    if (y <= P[i][1]) { const [r0, y0] = P[i - 1], [r1, y1] = P[i]; return r0 + (r1 - r0) * ((y - y0) / Math.max(1e-6, y1 - y0)); }
+  }
+  return 0;
+}
+function glasN(y) {
+  const a = Math.max(0, y - 0.012), b = Math.min(1.24, y + 0.012), dr = glasR(b) - glasR(a), dy = b - a;
+  const l = Math.hypot(dr, dy) || 1;
+  return [dy / l, -dr / l];
+}
+/* Repère posé sur la cloche (azimut a depuis +z vers +x, hauteur y, à off de la surface) :
+   x = tangente horizontale, y = le long du profil vers le haut, z = normale extérieure. */
+function glasSurfMtx(a, y, off, sx = 1, sy = 1, sz = 1) {
+  const r = glasR(y), [nr, ny] = glasN(y), s = Math.sin(a), c = Math.cos(a);
+  const N = new THREE.Vector3(nr * s, ny, nr * c), X = new THREE.Vector3(c, 0, -s);
+  const Y = new THREE.Vector3().crossVectors(N, X);
+  const m = new THREE.Matrix4().makeBasis(X, Y, N);
+  m.scale(new THREE.Vector3(sx, sy, sz));
+  m.setPosition(r * s + N.x * off, y + N.y * off, r * c + N.z * off);
+  return m;
+}
+/* Bruit de valeur raccordable, tiré d'un générateur reproductible (mêmes textures à chaque lancement). */
+function seededNoise(w, h, octaves, rnd, contrast = 2.0) {
+  const out = new Float32Array(w * h);
+  let total = 0;
+  for (const [sx, sy, amp] of octaves) {
+    const grid = new Float32Array(sx * sy);
+    for (let i = 0; i < grid.length; i++) grid[i] = rnd();
+    for (let y = 0; y < h; y++) {
+      const fy = (y / h) * sy, y0 = Math.floor(fy), ty = smooth(fy - y0), y1 = (y0 + 1) % sy;
+      for (let x = 0; x < w; x++) {
+        const fx = (x / w) * sx, x0 = Math.floor(fx), tx = smooth(fx - x0), x1 = (x0 + 1) % sx;
+        const a = grid[y0 * sx + x0], b = grid[y0 * sx + x1], c = grid[y1 * sx + x0], d = grid[y1 * sx + x1];
+        out[y * w + x] += amp * ((a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty);
+      }
+    }
+    total += amp;
+  }
+  for (let i = 0; i < out.length; i++) out[i] = clamp((out[i] / total - 0.5) * contrast + 0.5, 0, 1);
+  return out;
+}
+const scaleUV = (geo, su, sv, ou = 0, ov = 0) => { const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, ou + uv.getX(i) * su, ov + uv.getY(i) * sv); return geo; };
+const swapUV = (geo) => { const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getY(i), uv.getX(i)); return geo; };
+
+function genGlasTextures() {
+  const T = {};
+  const rnd = mulberry32(1405);
+  // airain de la cloche : patine vert-de-gris (100 % en haut, 10 % à la lèvre, coulures) ;
+  // carte rugosité (G) / métal (B) : airain 0,42 / 1, vert-de-gris 0,85 / 0
+  {
+    const W = 512, H = 256;
+    const n1 = seededNoise(W, H, [[6, 3, 1], [24, 12, 0.5], [96, 48, 0.25]], rnd, 1.8);
+    const n2 = seededNoise(W, H, [[8, 4, 1], [32, 16, 0.6], [128, 64, 0.3]], rnd, 2.2);
+    const mask = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      const v = 1 - y / (H - 1), g = 0.1 + 0.9 * smooth(clamp((v - 0.08) / 0.8, 0, 1));
+      for (let x = 0; x < W; x++) mask[y * W + x] = g * (0.35 + 0.9 * n2[y * W + x]) - 0.16;
+    }
+    for (let i = 0; i < 54; i++) {
+      const u = rnd() * W, v0 = 0.35 + rnd() * 0.6, len = 0.12 + rnd() * 0.42, wd = 1.5 + rnd() * 5;
+      for (let y = 0; y < H; y++) {
+        const v = 1 - y / (H - 1);
+        if (v > v0 || v < v0 - len) continue;
+        const k = 1 - (v0 - v) / len, wob = Math.sin(v * 40 + i) * 1.2;
+        for (let dx = -Math.ceil(wd); dx <= Math.ceil(wd); dx++) {
+          const x = (((Math.round(u + wob) + dx) % W) + W) % W;
+          mask[y * W + x] += 0.62 * k * Math.max(0, 1 - Math.abs(dx) / wd);
+        }
+      }
+    }
+    const c = makeCanvas(W, H), g = c.getContext('2d'), rm = makeCanvas(W, H), gr = rm.getContext('2d');
+    const img = g.createImageData(W, H), im2 = gr.createImageData(W, H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x, p = i * 4, a = n1[i];
+        const m = smooth(clamp((mask[i] - 0.28) / 0.4, 0, 1));
+        const turn = 0.94 + 0.06 * Math.sin(y * 1.7 + a * 3);                       // traces de tour
+        img.data[p] = lerp((78 + 80 * a) * turn, 62 + 58 * a, m);                   // airain (albédo ≈ #6E4826)
+        img.data[p + 1] = lerp((50 + 52 * a) * turn, 108 + 62 * a, m);              // vert-de-gris (≈ #5A9280)
+        img.data[p + 2] = lerp((26 + 30 * a) * turn, 92 + 54 * a, m);
+        img.data[p + 3] = 255;
+        im2.data[p] = 0; im2.data[p + 1] = 255 * lerp(0.42, 0.85, m); im2.data[p + 2] = 255 * (1 - m); im2.data[p + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0); gr.putImageData(im2, 0, 0);
+    T.bronze = toTex(c); T.bronzeRM = toTex(rm, { srgb: false });
+  }
+  // bandeau de l'inscription : MORTVOS · VOCO devant, VIVOS · PLANGO derrière (lettres en relief)
+  {
+    const W = 2048, H = 96;
+    const c = makeCanvas(W, H), g = c.getContext('2d'), e = makeCanvas(W, H), ge = e.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, '#6a4524'); grd.addColorStop(0.5, '#4e331b'); grd.addColorStop(1, '#6a4524');
+    g.fillStyle = grd; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#a4783f'; g.fillRect(0, 5, W, 3); g.fillRect(0, H - 8, W, 3);
+    g.fillStyle = 'rgba(15,9,4,0.6)'; g.fillRect(0, 8, W, 1); g.fillRect(0, H - 5, W, 1);
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, W, H);
+    ge.fillStyle = 'rgba(255,255,255,0.3)'; ge.fillRect(0, 5, W, 3); ge.fillRect(0, H - 8, W, 3);
+    const font = `600 ${Math.round(H * 0.5)}px "Times New Roman", Georgia, "DejaVu Serif", serif`;
+    const write = (text, cx) => {
+      g.font = ge.font = font; g.textBaseline = ge.textBaseline = 'middle'; g.textAlign = ge.textAlign = 'left';
+      const chars = [...text], sp = H * 0.11, ws = chars.map((ch) => g.measureText(ch).width);
+      let x = cx - (ws.reduce((a, b) => a + b, 0) + sp * (chars.length - 1)) / 2;
+      chars.forEach((ch, i) => {
+        for (const ox of [-W, 0, W]) {
+          g.fillStyle = 'rgba(18,10,4,0.9)'; g.fillText(ch, x + ox + 2, H / 2 + 3);
+          g.fillStyle = '#d2a265'; g.fillText(ch, x + ox, H / 2 + 1);
+          ge.fillStyle = '#fff'; ge.fillText(ch, x + ox, H / 2 + 1);
+        }
+        x += ws[i] + sp;
+      });
+    };
+    write('MORTVOS · VOCO', W / 2);
+    write('VIVOS · PLANGO', 0);
+    T.inscr = toTex(c); T.inscrGlow = toTex(e);
+  }
+  // pierre du socle : quatre assises de moellons (1 tour du tambour), joints sombres, poussière en bas
+  {
+    const W = 1024, H = 128;
+    const n = seededNoise(W, H, [[16, 2, 1], [64, 8, 0.5], [256, 32, 0.3]], rnd, 1.6);
+    const c = makeCanvas(W, H), g = c.getContext('2d');
+    paintPixels(g, W, H, (x, y, col) => { const k = 0.78 + 0.36 * n[y * W + x]; col[0] = 77 * k; col[1] = 70 * k; col[2] = 63 * k; });
+    const rows = 4, rh = H / rows;
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rh, start = rnd() * 60;
+      let x = start;
+      while (x < start + W) {
+        const bw = Math.min(70 + rnd() * 80, start + W - x);
+        g.fillStyle = rnd() < 0.5 ? `rgba(0,0,0,${0.05 + rnd() * 0.12})` : `rgba(255,240,220,${0.03 + rnd() * 0.07})`;
+        for (const ox of [0, -W]) g.fillRect(x + ox + 1.5, y0 + 1.5, bw - 3, rh - 3);
+        g.fillStyle = 'rgba(22,18,15,0.9)';
+        for (const ox of [0, -W]) g.fillRect(x + ox - 1.5, y0, 3, rh);
+        x += bw;
+      }
+      g.fillStyle = 'rgba(22,18,15,0.92)'; g.fillRect(0, y0 - 1.5, W, 3);
+    }
+    const gd = g.createLinearGradient(0, H * 0.65, 0, H);
+    gd.addColorStop(0, 'rgba(120,108,92,0)'); gd.addColorStop(1, 'rgba(120,108,92,0.35)');
+    g.fillStyle = gd; g.fillRect(0, H * 0.65, W, H * 0.35);
+    T.stone = toTex(c);
+  }
+  // chêne noirci (poutres), planches du pignon, bardeaux du toit
+  T.oak = toTex(genWood(256, 64, [58, 44, 35]));
+  T.planks = toTex(genPlanks(256, 256, 6, [54, 41, 33]));
+  {
+    const W = 256, H = 256, c = makeCanvas(W, H), g = c.getContext('2d');
+    g.fillStyle = '#16120f'; g.fillRect(0, 0, W, H);
+    const rows = 8, rh = H / rows;
+    for (let r = 0; r < rows; r++) {
+      let x = -rnd() * 30;
+      while (x < W) {
+        const w = 26 + rnd() * 24, k = 0.72 + rnd() * 0.42;
+        g.fillStyle = `rgb(${Math.round(50 * k)},${Math.round(40 * k)},${Math.round(33 * k)})`;
+        g.fillRect(x + 1, r * rh + 1, w - 2, rh - 3);
+        g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(x + 1, r * rh + rh - 7, w - 2, 5);
+        x += w;
+      }
+    }
+    T.shingles = toTex(c);
+  }
+  // velours rouge du berceau : plis, galons et franges dorés, bas festonné
+  {
+    const W = 256, H = 128, c = makeCanvas(W, H), g = c.getContext('2d');
+    for (let x = 0; x < W; x++) {
+      const f = 0.6 + 0.4 * Math.sin((x / W) * TAU * 7 + Math.sin(x * 0.05) * 0.8);
+      g.fillStyle = `rgb(${Math.round(120 * f)},${Math.round(17 * f)},${Math.round(21 * f)})`;
+      g.fillRect(x, 0, 1, H);
+    }
+    g.fillStyle = '#b8923f'; g.fillRect(0, 3, W, 4);
+    g.fillStyle = '#c9a24c'; g.fillRect(0, H - 24, W, 5);
+    for (let x = 0; x < W; x += 3) { g.fillStyle = x % 6 ? '#9c7a34' : '#d8b25a'; g.fillRect(x, H - 19, 2, 13); }
+    g.globalCompositeOperation = 'destination-out';
+    const nf = 6, sw = W / nf;
+    for (let i = 0; i < nf; i++) { g.beginPath(); g.ellipse((i + 0.5) * sw, H + 3, sw * 0.42, 10, 0, 0, TAU); g.fill(); }
+    g.globalCompositeOperation = 'source-over';
+    T.cloth = toTex(c, { clamp: true });
+  }
+  // anneau doux (ondes au sol), fuite de lumière sous la lèvre, lueur des bandes, flamme, cône
+  const radial = (S, stops) => {
+    const c = makeCanvas(S, S), g = c.getContext('2d'), gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    for (const [k, a] of stops) gr.addColorStop(k, `rgba(255,255,255,${a})`);
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    return toTex(c, { clamp: true });
+  };
+  T.ring = radial(256, [[0, 0], [0.55, 0.03], [0.86, 0.3], [0.95, 1], [1, 0]]);
+  T.leak = radial(256, [[0, 0], [0.56, 0], [0.64, 1], [0.74, 0.45], [1, 0]]);
+  {
+    const c = makeCanvas(8, 64), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 64);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.5, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 8, 64);
+    T.band = toTex(c, { clamp: true });
+  }
+  {
+    const c = makeCanvas(32, 64), g = c.getContext('2d'), gr = g.createRadialGradient(16, 46, 1, 16, 40, 24);
+    gr.addColorStop(0, 'rgba(255,250,225,1)'); gr.addColorStop(0.35, 'rgba(255,196,96,0.9)'); gr.addColorStop(1, 'rgba(255,120,20,0)');
+    g.fillStyle = gr; g.beginPath(); g.ellipse(16, 38, 9, 25, 0, 0, TAU); g.fill();
+    T.flame = toTex(c, { clamp: true });
+  }
+  {
+    const c = makeCanvas(16, 128), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.06, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0.12)');
+    g.fillStyle = gr; g.fillRect(0, 0, 16, 128);
+    T.cone = toTex(c, { clamp: true });
+  }
+  // intérieur de la cloche : la bouche ardente, plus vive près de la lèvre
+  {
+    const c = makeCanvas(16, 128), g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, 'rgb(40,24,10)'); gr.addColorStop(0.55, 'rgb(150,96,40)'); gr.addColorStop(1, 'rgb(255,236,190)');
+    g.fillStyle = gr; g.fillRect(0, 0, 16, 128);
+    T.mouth = toTex(c, { clamp: true });
+  }
+  // cercles brûlés au sol (7,4 m de côté) et braises qui y couvent
+  {
+    const S = 1024, c = makeCanvas(S, S), g = c.getContext('2d'), e = makeCanvas(S, S), ge = e.getContext('2d');
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, S, S);
+    const px = S / 7.4, C = S / 2;
+    const gs = g.createRadialGradient(C, C, px * 0.9, C, C, px * 1.9);
+    gs.addColorStop(0, 'rgba(14,10,7,0.72)'); gs.addColorStop(1, 'rgba(14,10,7,0)');
+    g.fillStyle = gs; g.fillRect(0, 0, S, S);
+    for (const [R, w, a] of [[2.05, 7, 0.78], [2.75, 5, 0.62], [3.35, 4, 0.46]]) {
+      for (let k = 0; k < 3; k++) {
+        g.strokeStyle = `rgba(16,11,7,${a * (k ? 0.4 : 1)})`;
+        g.lineWidth = w * (k ? 2.4 : 1);
+        g.beginPath();
+        for (let i = 0; i <= 200; i++) {
+          const t = (i / 200) * TAU, rr = (R + Math.sin(t * 7 + k) * 0.03 + (rnd() - 0.5) * 0.02) * px;
+          if (i) g.lineTo(C + Math.cos(t) * rr, C + Math.sin(t) * rr); else g.moveTo(C + Math.cos(t) * rr, C + Math.sin(t) * rr);
+        }
+        g.stroke();
+      }
+      for (let i = 0; i < 80; i++) {
+        const t = rnd() * TAU, rr = (R + (rnd() - 0.5) * 0.05) * px;
+        ge.fillStyle = `rgba(255,255,255,${0.35 + rnd() * 0.65})`;
+        ge.beginPath(); ge.arc(C + Math.cos(t) * rr, C + Math.sin(t) * rr, 1 + rnd() * 2.2, 0, TAU); ge.fill();
+      }
+    }
+    T.decal = toTex(c, { clamp: true }); T.decalGlow = toTex(e, { clamp: true });
+  }
+  // médaillon du pignon (cloche en creux sur un disque de fonte rougeoyant) et girouette (coq)
+  {
+    const S = 128, c = makeCanvas(S, S), g = c.getContext('2d'), e = makeCanvas(S, S), ge = e.getContext('2d');
+    const bellPath = (gg) => {
+      gg.beginPath();
+      gg.moveTo(64, 30); gg.bezierCurveTo(48, 30, 46, 44, 46, 58); gg.bezierCurveTo(46, 72, 40, 80, 36, 88);
+      gg.lineTo(92, 88); gg.bezierCurveTo(88, 80, 82, 72, 82, 58); gg.bezierCurveTo(82, 44, 80, 30, 64, 30); gg.closePath();
+      gg.moveTo(70, 96); gg.arc(64, 96, 6, 0, TAU);
+    };
+    const gr = g.createRadialGradient(56, 52, 4, 64, 64, 60);
+    gr.addColorStop(0, '#e08a3a'); gr.addColorStop(0.7, '#9a4e1c'); gr.addColorStop(1, '#5a2c10');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    g.fillStyle = '#1a0f08'; bellPath(g); g.fill();
+    g.strokeStyle = '#d9a55a'; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 58, 0, TAU); g.stroke();
+    const ge2 = ge.createRadialGradient(64, 64, 4, 64, 64, 58);
+    ge2.addColorStop(0, '#fff'); ge2.addColorStop(1, '#663');
+    ge.fillStyle = ge2; ge.fillRect(0, 0, S, S);
+    ge.fillStyle = '#000'; bellPath(ge); ge.fill();
+    T.medal = toTex(c, { clamp: true }); T.medalGlow = toTex(e, { clamp: true });
+  }
+  {
+    const c = makeCanvas(128, 96), g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.beginPath(); g.ellipse(58, 54, 26, 16, -0.15, 0, TAU); g.fill();                         // corps
+    g.beginPath(); g.arc(84, 34, 10, 0, TAU); g.fill();                                       // tête
+    g.beginPath(); g.moveTo(93, 32); g.lineTo(104, 36); g.lineTo(93, 39); g.fill();           // bec
+    g.beginPath(); g.moveTo(78, 26); g.lineTo(80, 16); g.lineTo(85, 23); g.lineTo(88, 15); g.lineTo(91, 26); g.fill();   // crête
+    g.beginPath(); g.moveTo(80, 44); g.lineTo(70, 46); g.lineTo(76, 54); g.fill();            // cou
+    for (const [a, l] of [[-2.2, 34], [-2.55, 38], [-2.9, 32]]) {                             // queue
+      g.save(); g.translate(36, 50); g.rotate(a); g.beginPath(); g.ellipse(l / 2, 0, l / 2, 6, 0, 0, TAU); g.fill(); g.restore();
+    }
+    g.fillRect(56, 68, 3, 16); g.fillRect(64, 68, 3, 16); g.fillRect(30, 84, 72, 4);         // pattes, socle
+    T.rooster = toTex(c, { clamp: true });
+  }
+  // poignée de la corde, rayée rouge et blanc (en spirale)
+  {
+    const c = makeCanvas(64, 128), g = c.getContext('2d');
+    g.fillStyle = '#e6dcc6'; g.fillRect(0, 0, 64, 128);
+    g.fillStyle = '#9b1c1c';
+    for (let i = -2; i < 10; i++) { g.beginPath(); g.moveTo(0, i * 16); g.lineTo(64, i * 16 + 16); g.lineTo(64, i * 16 + 24); g.lineTo(0, i * 16 + 8); g.fill(); }
+    T.sally = toTex(c);
+  }
+  // finitions des armes reforgées : vert-de-gris marbré (II), airain noirci fêlé d'or (III), plaque VOCO
+  {
+    const S = 128, n = seededNoise(S, S, [[4, 4, 1], [12, 12, 0.6], [32, 32, 0.3]], rnd, 2.6);
+    const c = makeCanvas(S, S), g = c.getContext('2d');
+    paintPixels(g, S, S, (x, y, col) => {
+      const v = n[y * S + x], m = 0.85 * smooth(clamp((v - 0.64) / 0.18, 0, 1)), k = 0.85 + 0.3 * v;
+      col[0] = lerp(128 * k, 108, m); col[1] = lerp(84 * k, 154, m); col[2] = lerp(46 * k, 136, m);
+    });
+    T.gunPatina = toTex(c);
+  }
+  {
+    const S = 256, c = makeCanvas(S, S), g = c.getContext('2d'), e = makeCanvas(S, S), ge = e.getContext('2d');
+    const n = seededNoise(S, S, [[6, 6, 1], [24, 24, 0.5]], rnd, 1.6);
+    paintPixels(g, S, S, (x, y, col) => { const k = 0.75 + 0.4 * n[y * S + x]; col[0] = 58 * k; col[1] = 40 * k; col[2] = 26 * k; });
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, S, S);
+    for (let i = 0; i < 14; i++) {
+      const x = rnd() * S, y = rnd() * S, len = 6 + Math.floor(rnd() * 10), w = 1.6 + rnd() * 1.8;
+      crack(g, S, S, x, y, len, w + 1.5, 'rgba(255,200,97,0.55)');
+      crack(ge, S, S, x, y, len, w, '#fff');
+    }
+    T.gunCracks = toTex(c); T.gunCracksGlow = toTex(e);
+  }
+  {
+    const c = makeCanvas(128, 48), g = c.getContext('2d'), e = makeCanvas(128, 48), ge = e.getContext('2d');
+    g.fillStyle = '#7a4f28'; g.fillRect(0, 0, 128, 48);
+    g.strokeStyle = '#c99a5a'; g.lineWidth = 3; g.strokeRect(3, 3, 122, 42);
+    ge.fillStyle = '#000'; ge.fillRect(0, 0, 128, 48);
+    g.font = ge.font = '700 30px "Times New Roman", Georgia, serif';
+    g.textAlign = ge.textAlign = 'center'; g.textBaseline = ge.textBaseline = 'middle';
+    g.fillStyle = '#f2d290'; g.fillText('VOCO', 64, 26);
+    ge.fillStyle = '#fff'; ge.fillText('VOCO', 64, 26);
+    T.voco = toTex(c, { clamp: true }); T.vocoGlow = toTex(e, { clamp: true });
+  }
+  for (const k in T) share(T[k]);
+  return T;
+}
+/* Reflets des métaux (cube de 6 petites images) : salle sombre, clair de lune au-dessus, lueur chaude
+   en bas ; sert à l'airain et au fer, qui sans reflet paraîtraient noirs. */
+function genGlasEnv() {
+  const S = 64, faces = [];
+  for (let f = 0; f < 6; f++) {
+    const c = makeCanvas(S, S), g = c.getContext('2d');
+    if (f === 2) {
+      const gr = g.createRadialGradient(S / 2, S / 2, 2, S / 2, S / 2, S * 0.7);
+      gr.addColorStop(0, '#c4d2e0'); gr.addColorStop(0.4, '#4c5a6c'); gr.addColorStop(1, '#262c35');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    } else if (f === 3) {
+      const gr = g.createRadialGradient(S / 2, S / 2, 2, S / 2, S / 2, S * 0.7);
+      gr.addColorStop(0, '#a8702c'); gr.addColorStop(0.5, '#4a2e14'); gr.addColorStop(1, '#22170e');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    } else {
+      const gr = g.createLinearGradient(0, 0, 0, S);
+      gr.addColorStop(0, '#3e4a5a'); gr.addColorStop(0.45, '#241d16'); gr.addColorStop(1, '#4a3016');
+      g.fillStyle = gr; g.fillRect(0, 0, S, S);
+      const blot = (x, y, r, col) => { const b = g.createRadialGradient(x, y, 0, x, y, r); b.addColorStop(0, col); b.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = b; g.fillRect(0, 0, S, S); };
+      blot(S * (0.25 + 0.17 * f), S * 0.62, S * 0.24, 'rgba(255,170,80,0.75)');
+      if (f % 2) blot(S * 0.7, S * 0.22, S * 0.25, 'rgba(160,185,210,0.5)');
+    }
+    faces.push(c);
+  }
+  const t = new THREE.CubeTexture(faces);
+  t.encoding = THREE.sRGBEncoding;
+  t.needsUpdate = true;
+  return share(t);
+}
+/* Ressources partagées du Glas : textures, matières, géométries fixes (faites une fois). */
+const GLAS_R = { T: null, M: null, G: null };
+function glasResources() {
+  if (GLAS_R.M) return GLAS_R;
+  const T = GLAS_R.T = genGlasTextures();
+  const env = genGlasEnv();
+  const std = (o) => linearize(share(new THREE.MeshStandardMaterial(o)));
+  const basic = (o) => linearize(share(new THREE.MeshBasicMaterial(o)));
+  const add = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+  const M = GLAS_R.M = {
+    oak: std({ map: T.oak, vertexColors: true, roughness: 0.9, metalness: 0 }),
+    planks: std({ map: T.planks, roughness: 0.9 }),
+    shingles: std({ map: T.shingles, roughness: 0.92 }),
+    iron: std({ color: 0x353b42, vertexColors: true, roughness: 0.6, metalness: 0.85, envMap: env, envMapIntensity: 0.7 }),
+    stone: std({ map: T.stone, roughness: 0.82 }),
+    bronze: std({ map: T.bronze, roughnessMap: T.bronzeRM, metalnessMap: T.bronzeRM, roughness: 1, metalness: 1, envMap: env, envMapIntensity: 1.5 }),
+    trim: std({ color: 0x8a5a2e, roughness: 0.36, metalness: 1, envMap: env, envMapIntensity: 1 }),
+    inner: std({ color: 0x2a1a0d, emissive: 0xffc861, emissiveMap: T.mouth, emissiveIntensity: 0, roughness: 0.55, metalness: 0.4, side: THREE.BackSide }),
+    inscr: std({ map: T.inscr, emissiveMap: T.inscrGlow, emissive: 0xffc861, emissiveIntensity: 0, roughness: 0.4, metalness: 0.9, envMap: env, envMapIntensity: 0.9 }),
+    crack: basic({ color: 0x3a2715 }),
+    crackGlow: basic(Object.assign({ map: T.band, color: 0xffc861, opacity: 0, side: THREE.DoubleSide }, add)),
+    wax: std({ color: 0xe8dcc0, roughness: 0.6, emissive: 0xffa040, emissiveIntensity: 0 }),
+    cloth: std({ map: T.cloth, roughness: 0.95, side: THREE.DoubleSide, alphaTest: 0.5 }),
+    rope: std({ color: 0x9c8257, roughness: 0.95 }),
+    sally: std({ map: T.sally, roughness: 0.8 }),
+    medal: std({ map: T.medal, emissiveMap: T.medalGlow, emissive: 0xff8a30, emissiveIntensity: 0, roughness: 0.45, metalness: 0.5, envMap: env, envMapIntensity: 0.6 }),
+    rooster: std({ map: T.rooster, color: 0x2a2f35, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.6, envMap: env, envMapIntensity: 0.5 }),
+    decal: std({ map: T.decal, emissiveMap: T.decalGlow, emissive: 0xff9a40, emissiveIntensity: 0, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, roughness: 1 }),
+    // armes reforgées : airain poli et cerclages (I), vert-de-gris (II), airain noirci fêlé d'or (III)
+    gun1: std({ color: 0xb98a4f, roughness: 0.28, metalness: 0.75, envMap: env, envMapIntensity: 1 }),
+    gun1b: std({ color: 0x8a5d31, roughness: 0.34, metalness: 0.7, envMap: env, envMapIntensity: 0.9 }),
+    gunBand: std({ color: 0x3a2715, roughness: 0.45, metalness: 0.6, envMap: env, envMapIntensity: 0.6 }),
+    gun2: std({ map: T.gunPatina, roughness: 0.55, metalness: 0.45, envMap: env, envMapIntensity: 0.7 }),
+    gun3: std({ map: T.gunCracks, emissiveMap: T.gunCracksGlow, emissive: 0xffc861, emissiveIntensity: 2.0, roughness: 0.45, metalness: 0.55, envMap: env, envMapIntensity: 0.8 }),
+    gunIron: std({ color: 0x262b30, roughness: 0.55, metalness: 0.8, envMap: env, envMapIntensity: 0.7 }),
+    voco: std({ map: T.voco, emissiveMap: T.vocoGlow, emissive: 0xffc861, emissiveIntensity: 1.4, roughness: 0.4, metalness: 0.6, envMap: env, envMapIntensity: 0.6 }),
+    glowGold: basic({ color: 0xffc861 }),
+  };
+  GLAS_R.add = add;
+  GLAS_R.G = buildGlasGeometry();
+  return GLAS_R;
+}
+/* Géométries fixes de la machine (assemblées en quelques maillages). */
+function buildGlasGeometry() {
+  const rnd = mulberry32(2611);
+  const box = new THREE.BoxGeometry(1, 1, 1), cyl = (r0, r1, h, n = 12, open = false) => new THREE.CylinderGeometry(r0, r1, h, n, 1, open);
+  const tint = (a = 0.82, b = 1.08) => { const k = a + rnd() * (b - a); return [k, k * (0.97 + rnd() * 0.05), k]; };
+  const L = { oak: [], iron: [], roofOak: [], roofIron: [], bellIron: [], yoke: [], trim: [], wax: [], winch: [], clapper: [] };
+  const put = (list, geo, matrix, color) => list.push({ geo, matrix, color: color || tint() });
+  // poutres : horizontale en x, en z, verticale, quelconque (fil du bois le long de la pièce)
+  const bx = (l, x0, x1, y, z, h, d, c) => put(l, box, mtx((x0 + x1) / 2, y, z, 0, 0, 0, x1 - x0, h, d), c);
+  const bz = (l, x, y, z0, z1, h, w, c) => put(l, box, mtx(x, y, (z0 + z1) / 2, 0, Math.PI / 2, 0, z1 - z0, h, w), c);
+  const by = (l, x, z, y0, y1, w, d, c) => put(l, box, mtx(x, (y0 + y1) / 2, z, 0, 0, Math.PI / 2, y1 - y0, w, d), c);
+  const bb = (l, a, b, w, h, c) => put(l, box, beamMtx(a[0], a[1], a[2], b[0], b[1], b[2], w, h), c);
+  const ironC = () => [0.9 + rnd() * 0.2, 0.9 + rnd() * 0.2, 0.95 + rnd() * 0.2];
+  const rivets = (l, x0, x1, y, z, n) => { for (let i = 0; i < n; i++) put(l, box, mtx(lerp(x0, x1, n > 1 ? i / (n - 1) : 0.5), y, z, 0, 0, 0, 0.026, 0.026, 0.02), [1.25, 1.25, 1.3]); };
+  // ---------------------------------------------------------------- beffroi
+  for (const s of [-1, 1]) {
+    for (const zz of [-1.15, 1.15]) {
+      bx(L.oak, s * 1.40, s * 2.34, 0.08, zz, 0.16, 0.24);                       // semelle sous poteau et jambe (emprise 4,7 m)
+      by(L.oak, s * 1.58, zz, 0.16, 4.49, 0.22, 0.22);                          // poteau
+      bb(L.oak, [s * 1.70, 4.40, zz], [s * 2.22, 0.16, zz], 0.2, 0.2);           // jambe de force
+      bb(L.oak, [s * 1.50, 3.90, zz], [s * 1.08, 4.49, zz], 0.14, 0.14);         // aisselier (face)
+      bb(L.oak, [s * 1.58, 3.90, zz * 0.9], [s * 1.58, 4.49, zz * 0.52], 0.14, 0.14);   // aisselier (côté)
+      put(L.iron, box, mtx(s * 1.58, 0.23, zz, 0, 0, 0, 0.27, 0.14, 0.27), ironC());     // sabot
+      put(L.iron, box, mtx(s * 1.58, 1.55, zz, 0, 0, 0, 0.26, 0.1, 0.26), ironC());     // frette
+      put(L.iron, box, mtx(s * 1.58, 4.58, zz, 0, 0, 0, 0.3, 0.26, 0.29), ironC());     // équerre de tête
+      rivets(L.iron, s * 1.5, s * 1.66, 4.62, zz + Math.sign(zz) * 0.15, 2);
+      rivets(L.iron, s * 1.5, s * 1.66, 4.52, zz + Math.sign(zz) * 0.15, 2);
+    }
+    bz(L.oak, s * 1.58, 0.08, -1.40, 1.40, 0.16, 0.24);                          // semelle de côté
+    bz(L.oak, s * 1.58, 1.55, -1.04, 1.04, 0.16, 0.14);                          // entretoise
+    bz(L.oak, s * 1.58, 4.58, -1.32, 1.32, 0.18, 0.24);                          // traverse de tête
+    put(L.iron, box, mtx(s * 1.60, 4.60, 0, 0, 0, 0, 0.13, 0.3, 0.34), ironC());          // ferrure de la poutre maîtresse
+    rivets(L.iron, s * 1.56, s * 1.64, 4.64, 0.18, 2);
+  }
+  for (const zz of [-1.15, 1.15]) bx(L.oak, -2.12, 2.12, 4.58, zz, 0.18, 0.24);     // sablières
+  bx(L.oak, -1.70, 1.70, 4.60, 0, 0.24, 0.3);                                        // poutre maîtresse
+  // poulies (cloche, renvoi vers le treuil, corde) et tronc
+  const pulley = (x, y, z, axis, r) => {
+    put(L.iron, cyl(r, r, 0.05, 14), axis === 'z' ? mtx(x, y, z, Math.PI / 2, 0, 0) : mtx(x, y, z, 0, 0, Math.PI / 2), [0.8, 0.8, 0.85]);
+    for (const o of [-0.04, 0.04]) put(L.iron, box, axis === 'z' ? mtx(x, y + 0.05, z + o, 0, 0, 0, 0.05, r * 2 + 0.12, 0.012) : mtx(x + o, y + 0.05, z, 0, 0, 0, 0.012, r * 2 + 0.12, 0.05), ironC());
+  };
+  pulley(0, GLAS_PULLEY_Y, 0, 'z', 0.085);
+  pulley(1.40, GLAS_PULLEY_Y, 0, 'z', 0.075);
+  pulley(1.40, GLAS_PULLEY_Y, 1.22, 'x', 0.075);
+  pulley(GLAS_ROPE[0], GLAS_PULLEY_Y, GLAS_ROPE[1], 'z', 0.06);
+  // tronc (on y paie) : coffre de chêne cerclé de fer, cadenas ; la fente est à part (elle s'allume)
+  put(L.oak, box, mtx(0, 0.36, 1.03, 0, 0, 0, 0.42, 0.36, 0.2), [0.9, 0.85, 0.82]);
+  put(L.oak, box, mtx(0, 0.56, 1.035, 0, 0, 0, 0.45, 0.04, 0.23), [1, 0.95, 0.9]);
+  for (const y of [0.26, 0.47]) put(L.iron, box, mtx(0, y, 1.035, 0, 0, 0, 0.43, 0.03, 0.212), ironC());
+  for (const x of [-0.2, 0.2]) put(L.iron, box, mtx(x, 0.36, 1.035, 0, 0, 0, 0.03, 0.37, 0.212), ironC());
+  put(L.iron, box, mtx(0, 0.31, 1.145, 0, 0, 0, 0.07, 0.075, 0.03), [1.6, 1.4, 1.0]);
+  put(L.iron, new THREE.TorusGeometry(0.024, 0.006, 6, 14, Math.PI), mtx(0, 0.346, 1.145), [1.6, 1.4, 1.0]);
+  // berceau : deux fourches de fer sur le socle
+  for (const x of [-0.38, 0.38]) {
+    put(L.iron, cyl(0.07, 0.07, 0.02, 12), mtx(x, 0.91, 0), ironC());
+    put(L.iron, cyl(0.02, 0.02, 0.14, 8), mtx(x, 0.98, 0), ironC());
+    for (const s of [-1, 1]) put(L.iron, box, mtx(x + s * 0.04, 1.09, 0, 0, 0, -s * 0.3, 0.018, 0.1, 0.022), ironC());
+  }
+  // bougies (cire), mèches
+  for (const [x, z, h, r] of GLAS_CANDLES) {
+    put(L.wax, cyl(r, r * 1.04, h, 10), mtx(x, h / 2, z), [0.95 + rnd() * 0.08, 0.93 + rnd() * 0.06, 0.88 + rnd() * 0.06]);
+    put(L.wax, new THREE.SphereGeometry(r * 0.45, 6, 4), mtx(x + r * 0.7, h - r * 0.4, z + r * 0.3, 0, 0, 0, 1, 1.6, 1), [1, 0.98, 0.92]);
+    put(L.iron, cyl(0.003, 0.003, 0.02, 4), mtx(x, h + 0.01, z), [0.25, 0.25, 0.25]);
+  }
+  // chaînes fixes : le long de la poutre, sous la traverse, le long du poteau jusqu'au tambour du treuil
+  const linkGeo = new THREE.TorusGeometry(0.026, 0.008, 5, 10);
+  linkGeo.scale(1, 1.55, 1);
+  const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0);
+  const chainMtx = (a, b, i, out = new THREE.Matrix4()) => {
+    const d = new THREE.Vector3().subVectors(b, a), len = d.length();
+    d.multiplyScalar(1 / len);
+    _q1.setFromUnitVectors(_up, d); _q2.setFromAxisAngle(d, (i % 2) * Math.PI / 2);
+    return out.compose(new THREE.Vector3().copy(a).addScaledVector(d, (i + 0.5) * GLAS_LINK), _q2.multiply(_q1), new THREE.Vector3(1, 1, 1));
+  };
+  const chain = (l, a, b, c) => {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), n = Math.max(1, Math.floor(A.distanceTo(B) / GLAS_LINK));
+    for (let i = 0; i < n; i++) put(l, linkGeo, chainMtx(A, B, i), c || [0.95, 0.95, 1]);
+  };
+  chain(L.iron, [0.06, GLAS_PULLEY_Y + 0.08, 0], [1.34, GLAS_PULLEY_Y + 0.08, 0]);
+  chain(L.iron, [1.40, GLAS_PULLEY_Y + 0.08, 0.06], [1.40, GLAS_PULLEY_Y + 0.08, 1.16]);
+  chain(L.iron, [1.40, GLAS_PULLEY_Y - 0.06, 1.30], [1.40, GLAS_WINCH[1] + 0.08, 1.30]);
+  // treuil : console sur le poteau ; tambour, roue à six rayons, manivelle (tournent ensemble)
+  put(L.iron, box, mtx(1.50, GLAS_WINCH[1], 1.15, 0, 0, 0, 0.16, 0.13, 0.3), ironC());
+  put(L.iron, box, mtx(1.30, GLAS_WINCH[1] + 0.36, 1.46, 0, 0, 0.5, 0.025, 0.12, 0.03), ironC());     // cliquet
+  put(L.winch, cyl(0.07, 0.07, 0.26, 14), mtx(0, 0, 0.13, Math.PI / 2, 0, 0), [0.8, 0.8, 0.85]);
+  put(L.winch, new THREE.TorusGeometry(0.34, 0.022, 6, 36), mtx(0, 0, 0.29), [1, 1, 1.05]);
+  for (let i = 0; i < 3; i++) put(L.winch, box, mtx(0, 0, 0.29, 0, 0, (i * Math.PI) / 3, 0.66, 0.026, 0.026), [0.95, 0.95, 1]);   // six rayons
+  put(L.winch, cyl(0.055, 0.055, 0.07, 12), mtx(0, 0, 0.29, Math.PI / 2, 0, 0), [1.1, 1.05, 1]);
+  put(L.winch, box, mtx(0.09, 0, 0.34, 0, 0, 0, 0.2, 0.03, 0.03), [1, 1, 1]);
+  put(L.winch, cyl(0.016, 0.016, 0.12, 8), mtx(0.18, 0, 0.4, Math.PI / 2, 0, 0), [0.55, 0.42, 0.32]);
+  // --------------------------------------------------------------- toit (au-dessus du plafond)
+  for (const s of [-1, 1]) {
+    bb(L.roofOak, [0, 5.40, -1.46], [s * 2.36, 4.69, -1.46], 0.05, 0.16);                // planches de rive
+    bb(L.roofOak, [0, 5.40, 1.46], [s * 2.36, 4.69, 1.46], 0.05, 0.16);
+    bz(L.roofOak, s * 2.33, 4.70, -1.48, 1.48, 0.12, 0.05);                              // bordure d'égout
+  }
+  bz(L.roofOak, 0, 5.45, -1.5, 1.5, 0.1, 0.16);                                          // faîtage
+  put(L.roofIron, new THREE.TorusGeometry(0.2, 0.022, 6, 28), mtx(0, 5.0, 1.29), [1, 1, 1.05]);
+  for (let i = 0; i < 8; i++) put(L.roofIron, box, mtx(Math.cos((i * TAU) / 8) * 0.2, 5.0 + Math.sin((i * TAU) / 8) * 0.2, 1.31, 0, 0, 0, 0.025, 0.025, 0.02), [1.3, 1.3, 1.3]);
+  put(L.roofIron, cyl(0.012, 0.012, 0.17, 6), mtx(0, 5.535, 0), ironC());                 // girouette (5,6 m) : tige, boule, croix
+  put(L.roofIron, new THREE.SphereGeometry(0.028, 10, 8), mtx(0, 5.49, 0), ironC());
+  put(L.roofIron, box, mtx(0, 5.52, 0, 0, 0, 0, 0.3, 0.01, 0.01), ironC());
+  put(L.roofIron, box, mtx(0, 5.52, 0, 0, 0, 0, 0.01, 0.01, 0.3), ironC());
+  // ------------------------------------------------------------- cloche (repère : lèvre au centre)
+  const V2 = (r, y) => new THREE.Vector2(r, y);
+  const outer = new THREE.LatheGeometry(GLAS_PROFILE.map(([r, y]) => V2(r, y)), 48);
+  const inner = new THREE.LatheGeometry(GLAS_PROFILE.slice(0, -1).map(([r, y]) => V2(Math.max(0.02, r - 0.045), Math.min(y, 1.19))).concat([V2(0, 1.2)]), 48);
+  const band = [];
+  for (let i = 0; i <= 6; i++) { const y = 0.92 + (0.14 * i) / 6; band.push(V2(glasR(y) + 0.004, y)); }
+  const inscr = new THREE.LatheGeometry(band, 96);
+  inscr.rotateY(Math.PI);
+  const ring = (R, tube, y) => put(L.trim, new THREE.TorusGeometry(R, tube, 8, 64), mtx(0, y, 0, Math.PI / 2, 0, 0), [1, 1, 1]);
+  ring(0.79, 0.022, 0.012);
+  for (const y of [0.1, 0.8, 1.1, 1.17]) ring(glasR(y) + 0.003, 0.011, y);
+  put(L.trim, cyl(0.37, 0.37, 0.025, 32), mtx(0, 1.262, 0), [0.9, 0.9, 0.9]);
+  for (const x of [-0.13, 0.13]) put(L.trim, new THREE.TorusGeometry(0.075, 0.024, 6, 14), mtx(x, 1.31, 0, 0, Math.PI / 2, 0), [0.9, 0.9, 0.9]);
+  // fêlure (sous l'inscription, devant à droite) : un trait de fonte et sa lueur, posés sur le bronze
+  const crackPts = [[0.30, 0.99], [0.33, 0.93], [0.295, 0.87], [0.335, 0.8], [0.31, 0.74], [0.35, 0.68], [0.325, 0.61], [0.36, 0.55], [0.33, 0.49], [0.365, 0.43], [0.35, 0.38]];
+  const branch = [[0.335, 0.8], [0.375, 0.77], [0.4, 0.72]];
+  const ribbon = (paths, width, off) => {
+    const pos = [], uv = [], idx = [];
+    for (const path of paths) {
+      const P = path.map(([a, y]) => { const r = glasR(y), [nr, ny] = glasN(y); return [new THREE.Vector3(r * Math.sin(a), y, r * Math.cos(a)), new THREE.Vector3(nr * Math.sin(a), ny, nr * Math.cos(a))]; });
+      const base = pos.length / 3;
+      let len = 0;
+      P.forEach(([p, n], i) => {
+        const prev = P[Math.max(0, i - 1)][0], next = P[Math.min(P.length - 1, i + 1)][0];
+        const t = new THREE.Vector3().subVectors(next, prev).normalize();
+        const w = new THREE.Vector3().crossVectors(n, t).normalize().multiplyScalar(width / 2);
+        const c = p.clone().addScaledVector(n, off);
+        if (i) len += p.distanceTo(P[i - 1][0]);
+        pos.push(c.x - w.x, c.y - w.y, c.z - w.z, c.x + w.x, c.y + w.y, c.z + w.z);
+        uv.push(len * 4, 0, len * 4, 1);
+        if (i) { const k = base + (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }   // face vers l'extérieur
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  };
+  const crackCore = ribbon([crackPts, branch], 0.013, 0.004);
+  const crackGlow = ribbon([crackPts, branch], 0.09, 0.006);
+  // agrafes de fer en travers de la fêlure (rivets aux deux bouts)
+  for (const [a, y] of [[0.318, 0.9], [0.322, 0.71], [0.348, 0.52]]) {
+    put(L.bellIron, box, glasSurfMtx(a, y, 0.008, 0.085, 0.018, 0.012), ironC());
+    for (const o of [-0.072, 0.072]) put(L.bellIron, box, glasSurfMtx(a + o, y, 0.012, 0.022, 0.026, 0.016), [1.2, 1.2, 1.25]);
+  }
+  // joug de chêne, ferrures, anneaux et chaînettes jusqu'à l'anneau de suspension
+  put(L.yoke, box, mtx(0, 1.37, 0, 0, 0, 0, 1.32, 0.2, 0.26), [1, 0.95, 0.92]);
+  for (const s of [-1, 1]) {
+    put(L.bellIron, box, mtx(s * 0.63, 1.37, 0, 0, 0, 0, 0.07, 0.24, 0.3), ironC());
+    put(L.bellIron, box, mtx(s * 0.26, 1.33, 0, 0, 0, 0, 0.06, 0.4, 0.3), ironC());
+    put(L.bellIron, new THREE.TorusGeometry(0.04, 0.01, 6, 12), mtx(s * 0.42, 1.505, 0), ironC());
+    chain(L.bellIron, [s * 0.42, 1.535, 0], [0, GLAS_RING_Y - 0.05, 0]);
+  }
+  put(L.bellIron, new THREE.TorusGeometry(0.06, 0.013, 6, 16), mtx(0, GLAS_RING_Y, 0), ironC());
+  // battant (pivot au sommet de l'intérieur)
+  put(L.clapper, cyl(0.016, 0.016, 1.06, 8), mtx(0, -0.53, 0), [0.9, 0.9, 0.95]);
+  put(L.clapper, new THREE.SphereGeometry(0.075, 12, 10), mtx(0, -1.11, 0), [0.8, 0.8, 0.85]);
+  // ------------------------------------------------------------------ socle de pierre
+  const plinth = scaleUV(cyl(1.12, 1.14, 0.06, 32), 1, 0.12);
+  plinth.translate(0, 0.03, 0);
+  const drum = cyl(0.94, 0.94, 0.74, 32, true);
+  drum.translate(0, 0.43, 0);
+  const slabSide = scaleUV(cyl(1.0, 1.0, 0.1, 32, true), 1.06, 0.18, 0, 0.8);
+  slabSide.translate(0, 0.85, 0);
+  const slabTop = scaleUV(new THREE.CircleGeometry(1.0, 32), 0.14, 0.32, 0.3, 0.05);
+  slabTop.rotateX(-Math.PI / 2); slabTop.translate(0, 0.9, 0);
+  const stone = mergeGeometries([plinth, drum, slabSide, slabTop].map((geo) => ({ geo, matrix: new THREE.Matrix4() })));
+  // velours rouge sur le devant du socle
+  const drapeG = new THREE.CylinderGeometry(1.012, 1.012, 0.28, 10, 1, true, -0.4, 0.8);
+  drapeG.translate(0, 0.76, 0);
+  const top = new THREE.RingGeometry(0.72, 1.012, 10, 1, -Math.PI / 2 - 0.4, 0.8);
+  top.rotateX(-Math.PI / 2); top.translate(0, 0.904, 0);
+  const cloth = mergeGeometries([{ geo: drapeG, matrix: new THREE.Matrix4() }, { geo: top, matrix: new THREE.Matrix4() }]);
+  // pignons de planches (sur les sablières) et pans de toit en bardeaux
+  const gableShape = new THREE.Shape([new THREE.Vector2(-2.1, 4.67), new THREE.Vector2(2.1, 4.67), new THREE.Vector2(0, 5.36)]);
+  const gable = new THREE.ExtrudeGeometry(gableShape, { depth: 0.05, bevelEnabled: false });
+  const gables = mergeGeometries([{ geo: gable, matrix: mtx(0, 0, 1.2) }, { geo: gable, matrix: mtx(0, 0, -1.25) }]);
+  const slope = swapUV(new THREE.BoxGeometry(1, 1, 1));
+  const ang = Math.atan2(0.69, 2.32), len = Math.hypot(2.32, 0.69) + 0.06;
+  const roof = mergeGeometries([-1, 1].map((s) => ({ geo: slope, matrix: mtx(s * 1.16, 5.075 + 0.04, 0, 0, 0, -s * ang, len, 0.07, 2.96) })));
+  // pièces mobiles : chaîne (maillon), corde et poignée, fente du tronc, plans des lueurs
+  const ropeG = cyl(0.014, 0.014, 1, 6);
+  const sally = cyl(0.045, 0.045, 0.55, 10);
+  const cone = cyl(0.66, 0.96, 1, 24, true);
+  cone.translate(0, -0.5, 0);
+  const shaft = cyl(0.3, 0.6, 1, 16, true);
+  const G = {
+    oak: mergeGeometries(L.oak), iron: mergeGeometries(L.iron), roofOak: mergeGeometries(L.roofOak), roofIron: mergeGeometries(L.roofIron),
+    bellIron: mergeGeometries(L.bellIron), yoke: mergeGeometries(L.yoke), trim: mergeGeometries(L.trim), wax: mergeGeometries(L.wax),
+    winch: mergeGeometries(L.winch), clapper: mergeGeometries(L.clapper),
+    link: mergeGeometries([{ geo: linkGeo, matrix: new THREE.Matrix4() }]),
+    outer, inner, inscr, crackCore, crackGlow, stone, cloth, gables, roof, rope: ropeG, sally, cone, shaft,
+    plane: new THREE.PlaneGeometry(1, 1), slot: new THREE.BoxGeometry(0.16, 0.018, 0.006), medal: cyl(0.18, 0.18, 0.03, 24),
+    chainMtx,
+  };
+  for (const k in G) if (G[k] && G[k].isBufferGeometry) share(G[k]);
+  return G;
+}
+/* Une machine : groupe prêt à poser, et toutes les pièces que le rituel anime. */
+function buildGlas() {
+  const R = glasResources(), M = R.M, G = R.G, T = R.T;
   const g = new THREE.Group();
-  const base = new THREE.Mesh(GEO.box, MAT.metalDark);
-  base.scale.set(2.0, 0.9, 0.95); base.position.y = 0.45;
-  const housingMat = new THREE.MeshStandardMaterial({ color: 0x4b3a5c, map: TEX.metal, roughness: 0.45, metalness: 0.45 });
-  const housing = new THREE.Mesh(GEO.box, housingMat);
-  housing.scale.set(1.3, 0.85, 0.62); housing.position.set(0, 1.35, -0.12);
-  const rollers = [];
-  for (let i = 0; i < 4; i++) {
-    const r = new THREE.Mesh(GEO.cyl, MAT.metal);
-    r.scale.set(0.07, 1.7, 0.07); r.rotation.z = Math.PI / 2; r.position.set(0, 0.93, -0.3 + i * 0.2);
-    rollers.push(r); g.add(r);
+  const mesh = (geo, mat, parent = g) => { const m = new THREE.Mesh(geo, mat); parent.add(m); return m; };
+  mesh(G.oak, M.oak); mesh(G.iron, M.iron); mesh(G.stone, M.stone); mesh(G.cloth, M.cloth); mesh(G.wax, M.wax);
+  // toit, médaillon et girouette : au-dessus du plafond (masqués si la machine est réduite)
+  const roof = new THREE.Group();
+  g.add(roof);
+  mesh(G.roof, M.shingles, roof); mesh(G.gables, M.planks, roof); mesh(G.roofOak, M.oak, roof); mesh(G.roofIron, M.iron, roof);
+  const medal = mesh(G.medal, M.medal, roof);
+  medal.rotation.x = Math.PI / 2; medal.position.set(0, 5.0, 1.27);
+  const vane = new THREE.Group();
+  vane.position.set(0, 5.56, 0);
+  roof.add(vane);
+  const rooster = mesh(G.plane, M.rooster, vane);
+  rooster.scale.set(0.19, 0.14, 1); rooster.position.y = 0.04;
+  const arrow = mesh(G.slot, M.gunIron, vane);           // flèche de la girouette
+  arrow.scale.set(1.9, 1, 1.6);
+  // fente du tronc (s'allume quand la cloche attend une offrande) et sa lueur
+  const slot = mesh(G.slot, new THREE.MeshBasicMaterial({ color: 0x120a04 }));
+  slot.position.set(0, 0.45, 1.133);
+  const slotGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffc861, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  slotGlow.scale.set(0.34, 0.14, 1); slotGlow.position.set(0, 0.45, 1.16);
+  g.add(slotGlow);
+  // ------------------------------------------------------------------ cloche
+  const bell = new THREE.Group();
+  bell.position.y = GLAS.lipUp;
+  g.add(bell);
+  mesh(G.outer, M.bronze, bell); mesh(G.inner, M.inner, bell); mesh(G.trim, M.trim, bell); mesh(G.inscr, M.inscr, bell);
+  mesh(G.bellIron, M.iron, bell); mesh(G.yoke, M.oak, bell);
+  const crackCore = mesh(G.crackCore, M.crack, bell);
+  const crackGlow = mesh(G.crackGlow, M.crackGlow, bell);
+  crackGlow.renderOrder = 2;
+  const clapper = new THREE.Group();
+  clapper.position.y = 1.18;
+  bell.add(clapper);
+  mesh(G.clapper, M.iron, clapper);
+  const mouthLight = new THREE.PointLight(0xffc861, 0, 4.6, 2);
+  mouthLight.position.y = 0.45;
+  bell.add(mouthLight);
+  // cône doré sous la cloche (repos, prête) : il va de la lèvre au socle
+  const coneMat = new THREE.MeshBasicMaterial(Object.assign({ map: T.cone, color: 0xffc861, opacity: 0, side: THREE.DoubleSide }, R.add));
+  const cone = mesh(G.cone, coneMat, bell);
+  cone.renderOrder = 2;
+  // chaîne de la cloche (de l'anneau à la poulie), sa longueur suit la cloche
+  const chain = new THREE.InstancedMesh(G.link, M.iron, 40);
+  chain.count = 0; chain.frustumCulled = false;
+  g.add(chain);
+  // treuil (roue tournée vers le joueur) et corde
+  const winch = mesh(G.winch, M.iron);
+  winch.position.set(GLAS_WINCH[0], GLAS_WINCH[1], GLAS_WINCH[2]);
+  const rope = new THREE.Group();
+  rope.position.set(GLAS_ROPE[0], 0, GLAS_ROPE[1]);
+  g.add(rope);
+  const ropeLine = mesh(G.rope, M.rope, rope);
+  ropeLine.scale.y = GLAS_PULLEY_Y - 0.05; ropeLine.position.y = (GLAS_PULLEY_Y - 0.05) / 2 + 0.05;
+  const sallyM = mesh(G.sally, M.sally, rope);
+  sallyM.position.y = 1.3;
+  // berceau : l'arme posée, son auréole
+  const holder = new THREE.Group();
+  holder.position.set(0, 1.1, 0);
+  g.add(holder);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffc861, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.scale.set(1.9, 1.1, 1);
+  holder.add(halo);
+  // la lumière fuit par la lèvre quand la cloche est posée
+  const leakMat = new THREE.MeshBasicMaterial(Object.assign({ map: T.leak, color: 0xffc861, opacity: 0 }, R.add));
+  const leak = mesh(G.plane, leakMat);
+  leak.rotation.x = -Math.PI / 2; leak.scale.set(2.7, 2.7, 1); leak.position.y = 0.907; leak.renderOrder = 2;
+  // bougies : flammes et leur lumière
+  const flameMat = new THREE.SpriteMaterial({ map: T.flame, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  const flames = GLAS_CANDLES.map(([x, z, h], i) => {
+    const s = new THREE.Sprite(flameMat);
+    s.position.set(x, h + 0.04, z); s.scale.set(0.045, 0.085, 1);
+    s.userData = { ph: i * 1.7, h };
+    g.add(s);
+    return s;
+  });
+  const candleLight = new THREE.PointLight(0xffa64d, 0, 3.2, 2);
+  candleLight.position.set(0, 0.42, 1.36);
+  g.add(candleLight);
+  // cercles brûlés au sol
+  const decal = mesh(G.plane, M.decal);
+  decal.rotation.x = -Math.PI / 2; decal.scale.set(7.4, 7.4, 1); decal.position.y = 0.013; decal.renderOrder = 1;
+  // clair de lune : lumière froide au-dessus, rayon qui tombe par l'ouverture du plafond
+  const moonLight = new THREE.PointLight(0x9fb4c8, 0, 9.5, 2);
+  moonLight.position.set(-1.5, 5.4, 2.3);
+  g.add(moonLight);
+  const shaftMat = new THREE.MeshBasicMaterial(Object.assign({ map: T.cone, color: 0x7f93a3, opacity: 0, side: THREE.DoubleSide }, R.add));
+  const shaft = mesh(G.shaft, shaftMat);
+  {
+    const a = new THREE.Vector3(-2.66, 3.55, 0.1), b = new THREE.Vector3(-1.9, 0, 0.55), d = new THREE.Vector3().subVectors(a, b);
+    shaft.position.copy(a).add(b).multiplyScalar(0.5);
+    shaft.scale.set(1, d.length(), 1);
+    shaft.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    shaft.renderOrder = 2;
   }
-  const tubeMat = new THREE.MeshBasicMaterial({ color: 0x5a2a7a });
-  for (let i = 0; i < 3; i++) {
-    const t = new THREE.Mesh(GEO.cyl, tubeMat);
-    t.scale.set(0.06, 0.7, 0.06); t.position.set(-0.4 + i * 0.4, 2.1, -0.12);
-    g.add(t);
-  }
-  const labelTex = toTex(genLabel('PACK-A-PUNCH', 512, 96, { bg: '#1a1420', color: '#e9d8ff', chip: 300 }), { clamp: true });
-  const labelMat = new THREE.MeshStandardMaterial({ map: labelTex, emissiveMap: labelTex, emissive: 0xffffff, emissiveIntensity: 0.05 });
-  const label = new THREE.Mesh(GEO.plane, labelMat);
-  label.scale.set(1.2, 0.22, 1); label.position.set(0, 1.5, 0.195);
-  const slot = new THREE.Mesh(GEO.box, new THREE.MeshBasicMaterial({ color: 0x0a0610 }));
-  slot.scale.set(0.9, 0.18, 0.05); slot.position.set(0, 1.1, 0.2);
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xb070ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-  glow.scale.set(3, 3, 1); glow.position.set(0, 1.4, 0.5);
-  g.add(base, housing, label, slot, glow);
-  return { group: g, rollers, tubeMat, labelMat, glow };
+  // poussière dorée dans le cône
+  const dustN = 40, dustPos = new Float32Array(dustN * 3), dustSeed = [];
+  for (let i = 0; i < dustN; i++) dustSeed.push([Math.random() * TAU, Math.sqrt(Math.random()) * 0.75, Math.random(), 0.05 + Math.random() * 0.08]);
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.03, map: TEX.glow, color: 0xffd99a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+  dust.frustumCulled = false;
+  g.add(dust);
+  return {
+    group: g, roof, vane, bell, crackCore, crackGlow, clapper, mouthLight, cone, coneMat, chain, winch, rope, holder, halo,
+    leak, leakMat, flames, flameMat, candleLight, decal, moonLight, shaft, shaftMat, slot, slotGlow, dust, dustSeed,
+  };
 }
 function buildPowerSwitch() {
   const g = new THREE.Group();
@@ -10054,6 +11024,7 @@ function variantSpecimen(model) {
 const FX = {
   decals: [], decalIdx: 0, debris: [], helmets: [], sprites: [], projectiles: [], grenades: [], bottles: [], glass: null,
   shake: 0, muzzleLight: null, boomLight: null, boomT: 0,
+  joltT: 0, joltA: 0,                         // secousse brève (coups du Glas) : durée restante, amplitude
 };
 
 class PointPool {
@@ -10503,7 +11474,7 @@ function explode(x, y, z, radius, damage, opts = {}) {
     if (dz > radius + 0.3) continue;
     if (!clearToZombie(x, y, z, k0, zb)) continue;
     const f = clamp(1 - dz / (radius + 0.3), 0, 1);
-    damageZombie(zb, damage * (0.3 + 0.7 * f), { kind: 'explosive', src: opts.src, dx: (zb.pos.x - x) / (dz || 1), dz: (zb.pos.z - z) / (dz || 1), force: 2 + 6 * f });
+    damageZombie(zb, damage * (0.3 + 0.7 * f), { kind: 'explosive', src: opts.src, dx: (zb.pos.x - x) / (dz || 1), dz: (zb.pos.z - z) / (dz || 1), force: 2 + 6 * f, slot: opts.slot || null });
     hit++;
   }
   if (opts.self && d < radius * 0.8 && !player.down) {
@@ -10512,7 +11483,7 @@ function explode(x, y, z, radius, damage, opts = {}) {
   return hit;
 }
 
-function fireProjectile(proj, ox, oy, oz, dx, dy, dz) {
+function fireProjectile(proj, ox, oy, oz, dx, dy, dz, slot = null) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: proj.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   sprite.scale.setScalar(proj.type === 'rocket' ? 0.5 : 0.6);
   sprite.position.set(ox, oy, oz);
@@ -10525,7 +11496,7 @@ function fireProjectile(proj, ox, oy, oz, dx, dy, dz) {
     body.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz));
     scene.add(body);
   }
-  FX.projectiles.push({ x: ox, y: oy, z: oz, vx: dx * proj.speed, vy: dy * proj.speed, vz: dz * proj.speed, proj, sprite, body, life: 5, trail: 0 });
+  FX.projectiles.push({ x: ox, y: oy, z: oz, vx: dx * proj.speed, vy: dy * proj.speed, vz: dz * proj.speed, proj, sprite, body, life: 5, trail: 0, slot });
 }
 function updateProjectiles(dt) {
   for (let i = FX.projectiles.length - 1; i >= 0; i--) {
@@ -10544,8 +11515,8 @@ function updateProjectiles(dt) {
     if (hitT <= step || p.life <= 0) {
       const t = Math.min(hitT, step);
       const ex = p.x + dx * t - dx * 0.15, ey = p.y + dy * t - dy * 0.15, ez = p.z + dz * t - dz * 0.15;
-      if (hitZ && p.proj.direct) damageZombie(hitZ, p.proj.direct, { kind: 'explosive', src: p.proj.type, dx, dz, force: 4 });
-      const hits = explode(ex, ey, ez, p.proj.r, p.proj.dmg, { self: p.proj.self, color: p.proj.color, src: p.proj.type });
+      if (hitZ && p.proj.direct) damageZombie(hitZ, p.proj.direct, { kind: 'explosive', src: p.proj.type, dx, dz, force: 4, slot: p.slot });
+      const hits = explode(ex, ey, ez, p.proj.r, p.proj.dmg, { self: p.proj.self, color: p.proj.color, src: p.proj.type, slot: p.slot });
       if (hitZ || hits) countHit();
       scene.remove(p.sprite); p.sprite.material.dispose();
       if (p.body) scene.remove(p.body);
@@ -10873,6 +11844,13 @@ function updateCamera(dt) {
   const look = p.pitch + p.recoil + p.punch, ht = Arms.headTilt;
   camera.rotation.x = look + (ht > 0 ? Math.min(ht, Math.max(0, 1.53 - look)) : Math.max(ht, Math.min(0, -1.53 - look))) + rand(-1, 1) * sh * 0.025;
   camera.rotation.z = (p.down ? 0.25 : 0) + rand(-1, 1) * sh * 0.01;
+  if (FX.joltT > 0) {
+    FX.joltT = Math.max(0, FX.joltT - dt);
+    const a = FX.joltA * (FX.joltT / 0.15);
+    camera.rotation.x += Math.sin(G.time * 97) * a;
+    camera.rotation.z += Math.cos(G.time * 71) * a * 0.6;
+    camera.position.y += Math.sin(G.time * 83) * a * 0.4;
+  }
   // champ de vision horizontal → vertical, avec zoom de visée
   const slot = curSlot();
   const zoom = slot ? lerp(1, WEAPONS[slot.id].zoom, p.ads) : 1;
@@ -10903,9 +11881,9 @@ const _dir = new THREE.Vector3(), _mw = new THREE.Vector3(), _tmp = new THREE.Ve
 const _handR = new THREE.Vector3(), _handL = new THREE.Vector3();
 const _hits = [];
 
+/* Statistique d'une arme tenue, à son palier du Glas (slot.tier : 0 à 3). */
 function wstat(slot, k) {
-  const d = WEAPONS[slot.id];
-  return slot.up && d.up && d.up[k] !== undefined ? d.up[k] : d[k];
+  return tierStats(slot.id, slot.tier || 0)[k];
 }
 function curSlot() { return Arms.slots[Arms.cur] || null; }
 function hasWeapon(id) { return Arms.slots.some((s) => s && s.id === id); }
@@ -10962,8 +11940,8 @@ function refreshGunModel() {
   Arms.gun = null;
   const s = curSlot();
   if (!s) return;
-  const k = s.id + (s.up ? '+' : '');
-  if (!Arms.models[k]) Arms.models[k] = buildGun(s.id, s.up);
+  const k = `${s.id}:${s.tier || 0}`;
+  if (!Arms.models[k]) Arms.models[k] = buildGun(s.id, s.tier || 0);
   Arms.gun = Arms.models[k];
   for (const p of Object.values(Arms.gun.userData.parts)) p.position.copy(p.userData.rest);
   Arms.holder.add(Arms.gun);
@@ -10976,8 +11954,10 @@ function resetArms() {
   Arms.bloom = Arms.kick = Arms.kickRot = 0; Arms.cycleT = 0;
   giveWeapon(CUR.map ? CUR.map.rules.startWeapon : 'm1911');
 }
-function giveWeapon(id, up = false) {
-  const slot = { id, up, mag: 0, res: 0 };
+/* tier : palier du Glas (0 : arme de base ; true vaut 1). kills : éliminations de cette arme (Minuit). */
+function giveWeapon(id, tier = 0) {
+  tier = tier === true ? 1 : clamp(tier | 0, 0, 3);
+  const slot = { id, tier, up: tier > 0, mag: 0, res: 0, kills: 0 };
   slot.mag = wstat(slot, 'mag'); slot.res = wstat(slot, 'res');
   let target = Arms.slots.findIndex((s) => s && s.id === id);
   if (target < 0) target = Arms.slots.findIndex((s) => !s);
@@ -11194,7 +12174,7 @@ function fireWeapon(s) {
   if (def.proj) {
     const pr = wstat(s, 'proj');
     const d = spreadDir(spread * 0.5);
-    fireProjectile(pr, mw.x, mw.y, mw.z, d.x, d.y, d.z);
+    fireProjectile(pr, mw.x, mw.y, mw.z, d.x, d.y, d.z, s);
   } else if (def.blast) {
     if (blastCone(s)) countHit();
   } else {
@@ -11246,10 +12226,10 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
     if (h.head) d *= (h.z.type || BASE_TYPE).headMult;
     bloodBurst(hx, hy, hz, dx, dz, h.head ? 7 : 4, 1);
     Arms.shotHit = true;
-    const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5 });
+    const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5, slot: s });
     if (!killed && h.leg && (h.z.type || BASE_TYPE).crawler) startCrawl(h.z, dx, dz);
     HUD.hitmarker(killed);
-    if (boom) explode(hx, hy, hz, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds' });
+    if (boom) explode(hx, hy, hz, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds', slot: s });
     if (k >= pen) { endT = h.t; stopped = true; break; }
     dmg *= 0.7;
   }
@@ -11259,7 +12239,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
     addDecal('hole', wx, wy, wz, wnx, wny, wnz, rand(0.07, 0.11));
     sparkBurst(wx, wy, wz, wnx, wny, wnz, def.kind === 'shotgun' ? 2 : 4);
     if (Math.random() < 0.3) spawnPuff(wx + wnx * 0.05, wy + wny * 0.05, wz + wnz * 0.05, 0.25, 0.5, 0x8a8478, 0.35, 0.2);
-    if (boom && explode(wx + wnx * 0.25, wy + wny * 0.25, wz + wnz * 0.25, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds' })) Arms.shotHit = true;
+    if (boom && explode(wx + wnx * 0.25, wy + wny * 0.25, wz + wnz * 0.25, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds', slot: s })) Arms.shotHit = true;
   }
 }
 /* Rafale de l'Onde de choc ; renvoie le nombre de zombies touchés. */
@@ -11276,11 +12256,11 @@ function blastCone(s) {
     if (dot < Math.cos(b.cone) && d > 1.3) continue;
     if (!clearToZombie(ox, oy, oz, k0, z)) continue;
     const hd = Math.hypot(zx, zz) || 1;
-    damageZombie(z, 1e9, { kind: 'blast', dx: zx / hd, dz: zz / hd, force: 14 * (1 - d / b.range) + 6 });
+    damageZombie(z, 1e9, { kind: 'blast', dx: zx / hd, dz: zz / hd, force: 14 * (1 - d / b.range) + 6, slot: s });
     hit++;
   }
   for (let i = 0; i < 6; i++) {
-    spawnPuff(ox + _fwd.x * (1 + i * 1.2), oy + _fwd.y * (1 + i * 1.2) - 0.2, oz + _fwd.z * (1 + i * 1.2), 0.6 + i * 0.4, 0.45, s.up ? 0xd09aff : 0x9fe8ff, 0.4, 0, true, TEX.glow);
+    spawnPuff(ox + _fwd.x * (1 + i * 1.2), oy + _fwd.y * (1 + i * 1.2) - 0.2, oz + _fwd.z * (1 + i * 1.2), 0.6 + i * 0.4, 0.45, s.up ? 0xffd27a : 0x9fe8ff, 0.4, 0, true, TEX.glow);
   }
   for (let i = 0; i < 40; i++) {
     const r = rand(0.5, b.range);
@@ -11289,7 +12269,7 @@ function blastCone(s) {
   }
   FX.shake = Math.min(1.2, FX.shake + 0.7);
   FX.boomLight.position.set(ox + _fwd.x * 2, oy, oz + _fwd.z * 2);
-  FX.boomLight.color.setHex(s.up ? 0xc070ff : 0x70e6ff);
+  FX.boomLight.color.setHex(s.up ? 0xffb347 : 0x70e6ff);
   FX.boomLight.intensity = 5; FX.boomT = 0.25;
   return hit;
 }
@@ -11297,7 +12277,7 @@ function muzzleFlash(def, up) {
   if (!Arms.gun) return;
   Arms.root.updateMatrixWorld(true);
   Arms.gun.userData.muzzle.getWorldPosition(Arms.flash.position);
-  const col = def.kind === 'raygun' ? (up ? 0xff5a7a : 0x7dff9a) : def.kind === 'blaster' ? 0x9fe8ff : up ? 0xe0a0ff : 0xffd9a0;
+  const col = def.kind === 'raygun' ? (up ? 0xff5a7a : 0x7dff9a) : def.kind === 'blaster' ? (up ? 0xffcf70 : 0x9fe8ff) : up ? 0xffc24a : 0xffd9a0;
   Arms.flash.material.color.setHex(col);
   Arms.flash.scale.setScalar(rand(0.12, 0.2) * (def.kind === 'shotgun' || def.kind === 'blaster' ? 1.6 : 1));
   Arms.flash.material.rotation = rand(0, TAU);
@@ -11594,14 +12574,17 @@ function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
     }
   }
   // corps : cylindre vertical (couché, celui du rampant est bas et large) ; sous 0,72 m, les jambes
-  const Rb = (z.crawl ? 0.32 : 0.26) + extra, top = z.crawl ? 0.5 : 1.5;
-  const px = ox - z.pos.x, pz = oz - z.pos.z, a = dx * dx + dz * dz;
+  const low = z.crawl || z.knockK > 0.5;
+  const Rb = (low ? 0.32 : 0.26) + extra, top = low ? 0.5 : 1.5;
+  let bx = z.pos.x, bz = z.pos.z;
+  if (!z.crawl && z.knockK > 0.5) { const o = 0.75 * z.knockDir; bx -= Math.sin(z.yaw) * o; bz -= Math.cos(z.yaw) * o; }
+  const px = ox - bx, pz = oz - bz, a = dx * dx + dz * dz;
   if (a > 1e-9) {
     const b = px * dx + pz * dz, c = px * px + pz * pz - Rb * Rb, disc = b * b - a * c;
     if (disc >= 0) {
       const t = (-b - Math.sqrt(disc)) / a;
       const y = oy + dy * t;
-      if (t >= 0 && y >= z.pos.y - 0.05 && y <= z.pos.y + top && (best < 0 || t < best - 0.06)) { best = t; _hitHead = false; _hitLeg = !z.crawl && y < z.pos.y + 0.72; }
+      if (t >= 0 && y >= z.pos.y - 0.05 && y <= z.pos.y + top && (best < 0 || t < best - 0.06)) { best = t; _hitHead = false; _hitLeg = !low && y < z.pos.y + 0.72; }
     }
   }
   return best;
@@ -11662,6 +12645,7 @@ function spawnZombie(sp, hp) {
     stuckT: 4, stuck: 0, lastX: 0, lastZ: 0, farT: 0, tearT: 1, climbFrom: null,
     deathKind: null, fallDir: 1, flingVY: 0, nukeT: 0,
     crawl: false, crawlT: 0, crawlPh: 0, crawlSpeed: 0,
+    knockT: 0, knockDur: 0, knockDir: 1, knockK: 0, reelT: 0, called: null,   // Le Glas : renversé, chancelant, appelé
   };
   z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]) * type.mult.speed;
   if (sp.riser) {
@@ -11776,6 +12760,8 @@ function killZombie(z, info) {
   } else if (Math.random() < 0.5) Sound.zombie(z.pos, 'death');
   const dx = info.dx || 0, dz = info.dz || 0;
   z.fallDir = Math.sin(z.yaw) * dx + Math.cos(z.yaw) * dz <= 0 ? 1 : -1;
+  if (z.knockK > 0.5 && !z.crawl) { z.fallDir = z.knockDir; z.t = 0.55; }      // déjà à terre (Le Glas)
+  z.knockT = 0; z.reelT = 0;
   z.vx = z.knockX; z.vz = z.knockZ; z.flingVY = 0;
   if (info.kind === 'explosive' || info.kind === 'blast') {
     const f = info.force || 3;
@@ -11831,6 +12817,8 @@ function updateZombie(z, dt) {
   }
   z.flinch = damp(z.flinch, 0, 10, dt);
   if (z.stagger > 0) z.stagger -= dt;
+  if (z.knockT > 0) z.knockT = Math.max(0, z.knockT - dt);
+  if (z.reelT > 0) z.reelT -= dt;
   if (z.crawl) z.crawlT += dt;
   z.groanT -= dt;
   if (z.groanT <= 0) { z.groanT = rand(3.5, 8); Sound.zombie(z.pos, 'groan'); }
@@ -11901,6 +12889,15 @@ function updateZombie(z, dt) {
 /* Poursuite : en ligne droite si le joueur est en vue sur le même sol (même niveau, pas sur un
    escalier) ; sinon le champ de flux, qui passe par les portes ouvertes et les escaliers. */
 function chase(z, dt) {
+  if (z.knockT > 0) {
+    // renversé par le Glas : il glisse sous le choc, puis se relève
+    z.vx = damp(z.vx, 0, 6, dt); z.vz = damp(z.vz, 0, 6, dt);
+    z.pos.x += (z.vx + z.knockX) * dt; z.pos.z += (z.vz + z.knockZ) * dt;
+    z.knockX = damp(z.knockX, 0, 3.5, dt); z.knockZ = damp(z.knockZ, 0, 3.5, dt);
+    settleBody(z, 0.28);
+    z.pos.y = z.gy; z.moving = 0;
+    return;
+  }
   const px = player.pos.x, pz = player.pos.z;
   const dx = px - z.pos.x, dz = pz - z.pos.z, d = Math.hypot(dx, dz) || 1e-3;
   const sameFloor = Math.abs(player.gy - z.gy) < 1;
@@ -11954,6 +12951,7 @@ function chase(z, dt) {
   if (z.farT > 12 || z.stuck >= 2) recycleZombie(z);
 }
 function attack(z, dt) {
+  if (z.knockT > 0 && !z.winAttack) { z.state = 'chase'; z.t = 0; return; }
   const px = player.pos.x, pz = player.pos.z, dx = px - z.pos.x, dz = pz - z.pos.z, d = Math.hypot(dx, dz) || 1e-3;
   z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 10 * dt);
   z.moving = 0;
@@ -12057,6 +13055,23 @@ function animateZombie(z, dt) {
       break;
     }
     default: break;
+  }
+  // renversé par le Glas : il tombe à la renverse (ou en avant, frappé de dos) en 0,28 s, bat des bras,
+  // et se relève dans les 0,45 dernières secondes
+  if (z.knockT > 0 && z.alive && !z.crawl) {
+    const el = z.knockDur - z.knockT;
+    const k = Math.min(smooth(clamp(el / 0.28, 0, 1)), smooth(clamp(z.knockT / 0.45, 0, 1)));
+    const fl = Math.sin(z.t * 9) * 0.25 * k;
+    bodyX = lerp(bodyX, -z.knockDir * 1.42, k);
+    shL = lerp(shL, -2.7 + fl, k); shR = lerp(shR, -2.5 - fl, k); sdL = lerp(sdL, 0.5, k); sdR = lerp(sdR, -0.5, k);
+    elL = lerp(elL, -0.3, k); elR = lerp(elR, -0.3, k);
+    hipL = lerp(hipL, 0.35, k); hipR = lerp(hipR, 0.12, k); knL = lerp(knL, 0.5, k); knR = lerp(knR, 0.2, k);
+    lean = lerp(lean, 0, k); neckX = lerp(neckX, 0.3 * z.knockDir, k);
+    z.knockK = k;
+  } else z.knockK = 0;
+  if (z.reelT > 0 && z.alive) {
+    const k = clamp(z.reelT / 0.4, 0, 1);
+    roll += Math.sin(z.t * 13) * 0.22 * k; twist += Math.sin(z.t * 9 + 1) * 0.18 * k; neckZ += Math.sin(z.t * 11) * 0.3 * k;
   }
   // rampant (jambes déchiquetées) : il tombe en avant en 0,55 s, puis se tire avec les bras, couché
   // sur le ventre, la tête relevée ; le corps est décalé vers l'arrière pour que la poitrine reste à
@@ -12715,7 +13730,7 @@ function boxShow(id) {
   box.display = m;
 }
 function pickBoxWeapon() {
-  const ampW = Features.amp ? Features.amp.weapon : null;
+  const ampW = Features.amp && Features.amp.weapon ? Features.amp.weapon.id : null;   // arme sur le berceau du Glas
   const pool = boxPool().filter((id) => !hasWeapon(id) && id !== ampW);
   return weightedPick(pool, (id) => WEAPONS[id].box) || boxPool()[0];
 }
@@ -12829,8 +13844,8 @@ function activatePower() {
     schedule(0.7 + i * 0.4, () => { lightMachine(m, true); Sound.perkJingle(m.id, { x: m.group.position.x, y: m.E, z: m.group.position.z }); });
   });
   const a = Features.amp;
-  if (a) schedule(1.2, () => { setLin(a.tubeMat.color, 0x8a3ad0); a.labelMat.emissiveIntensity = 0.9; a.glow.material.opacity = 0.45; });
-  HUD.banner('Courant rétabli', a ? 'Atouts et Pack-A-Punch disponibles' : 'Atouts disponibles', 'power');
+  if (a) schedule(1.2, () => glasWake(false));
+  HUD.banner('Courant rétabli', a ? 'Atouts disponibles · Le Glas s’éveille' : 'Atouts disponibles', 'power');
   Sound.say('Courant rétabli');
 }
 /* Courant déjà rétabli au début de la partie (règle de la carte), sans annonce. */
@@ -12839,8 +13854,7 @@ function powerOnQuiet() {
   setPoweredLights();
   if (Features.power) { Features.power.anim = 1; Features.power.pivot.rotation.x = -2.3; setLin(Features.power.lampMat.color, 0x40ff60); }
   for (const m of Features.perkMachines) if (m.active) lightMachine(m, true);
-  const a = Features.amp;
-  if (a) { setLin(a.tubeMat.color, 0x8a3ad0); a.labelMat.emissiveIntensity = 0.9; a.glow.material.opacity = 0.45; }
+  glasWake(true);
 }
 function updatePowerSwitch(dt) {
   const p = Features.power;
@@ -12849,95 +13863,447 @@ function updatePowerSwitch(dt) {
   p.pivot.rotation.x = lerp(0.5, -2.3, smooth(clamp(p.anim / 0.45, 0, 1)));
 }
 
-/* ----------------------------------------------------- Pack-A-Punch ---- */
+/* ------------------------------------------------------------- Le Glas ---
+   La machine d'amélioration (le Pack-A-Punch des cartes). Muette sans courant ; le courant la
+   réveille (un coup, les bougies s'allument). Offrande (F) : l'arme quitte les mains et se couche
+   sur le berceau, le premier coup est payé au tronc, la cloche tombe (0,8 s) et sonne. F maintenue :
+   un coup de plus toutes les 1,5 s, payé à chaque fois (palier suivant) ; relâcher, ou ne plus avoir
+   les points, arrête le rituel. La cloche se relève (0,8 s) et l'arme flotte, reforgée : 10 s pour
+   la reprendre (F), sinon la cloche la garde. Chaque coup appelle les zombies à 30 m (ils courent
+   jusqu'à la relève) ; le premier renverse ceux à moins de 5 m. Le 12e coup de la partie sonne minuit. */
 function buildAmpFeature(group) {
-  const a = buildAmp();
-  const L = LAYOUT.amp;
+  const L = LAYOUT.amp, fp = glasFootprint(L);
   const li = Math.max(0, levelIndex(L.lv || 0)), E = LVY[li];
-  const x = (L.cells[0][0] + L.cells[1][0]) / 2 + 0.5, z = (L.cells[0][1] + L.cells[1][1]) / 2 + 0.5;
-  a.group.position.set(x, E, z);
-  a.group.rotation.y = Math.atan2(L.face[0], L.face[1]);
+  const a = buildGlas();
+  // plafond ouvert au-dessus (dernier niveau) ; sinon le beffroi est réduit pour tenir dessous
+  const open = !!CUR.glasOpen, s = open ? 1 : Math.min(1, (WALL_H - 0.06) / 4.75);
+  a.group.position.set(fp.cx, E, fp.cz);
+  a.group.rotation.y = fp.rot;
+  a.group.scale.setScalar(s);
   a.group.userData.lv = LV[li];
-  for (const [cx, cz] of L.cells) setProp(li, cx, cz, 1.0);
+  a.roof.visible = open; a.shaft.visible = open;
   group.add(a.group);
-  const amp = Features.amp = Object.assign(a, { state: 'idle', t: 0, weapon: null, display: null, models: {}, holder: new THREE.Group() });
-  amp.holder.position.set(0, 1.12, 0.35);
-  a.group.add(amp.holder);
+  if (open) group.add(glasCollar(CUR.glasOpen, E));
+  for (const [x, z] of fp.cells) setProp(li, x, z, 0.95 * s);
+  // ondes au sol (repère du monde) : l'appel des morts, l'onde de choc, la Résonance, Minuit
+  const waves = [];
+  for (let i = 0; i < 8; i++) {
+    const mat = new THREE.MeshBasicMaterial(Object.assign({ map: GLAS_R.T.ring, color: 0xffc861, opacity: 0 }, GLAS_R.add));
+    const m = new THREE.Mesh(GLAS_R.G.plane, mat);
+    m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 3;
+    group.add(m);
+    waves.push({ m, mat, on: false, t: 0, dur: 1, R: 1, a: 1 });
+  }
+  const [ix, iz] = fp.toWorld(0, 1.95 * s);
+  const amp = Features.amp = Object.assign(a, {
+    li, E, s, open, fp, cx: fp.cx, cz: fp.cz, waves,
+    pos: { x: fp.cx, y: E + 1.6 * s, z: fp.cz },
+    state: 'mute', t: 0, tier: 0, weapon: null, landed: false, nextT: 0, lastT: 0, holdT: -9,
+    lip: -1, flashT: 9, strikeT: 9, ropeT: 9, offerT: 9, sparkT: 0, struck: false,
+    models: {}, display: null, called: [],
+  });
+  glasAnimate(amp, 0);
   Features.interactables.push({
-    kind: 'amp', x: x + L.face[0] * 1.2, z: z + L.face[1] * 1.2, y: E, r: 1.7,
-    prompt() {
-      if (!G.power) return { text: "Le Pack-A-Punch n'a pas de courant", disabled: true };
-      if (amp.state === 'working') return { text: 'Pack-A-Punch en cours…', disabled: true };
-      if (amp.state === 'ready') return { text: `Appuyez sur F pour prendre ${WEAPONS[amp.weapon].up.name}` };
-      const s = curSlot();
-      if (!s) return null;
-      if (s.up) return { text: 'Cette arme est déjà passée au Pack-A-Punch', disabled: true };
-      return { text: `Appuyez sur F pour passer ${WEAPONS[s.id].name} au Pack-A-Punch`, cost: RULES.ampCost };
-    },
-    use() {
-      if (!G.power || armsBusy()) return;
-      if (amp.state === 'ready') {
-        giveWeapon(amp.weapon, true);
-        amp.state = 'idle'; amp.weapon = null; ampShow(null);
-        return;
-      }
-      if (amp.state !== 'idle') return;
-      const s = curSlot();
-      if (!s || s.up) return;
-      if (!trySpend(RULES.ampCost)) return;
-      Life.add('upgrades');
-      amp.weapon = takeCurrentWeapon().id;
-      amp.state = 'working'; amp.t = 0;
-      ampShow(amp.weapon, false);
-      Sound.ampWork({ x, y: E, z });
-    },
+    kind: 'amp', x: ix, z: iz, y: E, r: 1.6, hold: true,
+    prompt() { return glasPrompt(amp); },
+    useHold() { glasUse(amp); },
   });
 }
-function ampShow(id, up) {
-  const amp = Features.amp;
+/* Cadre de chêne autour de l'ouverture du plafond (il en cache la tranche). box : [x0, z0, x1, z1]. */
+function glasCollar(box, E) {
+  const [x0, z0, x1, z1] = box, y = E + WALL_H + 0.1, w = 0.2, h = 0.26;
+  const list = [
+    { geo: GEO.box, matrix: mtx((x0 + x1) / 2, y, z0 + w / 2, 0, 0, 0, x1 - x0, h, w), color: [0.9, 0.86, 0.84] },
+    { geo: GEO.box, matrix: mtx((x0 + x1) / 2, y, z1 - w / 2, 0, 0, 0, x1 - x0, h, w), color: [0.84, 0.8, 0.78] },
+    { geo: GEO.box, matrix: mtx(x0 + w / 2, y, (z0 + z1) / 2, 0, Math.PI / 2, 0, z1 - z0, h, w), color: [0.95, 0.9, 0.88] },
+    { geo: GEO.box, matrix: mtx(x1 - w / 2, y, (z0 + z1) / 2, 0, Math.PI / 2, 0, z1 - z0, h, w), color: [0.88, 0.84, 0.8] },
+  ];
+  const m = new THREE.Mesh(mergeGeometries(list), GLAS_R.M.oak);
+  m.userData.lv = LV[levelAtY(E + 0.1)];
+  return m;
+}
+/* Invites : muette, réveil, offrande (prix du premier coup), coups suivants (touche pleine quand F
+   est maintenue, prix du prochain coup), relève, reprise. */
+const glasNext = (amp) => (amp.landed ? amp.tier : amp.tier + 1) + 1;
+function glasPrompt(amp) {
+  const T = GLAS.tiers;
+  switch (amp.state) {
+    case 'mute': return { text: 'Le Glas est muet : il faut du courant', disabled: true };
+    case 'wake': return { text: 'Le Glas s’éveille…', disabled: true };
+    case 'ritual': {
+      const n = glasNext(amp);
+      if (n > 3) return { text: 'Le Glas sonne…', disabled: true };
+      return { text: `Maintenez F · Coup ${T[n].roman}`, cost: T[n].cost, hold: key('KeyF'), sub: `${T[n].name} : ${T[n].desc}` };
+    }
+    case 'raise': return { text: 'Le Glas se relève…', disabled: true };
+    case 'ready': return { text: `Appuyez sur F pour reprendre ${tierStats(amp.weapon.id, amp.tier).name}` };
+    default: {
+      const s = curSlot();
+      if (!s) return null;
+      const t = s.tier || 0;
+      if (t >= 3) return { text: 'La cloche refuse cette arme : elle est au palier III', disabled: true };
+      return { text: 'Appuyez sur F pour faire une offrande', cost: T[t + 1].cost, sub: `${wstat(s, 'name')} · Coup ${T[t + 1].roman} : ${T[t + 1].name} (${T[t + 1].desc})` };
+    }
+  }
+}
+/* F devant la cloche (appelé à chaque image tant qu'elle est tenue) : offrande et reprise à l'appui ;
+   pendant le rituel, la touche tenue décide du coup suivant. */
+function glasUse(amp) {
+  amp.holdT = G.time;
+  if (!pressed('KeyF') || armsBusy()) return;
+  if (amp.state === 'ready') glasTake(amp);
+  else if (amp.state === 'rest') glasOffer(amp);
+}
+function glasOffer(amp) {
+  const s = curSlot();
+  if (!s) return;
+  const t0 = s.tier || 0;
+  if (t0 >= 3 || !trySpend(GLAS.tiers[t0 + 1].cost)) return;
+  Life.add('upgrades');
+  const slot = takeCurrentWeapon();
+  amp.weapon = { id: slot.id, from: t0 };
+  amp.tier = t0; amp.landed = false; amp.struck = false;
+  amp.state = 'ritual'; amp.t = 0; amp.lastT = 0; amp.offerT = 0;
+  glasShow(amp, slot.id, t0);
+  const [sx, sz] = amp.fp.toWorld(0, 1.1 * amp.s);
+  Sound.glasOffer({ x: sx, y: amp.E + 0.4, z: sz });
+  Sound.glasFall(amp.pos, GLAS.fall);
+}
+function glasTake(amp) {
+  const w = amp.weapon;
+  giveWeapon(w.id, amp.tier);
+  Sound.glasChime(amp.pos);
+  amp.state = 'rest'; amp.t = 0; amp.weapon = null;
+  glasShow(amp, null);
+}
+/* Arme non reprise à temps : la cloche la garde. */
+function glasLose(amp) {
+  const name = tierStats(amp.weapon.id, amp.tier).name;
+  HUD.hint(`La cloche a gardé ${name}`, 3);
+  Sound.glasLost(amp.pos);
+  if (amp.display) {
+    amp.holder.updateMatrixWorld(true);
+    const p = amp.holder.getWorldPosition(new THREE.Vector3());
+    for (let i = 0; i < 3; i++) spawnPuff(p.x + rand(-0.3, 0.3), p.y + rand(0, 0.3), p.z + rand(-0.3, 0.3), 0.5, 0.8, 0xffb347, 0.6, 0.6, true, TEX.glow);
+  }
+  amp.state = 'rest'; amp.t = 0; amp.weapon = null;
+  glasShow(amp, null);
+}
+/* L'arme sur le berceau (couchée, le canon vers la droite de la machine). */
+function glasShow(amp, id, tier = 0) {
   if (amp.display) amp.display.visible = false;
   amp.display = null;
   if (!id) return;
-  const k = id + (up ? '+' : '');
+  const k = `${id}:${tier}`;
   let m = amp.models[k];
   if (!m) {
-    const g = buildGun(id, up);
+    const g = buildGun(id, tier);
     const c = new THREE.Box3().setFromObject(g).getCenter(new THREE.Vector3());
     g.position.set(-c.x, -c.y, -c.z);
     m = new THREE.Group();
     m.add(g);
-    m.scale.setScalar(1.3);
-    m.rotation.y = Math.PI / 2;
+    m.scale.setScalar(1.5);
+    m.rotation.y = -Math.PI / 2;
     amp.holder.add(m);
+    linearizeTree(m);
     amp.models[k] = m;
   }
   m.visible = true;
   amp.display = m;
 }
+/* Le rituel, de l'offrande à la relève. */
+function glasRitual(amp) {
+  const t = amp.t, held = G.time - amp.holdT < 0.12;
+  if (!amp.landed) {
+    if (t >= GLAS.fall) { amp.landed = true; glasStrike(amp, amp.tier + 1, true); amp.nextT = t + GLAS.gap; }
+    return;
+  }
+  const n = amp.tier + 1;
+  if (t >= amp.nextT) {
+    if (n <= 3 && held && !player.down && trySpend(GLAS.tiers[n].cost)) { glasStrike(amp, n, false); amp.nextT += GLAS.gap; }
+    else glasRaiseStart(amp);
+    return;
+  }
+  // relâchée : la cloche se relève sans attendre le coup suivant (après le rebond du dernier coup)
+  if (n <= 3 && !held && t >= amp.lastT + 0.6 && G.time - amp.holdT > 0.25) glasRaiseStart(amp);
+}
+function glasRaiseStart(amp) {
+  amp.state = 'raise'; amp.t = 0;
+  glasRelease(amp);
+  glasShow(amp, amp.weapon.id, amp.tier);       // reforgée sous la cloche
+  Sound.glasRaise(amp.pos, GLAS.raise);
+}
+/* Un coup : le palier monte, la fêlure et l'inscription s'embrasent, la caméra tremble (plus fort de
+   palier en palier), le glas sonne (un ton plus bas à chaque palier) et l'onde appelle les morts. */
+function glasStrike(amp, tier, first) {
+  amp.tier = tier; amp.lastT = amp.t; amp.strikeT = 0; amp.flashT = 0; amp.ropeT = 0; amp.struck = true;
+  G.glasTolls++;
+  Sound.glasToll(amp.pos, tier);
+  const d = Math.hypot(player.pos.x - amp.cx, player.pos.z - amp.cz);
+  const ja = [0.018, 0.026, 0.036][tier - 1] * clamp(1.3 - d / 15, 0.25, 1);
+  FX.joltA = FX.joltT > 0 ? Math.max(FX.joltA, ja) : ja;
+  FX.joltT = 0.15;
+  glasWave(amp, 0, GLAS.call, 1.2, 0.9);
+  if (first) {
+    // la cloche se pose : choc sourd, poussière qui gicle du socle, onde de choc qui renverse
+    Sound.glasImpact(amp.pos);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU, [x, z] = amp.fp.toWorld(Math.cos(a) * 0.95 * amp.s, Math.sin(a) * 0.95 * amp.s);
+      spawnPuff(x, amp.E + 0.95 * amp.s, z, 0.5, rand(0.7, 1.1), 0x8a7d6a, 0.45, 0.35);
+      FX.sparks.emit(x, amp.E + 0.95 * amp.s, z, Math.cos(a) * rand(1, 2.5), rand(0.5, 2), Math.sin(a) * rand(1, 2.5), rand(0.3, 0.6), 1, 0.78, 0.38);
+    }
+    glasWave(amp, 0, GLAS.shock.r, 0.45, 1);
+    glasKnockdown(amp.cx, amp.cz, GLAS.shock.r, GLAS.shock.t, amp.li);
+  }
+  glasCall(amp);
+  if (G.glasTolls >= GLAS.midnight && !G.glasMidnight) { G.glasMidnight = true; schedule(0.5, glasMidnightStrike); }
+}
+/* Onde au sol : rayon 0 → R en dur secondes (x, z, y : centre ; par défaut la machine). */
+function glasWave(amp, delay, R, dur, alpha, x = amp.cx, z = amp.cz, y = amp.E) {
+  const w = amp.waves.find((v) => !v.on) || amp.waves.reduce((a, b) => (a.t / a.dur > b.t / b.dur ? a : b));
+  Object.assign(w, { on: true, t: -delay, dur, R, a: alpha });
+  w.m.position.set(x, y + 0.03, z);
+  w.m.userData.lv = LV[levelAtY(y + 0.1)];
+}
+/* Renverse les zombies à moins de r mètres pour dur secondes (onde de choc du 1er coup, Minuit). */
+function glasKnockdown(x, z, r, dur, li) {
+  let n = 0;
+  for (const zb of Zombies.list) {
+    if (!zb.alive || zb.outside || zb.state === 'rise' || zb.state === 'climb') continue;
+    if (NL > 1 && levelAtY(zb.gy + 0.1) !== li) continue;
+    const dx = zb.pos.x - x, dz = zb.pos.z - z, d = Math.hypot(dx, dz);
+    if (d > r) continue;
+    const ux = d > 0.01 ? dx / d : Math.sin(zb.yaw), uz = d > 0.01 ? dz / d : Math.cos(zb.yaw);
+    zb.knockT = zb.knockDur = dur + rand(0, 0.2);
+    zb.knockDir = Math.sin(zb.yaw) * ux + Math.cos(zb.yaw) * uz <= 0 ? 1 : -1;    // de face : il tombe en arrière
+    const f = 2.6 * (1 - d / (r + 0.5));
+    zb.knockX += ux * f; zb.knockZ += uz * f;
+    zb.stagger = Math.max(zb.stagger, dur);
+    if (zb.state === 'attack') { zb.state = 'chase'; zb.t = 0; zb.winAttack = false; }
+    n++;
+  }
+  return n;
+}
+/* Appel des morts : les zombies à moins de 30 m courent vers la cloche jusqu'à la relève. */
+function glasCall(amp) {
+  for (const zb of Zombies.list) {
+    if (!zb.alive || zb.called) continue;
+    if (Math.hypot(zb.pos.x - amp.cx, zb.pos.z - amp.cz) > GLAS.call) continue;
+    if (NL > 1 && Math.abs(zb.gy - amp.E) > 2.5) continue;
+    zb.called = { speed: zb.speed, type: zb.speedType };
+    zb.speedType = 'run';
+    zb.speed = Math.max(zb.speed, rand(SPEEDS.run[0], SPEEDS.run[1]) * zb.type.mult.speed);
+    amp.called.push(zb);
+  }
+}
+function glasRelease(amp) {
+  for (const zb of amp.called) {
+    if (!zb.called) continue;
+    zb.speed = zb.called.speed; zb.speedType = zb.called.type; zb.called = null;
+  }
+  amp.called.length = 0;
+}
+/* Élimination par une arme reforgée : Résonance (palier II et plus : ceux à 3 m chancellent) et
+   Minuit (palier III : toutes les 12 éliminations, tout est renversé à 6 m autour du joueur). */
+let glasPingT = -9;
+function glasOnKill(z, info) {
+  const s = info.slot, tier = s ? s.tier || 0 : 0;
+  if (tier < 2) return;
+  for (const o of Zombies.list) {
+    if (o === z || !o.alive || o.outside || Math.abs(o.gy - z.gy) > 1.2) continue;
+    if (Math.hypot(o.pos.x - z.pos.x, o.pos.z - z.pos.z) > GLAS.resonance.r) continue;
+    o.stagger = Math.max(o.stagger, GLAS.resonance.t);
+    o.reelT = Math.max(o.reelT || 0, GLAS.resonance.t);
+    o.flinch = 0.5;
+    if (o.state === 'attack' && !o.winAttack) { o.state = 'chase'; o.t = 0; }
+  }
+  if (Features.amp) glasWave(Features.amp, 0, GLAS.resonance.r, 0.4, 0.5, z.pos.x, z.pos.z, z.gy);
+  if (G.time - glasPingT > 0.12) { glasPingT = G.time; Sound.glasPing(z.pos); }
+  if (tier === 3) {
+    s.kills = (s.kills || 0) + 1;
+    if (s.kills % GLAS.minuit.kills === 0) {
+      const li = player.k >= 0 ? levelOfNode(player.k) : 0;
+      glasKnockdown(player.pos.x, player.pos.z, GLAS.minuit.r, GLAS.minuit.t, li);
+      Sound.glasMinuit();
+      if (Features.amp) glasWave(Features.amp, 0, GLAS.minuit.r, 0.55, 1, player.pos.x, player.pos.z, player.gy);
+      FX.joltA = FX.joltT > 0 ? Math.max(FX.joltA, 0.02) : 0.02; FX.joltT = 0.15;
+      HUD.hint('Minuit', 1.2);
+    }
+  }
+}
+/* Le douzième coup de la partie : la cloche sonne minuit, les zombies à l'écran s'effondrent. */
+const _glasFr = new THREE.Frustum(), _glasPm = new THREE.Matrix4(), _glasV = new THREE.Vector3();
+function glasMidnightStrike() {
+  if (G.state !== 'playing') return 0;
+  Sound.glasMidnight();
+  HUD.banner('Minuit', 'Le douzième coup : les morts s’effondrent', 'power');
+  HUD.flash();
+  camera.updateMatrixWorld();
+  _glasPm.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _glasFr.setFromProjectionMatrix(_glasPm);
+  let n = 0;
+  for (const zb of Zombies.list.slice()) {
+    if (!zb.alive || zb.state === 'rise') continue;
+    _glasV.set(zb.pos.x, zb.pos.y + 1.2, zb.pos.z);
+    if (!_glasFr.containsPoint(_glasV)) continue;
+    if (!sightClear(camera.position.x, camera.position.y, camera.position.z, _glasV.x, _glasV.y, _glasV.z)) continue;
+    const dx = zb.pos.x - player.pos.x, dz = zb.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
+    damageZombie(zb, 1e9, { kind: 'glas', dx: dx / d, dz: dz / d });
+    n++;
+  }
+  return n;
+}
+/* Le courant réveille la cloche (quiet : courant déjà là au début de la partie). */
+function glasWake(quiet) {
+  const amp = Features.amp;
+  if (!amp || amp.state !== 'mute') return;
+  amp.state = quiet ? 'rest' : 'wake'; amp.t = 0;
+  if (!quiet) { amp.flashT = 0; Sound.glasToll(amp.pos, 0, 0.6); }
+}
+function resetGlas() {
+  const amp = Features.amp;
+  if (!amp) return;
+  glasRelease(amp);
+  Object.assign(amp, { state: 'mute', t: 0, tier: 0, weapon: null, landed: false, struck: false, holdT: -9, flashT: 9, strikeT: 9, ropeT: 9, offerT: 9 });
+  glasShow(amp, null);
+  for (const w of amp.waves) { w.on = false; w.m.visible = false; }
+  glasAnimate(amp, 0);
+  Sound.glasHum(0);
+}
 function updateAmp(dt) {
   const amp = Features.amp;
   if (!amp) return;
   amp.t += dt;
-  const spin = amp.state === 'working' ? 9 : G.power ? 1.2 : 0;
-  for (const r of amp.rollers) r.rotation.x += spin * dt;
-  if (amp.state === 'working') {
-    amp.holder.position.z = lerp(0.35, -0.15, clamp(amp.t / 1.2, 0, 1));
-    if (amp.display) amp.display.visible = amp.t < 1.2;
-    amp.tubeMat.color.setHSL(0.78, 0.9, 0.38 + Math.sin(amp.t * 18) * 0.14).convertSRGBToLinear();
-    amp.glow.material.opacity = 0.5 + Math.sin(amp.t * 12) * 0.25;
-    if (amp.t >= 3.6) {
-      amp.state = 'ready'; amp.t = 0;
-      ampShow(amp.weapon, true);
-      setLin(amp.tubeMat.color, 0x8a3ad0);
-      Sound.perkJingle('mainleste', { x: amp.group.position.x, y: amp.group.position.y, z: amp.group.position.z });
-    }
-  } else if (amp.state === 'ready') {
-    amp.holder.position.z = lerp(-0.15, 0.4, clamp(amp.t / 0.7, 0, 1));
-    if (amp.t > 15) {
-      amp.state = 'idle'; amp.weapon = null; ampShow(null);
-      HUD.hint("L'arme du Pack-A-Punch a été perdue", 3);
+  switch (amp.state) {
+    case 'wake': if (amp.t >= 2.6) { amp.state = 'rest'; amp.t = 0; } break;
+    case 'ritual': glasRitual(amp); break;
+    case 'raise': if (amp.t >= GLAS.raise) { amp.state = 'ready'; amp.t = 0; } break;
+    case 'ready': if (amp.t >= GLAS.keep) glasLose(amp); break;
+    default: break;
+  }
+  glasAnimate(amp, dt);
+}
+/* Chaîne de la cloche : de l'anneau au-dessus du joug jusqu'à la poulie. */
+const _gcA = new THREE.Vector3(), _gcB = new THREE.Vector3(), _gcM = new THREE.Matrix4();
+function updateGlasChain(amp) {
+  _gcA.set(0, amp.lip + GLAS_RING_Y + 0.06, 0); _gcB.set(0, GLAS_PULLEY_Y - 0.09, 0);
+  const n = clamp(Math.floor(_gcA.distanceTo(_gcB) / GLAS_LINK), 0, 40);
+  for (let i = 0; i < n; i++) amp.chain.setMatrixAt(i, GLAS_R.G.chainMtx(_gcA, _gcB, i, _gcM));
+  amp.chain.count = n;
+  amp.chain.instanceMatrix.needsUpdate = true;
+}
+/* Image par image : hauteur de la cloche, battant, corde, treuil, lumières des quatre états
+   (Muette, Repos, Rituel, Prête), flash des coups, arme sur le berceau, ondes, bourdonnement. */
+const GLAS_CRACK_DARK = new THREE.Color(0x1c120a).convertSRGBToLinear(), GLAS_SLOT_DARK = new THREE.Color(0x120a04).convertSRGBToLinear();
+function glasAnimate(amp, dt) {
+  const st = amp.state, t = amp.t, M = GLAS_R.M, now = G.time;
+  amp.flashT += dt; amp.strikeT += dt; amp.ropeT += dt; amp.offerT += dt;
+  // --- la cloche : chute (accélérée), rebond des coups, relève au treuil
+  let lip = GLAS.lipUp;
+  if (st === 'ritual') {
+    if (!amp.landed) lip = lerp(GLAS.lipUp, GLAS.lipDown, clamp(t / GLAS.fall, 0, 1) ** 2);
+    else lip = GLAS.lipDown + (amp.strikeT < 0.16 ? 0.03 * Math.sin((Math.PI * amp.strikeT) / 0.16) : 0);
+  } else if (st === 'raise') lip = lerp(GLAS.lipDown, GLAS.lipUp, smooth(clamp(t / GLAS.raise, 0, 1)));
+  amp.bell.position.y = lip;
+  amp.bell.rotation.z = (amp.struck ? 0.014 * Math.exp(-amp.strikeT / 0.35) * Math.sin(amp.strikeT * 26) : 0) + (lip > 2 ? 0.004 * Math.sin(now * 0.7) : 0);
+  if (Math.abs(lip - amp.lip) > 1e-4) {
+    amp.lip = lip;
+    updateGlasChain(amp);
+    amp.winch.rotation.z = -(GLAS.lipUp - lip) / 0.07;
+  }
+  amp.clapper.rotation.z = amp.struck ? 0.3 * Math.exp(-amp.strikeT / 0.5) * Math.sin(amp.strikeT * 11) : 0;
+  amp.rope.position.y = -0.22 * Math.sin(Math.PI * clamp(amp.ropeT / 0.4, 0, 1));
+  amp.vane.rotation.y = 0.35 * Math.sin(now * 0.13) + 0.1 * Math.sin(now * 0.41);
+  // --- lumières
+  const flash = amp.flashT < 0.1 ? 1 : Math.exp(-(amp.flashT - 0.1) / 0.7);   // éclair de 0,1 s, retombée lente
+  const pulse = 0.5 + 0.5 * Math.sin((now * TAU) / 4);                         // pulsation de 4 s au repos
+  let crack = 0, mouth = 0, inscr = 0, cone = 0, slot = 0, candles = 0, leak = 0, halo = 0, decal = 0, hum = 0;
+  switch (st) {
+    case 'wake': { const k = clamp(t / 2.2, 0, 1); crack = 0.25 * k; mouth = 0.3 * k; cone = k; slot = k; candles = clamp((t - 0.4) / 1.8, 0, 1); decal = 0.3 * k; hum = k; break; }
+    case 'rest': crack = 0.15 + 0.2 * pulse; mouth = 0.3 + 0.08 * pulse; cone = 1; slot = 1; candles = 1; inscr = 0.04; decal = 0.3; hum = 1; break;
+    case 'ritual': crack = 1; mouth = 1; slot = 1; candles = 1; inscr = 0.12; leak = amp.landed ? 1 : clamp((t - 0.55) / 0.25, 0, 1); decal = 0.5; hum = 0.5; break;
+    case 'raise': { const k = clamp(t / GLAS.raise, 0, 1); crack = 0.8; mouth = 0.8; slot = 0.6; candles = 1; inscr = 0.1; leak = 1 - clamp(t / 0.25, 0, 1); cone = k; halo = k; decal = 0.4; hum = 0.7; break; }
+    case 'ready': crack = 0.55; mouth = 0.7; cone = 1.3; slot = 1; candles = 1; inscr = 0.06; halo = 1; decal = 0.35; hum = 1; break;
+    default: break;
+  }
+  const lit = st !== 'mute';
+  if (lit) { crack = Math.max(crack, flash); inscr = Math.max(inscr, flash); }
+  // fêlure : intensité 2 au repos (25 %), 8 au coup ; fente du tronc qui s'embrase à l'offrande
+  const I = 8 * crack;
+  M.crack.color.copy(GLAS_CRACK_DARK).lerp(GLAS_FONTE, clamp(crack * 3, 0, 1)).multiplyScalar(lit ? 0.25 + 0.5 * I : 1);
+  M.crackGlow.opacity = lit ? clamp(0.1 + I / 9, 0, 0.95) : 0;
+  M.inscr.emissiveIntensity = lit ? 3 * inscr : 0;
+  M.inner.emissiveIntensity = lit ? 0.2 + 1.4 * mouth + (amp.landed && st === 'ritual' ? 1.2 * flash : 0) : 0;
+  M.medal.emissiveIntensity = lit ? 0.5 + 0.3 * pulse : 0.05;
+  M.wax.emissiveIntensity = 0.14 * candles;
+  M.gun3.emissiveIntensity = 2.0 + 0.6 * Math.sin(now * 2.4);
+  amp.mouthLight.intensity = lit ? 0.35 + 2.2 * mouth + (st === 'ritual' ? 2 * flash : 0) : 0;
+  if (NL > 1) amp.mouthLight.decay = lightBandDecay(amp.E + (lip + 0.45) * amp.s, amp.li);
+  amp.coneMat.opacity = 0.06 * cone * (0.85 + 0.15 * pulse);
+  amp.cone.visible = cone > 0.01 && lip > 1;
+  amp.cone.scale.y = Math.max(0.01, lip - GLAS.lipDown);
+  amp.leakMat.opacity = 0.85 * leak * (0.7 + 0.3 * flash);
+  amp.leak.visible = leak > 0.01;
+  const offer = Math.exp(-amp.offerT / 0.8);
+  amp.slot.material.color.copy(GLAS_SLOT_DARK).lerp(GLAS_FONTE, clamp(slot, 0, 1)).multiplyScalar(lit ? 0.6 + 1.6 * slot + 4 * offer : 1);
+  amp.slotGlow.material.opacity = lit ? 0.35 * slot + 0.6 * offer : 0;
+  amp.flameMat.opacity = candles;
+  amp.flames.forEach((f, i) => {
+    const ph = f.userData.ph, k = 0.85 + 0.1 * Math.sin(now * 11 + ph) + 0.06 * Math.sin(now * 23 + ph * 2);
+    f.visible = candles > 0.01 && candles * 12 > i * 0.9;                     // elles s'allument une à une
+    f.scale.set(0.045 * k, 0.085 * k * (0.9 + 0.2 * Math.sin(now * 7 + ph)), 1);
+  });
+  amp.candleLight.intensity = 0.9 * candles * (0.9 + 0.1 * Math.sin(now * 13) * Math.sin(now * 5.3));
+  amp.moonLight.intensity = amp.open ? 1.5 : 0;
+  amp.shaftMat.opacity = amp.open ? 0.045 + 0.01 * Math.sin(now * 0.5) : 0;
+  amp.halo.material.opacity = 0.6 * halo * (0.85 + 0.15 * Math.sin(now * 5));
+  // --- l'arme sur le berceau : elle glisse des mains (offrande), flotte quand la cloche se relève
+  if (amp.display) {
+    const d = amp.display;
+    let y = 0, z = 0, spin = 0;
+    if (st === 'ritual' && t < GLAS.slide) { const k = smooth(t / GLAS.slide); y = 0.35 * (1 - k); z = 0.9 * (1 - k); }
+    else if (st === 'raise') y = 0.32 * smooth(clamp(t / GLAS.raise, 0, 1));
+    else if (st === 'ready') { y = 0.32 + 0.035 * Math.sin(now * 2); spin = 0.25 * Math.sin(now * 0.9); }
+    d.position.set(0, y, z);
+    d.rotation.set(0, -Math.PI / 2 + spin, 0);
+    amp.halo.position.set(0, y, z);
+    if (st === 'ready' || st === 'raise') {
+      amp.sparkT -= dt;
+      if (amp.sparkT <= 0) {
+        amp.sparkT = 0.07;
+        amp.holder.updateMatrixWorld(true);
+        const p = amp.holder.getWorldPosition(_glasV);
+        FX.sparks.emit(p.x + rand(-0.45, 0.45), p.y + y * amp.s + rand(-0.1, 0.15), p.z + rand(-0.2, 0.2), rand(-0.3, 0.3), rand(0.4, 1.2), rand(-0.3, 0.3), rand(0.4, 0.8), 1, 0.8, 0.4);
+      }
     }
   }
+  // --- poussière dorée dans le cône
+  const dp = amp.dust.geometry.attributes.position;
+  amp.dust.material.opacity = 0.75 * Math.min(1, cone) * (lip > 1.5 ? 1 : 0);
+  if (amp.dust.material.opacity > 0) {
+    amp.dustSeed.forEach(([a, r, h, v], i) => {
+      const a2 = a + now * 0.05, hh = (h + now * v * 0.15) % 1;
+      dp.setXYZ(i, Math.cos(a2) * r, GLAS.lipDown + hh * (lip - GLAS.lipDown), Math.sin(a2) * r);
+    });
+    dp.needsUpdate = true;
+  }
+  // --- ondes au sol
+  let boost = 0;
+  for (const w of amp.waves) {
+    if (!w.on) continue;
+    w.t += dt;
+    if (w.t < 0) { w.m.visible = false; continue; }
+    const k = w.t / w.dur;
+    if (k >= 1) { w.on = false; w.m.visible = false; continue; }
+    const r = Math.max(0.05, w.R * (1 - (1 - k) * (1 - k)));
+    w.m.scale.set(2 * r, 2 * r, 1);
+    w.mat.opacity = w.a * Math.pow(1 - k, 1.5);
+    w.m.visible = true;
+    boost = Math.max(boost, 1 - k);
+  }
+  M.decal.emissiveIntensity = lit ? decal * (0.6 + 0.4 * pulse) + 1.4 * boost : 0;
+  // --- bourdonnement (très grave, audible à 15 m environ)
+  Sound.glasHum(hum, amp.pos);
 }
 
 /* ------------------------------------------------------------ Panneaux -- */
@@ -13231,11 +14597,7 @@ function resetFeatures() {
   const p = Features.power;
   if (p) { p.anim = -1; p.pivot.rotation.x = 0.5; setLin(p.lampMat.color, 0xff2a1a); }
   resetLights();
-  const a = Features.amp;
-  if (a) {
-    a.state = 'idle'; a.t = 0; a.weapon = null; ampShow(null);
-    setLin(a.tubeMat.color, 0x5a2a7a); a.labelMat.emissiveIntensity = 0.05; a.glow.material.opacity = 0;
-  }
+  resetGlas();
   clearPowerups();
   resetDigipass();
   if (CUR.map && CUR.map.rules.powerOn) powerOnQuiet();
@@ -13251,6 +14613,7 @@ const G = {
   points: 0, grenades: 2, repairPts: 0, power: false, activeZones: new Set([0]),
   timers: { insta: 0, double: 0 }, events: [], creakT: 10, god: false, cheat: false,
   stats: null, save: null, mapId: null, editorSession: false,
+  glasTolls: 0, glasMidnight: false,          // Le Glas : coups sonnés dans la partie, minuit déjà sonné
 };
 function freshStats() { return { kills: 0, headshots: 0, earned: 0, downs: 0, shots: 0, hits: 0, doors: 0, boxes: 0, time: 0, xp: 0 }; }
 G.stats = freshStats();
@@ -13456,6 +14819,7 @@ function endRound() {
 }
 function onZombieKilled(z, info) {
   if (info.kind !== 'nuke') maybeDropPowerup(z.pos.x, z.pos.z, z.gy);
+  glasOnKill(z, info);
   if (G.roundState !== 'active') return;
   G.killed++;
   if (G.killed >= G.total) endRound();
@@ -13492,6 +14856,7 @@ function newGame(save) {
   activateZone(LAYOUT.startZone);
   G.timers.insta = 0; G.timers.double = 0;
   G.cheat = false;
+  G.glasTolls = 0; G.glasMidnight = false;
   G.stats = freshStats();
   resetArms();
   Zombies.flowT = 0;
@@ -13503,7 +14868,9 @@ function serializeGame() {
   if (G.state !== 'playing' && G.state !== 'paused') return null;
   return {
     map: G.mapId, round: Math.max(1, G.round), points: G.points, grenades: G.grenades,
-    slots: Arms.slots.map((s) => s && { id: s.id, up: s.up, mag: s.mag, res: s.res }), cur: Arms.cur,
+    slots: Arms.slots.map((s) => s && { id: s.id, up: s.up, tier: s.tier || 0, mag: s.mag, res: s.res, kills: s.kills || 0 }), cur: Arms.cur,
+    // Le Glas : coups sonnés (le douzième sonne minuit, une fois), arme restée sur le berceau
+    glas: { tolls: G.glasTolls, midnight: G.glasMidnight, weapon: Features.amp && Features.amp.weapon ? { id: Features.amp.weapon.id, tier: Features.amp.tier } : null },
     perks: [...player.perks], souffleUses: player.souffleUses, power: G.power,
     doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box ? Features.box.cur : -1,
     stats: Object.assign({}, G.stats), cheat: G.cheat, rank: G.rankStart,
@@ -13512,8 +14879,26 @@ function serializeGame() {
 function restoreSave(s) {
   try {
     G.points = s.points; G.grenades = s.grenades;
-    Arms.slots = s.slots.map((x) => (x && WEAPONS[x.id] ? Object.assign({}, x) : null));
-    if (!Arms.slots.some((x) => x)) Arms.slots[0] = { id: 'm1911', up: false, mag: 8, res: 80 };
+    // palier du Glas (sauvegardes d'avant le Glas : une arme passée au Pack-A-Punch vaut le palier I)
+    Arms.slots = s.slots.map((x) => {
+      if (!x || !WEAPONS[x.id]) return null;
+      const tier = clamp(x.tier !== undefined ? x.tier | 0 : x.up ? 1 : 0, 0, 3);
+      const o = Object.assign({}, x, { tier, up: tier > 0, kills: x.kills | 0 });
+      o.mag = Math.min(o.mag, wstat(o, 'mag'));
+      return o;
+    });
+    if (!Arms.slots.some((x) => x)) Arms.slots[0] = { id: 'm1911', tier: 0, up: false, mag: 8, res: 80, kills: 0 };
+    const gl = s.glas || {};
+    G.glasTolls = gl.tolls | 0; G.glasMidnight = !!gl.midnight;
+    // arme laissée sur le berceau : elle revient dans les mains s'il y a de la place
+    if (gl.weapon && WEAPONS[gl.weapon.id] && !Arms.slots.some((x) => x && x.id === gl.weapon.id)) {
+      const free = Arms.slots.findIndex((x) => !x);
+      if (free >= 0) {
+        const o = { id: gl.weapon.id, tier: clamp(gl.weapon.tier | 0, 0, 3), mag: 0, res: 0, kills: 0 };
+        o.up = o.tier > 0; o.mag = wstat(o, 'mag'); o.res = wstat(o, 'res');
+        Arms.slots[free] = o;
+      }
+    }
     Arms.cur = Arms.slots[s.cur] ? s.cur : Arms.slots.findIndex((x) => x);
     refreshGunModel();
     for (const id of s.doors) {
@@ -13626,12 +15011,13 @@ const HUD = {
   },
   prompt(p) {
     const afford = (c) => G.cheat || G.points >= c;
-    const key = p ? p.text + '|' + (p.cost || '') + '|' + (p.cost ? afford(p.cost) : '') : '';
+    const key = p ? `${p.text}|${p.cost || ''}|${p.cost ? afford(p.cost) : ''}|${p.hold ? 1 : 0}|${p.sub || ''}` : '';
     if (key === this.last.prompt) return;
     this.last.prompt = key;
     if (!p) { this.el.prompt.hidden = true; return; }
     this.el.prompt.hidden = false;
     this.el.prompt.classList.toggle('disabled', !!p.disabled);
+    this.el.prompt.classList.toggle('hold', !!p.hold);          // touche pleine : F maintenue (Le Glas)
     this.el['prompt-text'].innerHTML = p.text.replace(/ F /, ' <kbd>F</kbd> ');
     const c = this.el['prompt-cost'];
     if (p.cost) { c.textContent = `Coût : ${p.cost}`; c.hidden = false; c.classList.toggle('short', !afford(p.cost)); }
@@ -13842,9 +15228,9 @@ function refreshMenu() {
     $('tip-box').hidden = !map.boxes.length;
     const powered = map.power || map.rules.powerOn;
     $('tip-power').hidden = !powered || (!map.perks.some((p) => PERKS[p.p].power) && !map.amp);
-    $('tip-power').textContent = b7 ? "Rétablissez le courant dans la salle des machines pour les atouts et le Pack-A-Punch."
-      : map.rules.powerOn ? `Le courant est déjà rétabli : ${map.amp ? 'atouts et Pack-A-Punch sont' : 'les atouts sont'} disponibles.`
-      : `Rétablissez le courant pour ${map.amp ? 'les atouts et le Pack-A-Punch' : 'les atouts'}.`;
+    $('tip-power').textContent = b7 ? 'Rétablissez le courant dans la salle des machines pour les atouts et Le Glas, la cloche qui reforge les armes.'
+      : map.rules.powerOn ? `Le courant est déjà rétabli : ${map.amp ? 'les atouts et Le Glas sont' : 'les atouts sont'} disponibles.`
+      : `Rétablissez le courant pour ${map.amp ? 'les atouts et Le Glas' : 'les atouts'}.`;
   }
   refreshMenuRank();
   const resume = $('btn-resume-save');
@@ -14037,6 +15423,7 @@ function frame(now) {
     else if (G.state === 'menu') menuCamera(dt);
     else if (G.state === 'editor' && window.ZSEditor) window.ZSEditor.frame(dt);
     else if (G.state === 'gameover') { updateFX(dt); updateLights(dt, G.time += dt * 0.3); camera.position.y = damp(camera.position.y, player.gy + 0.4, 1.5, dt); }
+    if (G.state !== 'playing') Sound.glasHum(0);              // le bourdonnement du Glas ne suit pas dans les menus
   } catch (err) {
     console.error(err);
   }
@@ -14247,7 +15634,7 @@ function openStats() {
       ['Armes achetées au mur', n('wallbuys')],
       ['Tirages de la boîte mystère', n('boxes')],
       ['Atouts bus', n('perks')],
-      ['Armes passées au Pack-A-Punch', n('upgrades')],
+      ['Offrandes au Glas', n('upgrades')],
       ['Bonus ramassés', n('powerups')],
     ]],
   ];
@@ -15273,12 +16660,12 @@ window.ZS = {
   showScreen, exitLock, Sound,
 };
 
-/* Outils de test (console) : __zs.points(5000), __zs.give('raygun', true)… */
+/* Outils de test (console) : __zs.points(5000), __zs.give('raygun', 3)… */
 window.__zs = {
   G, player, Arms, Zombies, World, Features, Powerups, Input, settings,
   step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { if (G.state === 'playing') update(dt); endFrameInput(); } },
   points(n) { G.points += n; HUD.pointsChanged(n); },
-  give(id, up) { giveWeapon(id, !!up); },
+  give(id, tier) { giveWeapon(id, tier === true ? 1 : tier | 0); },   // tier : palier du Glas (0 à 3)
   tp(x, z, yaw, lv) { placePlayer(x, z, lv); if (yaw !== undefined && yaw !== null) player.yaw = yaw; },
   power() { if (!G.power) activatePower(); },
   openAll() { for (const id in World.doors) if (!World.doors[id].opened) openDoor(World.doors[id]); },
