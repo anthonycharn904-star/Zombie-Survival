@@ -2903,6 +2903,17 @@ function genSmoke() {
   }
   return c;
 }
+/* Banc de brume des abords : une bande floue aux bords irréguliers, plus dense en son milieu. */
+function genMist() {
+  const c = makeCanvas(128, 64), g = c.getContext('2d');
+  for (let i = 0; i < 28; i++) {
+    const x = rand(26, 102), y = rand(25, 39), r = rand(11, 23);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r);
+    gr.addColorStop(0, 'rgba(255,255,255,0.2)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 64);
+  }
+  return c;
+}
 function genBeam() {
   const c = makeCanvas(64, 256), g = c.getContext('2d');
   const gr = g.createLinearGradient(0, 0, 0, 256);
@@ -4269,6 +4280,7 @@ function buildTextures() {
   TEX.blood = toTex(genBlood(), { clamp: true });
   TEX.hole = toTex(genHole(), { clamp: true });
   TEX.smoke = toTex(genSmoke(), { clamp: true });
+  TEX.mist = toTex(genMist(), { clamp: true });
   TEX.beam = toTex(genBeam(), { clamp: true });
   TEX.camo = toTex(genCamo());
   TEX.x2 = toTex(genLabel('×2', 128, 128, { color: '#fff' }), { clamp: true });
@@ -8203,42 +8215,89 @@ VEG.fern = (P, R, k = 1) => {
 const OUTSKIRT_BUILDINGS = ['ruin_chapel', 'ruin_station', 'ruin_factory', 'ruin_apartment', 'ruin_manor', 'ruin_barn', 'ruin_warehouse_burnt',
   'ruin_farmhouse', 'ruin_quonset', 'ruin_silo', 'ruin_water_tower', 'ruin_windmill', 'ruin_tower', 'ruin_timber_house', 'ruin_barracks',
   'ruin_radio_mast', 'ruin_greenhouse', 'ruin_gas_station', 'ruin_pillbox', 'ruin_watchtower', 'ruin_checkpoint', 'ruin_shed'];
-const OUTSKIRTS = { key: null, group: null, info: null, lights: [], timer: 0 };
+const OUTSKIRTS = { key: null, group: null, info: null, lights: [], mist: [], mistMats: [], mask: null, maskT: null, timer: 0 };
 /* Rayon de couronne de chaque essence (m, à l'échelle 1) : dégagement des couloirs de vue. */
 const CROWN = { willow: 3.6, oak: 3.8, spruce: 2.2, twisted: 2.6, birch: 1.6, strangled: 3 };
 const OUT_SECTORS = 6;
-/* Brume des abords : hors du rectangle de la carte, le brouillard s'éclaircit en une brume
-   bleutée de clair de lune (et s'épaissit moins vite) ; les silhouettes des ruines et des arbres
-   s'y découpent depuis les fenêtres. Dans la carte (cours comprises), rien ne change. Le
-   brouillard de three r128 se mélange après l'encodage sRGB : la brume est donc donnée en sRGB. */
-const OUT_MIST = 0x202a36;
+/* Brume des abords (jeu 1.7.0, épaissie à la manière de Nacht der Untoten en 1.8.0). Hors de la
+   carte et de ses cours, le brouillard devient une brume bleutée de clair de lune, plus épaisse au
+   ras du sol : sa densité décroît avec la hauteur et s'accumule le long du regard, de l'œil au point
+   vu (intégrale exacte d'une densité a·e^(-b·y)), en plaques qui dérivent lentement avec le vent ;
+   elle s'éclaircit du côté de la lune comme la voûte du ciel. Où elle commence : un masque calculé
+   avec les abords (canal R, 0 dans la carte, ses cours et devant les fenêtres où sortent les
+   zombies, 1 à 4 m de là ; canal G, 0 sous les bâtiments de la carte, pour que les sprites de brume
+   ne débordent jamais à l'intérieur). Dans la carte (cours comprises), rien ne change. Le
+   brouillard de three r128 se mélange après l'encodage sRGB : les couleurs de la brume sont
+   données en sRGB. */
+const OUT_MIST = 0x34404c;    // brume au loin
+const OUT_LOW = 0x4f5b67;     // brume au ras du sol, plus claire (clair de lune)
 const OUT_FOG = {
-  rect: { value: new THREE.Vector4(0, 0, 1, 1) },     // xMin, zMin, xMax, zMax de la carte
+  mask: { value: (() => { const t = new THREE.DataTexture(new Uint8Array([0, 255, 0, 255]), 1, 1, THREE.RGBAFormat); t.needsUpdate = true; return t; })() },
+  maskT: { value: new THREE.Vector4(0, 0, 1, 1) },      // origine du masque (m) et inverse de ses dimensions
   mist: { value: new THREE.Color(OUT_MIST) },
+  low: { value: new THREE.Color(OUT_LOW) },
   sky: { value: new THREE.Color(0x05070b) },
-  k: { value: new THREE.Vector3(0.75, 1, 9) },        // densité relative dehors, début et fin du fondu (m)
+  k: { value: new THREE.Vector2(0.055, 0.05) },         // brume dehors (épaisseur optique par m) ; densité de référence du brouillard de la carte
+  g: { value: new THREE.Vector4(0.11, 0.75, 0.11, 0) }, // brume au sol : densité au sol (/m), décroissance avec la hauteur (/m), taille des plaques (/m)
+  camW: { value: new THREE.Matrix4() },                 // caméra du rendu (posée avant chaque rendu de la scène)
+  time: { value: 0 },
   moon: { value: new THREE.Vector2(-0.65, -0.76) },
 };
+const OUT_FOG_PARS = `varying vec3 vOutP;
+#ifdef OUT_SPRITE
+  varying vec3 vOutQ;
+#endif
+uniform sampler2D uOutMask; uniform vec4 uOutMaskT; uniform vec3 uOutMist; uniform vec3 uOutLow; uniform vec2 uOutK;
+uniform vec4 uOutG; uniform mat4 uOutCamW; uniform float uOutTime; uniform vec2 uOutMoon;
+float abHash(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float abNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(abHash(i), abHash(i + vec2(1.0, 0.0)), f.x), mix(abHash(i + vec2(0.0, 1.0)), abHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}`;
 const OUT_FOG_FRAG = `#ifdef USE_FOG
-  vec2 abQ = max(max(uOutRect.xy - vOutW, vOutW - uOutRect.zw), vec2(0.0));
-  float abK = smoothstep(uOutK.y, uOutK.z, length(abQ));
+  vec3 abCam = uOutCamW[3].xyz;
+  float abK = texture2D(uOutMask, (vOutP.xz - uOutMaskT.xy) * uOutMaskT.zw).r;
+  float abL = distance(vOutP, abCam);
+  // dans la carte, le brouillard de la carte (exponentiel au carré) ; dehors, une brume qui
+  // s'épaissit dès les premiers mètres (exponentielle simple), proportionnelle à la densité de la carte
   #ifdef FOG_EXP2
-    float abD = fogDensity * mix(1.0, uOutK.x, abK);
-    float fogFactor = 1.0 - exp(- abD * abD * fogDepth * fogDepth);
+    float abF = fogDensity / uOutK.y;
+    float abOD = mix(fogDensity * fogDensity * fogDepth * fogDepth, uOutK.x * abF * abL, abK);
   #else
-    float fogFactor = smoothstep(fogNear, mix(fogFar, fogFar / max(uOutK.x, 0.05), abK), fogDepth);
+    float abF = 1.0;
+    float abOD = mix(-log(1.0 - min(smoothstep(fogNear, fogFar, fogDepth), 0.999)), uOutK.x * abL, abK);
   #endif
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(fogColor, uOutMist, abK), fogFactor);
+  // brume au sol : densité a·e^(-b·y) intégrée de l'œil au point, en plaques qui dérivent
+  float abH0 = max(abCam.y, 0.0), abH1 = max(vOutP.y, 0.0), abE0 = exp(-uOutG.y * abH0);
+  float abI = abs(abH1 - abH0) > 0.05 ? (abE0 - exp(-uOutG.y * abH1)) / (uOutG.y * (abH1 - abH0)) : abE0;
+  vec2 abW = uOutTime * vec2(0.028, 0.011);
+  vec2 abP = vOutP.xz * uOutG.z + abW, abM = mix(abCam.xz, vOutP.xz, 0.6) * uOutG.z + abW;
+  float abN = 0.35 * (abNoise(abP) + abNoise(abM)) + 0.3 * abNoise(abP * 2.7 - abW * 1.7);
+  float abGD = uOutG.x * abF * abK * abL * abI * (0.3 + 1.4 * abN);
+  float fogFactor = 1.0 - exp(-(abOD + abGD));
+  // plus claire du côté de la lune, comme l'horizon de la voûte
+  float abMo = max(0.0, dot(normalize(vOutP.xz - abCam.xz + vec2(1e-4)), uOutMoon));
+  vec3 abC = mix(uOutMist, uOutLow, abGD / (abOD + abGD + 1e-4)) * (0.88 + 0.3 * abMo * abMo * abMo);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(fogColor, abC, abK), fogFactor);
+  #ifdef OUT_SPRITE
+    // sprites de brume : jamais à l'intérieur des bâtiments de la carte, fondus avant de toucher le sol
+    gl_FragColor.a *= texture2D(uOutMask, (vOutQ.xz - uOutMaskT.xy) * uOutMaskT.zw).g * smoothstep(0.0, 0.55, vOutQ.y);
+  #endif
 #endif`;
 function mistify(m, sprite = false) {
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uOutRect = OUT_FOG.rect; sh.uniforms.uOutMist = OUT_FOG.mist; sh.uniforms.uOutK = OUT_FOG.k;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vOutW;')
-      .replace('#include <fog_vertex>', `#include <fog_vertex>\nvOutW = (modelMatrix * vec4(${sprite ? 'vec3(0.0)' : 'transformed'}, 1.0)).xz;`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vOutW;\nuniform vec4 uOutRect;\nuniform vec3 uOutMist;\nuniform vec3 uOutK;')
+    Object.assign(sh.uniforms, { uOutMask: OUT_FOG.mask, uOutMaskT: OUT_FOG.maskT, uOutMist: OUT_FOG.mist, uOutLow: OUT_FOG.low, uOutK: OUT_FOG.k,
+      uOutG: OUT_FOG.g, uOutCamW: OUT_FOG.camW, uOutTime: OUT_FOG.time, uOutMoon: OUT_FOG.moon });
+    // position du point vu dans le monde (d'un sprite : son centre ; et, à part, celle de chacun de ses coins)
+    const pos = sprite ? 'vOutP = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;\nvOutQ = (uOutCamW * mvPosition).xyz;' : 'vOutP = (modelMatrix * vec4(transformed, 1.0)).xyz;';
+    const head = `${sprite ? '#define OUT_SPRITE\n' : ''}`;
+    sh.vertexShader = head + sh.vertexShader.replace('#include <common>', `#include <common>\nvarying vec3 vOutP;\n${sprite ? 'varying vec3 vOutQ;\nuniform mat4 uOutCamW;' : ''}`)
+      .replace('#include <fog_vertex>', `#include <fog_vertex>\n${pos}`);
+    sh.fragmentShader = head + sh.fragmentShader.replace('#include <common>', `#include <common>\n${OUT_FOG_PARS}`)
       .replace('#include <fog_fragment>', OUT_FOG_FRAG);
   };
-  m.customProgramCacheKey = () => (sprite ? 'abords-sprite' : 'abords');
+  m.customProgramCacheKey = () => (sprite ? 'abords2-sprite' : 'abords2');
   return m;
 }
 const OUT_MAT = new Map();
@@ -8249,21 +8308,24 @@ function outskirtsMaterial(fam) {
 }
 /* Couleurs de la brume et du ciel d'après l'ambiance de la carte (appelé par applyAmbiance). */
 function outskirtsAmbiance(a) {
-  const f = new THREE.Color(parseColor(a.fog, 0x05070b)), b = new THREE.Color(OUT_MIST);
+  const f = new THREE.Color(parseColor(a.fog, 0x05070b)), b = new THREE.Color(OUT_MIST), l = new THREE.Color(OUT_LOW);
   OUT_FOG.mist.value.setRGB(Math.max(f.r, b.r), Math.max(f.g, b.g), Math.max(f.b, b.b));
+  OUT_FOG.low.value.setRGB(Math.max(f.r, l.r), Math.max(f.g, l.g), Math.max(f.b, l.b));
   OUT_FOG.sky.value.setHex(parseColor(a.sky, 0x05070b));
 }
-/* Voûte du ciel : brume à l'horizon (un peu plus claire du côté de la lune), ciel de la carte
-   au-dessus ; dessinée avant tout le reste, sans brouillard ni écriture de profondeur. */
+/* Voûte du ciel : à l'horizon, la bande de brume (la même couleur que le sol au loin, plus claire du
+   côté de la lune) ; au-dessus, la brume se perd dans un ciel sombre et voilé. Dessinée avant tout
+   le reste, sans brouillard ni écriture de profondeur. */
 function outskirtsSky() {
   const mat = share(new THREE.ShaderMaterial({
-    uniforms: { uMist: OUT_FOG.mist, uSky: OUT_FOG.sky, uMoon: OUT_FOG.moon },
+    uniforms: { uMist: OUT_FOG.mist, uLow: OUT_FOG.low, uSky: OUT_FOG.sky, uMoon: OUT_FOG.moon },
     vertexShader: 'varying vec3 vDir;\nvoid main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `uniform vec3 uMist; uniform vec3 uSky; uniform vec2 uMoon; varying vec3 vDir;
+    fragmentShader: `uniform vec3 uMist; uniform vec3 uLow; uniform vec3 uSky; uniform vec2 uMoon; varying vec3 vDir;
 void main() {
-  float k = smoothstep(-0.03, 0.34, vDir.y);
-  float m = max(0.0, dot(normalize(vDir.xz + vec2(1e-5)), uMoon));
-  gl_FragColor = vec4(mix(uMist * (0.86 + 0.3 * m * m * m), uSky, k), 1.0);
+  float m = max(0.0, dot(normalize(vDir.xz + vec2(1e-5)), uMoon)), lit = 0.88 + 0.3 * m * m * m;
+  vec3 hz = mix(uMist, uLow, 0.2) * lit;
+  vec3 c = mix(hz, uMist * lit * 0.8, smoothstep(0.0, 0.14, vDir.y));
+  gl_FragColor = vec4(mix(c, mix(uSky, uMist, 0.22), smoothstep(0.08, 0.5, vDir.y)), 1.0);
 }`,
     side: THREE.BackSide, depthWrite: false,
   }));
@@ -8306,12 +8368,21 @@ function disposeOutskirts() {
   if (!OUTSKIRTS.group) return;
   OUTSKIRTS.group.traverse((m) => { if (m.geometry) m.geometry.dispose(); });
   if (OUTSKIRTS.group.parent) OUTSKIRTS.group.parent.remove(OUTSKIRTS.group);
-  OUTSKIRTS.group = null; OUTSKIRTS.key = null; OUTSKIRTS.info = null; OUTSKIRTS.lights = [];
+  OUTSKIRTS.group = null; OUTSKIRTS.key = null; OUTSKIRTS.info = null; OUTSKIRTS.lights = []; OUTSKIRTS.mist = []; OUTSKIRTS.mistMats = [];
 }
-/* Feux de bidons et lampadaire qui grésille (lueurs, sans vraie lumière) : à chaque image. */
+/* À chaque image : la brume dérive (plaques au sol, bancs qui vont et viennent, plus discrets quand
+   le brouillard de la carte est allégé, comme dans les Mod Tools), les feux de bidons vacillent et
+   le lampadaire grésille (lueurs, sans vraie lumière). */
 function animateOutskirts(now) {
-  if (!OUTSKIRTS.lights.length || !OUTSKIRTS.group || !OUTSKIRTS.group.parent) return;
   const t = now / 1000;
+  OUT_FOG.time.value = t;
+  if (!OUTSKIRTS.group || !OUTSKIRTS.group.parent) return;
+  const fade = scene && scene.fog ? Math.min(1, scene.fog.density / OUT_FOG.k.value.y) : 1;
+  for (const mm of OUTSKIRTS.mistMats) mm.mat.opacity = mm.base * fade * (0.84 + 0.16 * Math.sin(t * mm.w + mm.ph));
+  for (const s of OUTSKIRTS.mist) {
+    const u = Math.sin(t * s.w + s.ph);
+    s.sp.position.set(s.x + s.dx * u, s.y + 0.1 * Math.sin(t * s.w * 1.7 + s.ph), s.z + s.dz * u);
+  }
   for (const f of OUTSKIRTS.lights) {
     if (f.kind === 'fire') {
       const k = 0.72 + 0.18 * Math.sin(t * 9.1 + f.ph) * Math.sin(t * 5.3 + f.ph * 2) + 0.1 * Math.sin(t * 23 + f.ph);
@@ -8329,9 +8400,12 @@ function buildOutskirts(map, now = false) {
   if (!o) { World.outskirts = null; return null; }
   const q = typeof settings !== 'undefined' && settings.quality === 'low' ? 0.65 : 1;
   const key = outskirtsKey(o, q);
-  OUT_FOG.rect.value.set(0, 0, GW, GH);
   OUT_FOG.moon.value.set(-60, -70 - GH / 2).normalize();
-  if (OUTSKIRTS.key === key && OUTSKIRTS.group) { World.outskirts = OUTSKIRTS.info; return OUTSKIRTS.group; }
+  if (OUTSKIRTS.key === key && OUTSKIRTS.group) {
+    if (OUTSKIRTS.mask) { OUT_FOG.mask.value = OUTSKIRTS.mask; OUT_FOG.maskT.value.copy(OUTSKIRTS.maskT); }
+    World.outskirts = OUTSKIRTS.info;
+    return OUTSKIRTS.group;
+  }
   // Mod Tools : quand le contour de la carte change (pinceau dans le vide, fenêtres), les abords ne
   // sont pas refaits à chaque coup de pinceau ; ils disparaissent et reviennent 1,2 s après la
   // dernière modification (la construction prend environ une seconde)
@@ -8369,6 +8443,35 @@ function buildOutskirts(map, now = false) {
   };
   seedDist((t) => t !== T.VOID, dB);
   seedDist((t) => t === T.YARD, dY);
+  // masque de la brume (canal R : 0 dans la carte, les cours et là où les zombies sortent de terre
+  // devant les fenêtres, 1 à 4 m de là ; canal G : 0 sous les bâtiments de la carte), une texture
+  // de la taille de la trame, filtrée
+  const dW = new Float32Array(N), dA = dB.slice();
+  seedDist((t) => t !== T.VOID && t !== T.YARD, dW);
+  for (const w of World.windows) {
+    if (LV[w.li] !== 0) continue;
+    for (let s = 0.5; s <= 3.6; s += 0.25) for (let l = -1.3; l <= 1.3; l += 0.25) {
+      const k = cell(w.x + 0.5 + w.nx * s - w.nz * l, w.z + 0.5 + w.nz * s + w.nx * l);
+      if (k >= 0) dA[k] = 0;
+    }
+  }
+  chamferDist(dA, NX, NZ, res);
+  const mpx = new Uint8Array(N * 4);
+  for (let k = 0; k < N; k++) {
+    mpx[k * 4] = Math.round(255 * smooth(clamp(dA[k] / 4, 0, 1)));
+    mpx[k * 4 + 1] = Math.round(255 * clamp((dW[k] - 0.15) / 0.45, 0, 1));
+    mpx[k * 4 + 3] = 255;
+  }
+  const mask = new THREE.DataTexture(mpx, NX, NZ, THREE.RGBAFormat);
+  mask.magFilter = mask.minFilter = THREE.LinearFilter;
+  mask.wrapS = mask.wrapT = THREE.ClampToEdgeWrapping;
+  mask.generateMipmaps = false;
+  mask.needsUpdate = true;
+  if (OUTSKIRTS.mask && OUTSKIRTS.mask !== mask) OUTSKIRTS.mask.dispose();
+  OUTSKIRTS.mask = mask;
+  OUTSKIRTS.maskT = new THREE.Vector4(X0, Z0, 1 / (NX * res), 1 / (NZ * res));
+  OUT_FOG.mask.value = mask;
+  OUT_FOG.maskT.value.copy(OUTSKIRTS.maskT);
   // 1 : trop près de la carte ou d'une cour ; 4 : couloir de vue d'une fenêtre (rien de haut)
   for (let k = 0; k < N; k++) if (dB[k] < 1.2 || dY[k] < 2.2) occ[k] = 1;
   const wins = World.windows.map((w) => ({ x: w.x + 0.5, z: w.z + 0.5, nx: w.nx, nz: w.nz }));
@@ -8619,18 +8722,43 @@ function buildOutskirts(map, now = false) {
       C[i] *= f; C[i + 1] *= f; C[i + 2] *= f;
     }
   }
-  // brume au ras du sol : grands voiles pâles, fondus au loin dans la brume des abords
-  const mistMat = share(mistify(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x6c7684, transparent: true, opacity: 0.15, depthWrite: false }), true));
-  for (let i = 0, tries = 0; i < Math.round(44 * dens) && tries < 4000; tries++) {
-    const x = rr(R, X0 + 4, X1 - 4), z = rr(R, Z0 + 4, Z1 - 4), c = cell(x, z);
-    if (c < 0 || dB[c] < 5 || dB[c] > 30) continue;
-    const sp = new THREE.Sprite(mistMat);
-    sp.scale.set(rr(R, 9, 16), rr(R, 2.4, 4.2), 1);
-    sp.position.set(x, rr(R, 0.8, 1.7), z);
+  // brume : bancs bas qui dérivent entre les ruines, voiles plus hauts dans les arbres, volutes qui
+  // rampent dans les cours jusqu'aux fenêtres (fondus au loin dans la brume des abords comme le reste)
+  const mistMats = [[0.13, 0x7d8996], [0.11, 0x7d8996], [0.09, 0x7d8996], [0.06, 0x7d8996], [0.26, 0x66717d]].map(([base, color], i) => ({
+    base, w: 0.07 + 0.04 * i, ph: i * 1.9,
+    mat: share(mistify(new THREE.SpriteMaterial({ map: TEX.mist, color, transparent: true, opacity: base, depthWrite: false }), true)),
+  }));
+  const mist = [];
+  const addMist = (x, y, z, sx, sy, mm, amp) => {
+    const sp = new THREE.Sprite(mm.mat);
+    sp.scale.set(sx, sy, 1);
+    sp.position.set(x, y, z);
     sp.renderOrder = 4;
     group.add(sp);
+    const a = R() * TAU;
+    mist.push({ sp, x, y, z, dx: Math.cos(a) * amp, dz: Math.sin(a) * amp, w: rr(R, 0.045, 0.1), ph: R() * TAU });
+  };
+  for (let i = 0, tries = 0; i < Math.round(66 * dens) && tries < 6000; tries++) {
+    const x = rr(R, X0 + 3, X1 - 3), z = rr(R, Z0 + 3, Z1 - 3), c = cell(x, z);
+    if (c < 0 || dB[c] < 3.5 || dB[c] > 32) continue;
+    addMist(x, rr(R, 0.55, 1.35), z, rr(R, 9, 18), rr(R, 2, 3.4), mistMats[i % 3], rr(R, 1.2, 2.6));
     i++;
   }
+  for (let i = 0, tries = 0; i < Math.round(20 * dens) && tries < 3000; tries++) {
+    const x = rr(R, X0 + 3, X1 - 3), z = rr(R, Z0 + 3, Z1 - 3), c = cell(x, z);
+    if (c < 0 || dB[c] < 8 || dB[c] > 32) continue;
+    addMist(x, rr(R, 3, 4.6), z, rr(R, 14, 24), rr(R, 4, 6), mistMats[3], rr(R, 1.5, 3));
+    i++;
+  }
+  for (const w of World.windows) {
+    if (LV[w.li] !== 0) continue;
+    for (let k = 0; k < 2; k++) {
+      const d = rr(R, 2.2, 3.2), l = (k ? 1 : -1) * rr(R, 0.2, 0.9);
+      addMist(w.x + 0.5 + w.nx * d - w.nz * l, rr(R, 0.5, 0.65), w.z + 0.5 + w.nz * d + w.nx * l, rr(R, 2.2, 2.5), rr(R, 0.9, 1.2), mistMats[4], 0.3);
+    }
+  }
+  OUTSKIRTS.mist = mist;
+  OUTSKIRTS.mistMats = mistMats;
   OUTSKIRTS.lights = lights.map((l) => {
     const sp = new THREE.Sprite(share(new THREE.SpriteMaterial({ map: TEX.glow, color: l.color, transparent: true, opacity: l.base, depthWrite: false, blending: THREE.AdditiveBlending })));
     sp.position.set(l.x, l.y, l.z);
@@ -8648,7 +8776,7 @@ function buildOutskirts(map, now = false) {
   const ms = Math.round(performance.now() - t0);
   const info = {
     buildings: placed.map((p) => ({ id: p.id, x: p.x, z: p.z, r: p.r, fx: p.fx, fz: p.fz, hw: p.d.hw, hd: p.d.hd })),
-    trees: trees.map((t) => ({ sp: t.sp, x: t.x, z: t.z })), props: props.length, lianas, poles: poles.length, ms,
+    trees: trees.map((t) => ({ sp: t.sp, x: t.x, z: t.z })), props: props.length, lianas, poles: poles.length, mist: mist.length, ms,
   };
   OUTSKIRTS.key = key; OUTSKIRTS.group = group; OUTSKIRTS.info = info;
   World.outskirts = info;
@@ -13834,6 +13962,8 @@ function initRenderer() {
   $('game').appendChild(renderer.domElement);
   renderer.domElement.setAttribute('aria-label', 'Vue du jeu');
   scene = new THREE.Scene();
+  // brume des abords : la caméra de chaque rendu de la scène (joueur, Mod Tools, vignettes)
+  scene.onBeforeRender = (r, s, cam) => { OUT_FOG.camW.value.copy(cam.matrixWorld); };
   scene.background = new THREE.Color(0x05070b);
   // le brouillard est calculé en linéaire : sa couleur doit l'être aussi pour rejoindre le fond
   scene.fog = new THREE.FogExp2(new THREE.Color(0x05070b).convertSRGBToLinear().getHex(), 0.05);

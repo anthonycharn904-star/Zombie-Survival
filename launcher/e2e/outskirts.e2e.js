@@ -4,7 +4,8 @@
    cours des zombies, couloir de vue dégagé devant chaque fenêtre et une façade au bout ; même
    résultat à chaque construction ; la Bunker 7 publiée (sans abords) les reprend ; "outskirts": null
    les retire ; format de carte ; bibliothèque des Mod Tools (bâtiments, arbres à petite emprise) ;
-   temps de construction et cache ; reconstruction différée dans les Mod Tools.
+   temps de construction et cache ; reconstruction différée dans les Mod Tools ; brume épaissie
+   du jeu 1.8.0 (masque, bancs et volutes, dérive, discrétion dans les Mod Tools, shaders).
      xvfb-run -a node e2e/outskirts.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -30,6 +31,7 @@ const PUBLISHED_B7 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures',
     await game.waitForFunction(() => window.ZS && ZS.G.state === 'menu' && !document.getElementById('menu').hidden, null, { timeout: 180000 });
     const errors = [];
     game.on('pageerror', (e) => errors.push(String(e)));
+    game.on('console', (m) => { if (m.type() === 'error' && /WebGLProgram|shader/i.test(m.text())) errors.push(m.text().slice(0, 400)); });
     const res = await game.evaluate((published) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
@@ -108,6 +110,61 @@ const PUBLISHED_B7 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures',
       let tris = 0, meshes = 0;
       World.root.getObjectByName('abords').traverse((m) => { if (m.isMesh) { meshes++; tris += m.geometry.attributes.position.count / 3; } });
       ok(tris < 450000 && meshes < 400, `géométrie : ${Math.round(tris / 1000)} k triangles, ${meshes} maillages (fusionnés par matière et par secteur)`);
+      // ------------------------------------------------------ brume (épaissie dans le jeu 1.8.0)
+      const M = OUTSKIRTS.mask, MT = OUTSKIRTS.maskT;
+      const mk = (x, z, ch) => {
+        const NXm = M.image.width, NZm = M.image.height, i = Math.floor((x - MT.x) * MT.z * NXm), j = Math.floor((z - MT.y) * MT.w * NZm);
+        return i < 0 || j < 0 || i >= NXm || j >= NZm ? 1 : M.image.data[(j * NXm + i) * 4 + ch] / 255;
+      };
+      ok(M && OUT_FOG.mask.value === M && M.image.width * M.image.height > 10000, `brume : masque de ${M.image.width} × ${M.image.height} calculé avec les abords et branché sur la brume`);
+      let inMap = 0, cells = 0, under = 0, approach = 0, far = 0, guard = 0;
+      for (let z = 0; z < GH; z++) for (let x = 0; x < GW; x++) {
+        const t = solidAt(x + 0.5, z + 0.5);
+        if (t === null) continue;
+        cells++;
+        if (mk(x + 0.5, z + 0.5, 0) > 0.02) inMap++;
+        if (t !== T.YARD && mk(x + 0.5, z + 0.5, 1) > 0.02) under++;
+      }
+      for (const w of World.windows) {
+        for (const s of [1, 2, 3]) if (mk(w.x + 0.5 + w.nx * s, w.z + 0.5 + w.nz * s, 0) > 0.02) approach++;
+        if (mk(w.x + 0.5 + w.nx * 12, w.z + 0.5 + w.nz * 12, 0) > 0.98) far++;
+        if (mk(w.x + 0.5 + w.nx * 2.5, w.z + 0.5 + w.nz * 2.5, 1) > 0.98) guard++;
+      }
+      ok(inMap === 0 && approach === 0, `brume : rien dans la carte (${cells} cases), ses cours ni devant les fenêtres où sortent les zombies`, { inMap, approach });
+      ok(far === World.windows.length, `brume : pleine à 12 m de chaque fenêtre (${far} sur ${World.windows.length})`);
+      ok(under === 0 && guard === World.windows.length, 'brume : les sprites de brume sont effacés sous les bâtiments de la carte (jamais de brume dans une pièce), pas dans les cours', { under, guard });
+      const mist = OUTSKIRTS.mist, groundWins = World.windows.filter((w) => LV[w.li] === 0);
+      const wisps = mist.filter((s) => solidAt(s.x, s.z) === T.YARD);
+      const misplaced = mist.filter((s) => { const t = solidAt(s.x, s.z); return t !== null && t !== T.YARD; });
+      ok(World.outskirts.mist === mist.length && mist.length >= 80 && misplaced.length === 0, `brume : ${mist.length} bancs et voiles de brume, aucun dans la carte`, misplaced.length);
+      ok(wisps.length === 2 * groundWins.length && groundWins.every((w) => wisps.filter((s) => Math.hypot(s.x - w.x - 0.5, s.z - w.z - 0.5) < 3.6).length >= 2),
+        `brume : deux volutes au ras du sol dans la cour de chaque fenêtre (${wisps.length})`);
+      animateOutskirts(1000);
+      const p0 = mist.map((s) => s.sp.position.clone());
+      animateOutskirts(31000);
+      const moved = mist.filter((s, i) => s.sp.position.distanceTo(p0[i]) > 0.05).length;
+      ok(OUT_FOG.time.value === 31 && moved > mist.length * 0.8, `brume : elle dérive avec le temps (${moved} bancs déplacés en 30 s, plaques au sol animées)`);
+      const fog0 = scene.fog.density;
+      scene.fog.density = 0.012;
+      animateOutskirts(31000);
+      const faded = OUTSKIRTS.mistMats.map((mm) => mm.mat.opacity / mm.base);
+      scene.fog.density = fog0;
+      animateOutskirts(31000);
+      const full = OUTSKIRTS.mistMats.map((mm) => mm.mat.opacity / mm.base);
+      // même instant : seul le rapport des densités (0,012 / 0,05 = 0,24) les sépare ; le banc « respire » entre 68 et 100 %
+      ok(fog0 === 0.05 && faded.every((v, i) => Math.abs(v / full[i] - 0.24) < 0.005) && full.every((v) => v >= 0.67 && v <= 1),
+        'brume : plus discrète quand le brouillard de la carte est allégé (Mod Tools, bouton Brouillard : 24 %)', { fog0, faded, full });
+      // les shaders de la brume compilent (maillages et sprites)
+      const w0 = World.windows[0];
+      camera.position.set(w0.x + 0.5 - w0.nx * 0.9, 1.62, w0.z + 0.5 - w0.nz * 0.9);
+      camera.lookAt(w0.x + 0.5 + w0.nx * 10, 1.45, w0.z + 0.5 + w0.nz * 10);
+      camera.updateMatrixWorld(true);
+      renderer.compile(scene, camera);
+      renderer.render(scene, camera);
+      const progs = renderer.info.programs.filter((p) => /abords2(-sprite)?$/.test(p.cacheKey));
+      ok(progs.some((p) => p.cacheKey.endsWith('abords2')) && progs.some((p) => p.cacheKey.endsWith('abords2-sprite')) && progs.every((p) => !p.diagnostics || p.diagnostics.runnable !== false),
+        `brume : ${progs.length} programmes de rendu compilés sans erreur`, progs.map((p) => p.diagnostics || null));
+      ok(OUT_FOG.camW.value.elements[12] === camera.matrixWorld.elements[12] && OUT_FOG.camW.value.elements[14] === camera.matrixWorld.elements[14], 'brume : la caméra du rendu est transmise au shader');
       return out;
     }, PUBLISHED_B7);
     // Mod Tools : quand le contour change pendant l'édition, les abords disparaissent et reviennent
@@ -156,6 +213,6 @@ const PUBLISHED_B7 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures',
     if (app) await app.close().catch(() => {});
     fs.rmSync(TMP, { recursive: true, force: true });
   }
-  console.log(failures ? `${failures} échec(s).` : 'Abords : bâtiments, arbres et débris conformes.');
+  console.log(failures ? `${failures} échec(s).` : 'Abords : bâtiments, arbres, débris et brume conformes.');
   process.exit(failures ? 1 : 0);
 })();
