@@ -199,6 +199,39 @@ async function openGame() {
     await game.keyboard.press('Escape');
     await game.waitForFunction(() => !document.getElementById('menu').hidden);
     ok(await game.evaluate(() => /Prestige 1/.test(document.getElementById('menu-rank').textContent)), 'Ranking : Échap ramène au menu, qui affiche le prestige');
+    // menu Amélioration d'arme (jeu 1.8.0) : après Ranking ; une fiche par mod de munition du Glas
+    const order2 = await game.evaluate(() => [...document.querySelectorAll('#menu .actions .btn')].filter((b) => !b.hidden).map((b) => b.id));
+    const wmLabel = await game.evaluate(() => document.getElementById('btn-mods').textContent);
+    ok(order2.indexOf('btn-mods') === order2.indexOf('btn-ranking') + 1 && wmLabel === "Amélioration d'arme", 'bouton « Amélioration d’arme » après Ranking', { order2, wmLabel });
+    await game.click('#btn-mods');
+    await game.waitForFunction(() => !document.getElementById('mods').hidden);
+    const wmRead = () => game.evaluate(() => {
+      const sheet = document.getElementById('wm-sheet');
+      // le schéma suit la règle : zombies touchés dans le rayon, les autres au-delà (centre : le mort ou vous)
+      const R = Number(document.querySelector('#wm-stage .wm-range').getAttribute('r'));
+      const pos = (g) => g.getAttribute('transform').match(/translate\(([-\d.]+) ([-\d.]+)\)/).slice(1).map(Number);
+      const hit = [...document.querySelectorAll('#wm-stage .wm-z.hit')].map((g) => Math.hypot(...pos(g)));
+      const out = [...document.querySelectorAll('#wm-stage .wm-z.out')].map((g) => Math.hypot(...pos(g)));
+      return {
+        tabs: [...document.querySelectorAll('#wm-tabs .md-tab')].map((b) => b.querySelector('b').textContent),
+        sel: document.querySelector('#wm-tabs [aria-selected="true"]').dataset.id,
+        name: sheet.querySelector('.md-name').textContent, text: sheet.textContent.replace(/ /g, ' '),
+        R, inside: hit.length > 0 && hit.every((d) => d < R), outside: out.length > 0 && out.every((d) => d > R),
+        hud: [GLAS.tiers[2].mod, GLAS.tiers[3].mod], mods: WEAPON_MODS.map((m) => m.name), rule: [GLAS.resonance.r, GLAS.minuit.r],
+      };
+    });
+    const res = await wmRead();
+    ok(res.tabs.join() === 'Résonance,Minuit' && res.mods.join() === res.hud.join(), 'Amélioration d’arme : deux mods, Résonance et Minuit (les noms du HUD)', res.tabs);
+    ok(res.sel === 'resonance' && res.name === 'Résonance' && ['Chaque élimination émet une onde', '3 m', '0,9 s', 'quatre fois moins vite', 'Le couteau, les grenades', '15 000 points en tout', 'Bunker 7'].every((t) => res.text.includes(t)), 'Résonance : phrase de la planche, rayon, durée, effet, déclencheur, prix, carte', res.text.slice(0, 200));
+    ok(res.R === res.rule[0] && res.inside && res.outside, 'Résonance : schéma à l’échelle (3 m), zombies touchés dans le rayon, les autres au-delà', { R: res.R });
+    await game.focus('#wm-tabs [data-id="resonance"]');
+    await game.keyboard.press('ArrowRight');
+    const mn = await wmRead();
+    ok(mn.sel === 'minuit' && mn.name === 'Minuit' && ['Toutes les 12 éliminations', '6 m', '1,5 s à 1,7 s', 'Résonance reste active', '35 000 points en tout', 'douzième coup'].every((t) => mn.text.includes(t)), 'Minuit (flèche droite) : fréquence, rayon, durée, avec la Résonance, prix, différence avec le douzième coup', mn.text.slice(0, 200));
+    ok(mn.R === mn.rule[1] && mn.inside && mn.outside, 'Minuit : schéma à l’échelle (6 m), zombies renversés dans le rayon, les autres au-delà', { R: mn.R });
+    await game.keyboard.press('Escape');
+    await game.waitForFunction(() => !document.getElementById('menu').hidden);
+    ok(await game.evaluate(() => document.getElementById('mods').hidden), 'Amélioration d’arme : Échap ramène au menu');
     await app.close().catch(() => {});
   } catch (e) {
     failures++;

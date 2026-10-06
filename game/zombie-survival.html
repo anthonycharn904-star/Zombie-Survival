@@ -536,6 +536,62 @@ body {
 .rk-ltile.future { opacity: 0.5; }
 .rk-ltile.current { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass); }
 .rk-levels-note { margin: 12px 0 0; font-family: var(--font-type); font-size: 13px; color: var(--paper-2); }
+/* Écran Amélioration d'arme : une fiche par mod de munition, avec son schéma vu de dessus à l'échelle
+   (quadrillage de 1 m, une case du jeu) : l'onde part, les zombies touchés chancellent ou tombent.
+   Hors animation (mouvements réduits), le schéma montre l'effet en cours. */
+.wm-lead { margin: 12px 0 0; font-family: var(--font-type); font-size: 15px; line-height: 1.45; color: var(--paper-2); max-width: 72ch; }
+.wm-photo { --mod: #6fc0a8; }
+.wm-stage { position: relative; height: clamp(300px, calc(100vh - 440px), 600px); background: #0d1112; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(43, 36, 24, 0.5); }
+.wm-stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.5) 100%); }
+.wm-stage svg { display: block; width: 100%; height: 100%; font-family: var(--font-hud); font-weight: 700; }
+.wm-range { fill: var(--mod); fill-opacity: 0.06; stroke: var(--mod); stroke-width: 0.05; stroke-dasharray: 0.28 0.18; }
+.wm-ruler { stroke: var(--mod); stroke-width: 0.04; }
+.wm-label { fill: var(--mod); font-size: 0.46px; letter-spacing: 0.04em; }
+.wm-tag { fill: #e8dfc8; font-size: 0.38px; letter-spacing: 0.06em; }
+.wm-wave { fill: none; stroke: var(--mod); stroke-width: 0.13; opacity: 0.45; }
+.wm-shot { stroke: #ffd76a; stroke-width: 0.05; stroke-dasharray: 0.16 0.12; opacity: 0.75; }
+.wm-dead { stroke: var(--blood-hi); stroke-width: 0.12; stroke-linecap: round; fill: none; }
+.wm-you { fill: var(--brass); stroke: #0d1112; stroke-width: 0.05; }
+.wm-body { color: #b9b09a; fill: currentColor; stroke: currentColor; transform-box: fill-box; transform-origin: center; }
+.wm-body path { fill: none; stroke-width: 0.09; stroke-linecap: round; }
+.wm-body ellipse { stroke: none; }
+.wm-body circle { stroke: #0d1112; stroke-width: 0.035; }
+.wm-z.out .wm-body { color: #5c5648; }
+.wm-z.hit .wm-body { color: var(--mod); }
+.wm-min .wm-z.hit .wm-body { transform: translate(0, var(--push)) scale(0.85, 2.3); }
+.wm-res .wm-z.hit .wm-body { transform: rotate(14deg); }
+.wm-res .wm-wave { animation: wm-wave-r 2.6s ease-out infinite; }
+.wm-res .wm-z.hit .wm-body { animation: wm-reel 2.6s linear infinite; }
+.wm-res .wm-shot { animation: wm-shot 2.6s linear infinite; }
+.wm-min .wm-wave { animation: wm-wave-m 3.4s ease-out infinite; }
+.wm-min .wm-z.hit .wm-body { animation: wm-fall 3.4s ease-out infinite; }
+.wm-min .wm-dead { animation: wm-mark 3.4s linear infinite; }
+@keyframes wm-wave-r { 0% { transform: scale(0.08); opacity: 1; } 35% { transform: scale(1); opacity: 0.55; } 46%, 100% { transform: scale(1); opacity: 0; } }
+@keyframes wm-wave-m { 0% { transform: scale(0.04); opacity: 1; } 15% { transform: scale(1); opacity: 0.6; } 26%, 100% { transform: scale(1); opacity: 0; } }
+@keyframes wm-shot { 0%, 4% { opacity: 1; } 10%, 100% { opacity: 0.25; } }
+@keyframes wm-mark { 0% { opacity: 1; } 60% { opacity: 1; } 100% { opacity: 0.35; } }
+@keyframes wm-reel {
+  0%, 3% { transform: none; color: #b9b09a; }
+  7% { transform: translateX(0.1px) rotate(17deg); color: var(--mod); }
+  13% { transform: translateX(-0.1px) rotate(-15deg); }
+  19% { transform: translateX(0.08px) rotate(12deg); }
+  25% { transform: translateX(-0.06px) rotate(-9deg); }
+  31% { transform: rotate(5deg); color: var(--mod); }
+  38%, 100% { transform: none; color: #b9b09a; }
+}
+@keyframes wm-fall {
+  0%, 5% { transform: none; color: #b9b09a; }
+  12%, 55% { transform: translate(0, var(--push)) scale(0.85, 2.3); color: var(--mod); }
+  65%, 100% { transform: none; color: #b9b09a; }
+}
+.wm-key { display: inline-block; width: 9px; height: 9px; margin: 0 5px 0 0; border-radius: 50%; background: #b9b09a; vertical-align: 0; }
+.wm-key.hit { background: var(--mod); }
+.wm-key.out { background: #5c5648; }
+.wm-key.you { border-radius: 0; background: var(--brass); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.wm-key.dead { border-radius: 0; background: var(--blood-hi); clip-path: polygon(20% 0, 50% 30%, 80% 0, 100% 20%, 70% 50%, 100% 80%, 80% 100%, 50% 70%, 20% 100%, 0 80%, 30% 50%, 0 20%); }
+.wm-legend span { white-space: nowrap; margin-right: 12px; }
+.wm-quote { margin: 12px 0 0; padding-left: 12px; border-left: 3px solid var(--wm-accent, #3d4a57); font-size: 16px; line-height: 1.45; font-style: italic; color: #3d4a57; max-width: 62ch; }
+.md-tab .wm-dot { align-self: center; width: 10px; height: 10px; border-radius: 50%; background: var(--mod); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
 @media (max-width: 760px) {
   .rk-card { grid-template-columns: minmax(0, 1fr); justify-items: center; }
   .rk-info { justify-self: stretch; }
@@ -632,6 +688,7 @@ body {
         <button class="btn" id="btn-stats" type="button">Statistiques</button>
         <button class="btn" id="btn-models" type="button">Modèles</button>
         <button class="btn" id="btn-ranking" type="button">Ranking</button>
+        <button class="btn" id="btn-mods" type="button">Amélioration d'arme</button>
         <button class="btn" id="btn-options" type="button">Options</button>
         <button class="btn btn-narrow" id="btn-controls" type="button">Commandes</button>
         <button class="btn" id="btn-exit" type="button" hidden>Quitter</button>
@@ -784,6 +841,28 @@ body {
     <div class="rk-panel" id="rk-panel" role="tabpanel" aria-labelledby="ranking-title"></div>
     <div class="sheet-actions">
       <button class="btn primary" id="btn-ranking-back" type="button">Retour</button>
+    </div>
+  </div>
+</section>
+
+<section id="mods" class="screen sheet-screen" hidden aria-labelledby="mods-title">
+  <div class="sheet">
+    <header class="sheet-head">
+      <p class="eyebrow">Rapport d'incident · registre des munitions</p>
+      <h2 class="sheet-title" id="mods-title">Amélioration d'arme</h2>
+      <p class="wm-lead">Les mods de munition que gagnent les armes améliorées. D'autres arriveront avec de prochaines cartes.</p>
+    </header>
+    <div class="md-tabs" id="wm-tabs" role="tablist" aria-label="Mods de munition"></div>
+    <div class="md-body">
+      <figure class="md-photo wm-photo">
+        <div class="wm-stage" id="wm-stage"></div>
+        <figcaption class="md-plate"><span id="wm-plate-num"></span><span id="wm-plate-name"></span></figcaption>
+        <p class="md-hint wm-legend" id="wm-legend"></p>
+      </figure>
+      <article class="report md-sheet" id="wm-sheet" role="tabpanel" aria-labelledby="mods-title"></article>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn primary" id="btn-mods-back" type="button">Retour</button>
     </div>
   </div>
 </section>
@@ -1242,6 +1321,63 @@ const GLAS = {
   minuit: { kills: 12, r: 6, t: 1.5 },        // palier III : toutes les 12 éliminations, tout est renversé
   midnight: 12,                               // 12e coup de la partie : les zombies à l'écran s'effondrent
 };
+/* Améliorations d'arme (écran « Amélioration d'arme » du menu) : les mods de munition. Le Glas donne
+   Résonance (palier II, gardée au palier III) et Minuit (palier III) ; d'autres machines, sur d'autres
+   cartes, en apporteront : ajouter une entrée (source, palier, couleur, schéma) suffit à l'écran.
+   name : le nom affiché dans le HUD (« Mod de munition : … », GLAS.tiers[].mod) ; quote : la phrase
+   de la planche ; facts() : fiche complète, chiffres tirés des règles (GLAS). */
+const MOD_SOURCES = {
+  glas: { name: 'Le Glas', has: (map) => !!(map && map.amp), tiers: () => GLAS.tiers, how: (t) => `${t}ᵉ coup de cloche` },
+};
+const WEAPON_MODS = [
+  {
+    id: 'resonance', num: '01', name: 'Résonance', source: 'glas', tier: 2, color: '#6fc0a8', scheme: 'resonance',
+    quote: 'Chaque élimination émet une onde qui fait chanceler les zombies à 3 m.',
+    facts() {
+      const R = GLAS.resonance, m = (v) => `${fmtNum(v)} m`, sec = (v) => `${fmtNum(v)} s`;
+      return {
+        desc: `Chaque zombie tué par l’arme libère une onde : un cercle doré court au sol et la cloche tinte. Les autres zombies à ${m(R.r)} ou moins du mort chancellent pendant ${sec(R.t)} : ils avancent quatre fois moins vite et ne peuvent pas frapper ; celui qui vous frappait lâche prise. L’onde ne blesse pas. Elle fait gagner du temps, surtout dans une horde serrée, où chaque élimination en déstabilise d’autres.`,
+        cards: [
+          ['Déclencheur', 'Chaque élimination faite avec l’arme reforgée (palier II ou III), quelle que soit sa munition : balles, explosifs, projectiles. Le couteau, les grenades et la Bombe ne comptent pas.'],
+          ['Effet', `Zombies à ${m(R.r)} du mort : vitesse ×0,25 et aucun coup pendant ${sec(R.t)}.`],
+        ],
+        details: [
+          ['Portée', m(R.r), '', 'Autour du zombie éliminé, à son étage ; pas ceux encore dehors, derrière les fenêtres'],
+          ['Durée', sec(R.t), '', 'Une nouvelle onde relance les ' + sec(R.t) + ' (elles ne s’additionnent pas)'],
+          ['Zombies touchés', 'vitesse ×0,25', '', 'Ils ne frappent pas ; celui qui frappait lâche prise, sauf à travers une fenêtre'],
+          ['Dégâts', 'aucun', '', 'L’onde déstabilise, elle ne blesse pas'],
+          ['Au palier III', 'gardée', '', 'Minuit s’y ajoute'],
+          ['Dans le HUD', 'Mod de munition : Résonance', '', 'À gauche des munitions, au palier II (au palier III, le HUD affiche Minuit)'],
+        ],
+        note: '',
+      };
+    },
+  },
+  {
+    id: 'minuit', num: '02', name: 'Minuit', source: 'glas', tier: 3, color: '#e0b955', scheme: 'minuit',
+    quote: 'Toutes les 12 éliminations, l’arme sonne minuit et renverse tout à 6 m.',
+    facts() {
+      const M = GLAS.minuit, m = (v) => `${fmtNum(v)} m`, sec = (v) => `${fmtNum(v)} s`;
+      return {
+        desc: `L’arme compte ses morts. À sa ${M.kills}ᵉ élimination, puis à chaque douzaine (${M.kills * 2}ᵉ, ${M.kills * 3}ᵉ…), elle sonne minuit : tous les zombies à ${m(M.r)} ou moins de vous tombent à la renverse pendant ${sec(M.t)} environ, repoussés d’autant plus fort qu’ils sont près ; leurs coups sont interrompus. Une onde dorée part de vos pieds, l’écran tremble, «\u00a0Minuit\u00a0» s’affiche. La Résonance reste active : Minuit s’y ajoute.`,
+        cards: [
+          ['Déclencheur', `Toutes les ${M.kills} éliminations faites avec l’arme au palier III (le couteau, les grenades et la Bombe ne comptent pas).`],
+          ['Effet', `Zombies à ${m(M.r)} de vous : renversés ${sec(M.t)} à ${sec(M.t + 0.2)}, repoussés, coups interrompus.`],
+        ],
+        details: [
+          ['Fréquence', `${M.kills} éliminations`, '', `${M.kills}ᵉ, ${M.kills * 2}ᵉ, ${M.kills * 3}ᵉ… élimination de cette arme`],
+          ['Portée', m(M.r), '', 'Autour de vous, à votre étage ; pas ceux qui sortent de terre, enjambent une fenêtre ou sont encore dehors'],
+          ['Durée', `${sec(M.t)} à ${sec(M.t + 0.2)}`, '', 'À terre, puis ils se relèvent'],
+          ['Dégâts', 'aucun', '', 'Ils sont à terre : à vous de tirer'],
+          ['Compte', 'propre à l’arme', '', 'Gardé dans la sauvegarde ; repart de zéro chaque fois que l’arme sort de la cloche'],
+          ['Avec', 'Résonance', '', 'Toujours active au palier III'],
+          ['Dans le HUD', 'Mod de munition : Minuit', '', 'À gauche des munitions ; «\u00a0Minuit\u00a0» s’affiche à chaque déclenchement'],
+        ],
+        note: `À ne pas confondre avec le douzième coup de cloche de la partie, qui sonne aussi minuit : il vient de la cloche (les zombies à l’écran s’effondrent, une fois par partie), pas de l’arme.`,
+      };
+    },
+  },
+];
 /* Statistiques d'une arme à un palier du Glas (0 : arme de base), calculées une fois. */
 const TIER_STATS = Object.create(null);
 function tierStats(id, tier) {
@@ -16653,7 +16789,7 @@ function tallySVG(n) {
 
 /* ------------------------------------------------------------ Écrans --- */
 function showScreen(id) {
-  for (const s of ['menu', 'mapsel', 'stats', 'models', 'ranking', 'pause', 'options', 'gameover', 'loading', 'nogl']) {
+  for (const s of ['menu', 'mapsel', 'stats', 'models', 'ranking', 'mods', 'pause', 'options', 'gameover', 'loading', 'nogl']) {
     const el = $(s);
     if (el) el.hidden = s !== id;
   }
@@ -16688,7 +16824,7 @@ document.addEventListener('pointerlockchange', () => {
 });
 document.addEventListener('pointerlockerror', () => setFallback(true));
 function onGlobalKey(e) {
-  if (G.state === 'menu' && e.code === 'Escape' && (!$('mapsel').hidden || !$('stats').hidden || !$('models').hidden || !$('ranking').hidden)) {
+  if (G.state === 'menu' && e.code === 'Escape' && (!$('mapsel').hidden || !$('stats').hidden || !$('models').hidden || !$('ranking').hidden || !$('mods').hidden)) {
     e.preventDefault();
     showScreen('menu');
     return;
@@ -16811,6 +16947,17 @@ function bindUI() {
   click('btn-models-back', () => showScreen('menu'));
   click('btn-ranking', openRanking);
   click('btn-ranking-back', () => { refreshMenuRank(); showScreen('menu'); });
+  click('btn-mods', openMods);
+  click('btn-mods-back', () => showScreen('menu'));
+  $('wm-tabs').addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const i = WEAPON_MODS.findIndex((m) => m.id === ModsScreen.sel);
+    const next = WEAPON_MODS[clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, WEAPON_MODS.length - 1)];
+    if (next.id !== ModsScreen.sel) { Sound.ui(); selectMod(next.id); }
+    const t = [...$('wm-tabs').children].find((b) => b.dataset.id === ModsScreen.sel);
+    if (t) t.focus();
+  });
   const rkTabs = $('rk-tabs');
   for (const b of rkTabs.children) b.addEventListener('click', () => { if (Ranking.tab !== b.dataset.tab) { Sound.ui(); Ranking.tab = b.dataset.tab; Ranking.confirm = false; renderRanking(); } });
   rkTabs.addEventListener('keydown', (e) => {
@@ -17935,6 +18082,127 @@ const RankUp = {
 /* Insigne du niveau, avec en médaillon l'emblème du prestige (à partir du prestige 1). */
 function rankBadgeSVG(p, lv) {
   return `<span class="rk-ins">${rankInsigniaSVG(lv)}${p >= 1 ? `<span class="rk-pin">${prestigeEmblemSVG(p)}</span>` : ''}</span>`;
+}
+
+/* ------------------------------------------------------ Amélioration d'arme ---
+   Une fiche par mod de munition (WEAPON_MODS) : onglets, schéma vu de dessus à l'échelle (quadrillage
+   de 1 m, une case du jeu ; animé), phrase de la planche, description complète et détails chiffrés
+   (obtention et cartes calculées d'après la machine qui donne le mod et les cartes du jeu). */
+const ModsScreen = { sel: null };
+const wmN = (v) => (Math.round(v * 100) / 100).toString();
+/* Zombie vu de dessus (épaules, tête, bras tendus) tourné vers (tx, ty) ; push : recul quand il tombe. */
+function wmZombie(x, y, tx, ty, cls, push = 0) {
+  const a = (Math.atan2(tx - x, -(ty - y)) * 180) / Math.PI;
+  return `<g class="wm-z ${cls}" transform="translate(${wmN(x)} ${wmN(y)}) rotate(${wmN(a)})"${push ? ` style="--push:${wmN(push)}px"` : ''}>`
+    + '<g class="wm-body"><path d="M-0.24 -0.02 L-0.2 -0.44 M0.24 -0.02 L0.2 -0.44"/><ellipse rx="0.34" ry="0.17"/><circle cy="-0.02" r="0.13"/></g></g>';
+}
+const wmYou = (x, y, tx, ty) => `<path class="wm-you" d="M0 -0.46 L0.32 0.3 L0 0.14 L-0.32 0.3 Z" transform="translate(${wmN(x)} ${wmN(y)}) rotate(${wmN((Math.atan2(tx - x, -(ty - y)) * 180) / Math.PI)})"/>`;
+const wmDead = (x, y) => `<path class="wm-dead" d="M-0.24 -0.24 L0.24 0.24 M0.24 -0.24 L-0.24 0.24" transform="translate(${wmN(x)} ${wmN(y)})"/>`;
+function wmRange(cx, cy, r) {
+  return `<circle class="wm-range" cx="${wmN(cx)}" cy="${wmN(cy)}" r="${wmN(r)}"/>`
+    + `<path class="wm-ruler" d="M${wmN(cx)} ${wmN(cy)} H${wmN(cx + r)} M${wmN(cx + r)} ${wmN(cy - 0.16)} V${wmN(cy + 0.16)}"/>`
+    + `<text class="wm-label" x="${wmN(cx + r / 2)}" y="${wmN(cy - 0.2)}" text-anchor="middle">${fmtNum(r)} m</text>`
+    + `<circle class="wm-wave" cx="${wmN(cx)}" cy="${wmN(cy)}" r="${wmN(r)}"/>`;
+}
+const WM_LEGEND = '<span><i class="wm-key you"></i>vous</span><span><i class="wm-key dead"></i>zombie éliminé</span>'
+  + '<span><i class="wm-key hit"></i>touché</span><span><i class="wm-key out"></i>hors de portée</span><span>quadrillage : 1 m (une case)</span>';
+function wmSvg(cls, body, label, half = 7.4) {
+  return `<svg class="${cls}" viewBox="${-half} ${-half} ${2 * half} ${2 * half}" role="img" aria-label="${label}">`
+    + '<defs><pattern id="wm-grid" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0H0V1" fill="none" stroke="rgba(232,223,200,0.09)" stroke-width="0.03"/></pattern></defs>'
+    + `<rect x="-40" y="-40" width="80" height="80" fill="url(#wm-grid)"/>${body}</svg>`;
+}
+/* Schémas des mods (positions dessinées pour la portée de la planche, mises à l'échelle de la règle). */
+const MOD_SCHEMES = {
+  resonance() {
+    const R = GLAS.resonance.r, k = R / 3, you = [0.6 * k, 5.2 * Math.max(1, k)];
+    const hit = [[1.3, -1.0], [-1.5, -0.6], [-0.6, 1.7], [2.1, 1.2], [-2.2, 1.5], [0.4, -2.4]].map(([x, y]) => [x * k, y * k]);
+    const out = [[3.9, -2.6], [-4.3, -1.8], [-3.4, 3.8], [4.2, 2.9]].map(([x, y]) => [x * k, y * k]);
+    const body = wmRange(0, 0, R)
+      + `<path class="wm-shot" d="M${wmN(you[0])} ${wmN(you[1])} L0 0"/>`
+      + out.map(([x, y]) => wmZombie(x, y, you[0], you[1], 'out')).join('')
+      + hit.map(([x, y]) => wmZombie(x, y, you[0], you[1], 'hit')).join('')
+      + wmDead(0, 0) + wmYou(you[0], you[1], 0, 0);
+    return {
+      svg: wmSvg('wm-res', body, `Résonance vue de dessus : les zombies à ${fmtNum(R)} m du zombie éliminé chancellent`, Math.max(5.9, you[1] + 0.7)),
+      caption: `Rayon de ${fmtNum(R)} m autour du mort`, legend: WM_LEGEND,
+    };
+  },
+  minuit() {
+    const R = GLAS.minuit.r, k = R / 6;
+    const hit = [[-2.4, -3.1], [2.8, -2.4], [-4.4, 0.8], [4.6, 1.4], [-1.6, 3.9], [1.9, 4.6], [0.9, -4.9], [-3.6, -4.6]].map(([x, y]) => [x * k, y * k]);
+    const out = [[6.6, -3.2], [-6.9, 2.9], [5.2, 4.6]].map(([x, y]) => [x * k, y * k]);
+    const push = (x, y) => 0.25 + 0.9 * (1 - Math.hypot(x, y) / (R + 0.5));
+    const body = wmRange(0, 0, R)
+      + out.map(([x, y]) => wmZombie(x, y, 0, 0, 'out')).join('')
+      + hit.map(([x, y]) => wmZombie(x, y, 0, 0, 'hit', push(x, y))).join('')
+      + wmDead(0, -2.2 * k) + `<text class="wm-tag" x="${wmN(0.38)}" y="${wmN(-2.2 * k - 0.32)}">${GLAS.minuit.kills}ᵉ</text>`
+      + wmYou(0, 0, 0, -1);
+    return {
+      svg: wmSvg('wm-min', body, `Minuit vu de dessus : à la ${GLAS.minuit.kills}ᵉ élimination, les zombies à ${fmtNum(R)} m de vous tombent`),
+      caption: `Rayon de ${fmtNum(R)} m autour de vous`, legend: WM_LEGEND,
+    };
+  },
+};
+function openMods() {
+  const tabs = $('wm-tabs');
+  tabs.textContent = '';
+  for (const mod of WEAPON_MODS) {
+    const src = MOD_SOURCES[mod.source], T = src.tiers()[mod.tier];
+    const b = el('button', 'md-tab');
+    b.type = 'button';
+    b.dataset.id = mod.id;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-controls', 'wm-sheet');
+    b.style.setProperty('--mod', mod.color);
+    b.append(el('i', 'wm-dot'), el('b', '', mod.name), el('span', '', `${src.name} · ${T.roman}`));
+    b.addEventListener('click', () => { if (ModsScreen.sel !== mod.id) Sound.ui(); selectMod(mod.id); });
+    tabs.append(b);
+  }
+  selectMod(WEAPON_MODS.some((m) => m.id === ModsScreen.sel) ? ModsScreen.sel : WEAPON_MODS[0].id);
+  showScreen('mods');
+}
+function selectMod(id) {
+  const mod = WEAPON_MODS.find((m) => m.id === id) || WEAPON_MODS[0];
+  const src = MOD_SOURCES[mod.source], tiers = src.tiers(), T = tiers[mod.tier];
+  ModsScreen.sel = mod.id;
+  for (const b of $('wm-tabs').children) {
+    const on = b.dataset.id === mod.id;
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.tabIndex = on ? 0 : -1;
+  }
+  // schéma vu de dessus
+  const sc = MOD_SCHEMES[mod.scheme] ? MOD_SCHEMES[mod.scheme]() : null;
+  $('wm-stage').closest('figure').style.setProperty('--mod', mod.color);
+  $('wm-stage').innerHTML = sc ? sc.svg : '';
+  $('wm-plate-num').textContent = 'Schéma vu de dessus';
+  $('wm-plate-name').textContent = sc ? sc.caption : '';
+  $('wm-legend').innerHTML = sc ? sc.legend : '';
+  // fiche
+  const f = mod.facts();
+  const sheet = $('wm-sheet');
+  sheet.textContent = '';
+  sheet.style.setProperty('--wm-accent', mod.color);
+  sheet.append(el('span', 'stamp', `Mod n°${mod.num}`));
+  const tag = el('p', 'md-tagline');
+  for (const part of ['Mod de munition', `${src.name} · palier ${T.roman}`, T.name]) tag.append(el('span', '', part));
+  sheet.append(tag, el('p', 'md-name', mod.name), el('p', 'wm-quote', `«\u00a0${mod.quote}\u00a0»`), el('p', 'md-desc', f.desc));
+  const cards = el('div', 'md-cards');
+  for (const [title, text] of f.cards) {
+    const card = el('div', 'md-card');
+    card.append(el('span', '', title), el('p', '', text));
+    cards.append(card);
+  }
+  const costs = [];
+  for (let t = 1; t <= mod.tier; t++) costs.push(tiers[t].cost);
+  const total = costs.reduce((a, b) => a + b, 0);
+  const maps = MAPS.list.map((mid) => MAPS.byId[mid]).filter((mp) => src.has(mp)).map((mp) => mp.name);
+  const rows = [
+    ...f.details,
+    ['Obtention', `${src.name} · palier ${T.roman}`, '', `«\u00a0${T.name}\u00a0» : ${src.how(mod.tier)}, ${fmtNum(total, 0)} points en tout${costs.length > 1 ? ` (${costs.map((c) => fmtNum(c, 0)).join(' + ')})` : ''}`],
+    ['Cartes', maps.length ? maps.join(', ') : 'aucune pour l’instant', '', `Les cartes qui ont ${src.name}`],
+  ];
+  sheet.append(cards, el('h3', '', 'Détails'), ledgerList(rows));
+  if (f.note) sheet.append(el('p', 'report-note', f.note));
 }
 
 /* ---------------------------------------------------------------- Ranking ---
