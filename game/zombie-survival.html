@@ -1056,12 +1056,13 @@ let LAYOUT = { zones: [], doors: {}, wallbuys: [], perks: [], boxes: [], boxStar
    de zombie touché (ZOMBIE_TYPES, ×2 pour le Fantassin), le même pour toutes les armes
    rpm = cadence ; mag/res = chargeur/réserve ; reload = secondes
    spread/ads = dispersion en degrés hanche/visée ; pen = zombies traversés
-   box = poids dans la boîte mystère (0 = absent) ; wall = prix au mur
-   up = statistiques après le Pack-A-Punch                                    */
+   box = poids dans la boîte mystère (0 = absent) ; wall = prix habituel au mur (toutes les
+   armes, spéciales comprises, se posent au mur dans les Mod Tools ; une carte peut changer
+   le prix de chaque achat mural) ; up = statistiques après le Pack-A-Punch                 */
 const WEAPONS = {
   m1911: {
     name: 'M1911', kind: 'pistol', auto: false, rpm: 420, dmg: 40, mag: 8, res: 80, reload: 1.6,
-    spread: 1.6, ads: 0.4, recoil: 0.018, mobility: 1.0, zoom: 0.85, box: 0, sound: 'pistol',
+    spread: 1.6, ads: 0.4, recoil: 0.018, mobility: 1.0, zoom: 0.85, box: 0, wall: 500, sound: 'pistol',
     up: { name: 'M1911 Ardente', dmg: 90, mag: 12, res: 72, explosive: { r: 2.6, dmg: 1100 } },
   },
   kar98k: {
@@ -1108,39 +1109,39 @@ const WEAPONS = {
   },
   ppsh: {
     name: 'PPSh-41', kind: 'smg', auto: true, rpm: 950, dmg: 50, mag: 71, res: 284, reload: 3.0,
-    spread: 3.2, ads: 1.1, recoil: 0.01, mobility: 0.97, zoom: 0.8, box: 1.5, sound: 'smg',
+    spread: 3.2, ads: 1.1, recoil: 0.01, mobility: 0.97, zoom: 0.8, box: 1.5, wall: 2000, sound: 'smg',
     up: { name: 'PPSh Tornade', dmg: 125, mag: 115, res: 460, rpm: 1000 },
   },
   type100: {
     name: 'Type 100', kind: 'smg', auto: true, rpm: 750, dmg: 50, mag: 30, res: 240, reload: 2.1,
-    spread: 2.6, ads: 0.9, recoil: 0.011, mobility: 1.0, zoom: 0.8, box: 1.5, sound: 'smg',
+    spread: 2.6, ads: 0.9, recoil: 0.011, mobility: 1.0, zoom: 0.8, box: 1.5, wall: 1000, sound: 'smg',
     up: { name: 'Type 100 Frelon', dmg: 130, mag: 60, res: 420, rpm: 800 },
   },
   fg42: {
     name: 'FG42', kind: 'ar', auto: true, rpm: 720, dmg: 100, mag: 20, res: 200, reload: 2.3,
-    spread: 2.5, ads: 0.5, recoil: 0.02, mobility: 0.94, zoom: 0.68, pen: 1, box: 1.5, sound: 'rifle',
+    spread: 2.5, ads: 0.5, recoil: 0.02, mobility: 0.94, zoom: 0.68, pen: 1, box: 1.5, wall: 2000, sound: 'rifle',
     up: { name: 'FG42 Éclair', dmg: 240, mag: 32, res: 320, rpm: 780 },
   },
   mg42: {
     name: 'MG42', kind: 'lmg', auto: true, rpm: 1100, dmg: 90, mag: 125, res: 500, reload: 5.0,
-    spread: 3.6, ads: 1.4, recoil: 0.014, mobility: 0.82, zoom: 0.75, pen: 2, box: 1.5, sound: 'lmg',
+    spread: 3.6, ads: 1.4, recoil: 0.014, mobility: 0.82, zoom: 0.75, pen: 2, box: 1.5, wall: 3000, sound: 'lmg',
     up: { name: "MG42 Scie d'acier", dmg: 220, mag: 150, res: 750, rpm: 1150 },
   },
   panzer: {
     name: 'Panzerschreck', kind: 'launcher', auto: false, rpm: 40, dmg: 0, mag: 1, res: 15, reload: 2.8,
-    spread: 0.8, ads: 0.2, recoil: 0.07, mobility: 0.85, zoom: 0.8, box: 1.2, sound: 'launcher',
+    spread: 0.8, ads: 0.2, recoil: 0.07, mobility: 0.85, zoom: 0.8, box: 1.2, wall: 3000, sound: 'launcher',
     proj: { speed: 32, r: 5, dmg: 2600, direct: 800, self: 45, color: 0xffa040, type: 'rocket' },
     up: { name: 'Panzer Apocalypse', mag: 3, res: 30, proj: { speed: 40, r: 6, dmg: 7000, direct: 2000, self: 30, color: 0xff5030, type: 'rocket' } },
   },
   raygun: {
     name: 'Désintégrateur', kind: 'raygun', auto: false, rpm: 230, dmg: 0, mag: 20, res: 160, reload: 3.0,
-    spread: 0.6, ads: 0.2, recoil: 0.025, mobility: 1.0, zoom: 0.85, box: 0.6, wonder: true, sound: 'ray',
+    spread: 0.6, ads: 0.2, recoil: 0.025, mobility: 1.0, zoom: 0.85, box: 0.6, wall: 10000, wonder: true, sound: 'ray',
     proj: { speed: 48, r: 2.6, dmg: 1500, direct: 1500, self: 25, color: 0x5dff7a, type: 'plasma' },
     up: { name: 'Désintégrateur Ω', mag: 40, res: 200, rpm: 280, proj: { speed: 55, r: 3.2, dmg: 3000, direct: 3500, self: 15, color: 0xff3b58, type: 'plasma' } },
   },
   blaster: {
     name: 'Onde de choc', kind: 'blaster', auto: false, rpm: 70, dmg: 0, mag: 2, res: 12, reload: 3.0,
-    spread: 0, ads: 0, recoil: 0.12, mobility: 0.95, zoom: 0.9, box: 0.45, wonder: true, sound: 'blast',
+    spread: 0, ads: 0, recoil: 0.12, mobility: 0.95, zoom: 0.9, box: 0.45, wall: 10000, wonder: true, sound: 'blast',
     blast: { range: 12, cone: 0.55 },
     up: { name: 'Onde de choc Max', mag: 4, res: 24, blast: { range: 16, cone: 0.65 } },
   },
@@ -12330,7 +12331,9 @@ function updateDoors(dt) {
 }
 
 /* ----------------------------------------------------- Achats muraux --- */
-/* Prix d'une arme murale : celui de la carte, sinon le prix habituel de l'arme. */
+/* Prix d'une arme murale : celui de la carte, sinon le prix habituel de l'arme (WEAPONS.wall ;
+   avant le jeu 1.8.0, les armes de la boîte n'en avaient pas : prix déduit de leur poids dans la
+   boîte, d'où un Désintégrateur à 900 points ; la formule reste pour une arme sans prix). */
 function wallbuyPrice(wb) {
   if (typeof wb.cost === 'number') return wb.cost;
   const d = WEAPONS[wb.w];

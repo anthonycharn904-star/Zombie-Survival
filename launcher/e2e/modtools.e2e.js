@@ -7,7 +7,8 @@
      xvfb-run -a npm run test:e2e   (Linux sans écran)
 
    Vérifie : bouton Mod Tools visible seulement avec la clé de l'auteur, ouverture
-   de l'éditeur, enregistrement d'une carte et d'une image dans l'atelier, liste de
+   de l'éditeur, armes murales (les 16 armes, spéciales comprises), enregistrement
+   d'une carte et d'une image dans l'atelier, liste de
    publication, partie de test et retour, partie de test d'une carte avec une erreur,
    demande d'enregistrement à la fermeture,
    publication du jeu installé avec les cartes de l'atelier. */
@@ -198,6 +199,32 @@ async function author(userData) {
       return { before, options, after, out, undone: MT.state.map.zones[i].zombie };
     });
     ok(zt.before === 'savant' && zt.options === 'fantassin,lacere,savant,sentinelle' && zt.after === 'lacere' && zt.out === 'lacere' && zt.undone === 'savant', `Mod Tools : type de zombie d’une pièce (Infirmerie : Savant → Lacéré, enregistré, annulable) ${JSON.stringify(zt)}`);
+    // armes murales : les 16 armes du jeu, spéciales comprises, se posent au mur (Éléments de jeu
+    // → Arme murale, liste « Arme », clic sur un mur), chacune avec son prix habituel (jeu 1.8.0)
+    await mt.evaluate(() => { MT.openMap(ZS.blankMap(36, 26, 'Armes E2E'), { id: 'armes-e2e', source: 'new' }); MT.ui.setView('split'); });
+    await mt.waitForTimeout(300);
+    await mt.evaluate(() => MT.plan.fit());
+    await mt.click('.mt-tool[data-tool="elements"]');
+    await mt.evaluate(() => [...document.querySelectorAll('.kind-btn')].find((b) => /Arme murale/.test(b.textContent)).click());
+    await mt.waitForTimeout(200);
+    const wl = await mt.evaluate(() => {
+      const s = document.querySelector('#mt-panel select');
+      const options = s ? [...s.options].map((o) => o.value) : [];
+      if (s) { s.value = 'raygun'; s.dispatchEvent(new Event('change')); }
+      const r = MT.plan.canvas.getBoundingClientRect(), [sx, sy] = MT.plan.toScreen(14.5, 8.5);
+      return { options, count: Object.keys(ZS.WEAPONS).length, px: r.left + sx, py: r.top + sy, labels: s ? [...s.options].map((o) => o.textContent) : [] };
+    });
+    await mt.mouse.move(wl.px, wl.py); await mt.mouse.down(); await mt.mouse.up();
+    await mt.waitForTimeout(150);
+    const wb = await mt.evaluate(() => {
+      const w = MT.state.map.wallbuys.find((x) => x.w === 'raygun');
+      return w && { cell: w.cell.join(), n: w.n.join(), price: ZS.wallbuyPrice(w), saved: ZS.serializeMap(MT.state.map).wallbuys.some((x) => x.w === 'raygun') };
+    });
+    const special = ['ppsh', 'type100', 'fg42', 'mg42', 'panzer', 'raygun', 'blaster'];
+    ok(wl.options.length === wl.count && wl.options.length === 16 && special.every((id) => wl.options.includes(id))
+      && wl.labels.includes('Désintégrateur — 10000 pts') && wl.labels.includes('Onde de choc — 10000 pts')
+      && !!wb && wb.cell === '14,8' && wb.n === '0,1' && wb.price === 10000 && wb.saved,
+      `Mod Tools : les 16 armes au mur, spéciales comprises (Désintégrateur posé par clic, 10 000 pts) ${JSON.stringify({ n: wl.options.length, wb })}`);
     await floors(mt, userData);
     ok(!mtErrors.length, `étages : aucune erreur dans la console des Mod Tools ${mtErrors.slice(0, 3).join(' | ')}`);
     // carte enregistrée dans l'atelier, image importée, liste de publication
