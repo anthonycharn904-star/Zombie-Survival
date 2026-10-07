@@ -22,12 +22,14 @@ const ok = (cond, label, extra) => { console.log(`${cond ? 'ok    ' : 'ÉCHEC '}
 
 async function openGame() {
   const args = [ROOT];
-  if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader');
+  if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-watchdog');
   const app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: USER }, timeout: 60000 });
   const launcher = await app.firstWindow({ timeout: 30000 });
   await launcher.waitForFunction(() => !document.getElementById('btn-main').disabled, null, { timeout: 120000 });
   const [game] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.click('#btn-main')]);
   await game.waitForFunction(() => window.ZS && ZS.G.state === 'menu' && !document.getElementById('menu').hidden, null, { timeout: 120000 });
+  // en rendu logiciel, la première image d'une carte rechargée peut prendre plusieurs dizaines de secondes
+  if (process.platform === 'linux') game.setDefaultTimeout(180000);
   return { app, game };
 }
 

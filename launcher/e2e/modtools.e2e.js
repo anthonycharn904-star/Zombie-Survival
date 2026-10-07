@@ -34,7 +34,7 @@ function makeApp(publicPem) {
 }
 async function launch(userData) {
   const args = [APP];
-  if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader');
+  if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-watchdog');
   const app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: userData }, timeout: 60000 });
   const launcher = await app.firstWindow({ timeout: 30000 });
   await launcher.waitForLoadState('domcontentloaded');

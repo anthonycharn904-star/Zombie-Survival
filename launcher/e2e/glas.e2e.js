@@ -27,11 +27,12 @@ const USER = path.join(TMP, 'joueur');
   };
   try {
     const args = [ROOT];
-    if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader');
+    if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-watchdog');
     app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: USER }, timeout: 60000 });
     const launcher = await app.firstWindow({ timeout: 30000 });
     await launcher.waitForFunction(() => !document.getElementById('btn-main').disabled, null, { timeout: 120000 });
     const [game] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.click('#btn-main')]);
+    if (process.platform === 'linux') game.setDefaultTimeout(180000);   // rendu logiciel : images lentes
     await game.waitForFunction(() => window.ZS && ZS.G.state === 'menu' && !document.getElementById('menu').hidden, null, { timeout: 180000 });
     const errors = [];
     game.on('pageerror', (e) => errors.push(String(e)));
@@ -375,12 +376,12 @@ const USER = path.join(TMP, 'joueur');
       const o = Arms.slots[0];
       ok(o && o.tier === 1 && o.mag === 45 && wstat(o, 'name') === 'Thompson Chicago Rouge' && G.glasTolls === 0, 'ancienne sauvegarde (Pack-A-Punch) : l’arme améliorée vaut le palier I', o);
       // finitions
-      const M = GLAS_R.M, mats = (g) => { const set = new Set(); g.traverse((m) => { if (m.material) set.add(m.material); }); return set; };
+      const M = GLAS_R.M, mats = (g) => { const set = new Set(); g.traverse((m) => { if (m.material) { set.add(m.material); if (m.material.userData.from) set.add(m.material.userData.from); } }); return set; };
       const g1 = mats(buildGun('stg44', 1)), g2 = mats(buildGun('stg44', 2)), g3 = mats(buildGun('stg44', 3)), g0 = mats(buildGun('stg44', 0));
       ok(g1.has(M.gun1) && g1.has(M.gunBand) && !g1.has(M.voco), 'Tocsin : airain poli, cerclages gravés');
       ok(g2.has(M.gun2) && g2.has(M.voco) && !g2.has(M.gunBand), 'Bourdon : patine vert-de-gris, plaque VOCO allumée');
       ok(g3.has(M.gun3) && g3.has(M.voco) && g3.has(M.gunIron) && M.gun3.emissiveIntensity > 0.5, 'Glas : airain noirci aux fêlures d’or, agrafes de fer');
-      ok(!g0.has(M.gun1) && !g0.has(M.gun2) && !g0.has(M.gun3) && g0.has(MAT.gunMetal), 'arme de base : finition d’origine');
+      ok(!g0.has(M.gun1) && !g0.has(M.gun2) && !g0.has(M.gun3) && g0.has(gunBaseMats().blue), 'arme de base : finition d’origine (acier bleui)');
       // la boîte mystère ne donne pas l'arme posée sur le berceau
       const a = Features.amp;
       a.weapon = { id: 'ppsh', from: 0 }; a.state = 'ready';

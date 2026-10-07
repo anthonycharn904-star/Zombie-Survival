@@ -41,7 +41,7 @@ const watched = new WeakSet();
 const watch = (page) => { if (watched.has(page)) return; watched.add(page); page.on('pageerror', (e) => pageErrors.push(`${page.url()} : ${e.message}`)); };
 async function launch(userData, env) {
   const args = [APP];
-  if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader');
+  if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-watchdog');
   const app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: userData, ...env }, timeout: 60000 });
   app.on('window', watch);
   const launcher = await app.firstWindow({ timeout: 30000 });

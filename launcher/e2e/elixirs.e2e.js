@@ -25,11 +25,12 @@ const USER = path.join(TMP, 'joueur');
   };
   try {
     const args = [ROOT];
-    if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader');
+    if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-watchdog');
     app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: USER }, timeout: 60000 });
     const launcher = await app.firstWindow({ timeout: 30000 });
     await launcher.waitForFunction(() => !document.getElementById('btn-main').disabled, null, { timeout: 120000 });
     const [game] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.click('#btn-main')]);
+    if (process.platform === 'linux') game.setDefaultTimeout(180000);   // rendu logiciel : images lentes
     await game.waitForFunction(() => window.ZS && ZS.G.state === 'menu' && !document.getElementById('menu').hidden, null, { timeout: 180000 });
     const errors = [];
     game.on('pageerror', (e) => errors.push(String(e)));

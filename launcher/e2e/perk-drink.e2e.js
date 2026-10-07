@@ -22,11 +22,12 @@ const USER = path.join(TMP, 'joueur');
   let app, failures = 0;
   try {
     const args = [ROOT];
-    if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader');
+    if (process.platform === 'linux') args.push('--no-sandbox', '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-watchdog');
     app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: USER }, timeout: 60000 });
     const launcher = await app.firstWindow({ timeout: 30000 });
     await launcher.waitForFunction(() => !document.getElementById('btn-main').disabled, null, { timeout: 120000 });
     const [game] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.click('#btn-main')]);
+    if (process.platform === 'linux') game.setDefaultTimeout(180000);   // rendu logiciel : images lentes
     await game.waitForFunction(() => window.ZS && ZS.G.state === 'menu' && !document.getElementById('menu').hidden, null, { timeout: 120000 });
     const errors = [];
     game.on('pageerror', (e) => errors.push(String(e)));
@@ -81,7 +82,8 @@ const USER = path.join(TMP, 'joueur');
       ok(B.userData.label.material.map === TEX.bottleLabel.souffle && B.userData.cap.visible && B.userData.shape.kind === 'flask', 'fiole (ballon) aux couleurs de Quick Revive, bouchon en place');
       at(DRINK.lower + 0.03);
       const hip = Arms.gun.userData.info.hip[1];
-      ok(Arms.holder.position.y < hip - 0.45 && B.visible && Arms.grip.visible, 'arme baissée, fiole en main', { y: r2(Arms.holder.position.y), hip });
+      const wr = Arms.armR.hand.wrist.position.distanceTo(B.position);
+      ok(Arms.holder.position.y < hip - 0.45 && B.visible && Arms.armR.root.visible && wr < 0.16, 'arme baissée, fiole en main (main droite sur la fiole)', { y: r2(Arms.holder.position.y), hip, wr: r2(wr) });
       at(DRINK.bring);
       const pb = view(0, 0.08, 0);
       ok(B.visible && pb.z < -0.3 && Math.abs(pb.x) < 0.2 && Math.abs(pb.y) < 0.16, 'fiole présentée devant le joueur (étiquette à l’écran)', [r2(pb.x), r2(pb.y), r2(pb.z)]);
