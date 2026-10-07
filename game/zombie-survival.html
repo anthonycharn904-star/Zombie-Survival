@@ -7521,7 +7521,7 @@ const GUN_MODELS = {
     k.anchor('magwell', 0, -0.04, 0.29);
     return {
       origin: [0, -0.06, 0.448], muzzle: [0, 0, -0.0005], sight: 0.0295, eye: 0.56, hip: [0.15, -0.155, -0.29], ads: -0.24,
-      lh: [0, 0, 0.125], rk: 'wrist', lk: 'pump', lr: 0.0176, magDir: [0, 1, 0],
+      lh: [0, 0, 0.125], rk: 'wrist', lk: 'pump', lr: 0.0176, lt: [-0.026, 1.6, 0], magDir: [0, 1, 0],
       deco: { barrels: [[0, 0, 0.04, 0.24, 0.0176]], plate: [0.0183, 0.0, 0.33, 0.07, 0.016] },
     };
   },
@@ -7569,7 +7569,7 @@ const GUN_MODELS = {
     k.anchor('magwell', -0.0425, 0, 0.273);
     return {
       origin: [0, -0.055, 0.5], muzzle: [0, 0, -0.0012], sight: 0.0262, eye: 0.56, hip: [0.15, -0.16, -0.27], ads: -0.24,
-      lh: [0, -0.022, 0.33], rk: 'wrist', lk: 'fore', lr: 0.019, magDir: [1, 0, 0],
+      lh: [0, -0.022, 0.33], rk: 'wrist', lk: 'fore', lr: 0.019, lt: [-0.006, -1.2, 0.05], magDir: [1, 0, 0],
       deco: { barrels: [[0, 0, 0.04, 0.23, 0.0166]], plate: [0.0176, 0.0, 0.36, 0.06, 0.012] },
     };
   },
@@ -7697,7 +7697,7 @@ const GUN_MODELS = {
     k.anchor('magwell', -0.04, -0.012, 0.56);
     return {
       origin: [0, -0.085, 0.81], muzzle: [0, 0, -0.0012], sight: 0.0495, eye: 0.92, hip: [0.17, -0.19, -0.3], ads: -0.24,
-      lh: [0, 0, 0.35], rk: 'pistol', lk: 'fore', lr: 0.033, magDir: [1, 0, 0],
+      lh: [0, 0, 0.35], rk: 'pistol', lk: 'fore', lr: 0.033, lt: [-0.006, -1.2, 0.05], magDir: [1, 0, 0],
       deco: { barrels: [[0, 0, 0.16, 0.47, 0.0242]], plate: [0.0252, -0.012, 0.75, 0.08, 0.02] },
     };
   },
@@ -7880,7 +7880,7 @@ function buildGun(id, tier = 0) {
   const P = (p) => [p[0] - O[0], p[1] - O[1], p[2] - O[2]];
   const info = {
     muzzle: P(spec.muzzle), sight: spec.sight - O[1], sightX: (spec.sightX || 0) - O[0], eye: (spec.eye ?? O[2] + 0.3) - O[2], hip: spec.hip, ads: spec.ads ?? -0.3, one: !!spec.one,
-    lh: P(spec.lh), magDir: spec.magDir || [0, 1, 0], rk: spec.rk || 'pistol', lk: spec.lk || 'fore', lr: spec.lr ?? 0.02, lgap: spec.lgap || 0, hipRot: spec.hipRot || null,
+    lh: P(spec.lh), magDir: spec.magDir || [0, 1, 0], rk: spec.rk || 'pistol', lk: spec.lk || 'fore', lr: spec.lr ?? 0.02, lgap: spec.lgap || 0, lt: spec.lt || null, hipRot: spec.hipRot || null,
   };
   const muzzle = new THREE.Object3D();
   muzzle.position.fromArray(info.muzzle);
@@ -14944,7 +14944,7 @@ const HAND = {
   upper: 0.33, fore: 0.285,
 };
 /* Poses des doigts : [base, milieu, bout] (flexion, radians) pour index, majeur, annulaire,
-   auriculaire ; écart de chaque doigt ; pouce [écart, flexion de la base, milieu, bout]. */
+   auriculaire ; écart de chaque doigt ; pouce [écart, flexion de la base, milieu, bout, rotation sur lui-même (facultative)]. */
 const HAND_POSES = {
   relax: { f: [[0.25, 0.35, 0.2], [0.3, 0.4, 0.22], [0.35, 0.45, 0.25], [0.4, 0.5, 0.28]], s: [-0.06, 0, 0.05, 0.12], t: [0.35, 0.15, 0.15, 0.15] },
   open: { f: [[0.05, 0.08, 0.05], [0.05, 0.08, 0.05], [0.06, 0.1, 0.06], [0.08, 0.12, 0.08]], s: [-0.1, 0, 0.08, 0.18], t: [0.75, 0.0, 0.05, 0.05] },
@@ -15049,7 +15049,7 @@ function setHandPose(hand, a, b = null, k = 0) {
     b3.rotation.x = -mix(fa[2], fb[2]);
   }
   const ta = a.t, tb = b ? b.t : ta, [t1, t2, t3] = hand.thumb;
-  t1.rotation.set(-mix(ta[1], tb[1]), mix(ta[0], tb[0]) - 0.35, 0);
+  t1.rotation.set(-mix(ta[1], tb[1]), mix(ta[0], tb[0]) - 0.35, mix(ta[4] || 0, tb[4] || 0));
   t2.rotation.x = -mix(ta[2], tb[2]);
   t3.rotation.x = -mix(ta[3], tb[3]);
 }
@@ -15162,9 +15162,10 @@ function refreshGunModel() {
 /* Prises des mains sur une arme (repère de l'arme : x à droite, y en haut, z vers l'arrière ; origine
    à la poignée). Main droite : poignée pistolet ou poignée de crosse (ancre gripR, inclinée de son
    angle). Main gauche : sous un fût (fore), autour d'une poignée verticale ou d'un puits de
-   chargeur (vgrip), autour d'une pompe (pump), ou enveloppant la main droite (cup).
-   Une main se place par sa direction de doigts f, celle du pouce t, son dos (calculé) et la
-   distance de la paume à l'axe tenu. */
+   chargeur (vgrip), autour d'une pompe (pump), ou enveloppant la main droite (cup, prise à deux
+   mains d'un pistolet, gardée en réserve : le M1911 et le Désintégrateur se tiennent d'une main,
+   info.one). Une main se place par sa direction de doigts f, celle du pouce t, son dos (calculé)
+   et la distance de la paume à l'axe tenu. */
 const _vmHY = new THREE.Vector3();
 function handWrap(c, f, t, left, r, along, pose) {
   const q = handBasis(f, t, left);
@@ -15173,18 +15174,20 @@ function handWrap(c, f, t, left, r, along, pose) {
   return { p: c.clone().addScaledVector(_vmHY, 0.0165 + r).addScaledVector(fn, -along), q, pose: HAND_POSES[pose] || HAND_POSES.relax };
 }
 /* Réglages des prises : main droite (poignée inclinée : doigts vers l'avant de la poignée, décalés
-   de side vers la gauche ; pouce vers le haut, incliné de tf vers l'avant) ; main gauche (doigts f et
-   pouce t dans le repère de l'arme). along : du poignet à l'axe tenu, le long des doigts ; r : demi-
-   épaisseur tenue (de l'axe à la paume). Ajustement (plus bas) : lift, hauteur de l'index droit par
-   rapport à la détente ; thumbAt, point visé par le pouce (main droite : décalage depuis la poignée ;
-   main gauche : [écart au flanc gauche, hauteur en demi-épaisseurs, avance]) ; thumbCup : point visé
-   par le pouce gauche depuis le centre de la coupe. */
+   de side vers la gauche et relevés de pitch : la poignée traverse la paume en biais, comme une vraie
+   main, et le poignet reste dans l'axe de l'avant-bras ; pouce vers le haut, incliné de tf vers
+   l'avant) ; main gauche (doigts f et pouce t dans le repère de l'arme). along : du poignet à l'axe
+   tenu, le long des doigts ; r : demi-épaisseur tenue (de l'axe à la paume). Ajustement (plus bas) :
+   lift, hauteur de l'index droit par rapport à la détente ; thumbAt, point visé par le pouce (main
+   droite : décalage depuis la poignée ; main gauche : [écart au flanc gauche, hauteur en demi-
+   épaisseurs, avance], remplacé par info.lt si l'arme en donne un) ; thumbCup : point visé par le
+   pouce gauche depuis le centre de la coupe. */
 const HOLD_KINDS = {
-  pistol: { side: 0.2, tf: 0.35, along: 0.066, r: 0.0145, pose: 'pistol', thumbAt: [-0.024, 0.03, -0.03], lift: 0.004 },
-  wrist: { side: 0.18, tf: 0.3, along: 0.062, r: 0.019, pose: 'wrist', lift: 0.004 },
-  fore: { f: [0.92, 0.12, -0.32], t: [-0.05, 0.22, -1], along: 0.054, thumbAt: [0.006, 0, 0.1] },
+  pistol: { side: 0.2, tf: 0.35, along: 0.066, r: 0.0145, pose: 'pistol', thumbAt: [-0.024, 0.03, -0.03], lift: 0.004, pitch: 0.3 },
+  wrist: { side: 0.18, tf: 0.3, along: 0.062, r: 0.019, pose: 'wrist', thumbAt: [-0.03, -0.01, -0.02], lift: 0.004, pitch: 0.3 },
+  fore: { f: [0.92, 0.12, -0.32], t: [-0.05, 0.22, -1], along: 0.054, thumbAt: [0.004, -0.3, 0.09] },
   vgrip: { f: [0.24, -0.08, -1], t: [0.05, 1, -0.2], along: 0.062, thumbAt: [0.004, 0.3, -0.02] },
-  pump: { f: [0.9, 0.3, -0.25], t: [-0.05, 0.2, -1], along: 0.058, thumbAt: [0.006, -0.2, 0.1] },
+  pump: { f: [0.9, 0.3, -0.25], t: [-0.05, 0.2, -1], along: 0.058, thumbAt: [0.004, -0.3, 0.09] },
   cup: { f: [0.2, -0.5, -0.84], t: [0, 0.7, -0.7], along: 0.05, thumbCup: [-0.016, 0.044, -0.062] },
 };
 /* ------------------------------------------------ Ajustement des prises ---
@@ -15230,14 +15233,19 @@ function objTris(root, out) {
   return out;
 }
 function trisNear(T, c, r) {
-  const out = [];
+  const x0 = c.x - r, x1 = c.x + r, y0 = c.y - r, y1 = c.y + r, z0 = c.z - r, z1 = c.z + r, keep = [];
   for (let i = 0; i < T.length; i += 9) {
-    if (Math.max(T[i], T[i + 3], T[i + 6]) < c.x - r || Math.min(T[i], T[i + 3], T[i + 6]) > c.x + r) continue;
-    if (Math.max(T[i + 1], T[i + 4], T[i + 7]) < c.y - r || Math.min(T[i + 1], T[i + 4], T[i + 7]) > c.y + r) continue;
-    if (Math.max(T[i + 2], T[i + 5], T[i + 8]) < c.z - r || Math.min(T[i + 2], T[i + 5], T[i + 8]) > c.z + r) continue;
-    for (let k = 0; k < 9; k++) out.push(T[i + k]);
+    const a = T[i], b = T[i + 3], d = T[i + 6];
+    if ((a < x0 && b < x0 && d < x0) || (a > x1 && b > x1 && d > x1)) continue;
+    const e = T[i + 1], f = T[i + 4], g = T[i + 7];
+    if ((e < y0 && f < y0 && g < y0) || (e > y1 && f > y1 && g > y1)) continue;
+    const h = T[i + 2], k = T[i + 5], l = T[i + 8];
+    if ((h < z0 && k < z0 && l < z0) || (h > z1 && k > z1 && l > z1)) continue;
+    keep.push(i);
   }
-  return new Float32Array(out);
+  const out = new Float32Array(keep.length * 9);
+  keep.forEach((i, j) => out.set(T.subarray(i, i + 9), j * 9));
+  return out;
 }
 /* Premier triangle touché par le segment o → o + d (paramètre de 0 à 1 ; Infinity : rien). */
 function triHit(T, ox, oy, oz, dx, dy, dz) {
@@ -15260,23 +15268,30 @@ function triHit(T, ox, oy, oz, dx, dy, dz) {
   return best;
 }
 const _ftA = new THREE.Vector3(), _ftB = new THREE.Vector3(), _ftC = new THREE.Vector3(), _ftD = new THREE.Vector3();
-/* Grille des triangles proches de la main (cellules de 6 mm) : un segment ne teste que les triangles
-   des cellules qu'il traverse. */
-const FIT_CELL = 0.006, FIT_KEY = (x, y, z) => ((x + 600) * 1200 + (y + 600)) * 1200 + (z + 600);
+/* Grille des triangles proches de la main (cellules de 6 mm, tableaux plats : nombre de triangles par
+   cellule puis leurs indices) : un segment ne teste que les triangles des cellules qu'il traverse. */
+const FIT_CELL = 0.006;
 function triGrid(T, c, r) {
-  const k = 1 / FIT_CELL, map = new Map(), n = T.length / 9;
+  const k = 1 / FIT_CELL, n = T.length / 9;
   const lx = Math.floor((c.x - r) * k), ly = Math.floor((c.y - r) * k), lz = Math.floor((c.z - r) * k);
-  const hx = Math.floor((c.x + r) * k), hy = Math.floor((c.y + r) * k), hz = Math.floor((c.z + r) * k);
-  for (let i = 0, o = 0; i < n; i++, o += 9) {
-    const x0 = Math.max(lx, Math.floor(Math.min(T[o], T[o + 3], T[o + 6]) * k)), x1 = Math.min(hx, Math.floor(Math.max(T[o], T[o + 3], T[o + 6]) * k));
-    const y0 = Math.max(ly, Math.floor(Math.min(T[o + 1], T[o + 4], T[o + 7]) * k)), y1 = Math.min(hy, Math.floor(Math.max(T[o + 1], T[o + 4], T[o + 7]) * k));
-    const z0 = Math.max(lz, Math.floor(Math.min(T[o + 2], T[o + 5], T[o + 8]) * k)), z1 = Math.min(hz, Math.floor(Math.max(T[o + 2], T[o + 5], T[o + 8]) * k));
-    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
-      const key = FIT_KEY(x, y, z), a = map.get(key);
-      if (a) a.push(o); else map.set(key, [o]);
-    }
+  const nx = Math.floor((c.x + r) * k) - lx + 1, ny = Math.floor((c.y + r) * k) - ly + 1, nz = Math.floor((c.z + r) * k) - lz + 1;
+  const cells = nx * ny * nz, start = new Int32Array(cells + 1), box = new Int32Array(n * 6);
+  // 1. cellules couvertes par chaque triangle (boîte), compte par cellule
+  for (let i = 0, o = 0, b = 0; i < n; i++, o += 9, b += 6) {
+    const x0 = Math.max(0, Math.floor(Math.min(T[o], T[o + 3], T[o + 6]) * k) - lx), x1 = Math.min(nx - 1, Math.floor(Math.max(T[o], T[o + 3], T[o + 6]) * k) - lx);
+    const y0 = Math.max(0, Math.floor(Math.min(T[o + 1], T[o + 4], T[o + 7]) * k) - ly), y1 = Math.min(ny - 1, Math.floor(Math.max(T[o + 1], T[o + 4], T[o + 7]) * k) - ly);
+    const z0 = Math.max(0, Math.floor(Math.min(T[o + 2], T[o + 5], T[o + 8]) * k) - lz), z1 = Math.min(nz - 1, Math.floor(Math.max(T[o + 2], T[o + 5], T[o + 8]) * k) - lz);
+    box[b] = x0; box[b + 1] = x1; box[b + 2] = y0; box[b + 3] = y1; box[b + 4] = z0; box[b + 5] = z1;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const row = (x * ny + y) * nz + 1; for (let z = z0; z <= z1; z++) start[row + z]++; }
   }
-  return { T, map, seen: new Int32Array(n), tick: 0 };
+  for (let i = 1; i <= cells; i++) start[i] += start[i - 1];
+  // 2. indices des triangles rangés par cellule
+  const idx = new Int32Array(start[cells]), at = start.slice(0, cells);
+  for (let i = 0, o = 0, b = 0; i < n; i++, o += 9, b += 6) {
+    const x1 = box[b + 1], y0 = box[b + 2], y1 = box[b + 3], z0 = box[b + 4], z1 = box[b + 5];
+    for (let x = box[b]; x <= x1; x++) for (let y = y0; y <= y1; y++) { const row = (x * ny + y) * nz; for (let z = z0; z <= z1; z++) idx[at[row + z]++] = o; }
+  }
+  return { T, start, idx, lx, ly, lz, nx, ny, nz, seen: new Int32Array(n), tick: 0 };
 }
 /* Le segment o → o + d (paramètre de 0 à 1) coupe-t-il le triangle (indice i) ? */
 function tri1(T, i, ox, oy, oz, dx, dy, dz) {
@@ -15304,19 +15319,23 @@ function gridSeg(G, a, b) {
   let tx = sx > 0 ? ((x + 1) * C - ax) / dx : sx < 0 ? (x * C - ax) / dx : Infinity;
   let ty = sy > 0 ? ((y + 1) * C - ay) / dy : sy < 0 ? (y * C - ay) / dy : Infinity;
   let tz = sz > 0 ? ((z + 1) * C - az) / dz : sz < 0 ? (z * C - az) / dz : Infinity;
+  const { start, idx, lx, ly, lz, nx, ny, nz } = G;
   for (;;) {
-    const list = G.map.get(FIT_KEY(x, y, z));
-    if (list) for (let j = 0; j < list.length; j++) {
-      const o = list[j], id = o / 9;
-      if (seen[id] === tick) continue;
-      seen[id] = tick;
-      if (tri1(T, o, ax, ay, az, dx, dy, dz)) return true;
+    const cx = x - lx, cy = y - ly, cz = z - lz;
+    if (cx >= 0 && cy >= 0 && cz >= 0 && cx < nx && cy < ny && cz < nz) {
+      const cell = (cx * ny + cy) * nz + cz;
+      for (let j = start[cell], e = start[cell + 1]; j < e; j++) {
+        const o = idx[j], id = o / 9;
+        if (seen[id] === tick) continue;
+        seen[id] = tick;
+        if (tri1(T, o, ax, ay, az, dx, dy, dz)) return true;
+      }
     }
     if (tx < ty && tx < tz) { if (tx > 1) break; x += sx; tx += ddx; }
     else if (ty < tz) { if (ty > 1) break; y += sy; ty += ddy; }
     else { if (tz > 1) break; z += sz; tz += ddz; }
   }
-  return false;
+  return G.next ? gridSeg(G.next, a, b) : false;      // grille ajoutée (doigts de la main, pour le pouce)
 }
 /* Une phalange (repère de son os, à jour : −z le long du doigt, −y côté pulpe) touche-t-elle l'arme ?
    Axe, ligne de la pulpe et deux lignes latérales ; le bout du doigt compte jusqu'à sa calotte. */
@@ -15468,7 +15487,9 @@ function triggerIndex(G, hand, target, P) {
   return null;
 }
 /* Pouce : la première phalange visée le long de aim (repère de l'arme), écartée de l'arme si elle la
-   touche ; les deux autres se ferment jusqu'au contact. Rend [écart, base, milieu, bout] ou null. */
+   touche ; les deux autres se ferment jusqu'au contact. Pour les trois meilleures directions, le pouce
+   tourne aussi sur lui-même (plan de flexion) : sur une pièce mince, il s'enroule par-dessus.
+   Rend [écart, base, milieu, bout, rotation] ou null. */
 const _ftM = new THREE.Matrix4();
 function aimThumb(G, hand, aim, def, target = null) {
   const [t1, t2, t3] = hand.thumb, TH = HAND.thumb, t0 = t1.parent;
@@ -15476,7 +15497,7 @@ function aimThumb(G, hand, aim, def, target = null) {
   if (target) aim = target.clone().sub(t0.getWorldPosition(new THREE.Vector3()));   // visée vers un point (flanc de la pièce tenue)
   _ftM.copy(t0.matrixWorld).invert();
   const angles = (d) => { const v = d.clone().transformDirection(_ftM); return [Math.atan2(-v.x, -v.z), -Math.asin(clamp(v.y, -1, 1))]; };
-  const set = (sp, a) => { t1.rotation.set(-a[0], sp, 0); t2.rotation.x = -a[1]; t3.rotation.x = -a[2]; };
+  const set = (sp, a, rl = 0) => { t1.rotation.set(-a[0], sp, rl); t2.rotation.x = -a[1]; t3.rotation.x = -a[2]; };
   const base = aim.clone().normalize();
   const u = new THREE.Vector3(0, 1, 0).cross(base); if (u.lengthSq() < 1e-6) u.set(1, 0, 0); u.normalize();
   const w2 = new THREE.Vector3().crossVectors(base, u);
@@ -15486,20 +15507,26 @@ function aimThumb(G, hand, aim, def, target = null) {
     cands.push(base.clone().multiplyScalar(Math.cos(r)).addScaledVector(u, Math.sin(r) * Math.cos(ph)).addScaledVector(w2, Math.sin(r) * Math.sin(ph)));
   }
   // parmi les directions libres, celle où le pouce s'appuie le mieux sur l'arme, au plus près de aim
-  let best = null;
+  const tries = [];
+  const attempt = (d, sp, a0, rl) => {
+    const a = [a0, 0.05, 0.05];
+    const r = closeDigit(G, hand.thumb, TH.L, TH.r, (b) => set(sp, b, rl), a, [a0, Math.min(FIT.thumbHi[1], def[2] + 0.5), Math.min(FIT.thumbHi[2], def[3] + 0.5)], [1, 1, 1], 1);
+    if (!r) return;
+    const fin = r.touched ? r.a : [a0, def[2], def[3]];
+    set(sp, fin, rl); t1.updateMatrixWorld(true);
+    tries.push({ d, sp, a0, score: 1.5 * nearCount(G, hand.thumb, TH.L, TH.r) + d.dot(base) - 0.15 * Math.abs(rl), t: [sp + 0.35, ...fin, rl] });
+  };
   for (const d of cands) {
     const [sp, a0] = angles(d);
     if (a0 < -0.9 || a0 > 1.1) continue;
-    const a = [a0, 0.05, 0.05];
-    set(sp, a); t1.updateMatrixWorld(true);
+    set(sp, [a0, 0.05, 0.05]); t1.updateMatrixWorld(true);
     if (phalanxHit(G, t1, TH.L[0], TH.r[0], false)) continue;
-    const r = closeDigit(G, hand.thumb, TH.L, TH.r, (b) => set(sp, b), a, [a0, Math.min(FIT.thumbHi[1], def[2] + 0.5), Math.min(FIT.thumbHi[2], def[3] + 0.5)], [1, 1, 1], 1);
-    if (!r) continue;
-    const fin = r.touched ? r.a : [a0, def[2], def[3]];
-    set(sp, fin); t1.updateMatrixWorld(true);
-    const score = 1.5 * nearCount(G, hand.thumb, TH.L, TH.r) + d.dot(base);
-    if (!best || score > best.score) best = { score, t: [sp + 0.35, ...fin] };
+    attempt(d, sp, a0, 0);
   }
+  tries.sort((x, y) => y.score - x.score);
+  for (const b of tries.slice(0, 3)) for (const rl of [-0.4, 0.4, -0.8, 0.8, -1.2, 1.2]) attempt(b.d, b.sp, b.a0, rl);
+  let best = null;
+  for (const b of tries) if (!best || b.score > best.score) best = b;
   return best && best.t;
 }
 const _fitHands = {};
@@ -15560,11 +15587,17 @@ function fitHold(T0, h, left, opts = {}) {
     pose.f[i] = r ? r.a : P.f[i].slice();
     set(pose.f[i]);
   }
-  // 3. pouce : visé le long de l'arme (opts.thumb) ou fermé jusqu'au contact ; à défaut, la pose prévue
+  // 3. pouce : visé le long de l'arme (opts.thumb) ou fermé jusqu'au contact ; à défaut, la pose prévue.
+  // opts.thumbSelf : il bute aussi contre les doigts déjà posés (sur une pièce mince, il se replie sur eux).
   {
     const [t1, t2, t3] = hand.thumb, TH = HAND.thumb, sp = pose.t[0] - 0.35;
     const set = (a) => { t1.rotation.set(-a[0], sp, 0); t2.rotation.x = -a[1]; t3.rotation.x = -a[2]; };
     const def = [P.t[1], P.t[2], P.t[3]], cap = def.map((d, j) => Math.min(FIT.thumbHi[j], d + 0.6));
+    if (opts.thumbSelf) {
+      const TF = [];
+      for (const f of hand.fingers) objTris(f[0], TF);
+      G.next = triGrid(new Float32Array(TF), center, 0.16);
+    }
     const aimed = opts.thumb || opts.thumbAt ? aimThumb(G, hand, opts.thumb, P.t, opts.thumbAt) : null;
     if (aimed) pose.t = aimed;
     else {
@@ -15572,6 +15605,7 @@ function fitHold(T0, h, left, opts = {}) {
       if (!r) miss.push('t');
       pose.t = [pose.t[0], ...(r && r.touched ? r.a : def)];
     }
+    G.next = null;
   }
   setHandPose(hand, pose);
   w.updateMatrixWorld(true);
@@ -15604,21 +15638,27 @@ function gunHold(gun) {
   const g = A.gripR, ga = g ? g.r[0] : 0.35, gp = V(...(g ? g.p : [0, 0, 0]));
   const dn = V(0, -Math.cos(ga), Math.sin(ga)), fw = V(0, -Math.sin(ga), -Math.cos(ga));
   const RK = HOLD_KINDS[info.rk] || HOLD_KINDS.pistol;
-  const R = handWrap(gp.clone().addScaledVector(dn, -0.004), fw.clone().add(V(-RK.side, 0, 0)), dn.clone().negate().addScaledVector(fw, RK.tf), false, RK.r, RK.along, RK.pose);
+  const fwR = RK.pitch ? fw.clone().applyAxisAngle(V(1, 0, 0), RK.pitch) : fw;
+  const R = handWrap(gp.clone().addScaledVector(dn, -0.004), fwR.clone().add(V(-RK.side, 0, 0)), dn.clone().negate().addScaledVector(fw, RK.tf), false, RK.r, RK.along, RK.pose);
   const LK = HOLD_KINDS[info.lk] || HOLD_KINDS.fore;
-  const L = handWrap(V(...info.lh), V(...LK.f), V(...LK.t), true, info.lr, LK.along, info.lk === 'fore' ? 'fore' : info.lk);
+  // pistolet tenu d'une main (comme dans Call of Duty : World at War) : la main gauche attend sous la vue,
+  // hors champ ; elle ne vient que pour recharger (free : la vue ne la montre pas au repos)
+  const L = info.one ? { p: V(-0.17, -0.27, 0.16), q: handBasis(V(0.35, 0.6, -0.72), V(0, 0.55, -0.8), true), pose: HAND_POSES.relax, free: true }
+    : handWrap(V(...info.lh), V(...LK.f), V(...LK.t), true, info.lr, LK.along, info.lk === 'fore' ? 'fore' : info.lk);
   if (!root) return { R, L };                      // appel sans le modèle (clip) : prise brute, non gardée
   // ajustement contre l'arme : main droite (index sur la détente), puis main gauche (en coupe :
   // contre l'arme et la main droite)
-  const T = gunTris(root), trig = triggerPoint(root, ud);
+  const T = new Float32Array(gunTris(root)), trig = triggerPoint(root, ud);
   // pouce droit : visé vers un point du flanc gauche (au-dessus de la poignée), ou dans une direction
   const thumbR = RK.thumbAt ? gp.clone().add(V(...RK.thumbAt)) : null;
   const R2 = fitHold(T, R, false, { keep: [0], trigger: trig, slide: trig && { u: dn.clone().negate(), target: trig, delta: RK.lift }, thumb: RK.thumb && V(...RK.thumb), thumbAt: thumbR });
-  const TL = info.lk === 'cup' ? (() => { const hand = _fitHands.R; hand.wrist.position.copy(R2.p); hand.wrist.quaternion.copy(R2.q); setHandPose(hand, R2.pose); return objTris(hand.wrist, T.slice()); })() : T;
+  const TL = info.one ? null : info.lk === 'cup' ? (() => { const hand = _fitHands.R; hand.wrist.position.copy(R2.p); hand.wrist.quaternion.copy(R2.q); setHandPose(hand, R2.pose); return new Float32Array(objTris(hand.wrist, Array.from(T))); })() : T;
   // pouce gauche : le long du flanc gauche de la pièce tenue, vers l'avant (fût, pompe), ou visé (coupe)
-  const thumbAt = LK.thumbAt ? V(...info.lh).add(V(-(info.lr + LK.thumbAt[0]), info.lr * LK.thumbAt[1], -LK.thumbAt[2])) : LK.thumbCup ? V(...info.lh).add(V(...LK.thumbCup)) : null;
-  const L2 = fitHold(TL, L, true, { thumb: LK.thumb && V(...LK.thumb), thumbAt, gap: info.lgap || 0 });
-  ud.hold = { R: { p: R2.p, q: R2.q, pose: R2.pose }, L: { p: L2.p, q: L2.q, pose: L2.pose }, fit: { R: R2.gap, L: L2.gap, trig: R2.trig, slide: R2.slide, push: [R2.push, L2.push], palm: [R2.palm, L2.palm], miss: [...R2.miss, ...L2.miss.map((m) => 'L' + m)] } };
+  const LT = info.lt || LK.thumbAt;                 // info.lt : visée propre à l'arme (même format)
+  const thumbAt = LT ? V(...info.lh).add(V(-(info.lr + LT[0]), info.lr * LT[1], -LT[2])) : LK.thumbCup ? V(...info.lh).add(V(...LK.thumbCup)) : null;
+  const L2 = info.one ? null : fitHold(TL, L, true, { thumb: LK.thumb && V(...LK.thumb), thumbAt, gap: info.lgap || 0, thumbSelf: true });
+  ud.hold = { R: { p: R2.p, q: R2.q, pose: R2.pose }, L: L2 ? { p: L2.p, q: L2.q, pose: L2.pose } : L,
+    fit: { R: R2.gap, L: L2 && L2.gap, trig: R2.trig, slide: R2.slide, push: [R2.push, L2 ? L2.push : 0], palm: [R2.palm, !!(L2 && L2.palm)], miss: [...R2.miss, ...(L2 ? L2.miss.map((m) => 'L' + m) : [])] } };
   HOLD_CACHE.set(ud.id, ud.hold);
   return ud.hold;
 }
@@ -16851,10 +16891,10 @@ function updateViewmodel(dt) {
   Arms.nade.visible = st === 'throw' && !Arms.throwDone;
   let rPose2 = null, rK = 0, lPose2 = null, lK = 0;
   if (gun) {
-    rP = _handR; rQ = _vmQR; heldTarget(gun, hold.R, rP, rQ); rPose = hold.R.pose;
-    lP = _handL; lQ = _vmQL; heldTarget(gun, hold.L, lP, lQ); lPose = hold.L.pose;
+    rP = _handR; rQ = _vmQR; heldTarget(gun, hold.R, rP, rQ); rPose = hold.R.pose; _vmHR.copy(rP);
+    if (!hold.L.free) { lP = _handL; lQ = _vmQL; heldTarget(gun, hold.L, lP, lQ); lPose = hold.L.pose; }   // pistolet : main gauche hors champ
     if (ch && ch.r) { rP.copy(ch.r.p); rQ.copy(ch.r.q); rPose = ch.r.pose.a; rPose2 = ch.r.pose.b; rK = ch.r.pose.s; }
-    if (ch && ch.l) { lP.copy(ch.l.p); lQ.copy(ch.l.q); lPose = ch.l.pose.a; lPose2 = ch.l.pose.b; lK = ch.l.pose.s; }
+    if (ch && ch.l) { lP = _handL.copy(ch.l.p); lQ = _vmQL.copy(ch.l.q); lPose = ch.l.pose.a; lPose2 = ch.l.pose.b; lK = ch.l.pose.s; }
   }
   if (st === 'drink') {
     const t = Arms.t, B = Arms.bottle;
@@ -16903,7 +16943,11 @@ function updateViewmodel(dt) {
     }
     if (t >= DRINK.lower && t < DRINK.follow) lP = null;       // l'arme est baissée : la main gauche la suit hors champ
   } else {
-    AR.pole.set(0.55, -1, 0.25);
+    // coude droit dans l'axe de la main qui tient l'arme ; plus bas quand elle la quitte (culasse,
+    // levier, manivelle : la main monte vers l'arme, le coude reste dessous)
+    const away = gun && ch && ch.r ? Math.min(1, ch.r.p.distanceTo(_vmHR) / 0.03) : 0;
+    Arms.poleK = damp(Arms.poleK || 0, away, 8, dt);
+    AR.pole.fromArray(ARM_POLE_R).lerp(_vmV3.fromArray(ARM_POLE_R_FREE), Arms.poleK);
     Arms.headTilt = damp(Arms.headTilt, 0, 12, dt);
   }
   if (st === 'knife') {
@@ -16945,6 +16989,11 @@ function updateViewmodel(dt) {
   Arms.hemi.intensity = damp(Arms.hemi.intensity, lum * 0.58, 4, dt);
   Arms.keyLight.intensity = damp(Arms.keyLight.intensity, lum * 0.78, 4, dt);
 }
+/* Coude droit tiré vers l'extérieur, un peu vers le bas et vers l'arrière : l'avant-bras arrive dans
+   l'axe de la main (poignet plié de 30 à 60° selon l'arme, au lieu de 70 à 110° avec le coude sous
+   la main, ce qui donnait l'air d'un coude au bout de la manche). */
+const ARM_POLE_R = [0.8, -0.4, 0.6], ARM_POLE_R_FREE = [0.55, -1, 0.25];
+const _vmHR = new THREE.Vector3();
 const _vmQR = new THREE.Quaternion(), _vmQL = new THREE.Quaternion(), _vmV3 = new THREE.Vector3();
 /* Main droite sur la fiole (repère de la fiole : fond au centre, y vers le goulot, +z vers le joueur
    quand elle est droite) : dos de la main à droite, doigts enroulés derrière, pouce devant. */

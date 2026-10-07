@@ -1,7 +1,9 @@
 'use strict';
 /* Armes et rechargements (jeu 1.9.0) dans la fenêtre du jeu du launcher : modèles aux dimensions
    réelles (pièces mobiles, paliers du Glas, dessins à la craie, présentoirs), mains articulées
-   ajustées sur chaque arme (paume, doigts et pouce contre l'arme, sans la traverser), visée alignée sur les organes de visée, rechargement de chaque arme (tactique et à vide, durées,
+   ajustées sur chaque arme (paume, doigts et pouce contre l'arme, sans la traverser ; pouce posé
+   sur l'arme ou les doigts ; poignet dans l'axe de l'avant-bras ; pistolets tenus d'une main, la
+   gauche ne venant que recharger), visée alignée sur les organes de visée, rechargement de chaque arme (tactique et à vide, durées,
    munitions ajoutées au bon moment, pièces revenues en place), coup par coup interrompu par un tir,
    réarmement de la culasse à levier et de la pompe, atout Rechargement rapide, interruption par un
    changement d'arme, pas d'erreur.
@@ -72,26 +74,38 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
       // prises ajustées sur chaque arme : paume, doigts et pouce posés contre l'arme sans la traverser
       // (cœur de chaque phalange ; l'index droit sur la détente peut frôler l'avant d'un pontet étroit),
       // calcul assez court pour se faire pendant le menu
-      const pen = [], slow = {}, nofit = [];
+      const pen = [], slow = {}, nofit = [], air = [], one = [];
+      let maxMs = 0;
       for (const id of ids) {
         HOLD_CACHE.delete(id);
         const g = buildGun(id, 0); g.updateMatrixWorld(true);
         const t0 = performance.now(), H = gunHold(g), ms = performance.now() - t0;
         if (ms > 150) slow[id] = Math.round(ms);
+        maxMs = Math.max(maxMs, Math.round(ms));
         if (!H.fit || H.fit.miss.length) nofit.push([id, H.fit && H.fit.miss]);
         const T = new Float32Array(gunTris(g));
+        if (!!g.userData.info.one !== !!H.L.free || (['m1911', 'raygun'].includes(id) !== !!H.L.free)) one.push(id);
         for (const side of ['R', 'L']) {
+          if (H[side].free) continue;                    // pistolet : main gauche hors champ au repos
           const hand = buildHand(side === 'L');
           hand.wrist.position.copy(H[side].p); hand.wrist.quaternion.copy(H[side].q); setHandPose(hand, H[side].pose); hand.wrist.updateMatrixWorld(true);
-          const c = hand.body.localToWorld(new THREE.Vector3(0, -0.01, -0.06)), G = triGrid(trisNear(T, c, 0.15), c, 0.16);
+          const c = hand.body.localToWorld(new THREE.Vector3(0, -0.01, -0.06)), TN = trisNear(T, c, 0.15), G = triGrid(TN, c, 0.16);
           if (palmHit(G, hand)) pen.push([id, side, 'paume']);
           hand.fingers.forEach((bs, i) => bs.forEach((b, j) => { if (!(side === 'R' && i === 0) && phalanxHit(G, b, HAND.fingers[i].L[j], HAND.fingers[i].r[j] * 0.35, j === 2)) pen.push([id, side, `doigt ${i}.${j}`]); }));
           hand.thumb.forEach((b, j) => { if (phalanxHit(G, b, HAND.thumb.L[j], HAND.thumb.r[j] * 0.35, j === 2)) pen.push([id, side, `pouce ${j}`]); });
+          // pouce posé : au moins deux phalanges à moins de 4 mm de l'arme ou des doigts de la même main
+          const TF = []; for (const f of hand.fingers) objTris(f[0], TF);
+          const TT = new Float32Array(TN.length + TF.length); TT.set(TN); TT.set(TF, TN.length);
+          const GT = triGrid(TT, c, 0.16);
+          let near = 0; hand.thumb.forEach((b, j) => { if (phalanxHit(GT, b, HAND.thumb.L[j], HAND.thumb.r[j] + 0.004, j === 2)) near++; });
+          if (near < 2) air.push([id, side, near]);
         }
       }
       ok(!pen.length, 'mains ajustées sur chaque arme : paume, doigts et pouce sans traverser l’arme', pen);
+      ok(!air.length, 'chaque pouce posé sur l’arme ou enroulé sur les doigts (pas de pouce en l’air)', air);
+      ok(!one.length, 'M1911 et Désintégrateur tenus d’une main (main gauche hors champ au repos), les autres à deux mains', one);
       ok(!nofit.length, 'chaque doigt et chaque pouce trouve sa place contre l’arme (index sur la détente)', nofit);
-      ok(!Object.keys(slow).length, 'ajustement des mains en moins de 150 ms par arme (calculé pendant le menu)', slow);
+      ok(!Object.keys(slow).length, `ajustement des mains en moins de 150 ms par arme (calculé pendant le menu ; le plus long : ${maxMs} ms)`, slow);
       return out;
     }, GAME)).forEach(report);
 
@@ -128,6 +142,18 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
         Input.rmb = false; step(30);
       }
       ok(!off.length, 'visée : le guidon de chaque arme au centre de l’écran', off);
+      // poignets : l'avant-bras arrive dans l'axe de la main (pas de main pliée comme un coude au bout de la manche)
+      const bent = {};
+      for (const id of ids) {
+        __zs.give(id, 0); step(40);
+        for (const arm of [Arms.armR, Arms.armL]) {
+          if (!arm.root.visible) continue;
+          const w = arm.hand.wrist, fa = w.position.clone().sub(arm.elbow.position).normalize();
+          const a = Math.round(fa.angleTo(new THREE.Vector3(0, 0, -1).applyQuaternion(w.quaternion)) * 180 / Math.PI);
+          if (a > 70) bent[`${id}${arm.left ? 'G' : 'D'}`] = a;
+        }
+      }
+      ok(!Object.keys(bent).length, 'poignets dans l’axe de l’avant-bras (moins de 70° de pli à la hanche, chaque arme)', bent);
       // rechargements : tactique et à vide, durée, munitions, pièces revenues en place
       const durs = {}, fails = [];
       for (const id of ids) {
@@ -218,6 +244,22 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
       const d = Arms.armL.hand.wrist.position.distanceTo(new THREE.Vector3().setFromMatrixPosition(mag.matrixWorld));
       ok(d < 0.2 && Arms.armL.root.visible, 'la main gauche tient le chargeur quand il s’engage', +d.toFixed(3));
       while (Arms.state === 'reload') step(1);
+      // pistolets d'une main : la main gauche, hors champ au repos, vient engager le chargeur (ou la cellule) puis repart
+      const pist = {};
+      for (const id of ['m1911', 'raygun']) {
+        __zs.give(id, 0); step(40);
+        const idle = Arms.armL.root.visible;
+        s = curSlot(); s.mag = 1; s.res = 99; startReload();
+        const TA = Arms.rl.c.ev.find((e) => e[1] === 'ammo')[0];
+        n = 0;
+        while (Arms.rl && Arms.rl.t < TA - 0.02 && n < 400) { step(1); n++; }
+        const m = Arms.gun.userData.parts.mag; m.updateMatrixWorld(true);
+        const dm = Arms.armL.hand.wrist.position.distanceTo(new THREE.Vector3().setFromMatrixPosition(m.matrixWorld)), seen = Arms.armL.root.visible;
+        while (Arms.state === 'reload') step(1);
+        step(10);
+        pist[id] = { idle, seen, d: +dm.toFixed(3), after: Arms.armL.root.visible };
+      }
+      ok(Object.values(pist).every((p) => !p.idle && p.seen && p.d < 0.2 && !p.after), 'M1911 et Désintégrateur : main gauche absente au repos, elle engage le chargeur (la cellule) puis repart', pist);
       // présentoirs : boîte mystère et Glas
       const sizes = {};
       for (const id of ids) {
