@@ -6980,7 +6980,7 @@ const GUN_MODELS = {
     k.anchor('magwell', 0, P(0.078, 0.0235)[1], P(0.078, 0.0235)[0]);
     return {
       hipRot: [0.02, 0.22, 0.05], origin: [0, O[1], O[0]], muzzle: [0, 0, -0.0015], sight: 0.0157, eye: 0.5, hip: [0.13, -0.15, -0.42], ads: -0.42, one: true,
-      lh: [-0.004, -0.078, 0.162], rk: 'pistol', lk: 'cup', lr: 0.034, magDir: [0, -dn[1], -dn[0]],
+      lh: [0, -0.07, 0.159], rk: 'pistol', lk: 'cup', lr: 0.03, magDir: [0, -dn[1], -dn[0]],
       deco: { barrels: [], plate: [0.0118, -0.001, 0.12, 0.05, 0.012] },
     };
   },
@@ -7109,7 +7109,7 @@ const GUN_MODELS = {
     k.round(0, 0.0, 0.637, CAL.mauser, { seg: 10 });
     k.anchor('hold', 0, -0.075, 0.596);
     k.end();
-    k.anchor('gripR', 0, -0.058, 0.85, 25 * D2R, 0, 0);
+    k.anchor('gripR', 0, -0.058, 0.786, 25 * D2R, 0, 0);
     k.anchor('magwell', 0, -0.052, 0.596);
     return {
       origin: [0, -0.058, 0.85], muzzle: [0, 0, -0.0012], sight: 0.0212, eye: 0.93, hip: [0.15, -0.165, -0.24], ads: -0.2,
@@ -7322,6 +7322,7 @@ const GUN_MODELS = {
     k.side(M.woodDark, [[0.766, 0.0, 0.003], [0.80, -0.006, 0.01], [1.095, -0.031, 0.004], [1.1, -0.04, 0.004], [1.1, -0.148, 0.006], [1.085, -0.152, 0.004],
       [0.89, -0.092, 0.1], [0.848, -0.087, 0.012], [0.808, -0.058, 0.008], [0.766, -0.036, 0.003]], 0.042, { bevel: 0.0065, seg: 3, taper: [[0.76, 0.95], [0.84, 0.82], [0.95, 0.95], [1.1, 1.08]] });
     k.side(M.bakeBlack, [[1.097, -0.039, 0.003], [1.106, -0.039, 0.002], [1.106, -0.151, 0.004], [1.097, -0.151, 0.004]], 0.044, { bevel: 0.002 });
+    k.anchor('trig', 0, -0.049, 0.7535);
     k.part('lever', 0, 0.0115, 0.768);
     k.top(M.bright, [[-0.003, 0.762, 0.002], [0.004, 0.762, 0.002], [0.016, 0.79, 0.004], [0.009, 0.797, 0.003]], 0.0115, 0.0045, { bevel: 0.001 });
     k.end();
@@ -7520,7 +7521,7 @@ const GUN_MODELS = {
     k.anchor('magwell', 0, -0.04, 0.29);
     return {
       origin: [0, -0.06, 0.448], muzzle: [0, 0, -0.0005], sight: 0.0295, eye: 0.56, hip: [0.15, -0.155, -0.29], ads: -0.24,
-      lh: [0, 0, 0.18], rk: 'wrist', lk: 'pump', lr: 0.0176, magDir: [0, 1, 0],
+      lh: [0, 0, 0.125], rk: 'wrist', lk: 'pump', lr: 0.0176, magDir: [0, 1, 0],
       deco: { barrels: [[0, 0, 0.04, 0.24, 0.0176]], plate: [0.0183, 0.0, 0.33, 0.07, 0.016] },
     };
   },
@@ -7696,7 +7697,7 @@ const GUN_MODELS = {
     k.anchor('magwell', -0.04, -0.012, 0.56);
     return {
       origin: [0, -0.085, 0.81], muzzle: [0, 0, -0.0012], sight: 0.0495, eye: 0.92, hip: [0.17, -0.19, -0.3], ads: -0.24,
-      lh: [0, 0, 0.45], rk: 'pistol', lk: 'fore', lr: 0.0235, magDir: [1, 0, 0],
+      lh: [0, 0, 0.35], rk: 'pistol', lk: 'fore', lr: 0.033, magDir: [1, 0, 0],
       deco: { barrels: [[0, 0, 0.16, 0.47, 0.0242]], plate: [0.0252, -0.012, 0.75, 0.08, 0.02] },
     };
   },
@@ -7723,8 +7724,8 @@ const GUN_MODELS = {
     k.front(M.glass, gkRect(-0.08, 0.045, 0.0, 0.1, 0.006), 0.6205, 0.0015, { bevel: 0.0003 });
     k.box(M.blue, 0.012, 0.012, 0.03, -0.046, 0.0, 0.63);
     // poignée avant, poignée-détente avec pontet et levier d'armement, appui d'épaule, boîte de contact
-    k.side(M.wood, [[0.57, -0.044, 0.003], [0.605, -0.044, 0.003], [0.608, -0.13, 0.01], [0.572, -0.132, 0.01]], 0.03, { bevel: 0.006, seg: 3 });
-    k.front(M.blue, gkRect(-0.016, -0.06, 0.016, -0.04, 0.004), 0.565, 0.045, { bevel: 0.001 });
+    k.side(M.wood, [[0.692, -0.044, 0.003], [0.727, -0.044, 0.003], [0.73, -0.13, 0.01], [0.694, -0.132, 0.01]], 0.03, { bevel: 0.006, seg: 3 });
+    k.front(M.blue, gkRect(-0.016, -0.06, 0.016, -0.04, 0.004), 0.687, 0.045, { bevel: 0.001 });
     k.front(M.blue, gkRect(-0.016, -0.06, 0.016, -0.04, 0.004), 0.94, 0.08, { bevel: 0.001 });
     k.side(M.wood, [[0.962, -0.058, 0.003], [1.0, -0.058, 0.004], [1.012, -0.075, 0.008], [1.022, -0.165, 0.01], [0.978, -0.168, 0.01], [0.966, -0.09, 0.02]], 0.032, { bevel: 0.006, seg: 3 });
     k.side(M.blue, [[0.912, -0.058], [0.964, -0.058], [0.962, -0.068, 0.003], [0.955, -0.091, 0.008], [0.92, -0.092, 0.01], [0.914, -0.066, 0.004]], 0.012, {
@@ -7752,7 +7753,7 @@ const GUN_MODELS = {
     k.anchor('breech', 0, 0, 1.64);
     return {
       origin: [0, -0.1, 0.99], muzzle: [0, 0, 0], sight: 0.076, sightX: -0.03, eye: 1.0, hip: [0.22, -0.22, -0.28], ads: -0.28,
-      lh: [0, -0.09, 0.588], rk: 'pistol', lk: 'vgrip', lr: 0.015,
+      lh: [0, -0.09, 0.71], rk: 'pistol', lk: 'vgrip', lr: 0.015,
       deco: { barrels: [[0, 0, 0.06, 0.55, 0.0468]], plate: [0.048, 0.0, 1.0, 0.1, 0.03] },
     };
   },
@@ -7798,7 +7799,7 @@ const GUN_MODELS = {
     k.anchor('magwell', 0, 0.058, 0.247);
     return {
       hipRot: [0.02, 0.25, 0.05], origin: [0, -0.075, 0.302], muzzle: [0, 0, 0], sight: 0.083, eye: 0.62, hip: [0.13, -0.15, -0.44], ads: -0.38, one: true,
-      lh: [-0.004, -0.095, 0.302], rk: 'pistol', lk: 'cup', lr: 0.034, magDir: [0, -1, 0],
+      lh: [0, -0.088, 0.3], rk: 'pistol', lk: 'cup', lr: 0.036, magDir: [0, -1, 0],
       deco: { barrels: [[0, 0, 0.02, 0.15, 0.03]], plate: [0.05, 0.0, 0.255, 0.04, 0.016] },
     };
   },
@@ -7879,7 +7880,7 @@ function buildGun(id, tier = 0) {
   const P = (p) => [p[0] - O[0], p[1] - O[1], p[2] - O[2]];
   const info = {
     muzzle: P(spec.muzzle), sight: spec.sight - O[1], sightX: (spec.sightX || 0) - O[0], eye: (spec.eye ?? O[2] + 0.3) - O[2], hip: spec.hip, ads: spec.ads ?? -0.3, one: !!spec.one,
-    lh: P(spec.lh), magDir: spec.magDir || [0, 1, 0], rk: spec.rk || 'pistol', lk: spec.lk || 'fore', lr: spec.lr ?? 0.02, hipRot: spec.hipRot || null,
+    lh: P(spec.lh), magDir: spec.magDir || [0, 1, 0], rk: spec.rk || 'pistol', lk: spec.lk || 'fore', lr: spec.lr ?? 0.02, lgap: spec.lgap || 0, hipRot: spec.hipRot || null,
   };
   const muzzle = new THREE.Object3D();
   muzzle.position.fromArray(info.muzzle);
@@ -15143,6 +15144,7 @@ function buildViewmodel() {
   Arms.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare, color: 0xffd9a0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   Arms.flash.visible = false;
   vmScene.add(Arms.flash);
+  warmHolds();
 }
 
 function refreshGunModel() {
@@ -15173,18 +15175,431 @@ function handWrap(c, f, t, left, r, along, pose) {
 /* Réglages des prises : main droite (poignée inclinée : doigts vers l'avant de la poignée, décalés
    de side vers la gauche ; pouce vers le haut, incliné de tf vers l'avant) ; main gauche (doigts f et
    pouce t dans le repère de l'arme). along : du poignet à l'axe tenu, le long des doigts ; r : demi-
-   épaisseur tenue (de l'axe à la paume). */
+   épaisseur tenue (de l'axe à la paume). Ajustement (plus bas) : lift, hauteur de l'index droit par
+   rapport à la détente ; thumbAt, point visé par le pouce (main droite : décalage depuis la poignée ;
+   main gauche : [écart au flanc gauche, hauteur en demi-épaisseurs, avance]) ; thumbCup : point visé
+   par le pouce gauche depuis le centre de la coupe. */
 const HOLD_KINDS = {
-  pistol: { side: 0.2, tf: 0.35, along: 0.066, r: 0.0145, pose: 'pistol' },
-  wrist: { side: 0.18, tf: 0.3, along: 0.062, r: 0.019, pose: 'wrist' },
-  fore: { f: [0.92, 0.12, -0.32], t: [-0.05, 0.22, -1], along: 0.054 },
-  vgrip: { f: [0.24, -0.08, -1], t: [0.05, 1, -0.2], along: 0.062 },
-  pump: { f: [0.9, 0.3, -0.25], t: [-0.05, 0.2, -1], along: 0.058 },
-  cup: { f: [0.35, -0.4, -0.85], t: [0.1, 0.35, -1], along: 0.05 },
+  pistol: { side: 0.2, tf: 0.35, along: 0.066, r: 0.0145, pose: 'pistol', thumbAt: [-0.024, 0.03, -0.03], lift: 0.004 },
+  wrist: { side: 0.18, tf: 0.3, along: 0.062, r: 0.019, pose: 'wrist', lift: 0.004 },
+  fore: { f: [0.92, 0.12, -0.32], t: [-0.05, 0.22, -1], along: 0.054, thumbAt: [0.006, 0, 0.1] },
+  vgrip: { f: [0.24, -0.08, -1], t: [0.05, 1, -0.2], along: 0.062, thumbAt: [0.004, 0.3, -0.02] },
+  pump: { f: [0.9, 0.3, -0.25], t: [-0.05, 0.2, -1], along: 0.058, thumbAt: [0.006, -0.2, 0.1] },
+  cup: { f: [0.2, -0.5, -0.84], t: [0, 0.7, -0.7], along: 0.05, thumbCup: [-0.016, 0.044, -0.062] },
 };
+/* ------------------------------------------------ Ajustement des prises ---
+   Une prise (handWrap) donne la place et l'orientation de la main ; l'ajustement, dans le repère de
+   l'arme, pose la paume contre la pièce tenue sans y entrer, monte la main droite le long de la
+   poignée jusqu'à la hauteur de la détente, pose l'index sur la détente, ferme chaque doigt jusqu'au
+   contact (les doigts épousent le fût, la poignée ou la pompe quelle que soit leur taille, sans les
+   traverser) et vise le pouce vers le flanc de la pièce. Contacts : segments le long des phalanges
+   et du contour de la paume contre les triangles de l'arme proches de la main. Calculé une fois par
+   arme, pendant le menu (warmHolds), et gardé (HOLD_CACHE). */
+const GUN_ROOT = new WeakMap();
+const FIT = {
+  palm: [[-0.02, -0.0185, -0.03], [0.02, -0.0185, -0.03], [-0.02, -0.0185, -0.065], [0.02, -0.0185, -0.065], [0, -0.0185, -0.048], [0, -0.0185, -0.08], [-0.019, -0.022, -0.032]],
+  hi: [1.55, 1.7, 1.25], thumbHi: [1.0, 1.15, 1.0], gapMax: 0.03,
+  share: [0.45, 0.75, 1, 1.3],                                                // part de la base dans la flexion (essais)
+};
+/* Triangles de l'arme au repos, dans son repère (pièces de rechange et pièces cachées exclues). */
+function gunTris(gun) {
+  const parts = Object.values(gun.userData.parts || {}), saved = parts.map((p) => [p.position.clone(), p.quaternion.clone()]);
+  for (const p of parts) { p.position.copy(p.userData.rest); p.quaternion.copy(p.userData.restQ); }
+  gun.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(gun.matrixWorld).invert(), m = new THREE.Matrix4(), v = new THREE.Vector3(), out = [];
+  gun.traverse((o) => {
+    if (!o.isMesh) return;
+    for (let q = o; q && q !== gun; q = q.parent) if (!q.visible || (q.userData && q.userData.spare)) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position, idx = o.geometry.index, n = idx ? idx.count : pos.count;
+    for (let i = 0; i < n; i++) { v.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(m); out.push(v.x, v.y, v.z); }
+  });
+  parts.forEach((p, i) => { p.position.copy(saved[i][0]); p.quaternion.copy(saved[i][1]); });
+  gun.updateMatrixWorld(true);
+  return out;
+}
+/* Triangles d'un objet (main posée) dans le repère où se trouve sa racine. */
+function objTris(root, out) {
+  root.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position, idx = o.geometry.index, n = idx ? idx.count : pos.count;
+    for (let i = 0; i < n; i++) { v.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(o.matrixWorld); out.push(v.x, v.y, v.z); }
+  });
+  return out;
+}
+function trisNear(T, c, r) {
+  const out = [];
+  for (let i = 0; i < T.length; i += 9) {
+    if (Math.max(T[i], T[i + 3], T[i + 6]) < c.x - r || Math.min(T[i], T[i + 3], T[i + 6]) > c.x + r) continue;
+    if (Math.max(T[i + 1], T[i + 4], T[i + 7]) < c.y - r || Math.min(T[i + 1], T[i + 4], T[i + 7]) > c.y + r) continue;
+    if (Math.max(T[i + 2], T[i + 5], T[i + 8]) < c.z - r || Math.min(T[i + 2], T[i + 5], T[i + 8]) > c.z + r) continue;
+    for (let k = 0; k < 9; k++) out.push(T[i + k]);
+  }
+  return new Float32Array(out);
+}
+/* Premier triangle touché par le segment o → o + d (paramètre de 0 à 1 ; Infinity : rien). */
+function triHit(T, ox, oy, oz, dx, dy, dz) {
+  let best = Infinity;
+  for (let i = 0; i < T.length; i += 9) {
+    const e1x = T[i + 3] - T[i], e1y = T[i + 4] - T[i + 1], e1z = T[i + 5] - T[i + 2];
+    const e2x = T[i + 6] - T[i], e2y = T[i + 7] - T[i + 1], e2z = T[i + 8] - T[i + 2];
+    const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+    const det = e1x * px + e1y * py + e1z * pz;
+    if (det > -1e-14 && det < 1e-14) continue;
+    const inv = 1 / det, sx = ox - T[i], sy = oy - T[i + 1], sz = oz - T[i + 2];
+    const u = (sx * px + sy * py + sz * pz) * inv;
+    if (u < 0 || u > 1) continue;
+    const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+    const w = (dx * qx + dy * qy + dz * qz) * inv;
+    if (w < 0 || u + w > 1) continue;
+    const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+    if (t >= 0 && t <= 1 && t < best) best = t;
+  }
+  return best;
+}
+const _ftA = new THREE.Vector3(), _ftB = new THREE.Vector3(), _ftC = new THREE.Vector3(), _ftD = new THREE.Vector3();
+/* Grille des triangles proches de la main (cellules de 6 mm) : un segment ne teste que les triangles
+   des cellules qu'il traverse. */
+const FIT_CELL = 0.006, FIT_KEY = (x, y, z) => ((x + 600) * 1200 + (y + 600)) * 1200 + (z + 600);
+function triGrid(T, c, r) {
+  const k = 1 / FIT_CELL, map = new Map(), n = T.length / 9;
+  const lx = Math.floor((c.x - r) * k), ly = Math.floor((c.y - r) * k), lz = Math.floor((c.z - r) * k);
+  const hx = Math.floor((c.x + r) * k), hy = Math.floor((c.y + r) * k), hz = Math.floor((c.z + r) * k);
+  for (let i = 0, o = 0; i < n; i++, o += 9) {
+    const x0 = Math.max(lx, Math.floor(Math.min(T[o], T[o + 3], T[o + 6]) * k)), x1 = Math.min(hx, Math.floor(Math.max(T[o], T[o + 3], T[o + 6]) * k));
+    const y0 = Math.max(ly, Math.floor(Math.min(T[o + 1], T[o + 4], T[o + 7]) * k)), y1 = Math.min(hy, Math.floor(Math.max(T[o + 1], T[o + 4], T[o + 7]) * k));
+    const z0 = Math.max(lz, Math.floor(Math.min(T[o + 2], T[o + 5], T[o + 8]) * k)), z1 = Math.min(hz, Math.floor(Math.max(T[o + 2], T[o + 5], T[o + 8]) * k));
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
+      const key = FIT_KEY(x, y, z), a = map.get(key);
+      if (a) a.push(o); else map.set(key, [o]);
+    }
+  }
+  return { T, map, seen: new Int32Array(n), tick: 0 };
+}
+/* Le segment o → o + d (paramètre de 0 à 1) coupe-t-il le triangle (indice i) ? */
+function tri1(T, i, ox, oy, oz, dx, dy, dz) {
+  const e1x = T[i + 3] - T[i], e1y = T[i + 4] - T[i + 1], e1z = T[i + 5] - T[i + 2];
+  const e2x = T[i + 6] - T[i], e2y = T[i + 7] - T[i + 1], e2z = T[i + 8] - T[i + 2];
+  const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+  const det = e1x * px + e1y * py + e1z * pz;
+  if (det > -1e-14 && det < 1e-14) return false;
+  const inv = 1 / det, sx = ox - T[i], sy = oy - T[i + 1], sz = oz - T[i + 2];
+  const u = (sx * px + sy * py + sz * pz) * inv;
+  if (u < 0 || u > 1) return false;
+  const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+  const w = (dx * qx + dy * qy + dz * qz) * inv;
+  if (w < 0 || u + w > 1) return false;
+  const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
+  return t >= 0 && t <= 1;
+}
+/* Segment a → b contre la grille (parcours des cellules traversées). */
+function gridSeg(G, a, b) {
+  const k = 1 / FIT_CELL, T = G.T, seen = G.seen, tick = ++G.tick, C = FIT_CELL;
+  const ax = a.x, ay = a.y, az = a.z, dx = b.x - ax, dy = b.y - ay, dz = b.z - az;
+  let x = Math.floor(ax * k), y = Math.floor(ay * k), z = Math.floor(az * k);
+  const sx = dx > 0 ? 1 : dx < 0 ? -1 : 0, sy = dy > 0 ? 1 : dy < 0 ? -1 : 0, sz = dz > 0 ? 1 : dz < 0 ? -1 : 0;
+  const ddx = sx ? C / Math.abs(dx) : Infinity, ddy = sy ? C / Math.abs(dy) : Infinity, ddz = sz ? C / Math.abs(dz) : Infinity;
+  let tx = sx > 0 ? ((x + 1) * C - ax) / dx : sx < 0 ? (x * C - ax) / dx : Infinity;
+  let ty = sy > 0 ? ((y + 1) * C - ay) / dy : sy < 0 ? (y * C - ay) / dy : Infinity;
+  let tz = sz > 0 ? ((z + 1) * C - az) / dz : sz < 0 ? (z * C - az) / dz : Infinity;
+  for (;;) {
+    const list = G.map.get(FIT_KEY(x, y, z));
+    if (list) for (let j = 0; j < list.length; j++) {
+      const o = list[j], id = o / 9;
+      if (seen[id] === tick) continue;
+      seen[id] = tick;
+      if (tri1(T, o, ax, ay, az, dx, dy, dz)) return true;
+    }
+    if (tx < ty && tx < tz) { if (tx > 1) break; x += sx; tx += ddx; }
+    else if (ty < tz) { if (ty > 1) break; y += sy; ty += ddy; }
+    else { if (tz > 1) break; z += sz; tz += ddz; }
+  }
+  return false;
+}
+/* Une phalange (repère de son os, à jour : −z le long du doigt, −y côté pulpe) touche-t-elle l'arme ?
+   Axe, ligne de la pulpe et deux lignes latérales ; le bout du doigt compte jusqu'à sa calotte. */
+function phalanxHit(G, bone, L, r, tip) {
+  const end = -(L + (tip ? r * 0.85 : 0));
+  for (const [x, y] of [[0, 0], [0, -r * 0.92], [r * 0.7, -r * 0.55], [-r * 0.7, -r * 0.55]]) {
+    bone.localToWorld(_ftA.set(x, y, 0)); bone.localToWorld(_ftB.set(x, y, end));
+    if (gridSeg(G, _ftA, _ftB)) return true;
+  }
+  return false;
+}
+/* Paume : contour (à mi-épaisseur et près de la face palmaire), rayons depuis son centre et éminence
+   du pouce ; touche-t-elle l'arme ? */
+const PALM_RIM = [[-0.026, 0.004], [0.025, 0.004], [0.0345, -0.07], [0.03, -0.087], [-0.006, -0.094], [-0.034, -0.088], [-0.036, -0.05]];
+const _phA = new THREE.Vector3(), _phB = new THREE.Vector3(), _phC = new THREE.Vector3();
+function palmHit(G, hand) {
+  const b = hand.body;
+  b.updateMatrixWorld(true);
+  for (const [y, k] of [[-0.003, 1], [-0.0152, 0.86]]) {
+    b.localToWorld(_phC.set(0, y, -0.046));
+    for (let i = 0; i < PALM_RIM.length; i++) {
+      const [x0, z0] = PALM_RIM[i], [x1, z1] = PALM_RIM[(i + 1) % PALM_RIM.length];
+      b.localToWorld(_phA.set(x0 * k, y, -0.046 + (z0 + 0.046) * k));
+      b.localToWorld(_phB.set(x1 * k, y, -0.046 + (z1 + 0.046) * k));
+      if (gridSeg(G, _phA, _phB) || gridSeg(G, _phC, _phA)) return true;
+    }
+  }
+  for (const [dx, dy, dz] of [[0.0175, 0, 0], [0, 0.0145, 0], [0, 0, 0.026]]) {
+    b.localToWorld(_phA.set(-0.019 - dx * 0.9, -0.0075 - dy * 0.9, -0.032 - dz * 0.9));
+    b.localToWorld(_phB.set(-0.019 + dx * 0.9, -0.0075 + dy * 0.9, -0.032 + dz * 0.9));
+    if (gridSeg(G, _phA, _phB)) return true;
+  }
+  return false;
+}
+/* Fermeture d'un doigt (ou du pouce), comme une main qui saisit : ses trois articulations plient
+   ensemble (rates) depuis open ; une phalange qui touche l'arme s'arrête avec celles qui la
+   précèdent, les suivantes continuent de plier jusqu'au contact ou jusqu'à cap. Rend les angles et
+   s'il y a eu contact (null : le doigt ouvert est déjà dans l'arme). */
+function closeDigit(G, bones, Ls, rs, set, open, cap, rates, from = 0) {
+  const a = open.slice();
+  const check = (j0) => { set(a); bones[j0].updateMatrixWorld(true); for (let j = j0; j < 3; j++) if (phalanxHit(G, bones[j], Ls[j], rs[j], j === 2)) return j; return -1; };
+  if (check(0) >= 0) return null;
+  let j0 = from, touched = false;
+  while (j0 < 3) {
+    const base = a.slice();
+    let smax = 0;
+    for (let k = j0; k < 3; k++) smax = Math.max(smax, (cap[k] - base[k]) / rates[k]);
+    if (smax <= 1e-4) break;
+    const at = (s) => { for (let k = j0; k < 3; k++) a[k] = Math.max(base[k], Math.min(cap[k], base[k] + rates[k] * s)); return check(j0); };
+    let lo = 0, hi = -1;
+    for (let s = 0.1; ; s += 0.1) { const ss = Math.min(s, smax); if (at(ss) >= 0) { hi = ss; break; } lo = ss; if (ss >= smax) break; }
+    if (hi < 0) break;                                   // plus rien à toucher : le doigt reste plié (cap)
+    for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (at(m) >= 0) hi = m; else lo = m; }
+    const j = at(hi);
+    at(lo);
+    touched = true;
+    j0 = j + 1;
+  }
+  set(a);
+  return { a, touched };
+}
+/* Phalanges dont la pulpe est à moins de 3 mm de l'arme. */
+function nearCount(G, bones, Ls, rs) {
+  let n = 0;
+  for (let j = 0; j < 3; j++) {
+    const y = -(rs[j] + 0.003), end = -(Ls[j] + (j === 2 ? rs[j] * 0.5 : 0));
+    bones[j].localToWorld(_ftA.set(0, y, 0)); bones[j].localToWorld(_ftB.set(0, y, end));
+    if (gridSeg(G, _ftA, _ftB)) n++;
+  }
+  return n;
+}
+/* Saisie d'un doigt : plusieurs façons de plier (part de la base plus ou moins grande, sur le modèle de
+   la pose prévue T) ; on garde celle où le plus de phalanges épousent l'arme (puis la plus fermée). */
+function graspDigit(G, bones, Ls, rs, set, T, cap, sp0, setS) {
+  let best = null;
+  for (const ds of [0, 0.14, -0.14]) {                      // un doigt bloqué tout droit (pontet…) s'écarte un peu
+    setS(sp0 + ds);
+    for (const al of FIT.share) {
+      const rates = [Math.max(0.08, T[0] * al), Math.max(0.08, T[1]), Math.max(0.08, T[2])];
+      for (const open of [[0, 0, 0], [-0.3, 0, 0], [0.4, 0.8, 0.45], [0.8, 1.15, 0.65]]) {
+        const r = closeDigit(G, bones, Ls, rs, set, open, cap.map((c, j) => Math.max(c, open[j])), rates);
+        if (!r) continue;
+        set(r.a); bones[0].updateMatrixWorld(true);
+        const flex = r.a[0] + r.a[1] + r.a[2];
+        const score = nearCount(G, bones, Ls, rs) + 0.15 * flex - 0.8 * Math.abs(ds) - (flex < 0.9 ? 1 : 0);
+        if (!best || score > best.score) best = { a: r.a.slice(), s: sp0 + ds, score };
+        break;
+      }
+    }
+    if (best && best.score > 1.5 && ds === 0) break;          // bonne prise sans écart : inutile d'essayer
+  }
+  setS(best ? best.s : sp0);
+  return best;
+}
+/* Doigt dont la pose est imposée (index sur la détente) : la plus proche sans contact avec l'arme. */
+function freeDigit(G, bones, Ls, rs, set, a) {
+  const hits = (b) => { set(b); bones[0].updateMatrixWorld(true); for (let j = 0; j < 3; j++) if (phalanxHit(G, bones[j], Ls[j], rs[j], j === 2)) return true; return false; };
+  if (!hits(a)) return a;
+  for (const d of [0.06, 0.12, 0.2, 0.3, 0.42]) {
+    for (const v of [[-1, 0, 0], [0, -1, 0], [0, 0, -1], [1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, -1, 0], [0, -1, -1], [1, 1, 0], [0, 1, 1], [-1, 1, 0], [1, -1, 0]]) {
+      const b = a.map((x, i) => x + v[i] * d);
+      if (!hits(b)) return b;
+    }
+  }
+  return a;
+}
+/* Index sur la détente : parmi les poses (base, écart, milieu ; bout lié au milieu), celle qui pose la
+   pulpe du bout du doigt au plus près de la face avant de la détente sans toucher l'arme ; puis le
+   doigt se ferme jusqu'au contact. */
+function triggerIndex(G, hand, target, P) {
+  const bones = hand.fingers[0], F = HAND.fingers[0], s0 = P.s[0];
+  const set = (a, sp) => { bones[0].rotation.set(-a[0], sp, 0); bones[1].rotation.x = -a[1]; bones[2].rotation.x = -a[2]; };
+  const pad = new THREE.Vector3(), cands = [];
+  for (let i0 = 0; i0 <= 14; i0++) for (let is = -3; is <= 5; is++) for (let i1 = 0; i1 <= 16; i1++) {
+    const a = [-0.1 + i0 * 0.1, 0.1 + i1 * 0.1, Math.min(1.1, (0.1 + i1 * 0.1) * 0.65)], sp = s0 + is * 0.1;
+    set(a, sp); bones[0].updateMatrixWorld(true);
+    bones[2].localToWorld(pad.set(0, -F.r[2] * 0.92, -F.L[2] * 0.55));
+    const d2 = pad.distanceToSquared(target);
+    if (d2 < 0.018 * 0.018) cands.push([d2, a, sp]);
+  }
+  cands.sort((x, y) => x[0] - y[0]);
+  // pontets étroits pour des doigts gantés : le contrôle se fait sur un doigt aminci, de plus en plus
+  // si rien ne passe (le bout peut frôler l'avant du pontet, caché par le doigt dans la vue)
+  for (const k of [0.72, 0.5, 0.3]) {
+    const rr = F.r.map((x) => x * k);
+    for (let i = 0; i < Math.min(80, cands.length); i++) {
+      const [d2, a, sp] = cands[i];
+      set(a, sp); bones[0].updateMatrixWorld(true);
+      let hit = false;
+      for (let j = 0; j < 3 && !hit; j++) hit = phalanxHit(G, bones[j], F.L[j], rr[j], j === 2);
+      if (hit) continue;
+      const r = closeDigit(G, bones, F.L, rr, (b) => set(b, sp), a, [a[0], Math.min(FIT.hi[1], a[1] + 0.3), Math.min(FIT.hi[2], a[2] + 0.3)], [1, 1, 0.65], 1);
+      return { a: r ? r.a : a, s: sp, d: Math.sqrt(d2), k };
+    }
+  }
+  // pontet trop étroit pour le doigt ganté : la pose la plus proche qui ne traverse que l'avant du pontet
+  let best = null;
+  const rr = F.r.map((x) => x * 0.3);
+  for (let i = 0; i < Math.min(80, cands.length); i++) {
+    const [d2, a, sp] = cands[i];
+    set(a, sp); bones[0].updateMatrixWorld(true);
+    if (phalanxHit(G, bones[0], F.L[0], F.r[0], false)) continue;          // la base du doigt reste libre
+    let n = 0;
+    for (let j = 1; j < 3; j++) for (const k of [0.3, 0.72]) if (phalanxHit(G, bones[j], F.L[j], F.r[j] * k, j === 2)) n++;
+    const sc = n + Math.sqrt(d2) * 200;
+    if (!best || sc < best.sc) best = { a, s: sp, d: Math.sqrt(d2), sc };
+  }
+  if (best) { set(best.a, best.s); return { a: best.a, s: best.s, d: best.d, k: 0 }; }
+  return null;
+}
+/* Pouce : la première phalange visée le long de aim (repère de l'arme), écartée de l'arme si elle la
+   touche ; les deux autres se ferment jusqu'au contact. Rend [écart, base, milieu, bout] ou null. */
+const _ftM = new THREE.Matrix4();
+function aimThumb(G, hand, aim, def, target = null) {
+  const [t1, t2, t3] = hand.thumb, TH = HAND.thumb, t0 = t1.parent;
+  t0.updateMatrixWorld(true);
+  if (target) aim = target.clone().sub(t0.getWorldPosition(new THREE.Vector3()));   // visée vers un point (flanc de la pièce tenue)
+  _ftM.copy(t0.matrixWorld).invert();
+  const angles = (d) => { const v = d.clone().transformDirection(_ftM); return [Math.atan2(-v.x, -v.z), -Math.asin(clamp(v.y, -1, 1))]; };
+  const set = (sp, a) => { t1.rotation.set(-a[0], sp, 0); t2.rotation.x = -a[1]; t3.rotation.x = -a[2]; };
+  const base = aim.clone().normalize();
+  const u = new THREE.Vector3(0, 1, 0).cross(base); if (u.lengthSq() < 1e-6) u.set(1, 0, 0); u.normalize();
+  const w2 = new THREE.Vector3().crossVectors(base, u);
+  const cands = [base];
+  for (const deg of [10, 20, 32, 46]) for (let k = 0; k < 8; k++) {
+    const ph = (k / 8) * Math.PI * 2, r = deg * D2R;
+    cands.push(base.clone().multiplyScalar(Math.cos(r)).addScaledVector(u, Math.sin(r) * Math.cos(ph)).addScaledVector(w2, Math.sin(r) * Math.sin(ph)));
+  }
+  // parmi les directions libres, celle où le pouce s'appuie le mieux sur l'arme, au plus près de aim
+  let best = null;
+  for (const d of cands) {
+    const [sp, a0] = angles(d);
+    if (a0 < -0.9 || a0 > 1.1) continue;
+    const a = [a0, 0.05, 0.05];
+    set(sp, a); t1.updateMatrixWorld(true);
+    if (phalanxHit(G, t1, TH.L[0], TH.r[0], false)) continue;
+    const r = closeDigit(G, hand.thumb, TH.L, TH.r, (b) => set(sp, b), a, [a0, Math.min(FIT.thumbHi[1], def[2] + 0.5), Math.min(FIT.thumbHi[2], def[3] + 0.5)], [1, 1, 1], 1);
+    if (!r) continue;
+    const fin = r.touched ? r.a : [a0, def[2], def[3]];
+    set(sp, fin); t1.updateMatrixWorld(true);
+    const score = 1.5 * nearCount(G, hand.thumb, TH.L, TH.r) + d.dot(base);
+    if (!best || score > best.score) best = { score, t: [sp + 0.35, ...fin] };
+  }
+  return best && best.t;
+}
+const _fitHands = {};
+function fitHold(T0, h, left, opts = {}) {
+  const hand = _fitHands[left ? 'L' : 'R'] || (_fitHands[left ? 'L' : 'R'] = buildHand(left));
+  const w = hand.wrist, P = h.pose;
+  w.position.copy(h.p); w.quaternion.copy(h.q);
+  setHandPose(hand, P);
+  w.updateMatrixWorld(true);
+  const center = hand.body.localToWorld(new THREE.Vector3(0, -0.01, -0.06));
+  const T = trisNear(T0, center, 0.15), G = triGrid(T, center, 0.16);
+  const n = new THREE.Vector3(0, 1, 0).applyQuaternion(h.q), p0 = w.position.clone();
+  // 1. paume contre l'arme (le long du dos de la main)
+  const contact = () => {
+    let gap = Infinity;
+    for (const pt of FIT.palm) {
+      hand.body.localToWorld(_ftC.fromArray(pt));
+      const o = _ftD.copy(_ftC).addScaledVector(n, 0.04);
+      const t = triHit(T, o.x, o.y, o.z, -n.x * 0.1, -n.y * 0.1, -n.z * 0.1);
+      if (t <= 1) gap = Math.min(gap, t * 0.1 - 0.04);
+    }
+    // contact : la paume touche (pénétration faible ; au-delà, c'est une autre pièce, traitée plus bas)
+    if (opts.palm !== false && gap > -0.013 && gap < FIT.gapMax) { w.position.addScaledVector(n, -(gap - 0.0012)); w.updateMatrixWorld(true); }
+    return gap;
+  };
+  // main droite : glissée le long de la poignée pour que l'index arrive à hauteur de la détente
+  let slide = 0, push = 0, gap;
+  if (opts.slide) {
+    const mcp = hand.fingers[0][0].getWorldPosition(new THREE.Vector3());
+    slide = clamp(opts.slide.target.clone().sub(mcp).dot(opts.slide.u) + opts.slide.delta, -0.012, 0.025);
+  }
+  for (;;) {
+    w.position.copy(p0).addScaledVector(opts.slide ? opts.slide.u : n, slide); w.updateMatrixWorld(true);
+    gap = contact();
+    if (!palmHit(G, hand) || !opts.slide || Math.abs(slide) < 0.0015) break;
+    slide -= Math.sign(slide) * 0.002;
+  }
+  if (opts.gap) { w.position.addScaledVector(n, opts.gap); w.updateMatrixWorld(true); }
+  // paume encore dans l'arme : écartée le long du dos de la main
+  while (palmHit(G, hand) && push < 0.012) { push += 0.001; w.position.addScaledVector(n, 0.001); w.updateMatrixWorld(true); }
+  // 2. doigts : fermeture jusqu'au contact (l'index sur la détente garde sa pose, sans toucher l'arme)
+  const pose = { f: P.f.map((x) => x.slice()), s: P.s.slice(), t: P.t.slice() }, miss = [];
+  let trig = null;
+  for (let i = 0; i < 4; i++) {
+    const bones = hand.fingers[i], F = HAND.fingers[i];
+    let sp = pose.s[i];
+    const set = (a) => { bones[0].rotation.set(-a[0], sp, 0); bones[1].rotation.x = -a[1]; bones[2].rotation.x = -a[2]; };
+    if (i === 0 && opts.trigger) {
+      const ti = triggerIndex(G, hand, opts.trigger, P);
+      if (ti) { pose.f[0] = ti.a; pose.s[0] = ti.s; bones[0].rotation.set(-ti.a[0], ti.s, 0); bones[1].rotation.x = -ti.a[1]; bones[2].rotation.x = -ti.a[2]; trig = [+ti.d.toFixed(4), ti.k]; continue; }
+      miss.push('trig');
+    }
+    if (opts.keep && opts.keep.includes(i)) { pose.f[i] = freeDigit(G, bones, F.L, F.r, set, P.f[i]); set(pose.f[i]); continue; }
+    const cap = P.f[i].map((d, j) => Math.min(FIT.hi[j], d + 0.6));
+    const r = graspDigit(G, bones, F.L, F.r, set, P.f[i], cap, pose.s[i], (v) => { sp = v; });
+    if (r) pose.s[i] = r.s;
+    if (!r) miss.push(i);
+    pose.f[i] = r ? r.a : P.f[i].slice();
+    set(pose.f[i]);
+  }
+  // 3. pouce : visé le long de l'arme (opts.thumb) ou fermé jusqu'au contact ; à défaut, la pose prévue
+  {
+    const [t1, t2, t3] = hand.thumb, TH = HAND.thumb, sp = pose.t[0] - 0.35;
+    const set = (a) => { t1.rotation.set(-a[0], sp, 0); t2.rotation.x = -a[1]; t3.rotation.x = -a[2]; };
+    const def = [P.t[1], P.t[2], P.t[3]], cap = def.map((d, j) => Math.min(FIT.thumbHi[j], d + 0.6));
+    const aimed = opts.thumb || opts.thumbAt ? aimThumb(G, hand, opts.thumb, P.t, opts.thumbAt) : null;
+    if (aimed) pose.t = aimed;
+    else {
+      const r = closeDigit(G, hand.thumb, TH.L, TH.r, set, [0, 0, 0], cap, [1, 1, 1]) || closeDigit(G, hand.thumb, TH.L, TH.r, set, [-0.3, 0, 0], cap, [1, 1, 1]);
+      if (!r) miss.push('t');
+      pose.t = [pose.t[0], ...(r && r.touched ? r.a : def)];
+    }
+  }
+  setHandPose(hand, pose);
+  w.updateMatrixWorld(true);
+  return { p: w.position.clone(), q: h.q.clone(), pose, gap, miss, trig, slide, push, palm: palmHit(G, hand) };
+}
+/* Point de la face avant de la détente où se pose la pulpe de l'index (repère de l'arme). */
+function triggerPoint(root, ud) {
+  const a = ud.anchors.trig;
+  if (a) return new THREE.Vector3(...a.p);
+  const tr = ud.parts.trigger;
+  if (!tr) return null;
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), m = new THREE.Matrix4(), box = new THREE.Box3(), v = new THREE.Vector3();
+  tr.traverse((o) => {
+    if (!o.isMesh) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(m));
+  });
+  return new THREE.Vector3((box.min.x + box.max.x) / 2, box.min.y + 0.35 * (box.max.y - box.min.y), box.min.z - 0.0015);
+}
+const HOLD_CACHE = new Map();
 function gunHold(gun) {
   const ud = gun.userData;
   if (ud.hold) return ud.hold;
+  if (HOLD_CACHE.get(ud.id)) return (ud.hold = HOLD_CACHE.get(ud.id));
+  const root = gun.isObject3D ? gun : GUN_ROOT.get(ud);
+  if (gun.isObject3D) GUN_ROOT.set(ud, gun);
   const info = ud.info, A = ud.anchors, V = (x, y, z) => new THREE.Vector3(x, y, z);
   const g = A.gripR, ga = g ? g.r[0] : 0.35, gp = V(...(g ? g.p : [0, 0, 0]));
   const dn = V(0, -Math.cos(ga), Math.sin(ga)), fw = V(0, -Math.sin(ga), -Math.cos(ga));
@@ -15192,8 +15607,33 @@ function gunHold(gun) {
   const R = handWrap(gp.clone().addScaledVector(dn, -0.004), fw.clone().add(V(-RK.side, 0, 0)), dn.clone().negate().addScaledVector(fw, RK.tf), false, RK.r, RK.along, RK.pose);
   const LK = HOLD_KINDS[info.lk] || HOLD_KINDS.fore;
   const L = handWrap(V(...info.lh), V(...LK.f), V(...LK.t), true, info.lr, LK.along, info.lk === 'fore' ? 'fore' : info.lk);
-  ud.hold = { R, L };
+  if (!root) return { R, L };                      // appel sans le modèle (clip) : prise brute, non gardée
+  // ajustement contre l'arme : main droite (index sur la détente), puis main gauche (en coupe :
+  // contre l'arme et la main droite)
+  const T = gunTris(root), trig = triggerPoint(root, ud);
+  // pouce droit : visé vers un point du flanc gauche (au-dessus de la poignée), ou dans une direction
+  const thumbR = RK.thumbAt ? gp.clone().add(V(...RK.thumbAt)) : null;
+  const R2 = fitHold(T, R, false, { keep: [0], trigger: trig, slide: trig && { u: dn.clone().negate(), target: trig, delta: RK.lift }, thumb: RK.thumb && V(...RK.thumb), thumbAt: thumbR });
+  const TL = info.lk === 'cup' ? (() => { const hand = _fitHands.R; hand.wrist.position.copy(R2.p); hand.wrist.quaternion.copy(R2.q); setHandPose(hand, R2.pose); return objTris(hand.wrist, T.slice()); })() : T;
+  // pouce gauche : le long du flanc gauche de la pièce tenue, vers l'avant (fût, pompe), ou visé (coupe)
+  const thumbAt = LK.thumbAt ? V(...info.lh).add(V(-(info.lr + LK.thumbAt[0]), info.lr * LK.thumbAt[1], -LK.thumbAt[2])) : LK.thumbCup ? V(...info.lh).add(V(...LK.thumbCup)) : null;
+  const L2 = fitHold(TL, L, true, { thumb: LK.thumb && V(...LK.thumb), thumbAt, gap: info.lgap || 0 });
+  ud.hold = { R: { p: R2.p, q: R2.q, pose: R2.pose }, L: { p: L2.p, q: L2.q, pose: L2.pose }, fit: { R: R2.gap, L: L2.gap, trig: R2.trig, slide: R2.slide, push: [R2.push, L2.push], palm: [R2.palm, L2.palm], miss: [...R2.miss, ...L2.miss.map((m) => 'L' + m)] } };
+  HOLD_CACHE.set(ud.id, ud.hold);
   return ud.hold;
+}
+/* Les prises se calculent pendant le menu, une arme à la fois (~10 à 40 ms chacune) : en partie, une
+   arme qui apparaît pour la première fois (boîte mystère, mur) ne provoque pas d'à-coup. */
+function warmHolds() {
+  const ids = Object.keys(WEAPONS).filter((id) => GUN_MODELS[id]);
+  const step = () => {
+    const id = ids.find((x) => !HOLD_CACHE.has(x));
+    if (!id || G.state === 'editor-boot') return;
+    if (G.state !== 'menu' && G.state !== 'paused') { setTimeout(step, 1500); return; }
+    try { gunHold(buildGun(id, 0)); } catch (e) { HOLD_CACHE.set(id, null); console.warn('prise', id, e); }
+    setTimeout(step, 20);
+  };
+  setTimeout(step, 300);
 }
 const _vmGQ = new THREE.Quaternion(), _vmGP = new THREE.Vector3(), _vmGS = new THREE.Vector3();
 /* Cible d'une main tenue sur l'arme, dans le repère des bras (celui de la vue). */

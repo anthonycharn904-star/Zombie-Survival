@@ -1,7 +1,7 @@
 'use strict';
 /* Armes et rechargements (jeu 1.9.0) dans la fenêtre du jeu du launcher : modèles aux dimensions
-   réelles (pièces mobiles, paliers du Glas, dessins à la craie, présentoirs), mains articulées,
-   visée alignée sur les organes de visée, rechargement de chaque arme (tactique et à vide, durées,
+   réelles (pièces mobiles, paliers du Glas, dessins à la craie, présentoirs), mains articulées
+   ajustées sur chaque arme (paume, doigts et pouce contre l'arme, sans la traverser), visée alignée sur les organes de visée, rechargement de chaque arme (tactique et à vide, durées,
    munitions ajoutées au bon moment, pièces revenues en place), coup par coup interrompu par un tir,
    réarmement de la culasse à levier et de la pompe, atout Rechargement rapide, interruption par un
    changement d'arme, pas d'erreur.
@@ -69,6 +69,29 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
       // mains articulées
       const h = buildHand(false);
       ok(h.fingers.length === 4 && h.fingers.every((f) => f.length === 3) && h.thumb.length === 3, 'main articulée : quatre doigts à trois phalanges et un pouce');
+      // prises ajustées sur chaque arme : paume, doigts et pouce posés contre l'arme sans la traverser
+      // (cœur de chaque phalange ; l'index droit sur la détente peut frôler l'avant d'un pontet étroit),
+      // calcul assez court pour se faire pendant le menu
+      const pen = [], slow = {}, nofit = [];
+      for (const id of ids) {
+        HOLD_CACHE.delete(id);
+        const g = buildGun(id, 0); g.updateMatrixWorld(true);
+        const t0 = performance.now(), H = gunHold(g), ms = performance.now() - t0;
+        if (ms > 150) slow[id] = Math.round(ms);
+        if (!H.fit || H.fit.miss.length) nofit.push([id, H.fit && H.fit.miss]);
+        const T = new Float32Array(gunTris(g));
+        for (const side of ['R', 'L']) {
+          const hand = buildHand(side === 'L');
+          hand.wrist.position.copy(H[side].p); hand.wrist.quaternion.copy(H[side].q); setHandPose(hand, H[side].pose); hand.wrist.updateMatrixWorld(true);
+          const c = hand.body.localToWorld(new THREE.Vector3(0, -0.01, -0.06)), G = triGrid(trisNear(T, c, 0.15), c, 0.16);
+          if (palmHit(G, hand)) pen.push([id, side, 'paume']);
+          hand.fingers.forEach((bs, i) => bs.forEach((b, j) => { if (!(side === 'R' && i === 0) && phalanxHit(G, b, HAND.fingers[i].L[j], HAND.fingers[i].r[j] * 0.35, j === 2)) pen.push([id, side, `doigt ${i}.${j}`]); }));
+          hand.thumb.forEach((b, j) => { if (phalanxHit(G, b, HAND.thumb.L[j], HAND.thumb.r[j] * 0.35, j === 2)) pen.push([id, side, `pouce ${j}`]); });
+        }
+      }
+      ok(!pen.length, 'mains ajustées sur chaque arme : paume, doigts et pouce sans traverser l’arme', pen);
+      ok(!nofit.length, 'chaque doigt et chaque pouce trouve sa place contre l’arme (index sur la détente)', nofit);
+      ok(!Object.keys(slow).length, 'ajustement des mains en moins de 150 ms par arme (calculé pendant le menu)', slow);
       return out;
     }, GAME)).forEach(report);
 
