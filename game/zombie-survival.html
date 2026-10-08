@@ -23725,6 +23725,7 @@ function placeBox(i) {
   box.cur = i;
   const L = box.locs[i];
   for (const [x, z] of L.cells) setProp(L.li, x, z, 0.78);
+  if (OW.on && L.ow) owBoxProp(prev, L);
   box.root.position.set(L.x - L.face[0] * 0.05, L.E, L.z - L.face[1] * 0.05);
   box.root.userData.lv = LV[L.li];
   box.root.rotation.y = Math.atan2(L.face[0], L.face[1]);
@@ -24633,7 +24634,7 @@ function resetFeatures() {
   clearPowerups();
   resetDigipass();
   if (CUR.map && CUR.map.rules.powerOn) powerOnQuiet();
-  if (OW.on) owResetVehicles();
+  if (OW.on) owResetWorld();
 }
 
 /* ================================================================= 11 PARTIE ==
@@ -25390,7 +25391,7 @@ function bindUI() {
   inv.addEventListener('change', () => { settings.invertY = inv.checked; saveSettings(); });
   $('options-form').addEventListener('submit', (e) => e.preventDefault());
   const q = $('opt-quality'); q.value = settings.quality;
-  q.addEventListener('change', () => { settings.quality = q.value; saveSettings(); applyQuality(); });
+  q.addEventListener('change', () => { settings.quality = q.value; saveSettings(); applyQuality(); if (OW.on) owShadows(); });
   renderer.domElement.addEventListener('click', () => {
     if (G.state === 'playing' && !Input.locked && performance.now() - lastLockAttempt > 1500) requestLock();
   });
@@ -25611,7 +25612,7 @@ const KH = {
   oasis: { x: 734, z: 732, rx: 44, rz: 19 },
   // couloir du Khamsin : bande sud-ouest → nord-est (n · P entre 1818 et 2930 m), axe vers le nord-est
   corridor: { nx: 0.598, nz: 0.8015, s0: 1818, s1: 2930, ax: 0.8015, az: -0.598 },
-  spawn: { pos: [2350, 1992], yaw: 2.45 },
+  spawn: { pos: [2350, 1992], yaw: 0.47 },
 };
 /* Couloir du Khamsin : 1 au milieu, 0 dehors (bords fondus sur 120 m). */
 function khCorridor(x, z) {
@@ -25718,7 +25719,7 @@ function owWadiSd(x, z, out) {
   if (de < dc) { sd = de; north = owSmoothstep(40, -40, z - 2300); }
   else { sd = dc; north = owSmoothstep(-40, 40, (x - ax) * 0.48 + (z - az) * -0.877); }
   // bords irréguliers
-  sd += (owFbm(x / 70, z / 70, 2) - 0.5) * 34;
+  sd += (owFbm(x / 70, z / 70, 2) - 0.5) * 18;
   out.north = north; out.t = t; out.inBasin = de < dc;
   return sd;
 }
@@ -25756,14 +25757,14 @@ function owGenTerrain() {
         const nw = wo.north;      // 1 au nord (falaise), 0 au sud (pente douce), fondu entre les deux
         if (sd > 0) {
           // corniche : la terre se relève au nord de l'oued (13 m au bord, rien à 280 m)
-          h += nw * 13 * (1 - owSmoothstep(0, 280, sd));
+          h += nw * 18 * (1 - owSmoothstep(0, 300, sd));
           if (sd < 70 && nw < 1) { const k2 = owSmoothstep(70, -20, sd) * (1 - nw); h = lerp(h, floorH, k2); if (k2 > 0.6) b = OWB.WADI; }
         } else {
           // dans l'oued : à pic sous la corniche, en pente douce ailleurs
-          const cliff = lerp(h + 13 * nw, floorH, 1 - owSmoothstep(-9, 0, sd));
+          const cliff = lerp(h + 18 * nw, floorH, 1 - owSmoothstep(-5, 0, sd));
           const soft = lerp(h, floorH, owSmoothstep(70, -20, sd));
           h = lerp(soft, cliff, nw);
-          b = nw > 0.5 && sd > -9 * 0.92 ? OWB.ROCK : OWB.WADI;
+          b = nw > 0.5 && sd > -4.8 ? OWB.ROCK : OWB.WADI;
         }
       }
       // vallée du Nil : champs, berge, fleuve, rive d'en face
@@ -25806,6 +25807,8 @@ function owGenTerrain() {
     if (e < 1.05) { H[k] = lerp(oasisH - 1.9, oasisH, owSmoothstep(0.75, 1.05, e)); bio[k] = OWB.MUD; }
     else if (e < 3.4 && bio[k] !== OWB.ROAD && bio[k] !== OWB.TRACK) bio[k] = OWB.OASIS;
   });
+  OW.pads = pads;
+  khShapeTerrain();
   // pentes trop raides (falaises, escarpement) et eau : on n'y marche pas
   const steep = new Uint8Array(n), water = new Uint8Array(n);
   for (let j = 1; j < NZ - 1; j++) {
@@ -26032,7 +26035,8 @@ function owWalkCell(layer, cx, cz) {
   if (k === OWK.TERRAIN) return layer ? false : owTerrainWalk(cx + 0.5, cz + 0.5);
   if (k === OWK.FLOOR || k === OWK.RAMP) return true;
   if (k === OWK.DOOR) return ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open;
-  return false;
+  // le dessus d'un plein est un sol (la hauteur de marche décide : murs et troncs restent infranchissables)
+  return k === OWK.SOLID || k === OWK.LOW;
 }
 /* Sol d'une case (au centre) pour les marches entre cases. */
 function owCellGround(layer, cx, cz) { return owGroundAt(layer, cx + 0.5, cz + 0.5); }
@@ -26076,7 +26080,7 @@ function owSettle(b, r) {
   const blocked = (cx, cz) => {
     if (cx === cx0 && cz === cz0) return false;
     if (!owWalkCell(layer, cx, cz)) return true;
-    return owCellGround(layer, cx, cz) > gy0 + 0.75;
+    return owCellGround(layer, cx, cz) > gy0 + 0.75 + (b === player ? Math.max(0, player.y) : 0);   // en sautant, on monte sur une caisse
   };
   collideCircle(b.pos, r, blocked);
   if (VEH.list.length) vehPushBody(b, r);
@@ -26608,6 +26612,7 @@ function owBuildTerrainChunks(root) {
       ch.mesh = new THREE.Mesh(new THREE.BufferGeometry(), owTerrainMat());
       ch.mesh.matrixAutoUpdate = false;
       ch.mesh.frustumCulled = true;
+      ch.mesh.receiveShadow = true;
       OWTER.group.add(ch.mesh);
       OWTER.chunks.push(ch);
     }
@@ -26681,6 +26686,7 @@ function owBuildRoads(root) {
       const m = new THREE.Mesh(g, mats[r.kind]);
       m.renderOrder = 1;
       m.matrixAutoUpdate = false;
+      m.receiveShadow = true;
       group.add(m);
       // morceaux de terrain sous le tronçon : le ruban ne se montre que s'ils sont tous au pas de 4 m
       const chunks = new Set();
@@ -26776,10 +26782,10 @@ function owBuildPyramids(root) {
       const a = corners[f], b = corners[(f + 1) % 4];
       // une face : deux coins de la base et le sommet (vue de l'extérieur)
       const verts = [[a[0], 0, a[1]], [0, h, 0], [b[0], 0, b[1]]];
-      const uvs = [[0, 0], [half / 2.2, slant / 1.1], [p.side / 2.2, 0]];
+      const uvs = [[0, 0], [half / 9, slant / 8], [p.side / 9, 0]];      // une répétition : 9 m × 8 assises de 1 m
       for (let q = 0; q < 3; q++) {
         pos.push(p.x + verts[q][0], y0 + verts[q][1] - 1.5, p.z + verts[q][2]);
-        uv.push(uvs[q][0] / 2.18, uvs[q][1] / 2.18);
+        uv.push(uvs[q][0], uvs[q][1]);
         const c = verts[q][1] > 0 ? c1 : c0;
         col.push(c.r, c.g, c.b);
       }
@@ -26791,6 +26797,7 @@ function owBuildPyramids(root) {
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, mat);
     m.name = 'pyramide';
+    m.castShadow = true; m.receiveShadow = true;
     root.add(m);
     if (p.beam) owBuildBeam(root, p.x, y0 + h - 1.5, p.z);
   }
@@ -26870,6 +26877,7 @@ function owBuildPalms(root) {
     owSet(OW.surf, Math.floor(x), Math.floor(z), OWK.SOLID, { base: y, top: y + h, mat: OWM.WOOD });
   });
   trunks.frustumCulled = false; crowns.frustumCulled = false;
+  trunks.castShadow = crowns.castShadow = true;
   root.add(trunks, crowns);
 }
 
@@ -26912,6 +26920,7 @@ function owBuildPoles(root) {
     }
   });
   mesh.frustumCulled = false;
+  mesh.castShadow = true;
   const wg = new THREE.BufferGeometry();
   wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
   const lines = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: new THREE.Color(0x2a221c).convertSRGBToLinear() }));
@@ -27049,8 +27058,10 @@ function owApplyGrade(dt) {
   const g = G.state === 'menu' ? owGradeOf('route', _owGrade) : owGradeAt(camera.position.x, camera.position.z, _owGrade);
   const sun = OW.sunLight;
   sun.color.copy(g.sun); sun.intensity = g.sunI;
-  sun.position.copy(camera.position).addScaledVector(g.dir, 600);
-  sun.target.position.copy(camera.position);
+  // la cible suit la caméra, calée sur la taille d'un texel de l'ombre (pas de scintillement)
+  const tx = OW.shadowT || 1, cx = Math.round(camera.position.x / tx) * tx, cz = Math.round(camera.position.z / tx) * tx;
+  sun.target.position.set(cx, camera.position.y, cz);
+  sun.position.copy(sun.target.position).addScaledVector(g.dir, 320);
   sun.target.updateMatrixWorld();
   if (HEMI) { HEMI.color.copy(g.hemiSky); HEMI.groundColor.copy(g.hemiGround); HEMI.intensity = g.hemiI; }
   const u = OW.sky.material.uniforms;
@@ -27205,6 +27216,8 @@ function owLoad(map) {
   owBuildPyramids(root);
   owBuildPalms(root);
   owBuildPoles(root);
+  owBuildPlaces(root);
+  owBuildFeatures(root);
   owBuildVehicles(root);
   owBuildFarRing(root);
   owBuildSandWall(root);
@@ -27217,14 +27230,31 @@ function owLoad(map) {
   owHud(true);
   OWNAV.ready = false;
   Zombies.flowT = 0; Zombies.lastCell = -1;
+  owShadows();
   owUpdateTerrainLod(true);
   owApplyGrade(0);
+}
+/* Ombres du soleil : carte de 1 024 (moyenne) ou 2 048 texels (haute) sur ±55 ou ±80 m ; aucune en basse qualité. */
+function owShadows() {
+  const q = settings.quality, on = q !== 'low', L = OW.sunLight;
+  renderer.shadowMap.enabled = on;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  if (!L) return;
+  L.castShadow = on;
+  const size = q === 'high' ? 2048 : 1024, R = q === 'high' ? 80 : 55;
+  L.shadow.mapSize.set(size, size);
+  const c = L.shadow.camera;
+  c.left = -R; c.right = R; c.top = R; c.bottom = -R; c.near = 20; c.far = 700; c.updateProjectionMatrix();
+  L.shadow.bias = -0.0005; L.shadow.normalBias = 0.04;
+  if (L.shadow.map) { L.shadow.map.dispose(); L.shadow.map = null; }
+  OW.shadowT = (2 * R) / size;
 }
 /* Retour à une carte en grille : la caméra et le HUD reprennent leurs réglages. */
 function owUnload() {
   if (!OW.on && !OW.hudOn) return;
   OW.on = false; OW.map = null;
   camera.near = 0.05; camera.far = 220; camera.updateProjectionMatrix();
+  renderer.shadowMap.enabled = false;
   if (MOON) { MOON.scale.set(30, 30, 1); MOON.material.opacity = 0.8; }
   OW.lastLoc = null;
   owHud(false);
@@ -27239,6 +27269,7 @@ function owUpdateView(dt) {
   OWTER.t -= dt;
   if (OWTER.t <= 0) { OWTER.t = 0.2; owUpdateTerrainLod(false); owUpdateRoads(); }
   if (OW.sandWall) OW.sandWall.material.uniforms.uTime.value = OW.t;
+  owLightsUpdate(dt);
   if (OW.beam) {
     const k = 0.85 + Math.sin(OW.t * 2.1) * 0.08 + Math.sin(OW.t * 7.3) * 0.04;
     const dark = clamp(1.2 - (OW.grade ? OW.grade.sunI * Math.max(0.15, OW.grade.dir.y) * 1.6 + OW.grade.hemiI * 0.3 : 1), 0, 1);
@@ -27331,6 +27362,12 @@ function owUpdateHud(dt) {
       g.drawImage(bg, (p.pos.x - R) * k, (p.pos.z - R) * k, 2 * R * k, 2 * R * k, 0, 0, S, S);
     }
     const scale = S / (2 * R), X = (x) => S / 2 + (x - p.pos.x) * scale, Z = (z) => S / 2 + (z - p.pos.z) * scale;
+    // boîte mystère (sa lueur bleue)
+    const bx = Features.box;
+    if (bx && bx.root.visible) {
+      const L = bx.locs[bx.cur], x = X(L.x), z = Z(L.z);
+      if (x > -6 && z > -6 && x < S + 6 && z < S + 6) { g.fillStyle = '#5fa8ff'; g.strokeStyle = '#120e0b'; g.lineWidth = 1.5; g.fillRect(x - 4, z - 3, 8, 6); g.strokeRect(x - 4, z - 3, 8, 6); }
+    }
     // véhicules (orange : les humains et leurs machines)
     for (const W of VEH.list) {
       const x = X(W.x), z = Z(W.z);
@@ -27397,6 +27434,12 @@ function owDecalSlope(x, y, z) {
   return _owDec;
 }
 
+/* Nouvelle partie, retour au menu : véhicules à leur place, disjoncteurs relevés. */
+function owResetWorld() {
+  owResetVehicles();
+  owResetFeatures();
+}
+
 /* ----------------------------------------------------------- Véhicules --
    Planche « Rouler, c'est survivre » (page 6) : 4×4 de fouilles (deux au camp, un à l'oasis,
    gratuits), buggy des sables (garage du relais Km 47, 1 500 points), camion blindé (centrale du
@@ -27410,7 +27453,7 @@ const VEH_TYPES = {
   jeep: {
     name: '4×4 de fouilles', short: 'le 4×4', len: 4.5, wid: 1.86, hgt: 2.1, wb: 2.8, track: 1.56, wr: 0.41,
     vmax: { road: 80, track: 50, sand: 25 }, acc: 4.6, brake: 9, rev: 4.5, steer: 0.56, fuel: 6000,
-    protect: 0.5, noise: 60, kill: 6, seat: [-0.43, 0.98, 0.1], eye: 0.66, cam: [7.4, 2.8], engine: [34, 1.0],
+    protect: 0.5, noise: 60, kill: 6, bog: true, seat: [-0.43, 0.98, 0.1], eye: 0.66, cam: [7.4, 2.8], engine: [34, 1.0],
   },
   buggy: {
     name: 'Buggy des sables', short: 'le buggy', len: 3.7, wid: 1.9, hgt: 1.75, wb: 2.4, track: 1.62, wr: 0.42,
@@ -27428,9 +27471,9 @@ const VEH_TYPES = {
 KH.vehicles = [
   { type: 'jeep', x: 2386, z: 2047, yaw: 2.6 },
   { type: 'jeep', x: 2398, z: 2056, yaw: 2.6 },
-  { type: 'jeep', x: 1030, z: 870, yaw: -2.0 },
-  { type: 'buggy', x: 1432, z: 2603, yaw: 1.57 },
-  { type: 'truck', x: 3462, z: 1700, yaw: 0.2 },
+  { type: 'jeep', x: 896, z: 752, yaw: -Math.PI / 2 },
+  { type: 'buggy', x: 1417.5, z: 2589, yaw: Math.PI / 2 },
+  { type: 'truck', x: 3502, z: 1646, yaw: 0 },
 ];
 const VEH = { list: [], drive: null, view: 0, lookYaw: 0, lookPitch: 0, lookT: 0, light: null, snd: null, hornT: 0, camPos: new THREE.Vector3(), camInit: false };
 const _vf = new THREE.Vector3(), _vr = new THREE.Vector3(), _vq = new THREE.Quaternion(), _ve = new THREE.Euler();
@@ -27684,6 +27727,7 @@ function owBuildVehicles(root) {
       V.wheels.push({ pivot, w, front: az === axles[0], s, z: az });
     }
     vehPose(V, 0, true);
+    V.group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     g.add(V.group);
     VEH.list.push(V);
     Features.interactables.push(vehInteractable(V));
@@ -27698,7 +27742,7 @@ function owBuildVehicles(root) {
 function owResetVehicles() {
   if (VEH.drive) vehExit(true);
   for (const V of VEH.list) {
-    V.x = V.sp.x; V.z = V.sp.z; V.yaw = V.sp.yaw; V.v = 0; V.steer = 0; V.fuel = V.T.fuel; V.bought = !V.T.cost; V.lights = false; V.stuckT = 0;
+    V.x = V.sp.x; V.z = V.sp.z; V.yaw = V.sp.yaw; V.v = 0; V.steer = 0; V.fuel = V.T.fuel; V.bought = !V.T.cost; V.lights = false; V.stuckT = 0; V.stuck = false; V.bogT = 0; V.plateT = 0;
     vehPose(V, 0, true);
   }
 }
@@ -27772,10 +27816,17 @@ function vehInteractable(V) {
   return {
     get x() { return V.x; }, get z() { return V.z; }, get y() { return V.y; },
     get r() { return V.T.len / 2 + 1.4; }, veh: V,
+    get hold() { return !!V.stuck && !VEH.drive; },
+    useHold(dt) {
+      V.plateT += dt;
+      if (Math.random() < dt * 4) owSandBurst(V.x + rand(-1, 1), V.z + rand(-1, 1), V.y);
+      if (V.plateT >= 10) { V.stuck = false; V.plateT = 0; Sound.boardPlace({ x: V.x, z: V.z }); HUD.hint('Dégagé : les plaques sont rangées sur le flanc', 2.5); }
+    },
     prompt() {
       if (VEH.drive || G.state !== 'playing') return null;
       if (V.T.power && !G.power) return { text: `${V.T.name} : sans courant`, disabled: true, sub: 'Rétablissez le courant à la centrale' };
       if (!V.bought) return { text: `Acheter ${V.T.short}`, cost: V.T.cost };
+      if (V.stuck) return { text: 'Maintenez F pour poser les plaques de désensablage', sub: `${Math.round((V.plateT / 10) * 100)} %` };
       return { text: `Conduire ${V.T.short}`, sub: V.fuel <= 0 ? 'Réservoir vide : faites le plein aux jerricans' : `Carburant ${Math.round((V.fuel / V.T.fuel) * 100)} %` };
     },
     use() {
@@ -27872,6 +27923,13 @@ function vehStep(V, dt, ctl) {
   let vmax = T.vmax[surf] / 3.6;
   if (OW.stormVmax) vmax = Math.min(vmax, OW.stormVmax / 3.6);
   if (V.stuckT > 0) { V.stuckT -= dt; vmax = Math.min(vmax, 0.4); }
+  if (V.stuck) vmax = Math.min(vmax, 0.25);
+  // ensablement : à faible allure dans le sable mou, en montée, en forçant
+  if (T.bog && V === VEH.drive && !V.stuck) {
+    if (surf === 'sand' && ctl.f !== 0 && Math.abs(V.v) < 1.6 && Math.sin(V.pitch) * Math.sign(ctl.f) > 0.1) V.bogT = (V.bogT || 0) + dt;
+    else V.bogT = Math.max(0, (V.bogT || 0) - dt * 0.5);
+    if (V.bogT > 2.2) { V.stuck = true; V.plateT = 0; V.bogT = 0; HUD.hint('Ensablé ! Descendez et posez les plaques de désensablage (F maintenu, 10 s)', 4); }
+  }
   const [fx, fz] = vehFwd(V.yaw);
   // pente : la gravité freine en montée, pousse en descente
   const slope = Math.sin(V.pitch);
@@ -27903,6 +27961,13 @@ function vehStep(V, dt, ctl) {
   }
   const dist = Math.abs(V.v) * dt;
   V.fuel = Math.max(0, V.fuel - dist);
+  V.dustT = (V.dustT || 0) - dt;
+  const spin = V.stuck && ctl.f !== 0;
+  if (V.dustT <= 0 && (spin || (Math.abs(V.v) > 4 && surf !== 'road'))) {
+    V.dustT = spin ? 0.06 : clamp(0.5 - Math.abs(V.v) * 0.025, 0.07, 0.4);
+    const back = -Math.sign(V.v || 1) * T.len * 0.45;
+    for (const s of [-1, 1]) spawnPuff(V.x + fx * back + -fz * s * T.track * 0.5, V.y + 0.35, V.z + fz * back + fx * s * T.track * 0.5, rand(0.9, 1.6) + Math.abs(V.v) * 0.05, rand(0.9, 1.6), surf === 'sand' ? 0xb08458 : 0xa08060, 0.42, 0.5);
+  }
   V.rot += (V.v * dt) / T.wr;
   vehPose(V, dt);
   vehZombies(V, dt);
@@ -28071,6 +28136,981 @@ function vehSoundStop() {
   S.out.gain.setTargetAtTime(0, t, 0.12);
   for (const o of [S.o1, S.o2, S.o3, S.nb]) { try { o.stop(t + 0.6); } catch (e) { /* déjà arrêté */ } }
   setTimeout(() => { try { S.out.disconnect(); } catch (e) { /* rien */ } }, 900);
+}
+
+/* ------------------------------------------------------ Kit de construction --
+   Bâtiments des lieux (camp, relais, village, centrale, hangars, tombeaux) : chaque pièce posée
+   écrit à la fois sa géométrie (fusionnée par matière, coordonnées de texture en mètres, raccord
+   d'une boîte à l'autre) et ses cases dans la grille des solides (collisions, rayons, zombies).
+   Bâtiments alignés sur les axes (les cases font 1 m). Textures du désert ajoutées à la
+   bibliothèque du jeu (crépi chaulé, brique crue, béton, tôle, grès, roche, toile, planches). */
+(function khTextures() {
+  defTex('kh_mudbrick', 'Brique crue (Khamsin)', 'brique', { size: [2, 2] }, tgBrick({ tile: 2, colors: [[188, 150, 112], [180, 142, 104], [196, 158, 118]], bw: 0.38, bh: 0.13, mortar: 0.016, mortarColor: [164, 130, 96], paint: [222, 204, 170], peel: 0.22, stains: 4 }));
+  defTex('kh_whitewash', 'Crépi chaulé (Khamsin)', 'beton', { size: [2, 2] }, tgPlaster({ color: [228, 216, 192], rough: true, chips: 0.1, under: [196, 166, 128], cracks: 3, drips: 4, stains: 3 }));
+  defTex('kh_ochre', 'Enduit ocre (Khamsin)', 'beton', { size: [2, 2] }, tgPlaster({ color: [204, 162, 112], rough: true, chips: 0.08, under: [170, 130, 90], cracks: 2, stains: 3 }));
+  defTex('kh_concrete', 'Béton clair (Khamsin)', 'beton', { size: [3, 3] }, tgConcrete({ base: [184, 178, 166], form: 3, stains: 4, cracks: 2 }));
+  defTex('kh_sheet', 'Tôle ondulée (Khamsin)', 'metal', { size: [2, 2], rough: 0.55, metal: 0.35 }, tgCorrugated({ tile: 2, color: [182, 180, 172], rust: 0.1, seams: true, pitch: 0.18 }));
+  defTex('kh_sheet_red', 'Tôle peinte (Khamsin)', 'metal', { size: [2, 2], rough: 0.6, metal: 0.25 }, tgCorrugated({ tile: 2, color: [160, 74, 50], rust: 0.15, seams: true, pitch: 0.18 }));
+  defTex('kh_sandstone', 'Grès appareillé (Khamsin)', 'brique', { size: [3, 3] }, tgBrick({ tile: 3, colors: [[200, 172, 130], [190, 162, 122], [210, 182, 140]], bw: 1.1, bh: 0.55, mortar: 0.01, mortarColor: [156, 132, 100], stains: 5 }));
+  defTex('kh_rock', 'Roche des falaises (Khamsin)', 'brique', { size: [4, 4] }, tgConcrete({ base: [170, 132, 100], stains: 10, cracks: 14 }));
+  defTex('kh_canvas', 'Toile de tente (Khamsin)', 'papier', { size: [2, 2], rough: 0.95 }, tgPlaster({ color: [214, 198, 160], rough: false, stains: 7, cracks: 0, drips: 2 }));
+  defTex('kh_planks', 'Planches (Khamsin)', 'bois', { size: [2, 2] }, tgPlanks({ tile: 2, color: [150, 112, 72], width: 0.18, stains: 6 }));
+  defTex('kh_paint', 'Métal peint (Khamsin)', 'metal', { size: [2, 2], rough: 0.5, metal: 0.2 }, tgPlaster({ color: [222, 216, 204], rough: false, stains: 3, cracks: 0, drips: 4 }));
+  defTex('kh_floor', 'Dallage poussiéreux (Khamsin)', 'sol', { size: [2, 2] }, tgConcrete({ base: [170, 150, 122], joints: true, stains: 8 }));
+})();
+
+const KIT_NAMES = new Set();
+/* Nouveau chantier. Les pièces s'accumulent ; build(root) crée les maillages. */
+function owKit(name) {
+  const parts = new Map();            // matière → { pos, nor, uv, col }
+  const extra = [];                   // objets déjà prêts (maillages animés, lampes…)
+  const K = { name };
+  const bucket = (tex) => {
+    let b = parts.get(tex);
+    if (!b) parts.set(tex, (b = { pos: [], nor: [], uv: [], col: [] }));
+    return b;
+  };
+  const texSize = (tex) => (TEXLIB[tex] ? TEXLIB[tex].size : [2, 2]);
+  /* Une face (4 coins dans l'ordre, sens trigonométrique vu de l'extérieur). */
+  K.quad = (tex, hex, p0, p1, p2, p3, n, uvOf) => {
+    const b = bucket(tex), c = vcol(hex), S = texSize(tex);
+    for (const [a, q, r] of [[p0, p1, p2], [p0, p2, p3]]) {
+      for (const p of [a, q, r]) {
+        b.pos.push(p[0], p[1], p[2]); b.nor.push(n[0], n[1], n[2]); b.col.push(c[0], c[1], c[2]);
+        const [u, v] = uvOf(p); b.uv.push(u / S[0], v / S[1]);
+      }
+    }
+    return K;
+  };
+  /* Boîte alignée (x0 < x1…) ; faces : liste à omettre ('top', 'bottom', 'px', 'nx', 'pz', 'nz'). */
+  K.box = (tex, hex, x0, y0, z0, x1, y1, z1, o = {}) => {
+    const skip = o.skip || [], tTop = o.top || tex;
+    if (!skip.includes('top')) K.quad(tTop, o.topHex || hex, [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], (p) => [p[0], p[2]]);
+    if (!skip.includes('bottom')) K.quad(tex, hex, [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], (p) => [p[0], p[2]]);
+    if (!skip.includes('pz')) K.quad(tex, hex, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], (p) => [p[0], p[1]]);
+    if (!skip.includes('nz')) K.quad(tex, hex, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], (p) => [-p[0], p[1]]);
+    if (!skip.includes('px')) K.quad(tex, hex, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], (p) => [-p[2], p[1]]);
+    if (!skip.includes('nx')) K.quad(tex, hex, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], (p) => [p[2], p[1]]);
+    return K;
+  };
+  /* Toit à deux pans (faîtage le long de x si alongX), pignons compris. */
+  K.gable = (tex, hex, x0, z0, x1, z1, y0, rise, alongX = true, gableTex = null, gableHex = null) => {
+    const ym = y0 + rise;
+    if (alongX) {
+      const zm = (z0 + z1) / 2, sl = Math.hypot(rise, zm - z0), ny = (zm - z0) / sl, nz = rise / sl;
+      K.quad(tex, hex, [x0, y0, z1], [x1, y0, z1], [x1, ym, zm], [x0, ym, zm], [0, ny, nz], (p) => [p[0], Math.hypot(p[1] - y0, p[2] - z1)]);
+      K.quad(tex, hex, [x1, y0, z0], [x0, y0, z0], [x0, ym, zm], [x1, ym, zm], [0, ny, -nz], (p) => [-p[0], Math.hypot(p[1] - y0, p[2] - z0)]);
+      const gt = gableTex || tex, gh = gableHex || hex;
+      K.tri(gt, gh, [x1, y0, z1], [x1, y0, z0], [x1, ym, zm], [1, 0, 0], (p) => [-p[2], p[1]]);
+      K.tri(gt, gh, [x0, y0, z0], [x0, y0, z1], [x0, ym, zm], [-1, 0, 0], (p) => [p[2], p[1]]);
+    } else {
+      const xm = (x0 + x1) / 2, sl = Math.hypot(rise, xm - x0), ny = (xm - x0) / sl, nx = rise / sl;
+      K.quad(tex, hex, [x1, y0, z1], [x1, y0, z0], [xm, ym, z0], [xm, ym, z1], [nx, ny, 0], (p) => [-p[2], Math.hypot(p[1] - y0, p[0] - x1)]);
+      K.quad(tex, hex, [x0, y0, z0], [x0, y0, z1], [xm, ym, z1], [xm, ym, z0], [-nx, ny, 0], (p) => [p[2], Math.hypot(p[1] - y0, p[0] - x0)]);
+      const gt = gableTex || tex, gh = gableHex || hex;
+      K.tri(gt, gh, [x0, y0, z1], [x1, y0, z1], [xm, ym, z1], [0, 0, 1], (p) => [p[0], p[1]]);
+      K.tri(gt, gh, [x1, y0, z0], [x0, y0, z0], [xm, ym, z0], [0, 0, -1], (p) => [-p[0], p[1]]);
+    }
+    return K;
+  };
+  K.tri = (tex, hex, a, b, c, n, uvOf) => {
+    const B = bucket(tex), col = vcol(hex), S = texSize(tex);
+    for (const p of [a, b, c]) { B.pos.push(p[0], p[1], p[2]); B.nor.push(n[0], n[1], n[2]); B.col.push(col[0], col[1], col[2]); const [u, v] = uvOf(p); B.uv.push(u / S[0], v / S[1]); }
+    return K;
+  };
+  /* Géométrie quelconque (BufferGeometry) placée par une matrice, avec la matière d'un id de texture ou d'une matière VMAT. */
+  K.geo = (tex, hex, geo, m) => {
+    const g = (geo.index ? geo.toNonIndexed() : geo.clone()).applyMatrix4(m);
+    const b = bucket(tex), c = vcol(hex), S = texSize(tex), P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv;
+    for (let i = 0; i < P.count; i++) {
+      b.pos.push(P.getX(i), P.getY(i), P.getZ(i)); b.nor.push(N.getX(i), N.getY(i), N.getZ(i)); b.col.push(c[0], c[1], c[2]);
+      b.uv.push(U ? U.getX(i) : 0, U ? U.getY(i) : 0);
+    }
+    g.dispose();
+    return K;
+  };
+  K.cyl = (tex, hex, x, y, z, r, h, seg = 16, rx = 0, rz = 0) => K.geo(tex, hex, new THREE.CylinderGeometry(r, r, h, seg), mtx(x, y, z, rx, 0, rz));
+  K.add = (obj) => { extra.push(obj); return K; };
+  /* Cases de la grille des solides. */
+  K.solid = (x0, z0, x1, z1, kind, o) => { owFill(OW.surf, x0, z0, x1, z1, kind, o); return K; };
+  K.build = (root) => {
+    const g = new THREE.Group();
+    g.name = name;
+    for (const [tex, b] of parts) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(b.nor, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(b.uv, 2));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(b.col, 3));
+      geo.computeBoundingSphere();
+      const mat = VMAT[tex] || levelMaterial(tex);
+      const m = new THREE.Mesh(geo, mat);
+      m.matrixAutoUpdate = false;
+      m.castShadow = true; m.receiveShadow = true;
+      g.add(m);
+    }
+    for (const o of extra) g.add(o);
+    root.add(g);
+    return g;
+  };
+  return K;
+}
+
+/* ---- Maison (murs d'une case, portes, fenêtres, toit plat ou à deux pans, sol, plafond)
+   o : { x0, z0, x1, z1 (bords extérieurs, en m entiers), y (sol), h (hauteur des murs), wall (texture),
+         wallHex, doors: [[côté, début, largeur, hauteur?]], wins: [[côté, début, largeur, bas, haut]],
+         roof: 'flat' | 'gable' | 'none', roofTex, rise, parapet, floorTex, inTex (murs intérieurs) }
+   côté : 'n' (z0), 's' (z1), 'w' (x0), 'e' (x1) ; début : distance depuis le coin ouest ou nord. */
+function owHouse(K, o) {
+  const { x0, z0, x1, z1, y } = o, h = o.h || 3.2, top = y + h, wt = o.wall || 'kh_whitewash', hex = o.wallHex || 0xffffff;
+  const inT = o.inTex || wt, inHex = o.inHex || (hex === 0xffffff ? 0xd9d2c4 : hex);
+  const doorsOn = (side) => (o.doors || []).filter((d) => d[0] === side);
+  const winsOn = (side) => (o.wins || []).filter((d) => d[0] === side);
+  // sol et plafond (cases intérieures : FLOOR avec plafond, le toit arrête les rayons)
+  const roofY = top + (o.roof === 'flat' ? 0.25 : 0.1);
+  K.solid(x0 + 1, z0 + 1, x1 - 1, z1 - 1, OWK.FLOOR, { base: y, ceil: o.roof === 'none' ? 0 : top, roof: roofY, mat: OWM.STONE });
+  K.box(o.floorTex || 'kh_floor', 0xffffff, x0 + 1, y - 0.3, z0 + 1, x1 - 1, y, z1 - 1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+  // murs : côté par côté, en segments entre les ouvertures
+  const sides = [
+    ['n', x0, x1, (a, b) => [a, z0, b, z0 + 1], true],
+    ['s', x0, x1, (a, b) => [a, z1 - 1, b, z1], true],
+    ['w', z0 + 1, z1 - 1, (a, b) => [x0, a, x0 + 1, b], false],
+    ['e', z0 + 1, z1 - 1, (a, b) => [x1 - 1, a, x1, b], false],
+  ];
+  for (const [side, a0, a1, rect, alongX] of sides) {
+    const opens = doorsOn(side).map((d) => ({ s: (alongX ? x0 : z0) + d[1], e: (alongX ? x0 : z0) + d[1] + d[2], lo: y, hi: y + (d[3] || 2.3), door: true }))
+      .concat(winsOn(side).map((w) => ({ s: (alongX ? x0 : z0) + w[1], e: (alongX ? x0 : z0) + w[1] + w[2], lo: y + w[3], hi: y + w[4], door: false })))
+      .sort((p, q) => p.s - q.s);
+    let cur = a0;
+    const seg = (s, e, lo, hi) => {
+      if (e - s <= 0.01 || hi - lo <= 0.01) return;
+      const [rx0, rz0, rx1, rz1] = rect(s, e);
+      K.box(wt, hex, rx0, lo, rz0, rx1, hi, rz1, { top: o.capTex || wt });
+    };
+    for (const op of opens) {
+      seg(cur, op.s, y - 0.3, top);
+      seg(op.s, op.e, op.hi, top);                             // linteau
+      if (!op.door) seg(op.s, op.e, y - 0.3, op.lo);           // allège
+      const [rx0, rz0, rx1, rz1] = rect(op.s, op.e);
+      if (op.door) K.solid(rx0, rz0, rx1, rz1, OWK.FLOOR, { base: y, ceil: op.hi, roof: top, mat: OWM.STONE });
+      else K.solid(rx0, rz0, rx1, rz1, OWK.WINDOW, { base: y - 0.3, top, lo: op.lo, hi: op.hi, mat: OWM.STONE });
+      // encadrement (bois sombre)
+      K.box('kh_planks', 0x6b4a30, ...(alongX ? [op.s, op.hi, rz0 - 0.04, op.e, op.hi + 0.12, rz1 + 0.04] : [rx0 - 0.04, op.hi, op.s, rx1 + 0.04, op.hi + 0.12, op.e]));
+      cur = op.e;
+    }
+    seg(cur, a1, y - 0.3, top);
+    // cases pleines du côté, hors ouvertures
+    for (let t = Math.floor(a0); t < Math.ceil(a1); t++) {
+      if (opens.some((op) => t + 0.5 > op.s && t + 0.5 < op.e)) continue;
+      const [rx0, rz0, rx1, rz1] = rect(t, t + 1);
+      K.solid(rx0, rz0, rx1, rz1, OWK.SOLID, { base: y - 0.5, top: o.roof === 'gable' ? top + (o.rise || 1.5) * 0.5 : top + (o.parapet || 0), mat: OWM.STONE });
+    }
+  }
+  // toit
+  if (o.roof === 'flat') {
+    K.box(o.roofTex || wt, o.roofHex || hex, x0 - 0.15, top, z0 - 0.15, x1 + 0.15, top + 0.25, z1 + 0.15);
+    if (o.parapet) {
+      const p = o.parapet, t2 = top + 0.25;
+      K.box(wt, hex, x0, t2, z0, x1, t2 + p, z0 + 0.3).box(wt, hex, x0, t2, z1 - 0.3, x1, t2 + p, z1)
+        .box(wt, hex, x0, t2, z0 + 0.3, x0 + 0.3, t2 + p, z1 - 0.3).box(wt, hex, x1 - 0.3, t2, z0 + 0.3, x1, t2 + p, z1 - 0.3);
+    }
+  } else if (o.roof === 'gable') {
+    const along = x1 - x0 >= z1 - z0;
+    K.gable(o.roofTex || 'kh_sheet', o.roofHex || 0xffffff, x0 - 0.3, z0 - 0.3, x1 + 0.3, z1 + 0.3, top, o.rise || 1.5, along, wt, hex);
+    K.box(o.ceilTex || 'kh_planks', 0xcfc2ad, x0 + 1, top - 0.05, z0 + 1, x1 - 1, top, z1 - 1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] });
+  }
+  return K;
+}
+
+/* Hauteur posée d'un lieu (moyenne du terrain sous un rectangle). */
+function owPadY(x0, z0, x1, z1) {
+  let s = 0, n = 0;
+  for (let z = z0; z <= z1; z += 2) for (let x = x0; x <= x1; x += 2) { s += owH(x, z); n++; }
+  return s / n;
+}
+/* Aplanit le terrain sous un rectangle (bords fondus) : les bâtiments posés ensuite y tiennent. */
+function owLevel(x0, z0, x1, z1, y, blend = 6) {
+  const H = OW.H;
+  owEachPoint(x0 - blend, z0 - blend, x1 + blend, z1 + blend, (k, x, z) => {
+    const dx = Math.max(x0 - x, 0, x - x1), dz = Math.max(z0 - z, 0, z - z1), d = Math.hypot(dx, dz);
+    const w = 1 - owSmoothstep(0, blend, d);
+    if (w > 0) H[k] = lerp(H[k], y, w);
+  });
+}
+
+/* ------------------------------------------------------------ Accessoires --
+   Caisses, fûts, sacs de sable, tables, tentes, conteneurs, cuves, lampadaires (lumières mises en
+   commun : quelques vraies lumières suivent le joueur de lampe en lampe, les autres brillent). */
+function owCrate(K, x, y, z, s = 1, hex = 0xb08a5c) {
+  K.box('kh_planks', hex, x - s / 2, y, z - s / 2, x + s / 2, y + s, z + s / 2);
+  K.box('kh_planks', 0x7a5a3a, x - s / 2 - 0.02, y + s * 0.42, z - s / 2 - 0.02, x + s / 2 + 0.02, y + s * 0.58, z + s / 2 + 0.02);
+  if (s >= 0.9) K.solid(x - s / 2 + 0.2, z - s / 2 + 0.2, x + s / 2 - 0.2, z + s / 2 - 0.2, OWK.LOW, { base: y, top: y + s, mat: OWM.WOOD });
+}
+function owBarrel(K, x, y, z, hex = 0x8d3a28) {
+  K.cyl('kh_sheet', hex, x, y + 0.45, z, 0.3, 0.9, 12);
+  K.cyl('kh_sheet', 0x4a4440, x, y + 0.91, z, 0.31, 0.03, 12).cyl('kh_sheet', 0x4a4440, x, y + 0.3, z, 0.31, 0.03, 12).cyl('kh_sheet', 0x4a4440, x, y + 0.62, z, 0.31, 0.03, 12);
+}
+function owSandbags(K, x0, z0, x1, z1, y, rows = 3) {
+  const along = Math.abs(x1 - x0) >= Math.abs(z1 - z0), L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(L / 0.62));
+  for (let r = 0; r < rows; r++) {
+    for (let i = 0; i < n - (r % 2); i++) {
+      const t = (i + 0.5 + (r % 2) * 0.5) / n, x = lerp(x0, x1, t), z = lerp(z0, z1, t);
+      const hx = along ? 0.31 : 0.2, hz = along ? 0.2 : 0.31;
+      K.box('kh_canvas', [0xa8916a, 0x9c8660, 0xb39a70][(i + r) % 3], x - hx, y + r * 0.22, z - hz, x + hx, y + r * 0.22 + 0.24, z + hz);
+    }
+  }
+  owLine(OW.surf, x0, z0, x1, z1, OWK.LOW, { base: y, top: y + rows * 0.22 + 0.05, mat: OWM.CLOTH });
+}
+function owTable(K, x, y, z, w = 1.8, d = 0.9, hex = 0x8a6440) {
+  K.box('kh_planks', hex, x - w / 2, y + 0.72, z - d / 2, x + w / 2, y + 0.78, z + d / 2);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.box('kh_planks', 0x6b4a30, x + sx * (w / 2 - 0.08) - 0.03, y, z + sz * (d / 2 - 0.08) - 0.03, x + sx * (w / 2 - 0.08) + 0.03, y + 0.72, z + sz * (d / 2 - 0.08) + 0.03);
+}
+/* Tente (toile tendue sur un faîtage) : x0..x1 le long du faîtage ; open : côté ouvert ('n', 's', 'w', 'e') ; murs bas. */
+function owTent(K, x0, z0, x1, z1, y, h = 3.2, wallH = 1.4, open = 's', hex = 0xd8c8a2) {
+  const along = x1 - x0 >= z1 - z0;
+  K.gable('kh_canvas', hex, x0, z0, x1, z1, y + wallH, h - wallH, along, 'kh_canvas', hex);
+  const sides = { n: [x0, z0, x1, z0 + 0.06], s: [x0, z1 - 0.06, x1, z1], w: [x0, z0, x0 + 0.06, z1], e: [x1 - 0.06, z0, x1, z1] };
+  for (const sd of ['n', 's', 'w', 'e']) {
+    const [a, b, c, d] = sides[sd];
+    if (sd === open) {
+      // pans relevés de l'entrée
+      if (sd === 'n' || sd === 's') { K.box('kh_canvas', hex, a, y, b, a + 1.2, y + wallH, d); K.box('kh_canvas', hex, c - 1.2, y, b, c, y + wallH, d); owFill(OW.surf, a, b - 0.5, a + 1, d + 0.5, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH }); owFill(OW.surf, c - 1, b - 0.5, c, d + 0.5, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH }); }
+      else { K.box('kh_canvas', hex, a, y, b, c, y + wallH, b + 1.2); K.box('kh_canvas', hex, a, y, d - 1.2, c, y + wallH, d); }
+      continue;
+    }
+    K.box('kh_canvas', hex, a, y, b, c, y + wallH, d);
+    // cases pleines le long du côté
+    if (sd === 'n' || sd === 's') owFill(OW.surf, x0, sd === 'n' ? z0 : z1 - 1, x1, sd === 'n' ? z0 + 1 : z1, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH });
+    else owFill(OW.surf, sd === 'w' ? x0 : x1 - 1, z0, sd === 'w' ? x0 + 1 : x1, z1, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH });
+  }
+  // mâts et faîtage
+  if (along) { K.box('kh_planks', 0x6b4a30, x0 + 0.1, y, (z0 + z1) / 2 - 0.05, x0 + 0.2, y + h, (z0 + z1) / 2 + 0.05).box('kh_planks', 0x6b4a30, x1 - 0.2, y, (z0 + z1) / 2 - 0.05, x1 - 0.1, y + h, (z0 + z1) / 2 + 0.05); }
+  else { K.box('kh_planks', 0x6b4a30, (x0 + x1) / 2 - 0.05, y, z0 + 0.1, (x0 + x1) / 2 + 0.05, y + h, z0 + 0.2).box('kh_planks', 0x6b4a30, (x0 + x1) / 2 - 0.05, y, z1 - 0.2, (x0 + x1) / 2 + 0.05, y + h, z1 - 0.1); }
+  // intérieur : sol de planches, plafond de toile (arrête les rayons)
+  owFill(OW.surf, x0 + 1, z0 + 1, x1 - 1, z1 - 1, OWK.FLOOR, { base: y + 0.05, ceil: y + h - 0.35, roof: y + h, mat: OWM.CLOTH });
+  K.box('kh_planks', 0xa08060, x0 + 0.1, y, z0 + 0.1, x1 - 0.1, y + 0.05, z1 - 0.1, { skip: ['bottom'] });
+}
+/* Conteneur maritime (x0..x1 le long de x ou z), porte ouverte au bout (doorEnd : 0 début, 1 fin). */
+function owContainer(K, x0, z0, x1, z1, y, hex, label, doorEnd = 0) {
+  const h = 2.6, along = x1 - x0 >= z1 - z0, t = 0.1;
+  // parois (tôle peinte), toit, plancher
+  if (along) {
+    K.box('kh_sheet_red', hex, x0, y, z0, x1, y + h, z0 + t).box('kh_sheet_red', hex, x0, y, z1 - t, x1, y + h, z1);
+    K.box('kh_sheet_red', hex, x0, y + h - t, z0, x1, y + h, z1);
+    K.box('kh_sheet_red', hex, doorEnd ? x0 : x1 - t, y, z0, doorEnd ? x0 + t : x1, y + h, z1);
+    // portes ouvertes rabattues
+    const xd = doorEnd ? x1 : x0;
+    K.box('kh_sheet_red', hex, xd - 0.05, y, z0 - 1.2, xd + 0.05, y + h, z0).box('kh_sheet_red', hex, xd - 0.05, y, z1, xd + 0.05, y + h, z1 + 1.2);
+    owFill(OW.surf, x0, z0, x1, z0 + 1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+    owFill(OW.surf, x0, z1 - 1, x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+    owFill(OW.surf, doorEnd ? x0 : x1 - 1, z0, doorEnd ? x0 + 1 : x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+    owFill(OW.surf, doorEnd ? x0 + 1 : x0, z0 + 1, doorEnd ? x1 : x1 - 1, z1 - 1, OWK.FLOOR, { base: y + 0.12, ceil: y + h - 0.1, roof: y + h, mat: OWM.METAL });
+  } else {
+    K.box('kh_sheet_red', hex, x0, y, z0, x0 + t, y + h, z1).box('kh_sheet_red', hex, x1 - t, y, z0, x1, y + h, z1);
+    K.box('kh_sheet_red', hex, x0, y + h - t, z0, x1, y + h, z1);
+    K.box('kh_sheet_red', hex, x0, y, doorEnd ? z0 : z1 - t, x1, y + h, doorEnd ? z0 + t : z1);
+    owFill(OW.surf, x0, z0, x0 + 1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+    owFill(OW.surf, x1 - 1, z0, x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+    owFill(OW.surf, x0, doorEnd ? z0 : z1 - 1, x1, doorEnd ? z0 + 1 : z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+    owFill(OW.surf, x0 + 1, doorEnd ? z0 + 1 : z0, x1 - 1, doorEnd ? z1 : z1 - 1, OWK.FLOOR, { base: y + 0.12, ceil: y + h - 0.1, roof: y + h, mat: OWM.METAL });
+  }
+  K.box('kh_planks', 0x7a6248, x0 + t, y, z0 + t, x1 - t, y + 0.12, z1 - t, { skip: ['bottom'] });
+  if (label) {
+    const d = vehDecal([[label, 0.62, 0.52, 800]], along ? 3.2 : 1.6, 0.9, '#f2e6cf');
+    if (along) { d.position.set((x0 + x1) / 2, y + 1.55, z1 + 0.012); }
+    else { d.position.set(x1 + 0.012, y + 1.55, (z0 + z1) / 2); d.rotation.y = Math.PI / 2; }
+    K.add(d);
+  }
+}
+/* Cuve horizontale (carburant) sur berceaux. */
+function owTank(K, x, y, z, r, len, alongX = true, hex = 0xd8d2c4) {
+  if (alongX) K.cyl('kh_paint', hex, x, y + r + 0.4, z, r, len, 18, 0, Math.PI / 2);
+  else K.cyl('kh_paint', hex, x, y + r + 0.4, z, r, len, 18, Math.PI / 2, 0);
+  for (const s of [-0.35, 0.35]) {
+    const ox = alongX ? s * len : 0, oz = alongX ? 0 : s * len;
+    K.box('kh_concrete', 0xbdb5a5, x + ox - (alongX ? 0.25 : r * 0.9), y, z + oz - (alongX ? r * 0.9 : 0.25), x + ox + (alongX ? 0.25 : r * 0.9), y + 0.55, z + oz + (alongX ? r * 0.9 : 0.25));
+  }
+  const hx = alongX ? len / 2 : r, hz = alongX ? r : len / 2;
+  owFill(OW.surf, x - hx + 0.3, z - hz + 0.3, x + hx - 0.3, z + hz - 0.3, OWK.SOLID, { base: y, top: y + 2 * r + 0.4, mat: OWM.METAL });
+}
+
+/* ---- Lampes : ampoules et halos ; une réserve de vraies lumières suit le joueur */
+const OWL = { lamps: [], pool: [], t: 0 };
+function owLamp(K, x, y, z, color = 0xffd7a0, power = false, size = 1) {
+  const mat = new THREE.MeshBasicMaterial({ color });
+  const bulb = new THREE.Mesh(GEO.sph, mat);
+  bulb.position.set(x, y, z); bulb.scale.setScalar(0.12 * size);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.position.set(x, y, z); halo.scale.set(2.2 * size, 2.2 * size, 1);
+  K.add(bulb); K.add(halo);
+  const L = { x, y, z, color: new THREE.Color(color), power, bulb, halo, mat, on: !power, size };
+  OWL.lamps.push(L);
+  return L;
+}
+function owLampPost(K, x, y, z, h = 5, color = 0xffc070, power = false, arm = [0.8, 0]) {
+  K.cyl('kh_sheet', 0x3a3631, x, y + h / 2, z, 0.07, h, 8);
+  K.box('kh_sheet', 0x3a3631, Math.min(x, x + arm[0]) - 0.04, y + h - 0.05, Math.min(z, z + arm[1]) - 0.04, Math.max(x, x + arm[0]) + 0.04, y + h + 0.03, Math.max(z, z + arm[1]) + 0.04);
+  owSet(OW.surf, Math.floor(x), Math.floor(z), OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
+  return owLamp(K, x + arm[0], y + h - 0.2, z + arm[1], color, power);
+}
+function owLightsInit(root) {
+  OWL.pool = [];
+  for (let i = 0; i < 4; i++) {
+    const l = new THREE.PointLight(0xffd0a0, 0, 16, 2);
+    l.position.set(0, -500, 0);
+    root.add(l);
+    OWL.pool.push(l);
+  }
+}
+/* Toutes les 0,3 s : les lampes allumées les plus proches reçoivent les vraies lumières. */
+function owLightsUpdate(dt) {
+  OWL.t -= dt;
+  const dark = owDarkness();
+  for (const L of OWL.lamps) {
+    const on = !L.power || G.power;
+    if (on !== L.on) { L.on = on; L.mat.color.copy(on ? L.color : new THREE.Color(0x2a2622)); L.halo.visible = on; }
+    if (on) L.halo.material.opacity = 0.25 + dark * 0.55;
+  }
+  if (OWL.t > 0) return;
+  OWL.t = 0.3;
+  const px = camera.position.x, pz = camera.position.z;
+  const near = OWL.lamps.filter((L) => L.on && Math.abs(L.x - px) < 60 && Math.abs(L.z - pz) < 60)
+    .sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
+  OWL.pool.forEach((l, i) => {
+    const L = near[i];
+    if (!L) { l.intensity = 0; return; }
+    l.position.set(L.x, L.y - 0.15, L.z);
+    l.color.copy(L.color);
+    l.intensity = (0.4 + dark * 1.6) * L.size;
+  });
+}
+
+/* ----------------------------------------------------------------- Lieux --
+   Les sept lieux du plan (page 2) et leurs fiches (page 4) :
+   A camp de fouilles (départ : tente-réfectoire et ses armes, tentes, conteneur ABRI, tranchée du
+     sceau), B plateau (mastabas, kiosque du sanctuaire), C relais Km 47 (station, café, garage du
+     buggy, cuve de carburant d'aviation), D oasis de Sekhet (village de brique crue, citerne),
+     E centrale du Nil (salle des turbines, poste de commande, transformateurs, prise d'eau, abri du
+     camion), F nécropole (tombeaux taillés dans la falaise), G aérodrome (hangars, tour de contrôle,
+     KH-47, camion-citerne, balisage). Bâtiments et cases des solides sont posés une fois par
+     génération ; les maillages à chaque chargement. */
+/* Maillage posé (position, rotation). */
+function owMeshAt(geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z); m.rotation.set(rx, ry, rz);
+  return m;
+}
+KH.places = {};       // positions utiles aux éléments de jeu (armes, atouts, boîte, carburant…)
+
+/* Retouches du terrain (avant le calcul des pentes) : fosse de la tranchée, sol des bâtiments. */
+function khShapeTerrain() {
+  const yA = owHeightAtGrid(2320, 1965);
+  // tranchée de fouille : un creux de 1,4 m (bords en pente douce : le maillage est de 4 m)
+  owLevel(2228, 1900, 2244, 1908, yA - 1.4, 3);
+  // aérodrome : l'aire de stationnement jusqu'à la piste
+  const yG = owHeightAtGrid(2990, 445);
+  owLevel(2930, 280, 3060, 330, yG, 14);
+}
+
+function owBuildPlaces(root) {
+  OWL.lamps = [];
+  const K = owKit('lieux');
+  khPlaceA(K); khPlaceB(K); khPlaceC(K); khPlaceD(K); khPlaceE(K); khPlaceF(K); khPlaceG(K);
+  K.build(root);
+  owLightsInit(root);
+}
+
+/* ---------------------------------------------------------------- A : camp */
+function khPlaceA(K) {
+  const y = owH(2320, 1965), P = (KH.places.A = { y });
+  // tente-réfectoire (ouverte au sud) : tables, bancs, panneaux des armes au fond
+  owTent(K, 2296, 1958, 2314, 1967, y, 4.4, 1.9, 's', 0xdcccaa);
+  for (const x of [2300, 2305, 2310]) {
+    owTable(K, x, y + 0.05, 1963.5, 2.2, 0.9);
+    K.box('kh_planks', 0x7a5a3a, x - 1.1, y + 0.05, 1962.4, x + 1.1, y + 0.47, 1962.7).box('kh_planks', 0x7a5a3a, x - 1.1, y + 0.05, 1964.3, x + 1.1, y + 0.47, 1964.6);
+    // panneau de planches contre la toile du fond (armes dessinées à la craie)
+    K.box('kh_planks', 0x9a7650, x - 0.95, y + 0.9, 1959.06, x + 0.95, y + 2.25, 1959.16);
+  }
+  P.wall = [['kar98k', 2300, 1959.17], ['g43', 2305, 1959.17], ['mp40', 2310, 1959.17]].map(([w, x, z]) => ({ w, x, y: y + 0.05, z, nx: 0, nz: 1, h: 1.58 }));
+  // tentes de couchage, ouvertes à l'est
+  for (const z0 of [1980, 1990, 2000]) owTent(K, 2262, z0, 2268, z0 + 5, y, 2.9, 1.2, 'e', 0xcfbf98);
+  // conteneur « ABRI » (refuge), ouvert à l'ouest
+  owContainer(K, 2368, 1946, 2380, 1949, y, 0x35607d, 'ABRI', 0);
+  P.refuge = [{ x0: 2368, z0: 1946, x1: 2380, z1: 1949, name: 'conteneur ABRI' }];
+  // tranchée de fouille : cadre de planches, passerelle, sceau du sanctuaire (turquoise)
+  const yt = y - 1.4;
+  K.box('kh_planks', 0x8a6a48, 2226, y - 0.2, 1898.6, 2246, y + 0.25, 1899.2).box('kh_planks', 0x8a6a48, 2226, y - 0.2, 1908.8, 2246, y + 0.25, 1909.4);
+  K.box('kh_planks', 0x8a6a48, 2225.4, y - 0.2, 1898.6, 2226, y + 0.25, 1909.4).box('kh_planks', 0x8a6a48, 2246, y - 0.2, 1898.6, 2246.6, y + 0.25, 1909.4);
+  K.box('kh_planks', 0xa08060, 2235, y + 0.05, 1898, 2236.4, y + 0.15, 1910);
+  for (const x of [2229, 2241]) for (const z of [1899.6, 1908.4]) K.box('kh_planks', 0x6b4a30, x - 0.1, yt, z - 0.1, x + 0.1, y + 1.0, z + 0.1);
+  const seal = khSeal(1.6);
+  seal.position.set(2236, yt + 0.06, 1904); K.add(seal);
+  P.seal = { x: 2236, y: yt, z: 1904 };
+  // auvent de la boîte mystère, groupe électrogène, caisses, fûts, sacs de sable
+  for (const [x, z] of [[2325.2, 1937.2], [2332.8, 1937.2], [2325.2, 1942.8], [2332.8, 1942.8]]) K.box('kh_planks', 0x6b4a30, x - 0.06, y, z - 0.06, x + 0.06, y + 2.7, z + 0.06);
+  K.box('kh_canvas', 0xb04a32, 2324.8, y + 2.7, 1936.8, 2333.2, y + 2.82, 1943.2);
+  P.box = { x: 2329, y, z: 1940.2, face: [0, 1] };
+  K.box('kh_sheet', 0x5a6a48, 2286, y, 1939, 2288.6, y + 1.3, 1940.4).cyl('kh_sheet', 0x3a3631, 2287.3, y + 1.5, 1939.7, 0.08, 0.5);
+  K.solid(2286, 1939, 2289, 1941, OWK.LOW, { base: y, top: y + 1.3, mat: OWM.METAL });
+  owCrate(K, 2290.5, y, 1944, 1); owCrate(K, 2291.6, y, 1944.2, 0.8); owCrate(K, 2290.9, y + 1, 1944.1, 0.7);
+  owCrate(K, 2343, y, 1966, 1); owCrate(K, 2344.2, y, 1966.4, 1);
+  owBarrel(K, 2289, y, 1946.5); owBarrel(K, 2289.8, y, 1947.3, 0x3c6a8a); owBarrel(K, 2384, y, 1952);
+  owSandbags(K, 2221, 1896, 2221, 1912, y, 2);
+  // lampes du camp
+  owLampPost(K, 2318, y, 1971, 4.5, 0xffd09a, false, [0, -0.7]);
+  owLampPost(K, 2282, y, 1975, 4.5, 0xffd09a, false, [0.7, 0]);
+  owLampPost(K, 2346, y, 1956, 4.5, 0xffd09a, false, [0, 0.7]);
+  owLampPost(K, 2238, y, 1913, 4.5, 0xffd09a, false, [0, -0.7]);
+  owLamp(K, 2305, y + 3.7, 1962.5, 0xffe2b0, false, 0.8);
+  P.perk = { id: 'souffle', x: 2358, y, z: 1978, face: [-1, 0] };
+}
+/* Sceau du sanctuaire : disque de pierre gravé, glyphes turquoise (le turquoise dit le surnaturel). */
+function khSeal(r) {
+  const c = makeCanvas(256, 256), g = c.getContext('2d');
+  g.fillStyle = '#8a7a64'; g.beginPath(); g.arc(128, 128, 126, 0, TAU); g.fill();
+  g.strokeStyle = '#5ff2e2'; g.lineWidth = 6; g.shadowColor = '#5ff2e2'; g.shadowBlur = 12;
+  g.beginPath(); g.arc(128, 128, 104, 0, TAU); g.stroke();
+  g.beginPath(); g.arc(128, 128, 62, 0, TAU); g.stroke();
+  for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; g.beginPath(); g.moveTo(128 + Math.cos(a) * 66, 128 + Math.sin(a) * 66); g.lineTo(128 + Math.cos(a) * 100, 128 + Math.sin(a) * 100); g.stroke(); }
+  // tête de chacal stylisée au centre
+  g.beginPath(); g.moveTo(108, 160); g.lineTo(118, 96); g.lineTo(126, 70); g.lineTo(134, 96); g.lineTo(150, 104); g.lineTo(160, 120); g.lineTo(138, 124); g.lineTo(140, 160); g.closePath(); g.stroke();
+  const m = new THREE.MeshBasicMaterial({ map: toTex(c, { clamp: true }), transparent: true });
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(r, 40).rotateX(-Math.PI / 2), m);
+  mesh.name = 'sceau';
+  return mesh;
+}
+
+/* ------------------------------------------------------------ B : plateau */
+function khPlaceB(K) {
+  const P = (KH.places.B = {});
+  // mastabas (tombes de pierre basses, murs en talus) à l'est de la Grande Pyramide et à l'ouest
+  const mastaba = (x0, z0, x1, z1) => {
+    const y = owH((x0 + x1) / 2, (z0 + z1) / 2) - 0.3, h = 3.4, inset = 0.5;
+    K.geo('kh_sandstone', 0xe8dcc6, khFrustum(x1 - x0, z1 - z0, h, inset), mtx((x0 + x1) / 2, y, (z0 + z1) / 2));
+    K.solid(x0, z0, x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.STONE });
+  };
+  for (const [x, z] of [[2238, 1160], [2252, 1176], [2238, 1192], [2252, 1208], [2266, 1160], [2266, 1192]]) mastaba(x, z, x + 10, z + 5);
+  for (const [x, z] of [[1985, 1085], [2000, 1085], [1985, 1100], [2000, 1100], [2015, 1093]]) mastaba(x, z, x + 9, z + 5);
+  // kiosque du sanctuaire (porte scellée jusqu'au courant), entre les deux grandes pyramides
+  const yk = owH(2190, 1396) + 0.05;
+  owHouse(K, { x0: 2184, z0: 1390, x1: 2196, z1: 1402, y: yk, h: 4.6, wall: 'kh_sandstone', roof: 'flat', roofTex: 'kh_sandstone', parapet: 0.6, floorTex: 'kh_sandstone', doors: [['s', 5, 2, 3.2]] });
+  P.kiosk = { x: 2190, y: yk, z: 1402, door: [2189, 1401, 2191, 1402] };
+  // petit camp de l'équipe (tentes et groupe électrogène)
+  const yc = owH(2246, 1560);
+  owTent(K, 2240, 1552, 2248, 1557, yc, 3, 1.3, 's', 0xd2c29c);
+  owTent(K, 2252, 1556, 2258, 1561, yc, 2.8, 1.2, 'w', 0xd2c29c);
+  owCrate(K, 2249.5, yc, 1563, 1); owBarrel(K, 2251, yc, 1564.5);
+  owLampPost(K, 2246, yc, 1566, 4.2, 0xffd09a, false, [0, -0.7]);
+  P.box = { x: 2244, y: yc, z: 1566.5, face: [0, -1] };
+}
+/* Tronc de pyramide (mastaba) : base w × d, sommet rentré de inset, hauteur h. */
+function khFrustum(w, d, h, inset) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(0, h / 2, 0);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) if (p.getY(i) > h / 2) { p.setX(i, p.getX(i) * (1 - (2 * inset) / w)); p.setZ(i, p.getZ(i) * (1 - (2 * inset) / d)); }
+  g.computeVertexNormals();
+  // coordonnées de texture en mètres
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * Math.max(w, d) / 1.5, uv.getY(i) * h / 1.5);
+  return g;
+}
+
+/* ------------------------------------------------------ C : relais Km 47 */
+function khPlaceC(K) {
+  const y = owH(1395, 2585), P = (KH.places.C = { y });
+  // auvent de la station et ses deux pompes
+  for (const [x, z] of [[1377, 2569], [1391, 2569], [1377, 2575], [1391, 2575]]) { K.box('kh_concrete', 0xdad2c2, x - 0.2, y, z - 0.2, x + 0.2, y + 4.6, z + 0.2); K.solid(x - 0.2, z - 0.2, x + 0.2, z + 0.2, OWK.SOLID, { base: y, top: y + 4.6, mat: OWM.METAL }); }
+  K.box('kh_sheet_red', 0xc84a32, 1375.5, y + 4.6, 2567.5, 1392.5, y + 5.3, 2576.5);
+  K.box('kh_concrete', 0xc8c0b0, 1378.5, y, 2571.4, 1389.5, y + 0.18, 2572.6);
+  for (const x of [1381, 1387]) {
+    K.box('kh_sheet', 0xd8d0be, x - 0.45, y + 0.18, 2571.65, x + 0.45, y + 1.8, 2572.35).box('kh_sheet', 0xb03a28, x - 0.47, y + 1.4, 2571.62, x + 0.47, y + 1.75, 2572.38);
+    K.solid(x - 0.45, 2571.65, x + 0.45, 2572.35, OWK.LOW, { base: y, top: y + 1.8, mat: OWM.METAL });
+  }
+  owLamp(K, 1381, y + 4.5, 2572, 0xc8f0ff, false, 0.9); owLamp(K, 1387, y + 4.5, 2572, 0xc8f0ff, false, 0.9);
+  // café (armes au mur du fond), porte au nord
+  owHouse(K, { x0: 1396, z0: 2580, x1: 1408, z1: 2589, y, h: 3.4, wall: 'kh_ochre', roof: 'flat', roofTex: 'kh_concrete', parapet: 0.4, floorTex: 'kh_floor', doors: [['n', 3, 2]], wins: [['n', 7, 3, 1.0, 2.2], ['w', 3, 3, 1.0, 2.2], ['e', 3, 3, 1.0, 2.2]] });
+  K.box('kh_sheet_red', 0x2c6a74, 1397, y + 3.0, 2579.3, 1407, y + 3.35, 2579.6);       // enseigne bleue
+  owTable(K, 1400, y, 2584.5, 1.2, 1.2); owTable(K, 1404.5, y, 2584.5, 1.2, 1.2);
+  K.box('kh_planks', 0x7a5a3a, 1397, y, 2582.2, 1398.2, y + 1.05, 2586.4);                // comptoir, contre le mur ouest
+  K.solid(1397, 2582.2, 1398, 2586.4, OWK.LOW, { base: y, top: y + 1.05, mat: OWM.WOOD });
+  P.wall = [['trench', 1400.5, 2587.92], ['thompson', 1404.5, 2587.92]].map(([w, x, z]) => ({ w, x, y, z, nx: 0, nz: -1, h: 1.7 }));
+  P.perk = { id: 'endurance', x: 1406.95, y, z: 2582.8, face: [-1, 0], roomH: 3.4 };
+  owLamp(K, 1402, y + 3.1, 2584.5, 0xffe0b0, false, 0.8);
+  // garage du buggy : grande porte à l'ouest
+  owHouse(K, { x0: 1412, z0: 2584, x1: 1424, z1: 2594, y, h: 4.2, wall: 'kh_concrete', roof: 'gable', rise: 1.4, roofTex: 'kh_sheet', floorTex: 'kh_floor', doors: [['w', 2, 6, 3.6]], wins: [['n', 4, 4, 2.4, 3.4]] });
+  owCrate(K, 1421.5, y, 2586.5, 1); owBarrel(K, 1422, y, 2591.5, 0x3c6a8a); owBarrel(K, 1421.2, y, 2592.2);
+  owLamp(K, 1418, y + 4.0, 2589, 0xfff0d0, false, 0.8);
+  // cuve de carburant d'aviation (pièce ①) derrière le garage
+  owTank(K, 1419, y, 2601, 1.5, 7, true, 0xe2dccc);
+  P.fuelTank = { x: 1419, y: y + 1.9, z: 2599.2 };
+  // jerricans (faire le plein), borne kilométrique
+  P.fuel = { x: 1393.5, y, z: 2577.5 };
+  khJerricans(K, P.fuel.x, y, P.fuel.z);
+  khMilestone(K, 1446, owH(1446, 2541), 2541, '47');
+  // néons de l'heure bleue
+  owLampPost(K, 1384, y, 2563, 5, 0x9fe4ff, false, [0, 0.8]);
+  owLampPost(K, 1410, y, 2577, 5, 0xffd2a0, false, [0, 0.8]);
+  owLampPost(K, 1428, y, 2582, 5, 0xffd2a0, false, [-0.8, 0]);
+  P.box = { x: 1384, y, z: 2582.5, face: [0, -1] };
+  P.refuge = [{ x0: 1397, z0: 2581, x1: 1407, z1: 2588, name: 'café' }, { x0: 1413, z0: 2585, x1: 1423, z1: 2593, name: 'garage' }];
+}
+/* Pile de jerricans (on y fait le plein du véhicule le plus proche). */
+function khJerricans(K, x, y, z) {
+  const cols = [0x9c2f22, 0x4f6b3a, 0x9c2f22, 0x4f6b3a, 0x9c2f22];
+  for (let i = 0; i < 5; i++) { const ox = (i % 3) * 0.38 - 0.38, oz = Math.floor(i / 3) * 0.3, oy = i >= 3 ? 0 : 0; K.box('kh_sheet_red', cols[i], x + ox - 0.17, y + oy, z + oz - 0.12, x + ox + 0.17, y + oy + 0.47, z + oz + 0.12); }
+  K.box('kh_sheet_red', 0x9c2f22, x - 0.2, y + 0.47, z - 0.12, x + 0.14, y + 0.94, z + 0.12);
+  K.solid(x - 0.6, z - 0.2, x + 0.6, z + 0.5, OWK.LOW, { base: y, top: y + 0.95, mat: OWM.METAL });
+}
+/* Borne kilométrique (blanche, tête rouge) : « KM 47 ». */
+function khMilestone(K, x, y, z, n) {
+  K.box('kh_concrete', 0xf0ebe0, x - 0.25, y, z - 0.12, x + 0.25, y + 0.75, z + 0.12).box('kh_sheet_red', 0xb83a28, x - 0.26, y + 0.75, z - 0.13, x + 0.26, y + 1.02, z + 0.13);
+  const d = vehDecal([['KM', 0.26, 0.3, 700], [n, 0.5, 0.68, 800]], 0.42, 0.5, '#2a2622');
+  d.position.set(x, y + 0.45, z + 0.125); K.add(d);
+  K.solid(x - 0.25, z - 0.12, x + 0.25, z + 0.12, OWK.LOW, { base: y, top: y + 1, mat: OWM.STONE });
+}
+
+/* ---------------------------------------------------------- D : oasis */
+function khPlaceD(K) {
+  const y = owH(840, 745), P = (KH.places.D = { y });
+  const house = (x0, z0, x1, z1, door, wall = 'kh_whitewash', h = 3.3, wins = []) =>
+    owHouse(K, { x0, z0, x1, z1, y, h, wall, roof: 'flat', roofTex: 'kh_ochre', roofHex: 0xeadcc4, parapet: 0.5, floorTex: 'kh_floor', doors: [door], wins, capTex: 'kh_ochre' });
+  house(822, 748, 832, 756, ['s', 4, 2], 'kh_mudbrick', 3.4, [['e', 3, 2, 1.1, 2.0]]);
+  house(834, 746, 842, 754, ['s', 3, 2], 'kh_whitewash', 3.0);
+  house(846, 748, 856, 757, ['s', 4, 2], 'kh_whitewash', 3.6, [['w', 3, 2, 1.1, 2.1], ['e', 3, 2, 1.1, 2.1]]);
+  house(860, 752, 868, 760, ['w', 3, 2], 'kh_mudbrick', 3.2);
+  house(860, 778, 870, 786, ['w', 3, 2], 'kh_whitewash', 3.4, [['n', 4, 2, 1.1, 2.0]]);
+  house(846, 784, 856, 792, ['n', 4, 2], 'kh_mudbrick', 3.1);
+  house(830, 786, 840, 794, ['n', 4, 2], 'kh_whitewash', 3.5, [['e', 3, 2, 1.1, 2.0]]);
+  house(818, 772, 826, 782, ['e', 4, 2], 'kh_mudbrick', 3.0);
+  house(808, 756, 816, 766, ['e', 3, 2], 'kh_whitewash', 3.2);
+  house(872, 764, 880, 772, ['w', 3, 2], 'kh_mudbrick', 3.0);
+  // armes dans la maison sud-est (mur nord intérieur), citerne du puits (refuge), place
+  P.wall = [['dbarrel', 849, 749.1], ['type100', 853, 749.1]].map(([w, x, z]) => ({ w, x, y, z, nx: 0, nz: 1, h: 1.6 }));
+  owHouse(K, { x0: 842, z0: 768, x1: 848, z1: 774, y, h: 2.8, wall: 'kh_whitewash', roof: 'flat', roofTex: 'kh_whitewash', floorTex: 'kh_floor', doors: [['s', 2, 2]] });
+  K.geo('kh_whitewash', 0xf4ece0, new THREE.SphereGeometry(2.6, 18, 8, 0, TAU, 0, Math.PI / 2), mtx(845, y + 2.95, 771, 0, 0, 0, 1, 0.7, 1));
+  K.cyl('kh_mudbrick', 0xd8c4a4, 845, y + 0.4, 778.5, 0.9, 0.8, 16);        // margelle du puits
+  K.solid(844, 777.5, 846, 779.5, OWK.LOW, { base: y, top: y + 0.8, mat: OWM.STONE });
+  P.refuge = [{ x0: 843, z0: 769, x1: 847, z1: 773, name: 'citerne du puits' }];
+  P.perk = { id: 'detente', x: 857.3, y, z: 772, face: [-1, 0] };
+  P.box = { x: 836.5, y, z: 771, face: [1, 0] };
+  // auvents de palmes, jarres, lanternes
+  K.box('kh_planks', 0x7a5a3a, 834.5, y + 2.4, 766, 838.5, y + 2.5, 776).box('kh_planks', 0x6b4a30, 834.6, y, 766.1, 834.8, y + 2.4, 766.3).box('kh_planks', 0x6b4a30, 834.6, y, 775.7, 834.8, y + 2.4, 775.9);
+  for (const [x, z] of [[829, 758], [843, 758], [858, 762], [863, 776], [832, 784]]) K.cyl('kh_mudbrick', 0xb07850, x, y + 0.4, z, 0.3, 0.8, 10);
+  owLamp(K, 827, y + 2.6, 757.1, 0xffc070, false, 0.7); owLamp(K, 851, y + 2.6, 757.6, 0xffc070, false, 0.7); owLamp(K, 859.4, y + 2.6, 782, 0xffc070, false, 0.7);
+}
+
+/* ------------------------------------------------------ E : centrale */
+function khPlaceE(K) {
+  const y = owH(3515, 1620), P = (KH.places.E = { y });
+  // salle des turbines (grande porte à l'ouest, jours hauts), turbines, pont roulant
+  owHouse(K, { x0: 3520, z0: 1586, x1: 3552, z1: 1602, y, h: 10, wall: 'kh_concrete', roof: 'gable', rise: 2.4, roofTex: 'kh_sheet', floorTex: 'kh_floor',
+    doors: [['w', 4, 8, 5.2], ['e', 6, 2, 2.4]], wins: [['n', 4, 6, 6.5, 8.6], ['n', 14, 6, 6.5, 8.6], ['n', 24, 6, 6.5, 8.6], ['s', 4, 6, 6.5, 8.6], ['s', 14, 6, 6.5, 8.6], ['s', 24, 6, 6.5, 8.6]] });
+  for (const x of [3530, 3540]) {
+    K.cyl('kh_sheet', 0x5f7a6a, x, y + 1.6, 1594, 2.2, 5, 20, 0, Math.PI / 2).box('kh_concrete', 0xb8b0a0, x - 3, y, 1591.4, x + 3, y + 0.6, 1596.6);
+    K.solid(x - 2.6, 1592, x + 2.6, 1596, OWK.LOW, { base: y, top: y + 3.8, mat: OWM.METAL });
+  }
+  K.box('kh_sheet', 0xc8a030, 3521, y + 8.6, 1593.5, 3551, y + 9.1, 1594.5);
+  P.wall = [['stg44', 3521.08, 1589], ['bar', 3521.08, 1599.5]].map(([w, x, z]) => ({ w, x, y, z, nx: 1, nz: 0, h: 1.7 }));
+  // poste de commande (disjoncteur, chargeur de la batterie)
+  owHouse(K, { x0: 3524, z0: 1610, x1: 3534, z1: 1620, y, h: 3.6, wall: 'kh_concrete', roof: 'flat', roofTex: 'kh_concrete', parapet: 0.3, floorTex: 'kh_floor', doors: [['w', 4, 2]], wins: [['n', 3, 4, 1.1, 2.3], ['s', 3, 4, 1.1, 2.3]] });
+  K.box('kh_sheet', 0x6c7a72, 3531.5, y, 1611.2, 3532.9, y + 2, 1618.8);           // pupitre
+  K.solid(3531, 1611, 3533, 1619, OWK.LOW, { base: y, top: y + 1.2, mat: OWM.METAL });
+  // parc des transformateurs (grillage : on tire au travers, on ne passe pas)
+  const fence = (x0, z0, x1, z1) => {
+    owFill(OW.surf, x0, z0, x1, z1, OWK.WINDOW, { base: y - 0.2, top: y + 2.4, lo: y - 0.2, hi: y + 2.3, mat: OWM.METAL });
+    K.box('kh_sheet', 0x8a8a84, x0, y + 2.25, z0, x1, y + 2.35, z1);
+  };
+  fence(3540, 1608, 3560, 1609); fence(3540, 1627, 3560, 1628); fence(3559, 1609, 3560, 1627); fence(3540, 1609, 3541, 1615); fence(3540, 1620, 3541, 1627);
+  for (let x = 3540; x <= 3560; x += 2.5) for (const z of [1608.5, 1627.5]) K.box('kh_sheet', 0x6a6a64, x - 0.04, y, z - 0.04, x + 0.04, y + 2.4, z + 0.04);
+  const net = khFenceMesh([[3540, 1608.5, 3560, 1608.5], [3540, 1627.5, 3560, 1627.5], [3559.5, 1609, 3559.5, 1627], [3540.5, 1609, 3540.5, 1615], [3540.5, 1620, 3540.5, 1627]], y, 2.3);
+  K.add(net);
+  for (const z of [1611, 1617, 1623]) {
+    K.box('kh_sheet', 0x6e7a6a, 3549, y, z - 1.2, 3553, y + 2.8, z + 1.2);
+    for (const x of [3550, 3551.5]) K.cyl('kh_concrete', 0xb06a40, x, y + 3.2, z, 0.12, 0.8, 8);
+    K.solid(3549, z - 1.2, 3553, z + 1.2, OWK.SOLID, { base: y, top: y + 2.8, mat: OWM.METAL });
+  }
+  // conduite de la prise d'eau, jusqu'au Nil
+  const xb = KH.nileBank(1597);
+  K.cyl('kh_sheet', 0x6a6e66, (3552 + xb) / 2, y + 1.2, 1597, 0.6, xb - 3552, 14, 0, Math.PI / 2);
+  for (let x = 3556; x < xb; x += 14) { const g = owH(x, 1597); K.box('kh_concrete', 0xa8a090, x - 0.3, g - 0.4, 1596.2, x + 0.3, y + 0.7, 1597.8); }
+  owFill(OW.surf, 3552, 1596, xb, 1598, OWK.LOW, { base: y, top: y + 1.9, mat: OWM.METAL });
+  // abri du camion blindé (toit sur poteaux)
+  for (const [x, z] of [[3496.5, 1637.5], [3507.5, 1637.5], [3496.5, 1654.5], [3507.5, 1654.5]]) { K.box('kh_sheet', 0x4a4a46, x - 0.15, y, z - 0.15, x + 0.15, y + 4.6, z + 0.15); K.solid(x - 0.15, z - 0.15, x + 0.15, z + 0.15, OWK.SOLID, { base: y, top: y + 4.6, mat: OWM.METAL }); }
+  K.gable('kh_sheet', 0xffffff, 3495.6, 1636.6, 3508.4, 1655.4, y + 4.6, 1.0, false);
+  P.fuel = { x: 3512.5, y, z: 1638 };
+  khJerricans(K, P.fuel.x, y, P.fuel.z);
+  // éclairage au sodium (la nuit à la centrale)
+  for (const [x, z, a] of [[3516, 1584, [0, -0.8]], [3516, 1606, [0.8, 0]], [3538, 1606, [0, 0.8]], [3556, 1606, [0, 0.8]], [3517, 1630, [0.8, 0]], [3500, 1660, [0, -0.8]]]) owLampPost(K, x, y, z, 6, 0xffa850, false, a);
+  owLamp(K, 3536, y + 9.4, 1594, 0xfff0d0, true, 1.2); owLamp(K, 3529, y + 3.3, 1615, 0xfff0d0, true, 0.8);
+  P.breakers = [{ x: 3550.7, y, z: 1599.8, nx: -1, nz: 0, name: 'salle des turbines' }, { x: 3524.9, y, z: 1612.5, nx: 1, nz: 0, name: 'poste de commande' }, { x: 3557, y, z: 1625, nx: -1, nz: 0, name: 'transformateurs' }];
+  P.battery = { x: 3527.5, y, z: 1618.7 };
+  P.box = { x: 3526, y, z: 1626.5, face: [0, -1] };
+  P.refuge = [{ x0: 3525, z0: 1611, x1: 3533, z1: 1619, name: 'poste de commande' }, { x0: 3521, z0: 1587, x1: 3551, z1: 1601, name: 'salle des turbines' }];
+}
+/* Grillage : panneaux transparents (texture de mailles). */
+function khFenceMesh(segs, y, h) {
+  if (!OWT.mesh) {
+    const c = makeCanvas(64, 64), g = c.getContext('2d');
+    g.strokeStyle = 'rgba(70,72,70,0.95)'; g.lineWidth = 2;
+    for (let i = -64; i < 128; i += 16) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 64, 64); g.stroke(); g.beginPath(); g.moveTo(i + 64, 0); g.lineTo(i, 64); g.stroke(); }
+    OWT.mesh = share(toTex(c));
+  }
+  const pos = [], uv = [];
+  for (const [x0, z0, x1, z1] of segs) {
+    const L = Math.hypot(x1 - x0, z1 - z0);
+    pos.push(x0, y, z0, x1, y, z1, x1, y + h, z1, x0, y, z0, x1, y + h, z1, x0, y + h, z0);
+    uv.push(0, 0, L / 0.5, 0, L / 0.5, h / 0.5, 0, 0, L / 0.5, h / 0.5, 0, h / 0.5);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: OWT.mesh, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.4 }));
+}
+
+/* ----------------------------------------------------- F : nécropole */
+function khPlaceF(K) {
+  const P = (KH.places.F = { tombs: [] });
+  // tombeaux taillés au pied de la falaise nord de l'oued : façade, piliers, chambre (refuge)
+  for (const [xc, big] of [[330, false], [404, false], [636, true], [702, false], [764, false]]) {
+    // pied de la falaise : premier point (en remontant vers le nord) 3,5 m au-dessus du fond
+    const floorY = owH(xc, 2240);
+    let zf = 2240;
+    while (zf > 2050 && owH(xc, zf) < floorY + 3.5) zf -= 1;
+    zf = Math.ceil(zf) + 1;
+    const w = big ? 11 : 8, d = big ? 9 : 7, h = big ? 8 : 6.5, y = Math.min(floorY, owH(xc, zf + 1)) + 0.1;
+    const x0 = Math.round(xc - w / 2), x1 = x0 + w, z1 = zf + 1, z0 = z1 - d;        // la chambre s'enfonce vers le nord
+    owHouse(K, { x0, z0, x1, z1, y, h: 3.2, wall: 'kh_rock', roof: 'flat', roofTex: 'kh_rock', floorTex: 'kh_rock', doors: [['s', Math.floor(w / 2) - 1, 2, 2.6]] });
+    // façade : bloc de roche au-dessus de l'entrée, linteau gravé, deux piliers
+    K.box('kh_rock', 0xd8b890, x0 - 1, y + 3.2, z1 - 1.2, x1 + 1, y + h, z1 + 0.3);
+    K.box('kh_sandstone', 0xe6d2b0, x0 + 1, y + 2.7, z1 - 0.05, x1 - 1, y + 3.3, z1 + 0.45);
+    for (const px of [x0 + Math.floor(w / 2) - 2.2, x0 + Math.floor(w / 2) + 1.4]) { K.box('kh_sandstone', 0xe0caa4, px, y, z1 + 0.05, px + 0.8, y + 2.7, z1 + 0.85); K.solid(px, z1, px + 0.8, z1 + 1, OWK.SOLID, { base: y, top: y + 2.7, mat: OWM.STONE }); }
+    K.box('kh_rock', 0xc8a882, x0 - 1, y - 0.3, z0 - 0.5, x0, y + h, z1 + 0.3).box('kh_rock', 0xc8a882, x1, y - 0.3, z0 - 0.5, x1 + 1, y + h, z1 + 0.3);
+    // sarcophage
+    const cx = (x0 + x1) / 2;
+    K.box('kh_sandstone', 0xcdb08a, cx - 1.1, y, z0 + 1.6, cx + 1.1, y + 1.0, z0 + 2.6);
+    K.solid(cx - 1.1, z0 + 1.6, cx + 1.1, z0 + 2.6, OWK.LOW, { base: y, top: y + 1, mat: OWM.STONE });
+    owLamp(K, cx, y + 2.6, z0 + 3.5, 0xffa040, false, 0.7);
+    P.tombs.push({ x0, z0, x1, z1, y, big });
+  }
+  const T = P.tombs[2];
+  P.perk = { id: 'cuirasse', x: T.x0 + 1.05, y: T.y, z: (T.z0 + T.z1) / 2 + 1, face: [1, 0], roomH: 3.2 };
+  P.wall = [{ w: 'mg42', x: P.tombs[1].x1 - 1.08, y: P.tombs[1].y, z: (P.tombs[1].z0 + P.tombs[1].z1) / 2, nx: -1, nz: 0, h: 1.6 }];
+  P.refuge = P.tombs.map((t) => ({ x0: t.x0 + 1, z0: t.z0 + 1, x1: t.x1 - 1, z1: t.z1 - 1, name: 'tombeau' }));
+  P.box = { x: P.tombs[3].x0 + 2, y: P.tombs[3].y, z: P.tombs[3].z1 + 3, face: [0, 1] };
+}
+
+/* ----------------------------------------------------- G : aérodrome */
+function khPlaceG(K) {
+  const y = owH(2990, 445), P = (KH.places.G = { y });
+  // deux hangars (portes au nord, vers la piste)
+  for (const x0 of [2790, 2830]) {
+    owHouse(K, { x0, z0: 370, x1: x0 + 32, z1: 392, y, h: 8, wall: 'kh_sheet', wallHex: 0xd0ccc0, roof: 'gable', rise: 3.2, roofTex: 'kh_sheet', floorTex: 'kh_concrete',
+      doors: [['n', 7, 18, 6.8], ['s', 14, 2, 2.4]], wins: [['e', 6, 8, 5, 7], ['w', 6, 8, 5, 7]] });
+    owLamp(K, x0 + 16, y + 7.6, 381, 0xfff0d8, true, 1.2);
+  }
+  owCrate(K, 2794, y, 389, 1); owCrate(K, 2795.2, y, 389.3, 1); owCrate(K, 2794.5, y + 1, 389.1, 0.8);
+  owBarrel(K, 2818, y, 389); owBarrel(K, 2818.8, y, 388.2, 0x3c6a8a);
+  P.wall = [['ppsh', 2791.08, 376], ['fg42', 2791.08, 384]].map(([w, x, z]) => ({ w, x, y, z, nx: 1, nz: 0, h: 1.7 }));
+  P.perk = { id: 'mainleste', x: 2860.95, y, z: 386, face: [-1, 0], roomH: 8 };
+  P.box = { x: 2846, y, z: 389.6, face: [0, -1] };
+  // tour de contrôle : fût, escalier à l'est, cabine vitrée à 12 m (vue sur toute la carte)
+  khTower(K, 2880, 360, y);
+  // camion-citerne (décor) et jerricans
+  khTanker(K, 2952, 424, y);
+  P.fuel = { x: 2946, y, z: 418 };
+  khJerricans(K, P.fuel.x, y, P.fuel.z);
+  // balisage de la piste (allumé avec le courant)
+  const r = OW.roads.find((q) => q.id === 'runway'), pts = r.line.pts, cum = r.line.cum;
+  for (let s = 10; s < r.line.len - 5; s += 45) {
+    let i = 0;
+    while (i < cum.length - 2 && cum[i + 1] < s) i++;
+    const a = pts[i], b = pts[i + 1], t = (s - cum[i]) / (cum[i + 1] - cum[i]), x = lerp(a[0], b[0], t), z = lerp(a[1], b[1], t);
+    const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz), px = -dz / l, pz = dx / l;
+    for (const sd of [-1, 1]) { const lx = x + px * 16.5 * sd, lz = z + pz * 16.5 * sd; owLamp(K, lx, owH(lx, lz) + 0.35, lz, sd > 0 ? 0xffc070 : 0x8fd0ff, true, 0.6); }
+  }
+  for (const [x, z] of [[2786, 360], [2870, 400], [2930, 440]]) owLampPost(K, x, y, z, 6, 0xffc890, false, [0, -0.8]);
+  P.plane = { x: 3000, y: owH(3000, 300), z: 300 };
+  khPlane(K, P.plane.x, P.plane.y, P.plane.z);
+  P.refuge = [{ x0: 2791, z0: 371, x1: 2821, z1: 391, name: 'hangar' }, { x0: 2831, z0: 371, x1: 2861, z1: 391, name: 'hangar' }];
+}
+/* Tour de contrôle : fût de béton 6 × 6, escalier droit à l'est (rampes), cabine vitrée. */
+function khTower(K, x0, z0, y) {
+  const H = 12, x1 = x0 + 6, z1 = z0 + 6;
+  K.box('kh_concrete', 0xdad4c6, x0, y - 0.3, z0, x1, y + H, z1);
+  K.solid(x0, z0, x1, z1, OWK.SOLID, { base: y - 0.3, top: y + H, mat: OWM.STONE });
+  // escalier : de (x1, z1 + 15) vers le nord jusqu'au palier, 16 marches de 0,75 m
+  const sx0 = x1, sx1 = x1 + 2, n = 16;
+  for (let i = 0; i < n; i++) {
+    const zc = z1 + n - 1 - i, b = y + i * 0.75;
+    owFill(OW.surf, sx0, zc, sx1, zc + 1, OWK.RAMP, { base: b, top: b + 0.75, dir: 3, mat: OWM.METAL });
+    K.box('kh_sheet', 0x8a8a84, sx0, b + 0.65, zc, sx1, b + 0.75, zc + 1);
+    K.box('kh_sheet', 0x5a5a56, sx0, b - 0.3, zc + 0.9, sx1, b + 0.75, zc + 1);
+  }
+  // rampes (garde-corps) et poteaux
+  K.box('kh_sheet', 0x3a3a38, sx1 - 0.05, y + 1, z1, sx1 + 0.02, y + H + 1, z1 + n);
+  for (let i = 0; i <= n; i += 4) K.box('kh_sheet', 0x3a3a38, sx1 - 0.08, y, z1 + n - i - 0.08, sx1, y + i * 0.75 + 1, z1 + n - i);
+  // palier devant la cabine, côté est
+  owFill(OW.surf, sx0, z0 + 1, sx1, z1, OWK.FLOOR, { base: y + H, mat: OWM.METAL });
+  owFill(OW.surf, sx0, z0, sx1, z0 + 1, OWK.LOW, { base: y + H, top: y + H + 1.05, mat: OWM.METAL });       // garde-corps au nord du palier
+  K.box('kh_sheet', 0x8a8a84, sx0, y + H - 0.15, z0, sx1, y + H, z1);
+  K.box('kh_sheet', 0x3a3a38, sx0, y + H, z0, sx1, y + H + 1.05, z0 + 0.08);
+  // cabine : vitres tout autour (on tire au travers), toit débordant, porte à l'est
+  const cy = y + H;
+  const win = { base: y - 0.3, top: cy + 3, lo: cy + 1.0, hi: cy + 2.7, mat: OWM.METAL };
+  owFill(OW.surf, x0, z0, x1 - 1, z0 + 1, OWK.WINDOW, win);
+  owFill(OW.surf, x0, z1 - 1, x1 - 1, z1, OWK.WINDOW, win);
+  owFill(OW.surf, x0, z0 + 1, x0 + 1, z1 - 1, OWK.WINDOW, win);              // face est : ouverte (porte), sur le fût plein
+  K.box('kh_concrete', 0xcfc8b8, x0, cy, z0, x1, cy + 1.0, z0 + 0.3).box('kh_concrete', 0xcfc8b8, x0, cy, z1 - 0.3, x1, cy + 1.0, z1).box('kh_concrete', 0xcfc8b8, x0, cy, z0, x0 + 0.3, cy + 1.0, z1);
+  K.box('kh_concrete', 0xcfc8b8, x0 - 0.5, cy + 2.9, z0 - 0.5, x1 + 0.5, cy + 3.3, z1 + 0.5);
+  for (const [a, b] of [[x0, z0], [x1 - 0.15, z0], [x0, z1 - 0.15], [x1 - 0.15, z1 - 0.15]]) K.box('kh_sheet', 0x3a3a38, a, cy + 1, b, a + 0.15, cy + 2.9, b + 0.15);
+  K.add(owMeshAt(new THREE.BoxGeometry(6, 1.9, 6), VMAT.glass, x0 + 3, cy + 1.95, z0 + 3));
+  owLamp(K, x0 + 3, cy + 3.5, z0 + 3, 0xff3a2a, true, 0.8);
+}
+/* Camion-citerne (décor : il ne roule pas). */
+function khTanker(K, x, z, y) {
+  K.box('kh_sheet', 0x2a2826, x - 1.1, y + 0.6, z - 4.5, x + 1.1, y + 1.0, z + 4.5);
+  K.box('kh_sheet_red', 0xc8b040, x - 1.2, y + 1.0, z - 4.6, x + 1.2, y + 3.0, z - 2.6);
+  K.add(owMeshAt(new THREE.BoxGeometry(2.0, 0.7, 0.05), VMAT.glass, x, y + 2.4, z - 4.63));
+  K.cyl('kh_paint', 0xdcd6c8, x, y + 2.15, z + 1.0, 1.15, 6.6, 16, Math.PI / 2, 0);
+  for (const zz of [-3.6, 1.8, 3.4]) for (const sd of [-1, 1]) K.cyl('kh_sheet', 0x1e1c1a, x + sd * 1.05, y + 0.5, z + zz, 0.5, 0.35, 12, 0, Math.PI / 2);
+  const d = vehDecal([['CARBURANT AVIATION', 0.36, 0.5, 800]], 4.6, 0.6, '#9c2f22');
+  d.position.set(x + 1.16, y + 2.2, z + 1.0); d.rotation.y = Math.PI / 2; K.add(d);
+  K.solid(x - 1.2, z - 4.6, x + 1.2, z + 4.6, OWK.SOLID, { base: y, top: y + 3.3, mat: OWM.METAL });
+}
+
+/* Avion de transport KH-47 (planche des véhicules) : aile haute, deux turbopropulseurs, dérive à
+   bout rouge, bande rouge, rampe arrière ; nez vers -x. Non pilotable : l'objectif final. */
+function khPlane(K, x, y, z) {
+  const W = 0xf0ece4, R = 0xa8432a, yc = y + 2.6, rf = 1.45;
+  const ax = (geo) => geo.rotateZ(Math.PI / 2);          // axe des cylindres le long de x
+  K.geo('kh_paint', W, ax(new THREE.CylinderGeometry(rf, rf, 15, 24)), mtx(x + 1.5, yc, z));
+  K.geo('kh_paint', W, ax(new THREE.CylinderGeometry(rf, 0.45, 3.6, 24)), mtx(x - 7.8, yc - 0.15, z));
+  K.geo('kh_paint', W, ax(new THREE.CylinderGeometry(0.55, rf, 3.4, 24)), mtx(x + 10.7, yc + 0.55, z));
+  // poste de pilotage, hublots, bande rouge, inscription
+  K.add(owMeshAt(new THREE.BoxGeometry(1.4, 0.55, 1.9), VMAT.glass, x - 6.9, yc + 0.95, z, 0, 0, 0.45));
+  for (const sd of [-1, 1]) {
+    K.box('kh_sheet_red', R, x - 5.8, yc + 0.05, z + sd * (rf - 0.02) - 0.03, x + 8.6, yc + 0.32, z + sd * (rf - 0.02) + 0.03);
+    for (let i = 0; i < 8; i++) K.box('kh_sheet', 0x26303a, x - 4.6 + i * 1.6, yc + 0.48, z + sd * (rf - 0.01) - 0.03, x - 4.2 + i * 1.6, yc + 0.78, z + sd * (rf - 0.01) + 0.03);
+    const d = vehDecal([['KH-47', 0.7, 0.5, 800]], 2.4, 0.6, '#3a3632');
+    d.position.set(x - 4.5, yc - 0.55, z + sd * (rf + 0.02)); d.rotation.y = sd > 0 ? 0 : Math.PI; K.add(d);
+  }
+  // aile haute, moteurs, hélices
+  K.box('kh_paint', W, x - 2.4, yc + rf - 0.1, z - 13, x + 1.2, yc + rf + 0.3, z + 13);
+  K.box('kh_sheet', 0xdcd6ca, x - 2.0, yc + rf - 0.35, z - 1.6, x + 1.5, yc + rf, z + 1.6);
+  for (const sd of [-1, 1]) {
+    const ez = z + sd * 4.6;
+    K.geo('kh_paint', W, ax(new THREE.CylinderGeometry(0.62, 0.55, 4.2, 18)), mtx(x - 1.6, yc + rf - 0.55, ez));
+    K.geo('kh_sheet', 0x3a3632, ax(new THREE.CylinderGeometry(0.22, 0.42, 0.7, 14)), mtx(x - 4.0, yc + rf - 0.55, ez));
+    for (let b = 0; b < 4; b++) K.box('kh_sheet', 0x2a2826, x - 4.25, yc + rf - 0.55 - 0.09, ez - 1.9, x - 4.15, yc + rf - 0.55 + 0.09, ez + 1.9, { });
+    K.geo('kh_sheet', 0x2a2826, new THREE.BoxGeometry(0.1, 3.8, 0.18), mtx(x - 4.2, yc + rf - 0.55, ez, 0, 0, 0));
+  }
+  // dérive (bout rouge), empennage, rampe arrière, train d'atterrissage
+  K.geo('kh_paint', W, khFin(4.2, 3.4, 1.6), mtx(x + 9.2, yc + rf - 0.1, z));
+  K.geo('kh_sheet_red', R, khFin(1.0, 1.9, 0.95), mtx(x + 10.9, yc + rf + 3.1, z));
+  K.box('kh_paint', W, x + 9.8, yc + 0.9, z - 4.2, x + 11.6, yc + 1.1, z + 4.2);
+  K.box('kh_sheet', 0xcfc8ba, x + 11.6, y + 0.4, z - 1.1, x + 13.6, y + 0.6, z + 1.1, {});
+  for (const sd of [-1, 1]) {
+    K.box('kh_sheet', 0xe2ddd2, x - 0.5, y + 0.9, z + sd * 1.3 - 0.45, x + 3.0, y + 2.0, z + sd * 1.3 + 0.45);
+    for (const gx of [0.2, 2.2]) K.cyl('kh_sheet', 0x1e1c1a, x + gx, y + 0.55, z + sd * 1.55, 0.55, 0.4, 14, Math.PI / 2, 0);
+  }
+  K.cyl('kh_sheet', 0x1e1c1a, x - 7.2, y + 0.42, z, 0.42, 0.3, 12, Math.PI / 2, 0).box('kh_sheet', 0x8a8a84, x - 7.25, y + 0.42, z - 0.05, x - 7.15, yc - 1.2, z + 0.05);
+  // collisions : fuselage, moteurs bas
+  K.solid(x - 9.4, z - 1.4, x + 12, z + 1.4, OWK.SOLID, { base: y, top: yc + rf, mat: OWM.METAL });
+  for (const sd of [-1, 1]) K.solid(x - 3.8, z + sd * 4.6 - 0.6, x + 0.6, z + sd * 4.6 + 0.6, OWK.SOLID, { base: yc + rf - 1.2, top: yc + rf, mat: OWM.METAL });
+}
+/* Dérive : trapèze extrudé (base b, sommet t, hauteur h ; en x le long du fuselage). */
+function khFin(h, b, t) {
+  const sh = new THREE.Shape();
+  sh.moveTo(-b / 2, 0); sh.lineTo(b / 2, 0); sh.lineTo(b / 2 + 0.2, h); sh.lineTo(b / 2 + 0.2 - t, h); sh.closePath();
+  return new THREE.ExtrudeGeometry(sh, { depth: 0.24, bevelEnabled: false }).translate(0, 0, -0.12);
+}
+
+/* ---------------------------------------------------- Éléments de jeu --
+   Armes au mur (craie), atouts (les cinq Élixirs, répartis entre les lieux), boîte mystère (qui
+   voyage d'un lieu à l'autre), jerricans (plein du véhicule le plus proche), disjoncteurs de la
+   centrale (les trois tenus : le courant). Les mécanismes sont ceux du jeu (achat, boisson,
+   tirage) ; seuls les emplacements viennent du monde ouvert. */
+const KHF = { breakers: [], fuel: [] };
+function owBuildFeatures(root) {
+  const group = new THREE.Group();
+  group.name = 'éléments';
+  Features.group = group;
+  const P = KH.places;
+  // armes au mur
+  for (const id of ['A', 'C', 'D', 'E', 'F', 'G']) for (const wb of P[id].wall || []) owWallbuy(group, wb);
+  // atouts
+  for (const id of ['A', 'C', 'D', 'F', 'G']) if (P[id].perk) owPerk(group, P[id].perk);
+  // boîte mystère : au camp au départ, puis ailleurs
+  const spots = ['A', 'C', 'D', 'E', 'G', 'B', 'F'].map((id) => P[id].box).filter(Boolean);
+  LAYOUT.boxes = spots.map((b) => ({ cells: [[b.x - 0.5, b.z - 0.5], [b.x - 0.5, b.z - 0.5]], face: b.face, lv: 0 }));
+  LAYOUT.boxStart = 0;
+  buildBox(group);
+  Features.box.locs.forEach((L, i) => { L.E = spots[i].y; L.x = spots[i].x; L.z = spots[i].z; L.ow = true; });
+  placeBox(Features.box.cur);
+  // carburant
+  KHF.fuel = ['C', 'E', 'G'].map((id) => P[id].fuel).filter(Boolean);
+  for (const f of KHF.fuel) Features.interactables.push(owFuelPoint(f));
+  // disjoncteurs de la centrale
+  KHF.breakers = P.E.breakers.map((b, i) => owBreaker(group, b, i));
+  linearizeTree(group);
+  root.add(group);
+}
+function owResetFeatures() {
+  for (const b of KHF.breakers) { b.held = 0; b.done = false; owBreakerLook(b); }
+}
+
+/* ---- Arme au mur : dessin à la craie sur le support, achat et munitions comme ailleurs */
+function owWallbuy(group, wb) {
+  const def = WEAPONS[wb.w], price = wallbuyPrice(wb);
+  const mat = new THREE.MeshStandardMaterial({ map: chalkTexture(wb.w), transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const mesh = new THREE.Mesh(GEO.plane, mat);
+  mesh.scale.set(1.6, 0.8, 1);
+  mesh.position.set(wb.x + wb.nx * 0.02, wb.y + wb.h, wb.z + wb.nz * 0.02);
+  mesh.lookAt(mesh.position.x + wb.nx, mesh.position.y, mesh.position.z + wb.nz);
+  group.add(mesh);
+  Features.interactables.push({
+    kind: 'wallbuy', x: wb.x + wb.nx * 0.75, z: wb.z + wb.nz * 0.75, y: wb.y, r: 1.35,
+    prompt() {
+      const slot = Arms.slots.find((s) => s && s.id === wb.w);
+      if (!slot) return { text: `Appuyez sur F pour acheter ${def.name}`, cost: price };
+      if (slot.res >= wstat(slot, 'res')) return { text: 'Munitions au maximum', disabled: true };
+      return { text: `Appuyez sur F pour acheter des munitions (${wstat(slot, 'name')})`, cost: slot.up ? RULES.ampAmmoCost : Math.round(price / 2) };
+    },
+    use() {
+      if (armsBusy()) return;
+      const slot = Arms.slots.find((s) => s && s.id === wb.w);
+      if (!slot) { if (trySpend(price)) { giveWeapon(wb.w); Life.add('wallbuys'); } return; }
+      if (slot.res >= wstat(slot, 'res')) return;
+      if (trySpend(slot.up ? RULES.ampAmmoCost : Math.round(price / 2))) { slot.res = wstat(slot, 'res'); HUD.weapon(); }
+    },
+  });
+}
+
+/* ---- Atout : machine posée dos au mur (face vers l'avant), boisson comme ailleurs */
+function owPerk(group, pm) {
+  const D = ELIXIRS[pm.id], [fx, fz] = pm.face;
+  const roomH = pm.roomH || 6, s = Math.min(1, (roomH - 0.05) / D.h);
+  const built = buildPerkMachine(pm.id, s);
+  built.group.position.set(pm.x, pm.y, pm.z);
+  built.group.rotation.y = Math.atan2(fx, fz);
+  group.add(built.group);
+  const depth = D.d * s;
+  const m = Object.assign(built, {
+    id: pm.id, active: true, cell: [Math.floor(pm.x), Math.floor(pm.z)], side: [], sinkT: -1, li: 0, E: pm.y, deep: true,
+    lightLocal: built.light.pos.clone(), worldPos: new THREE.Vector3(pm.x + fx * depth * 0.5, pm.y + 1.2, pm.z + fz * depth * 0.5), ceilY: roomH / s,
+  });
+  built.group.updateMatrixWorld(true);
+  lightMachine(m, !PERKS[pm.id].power);
+  updateElixir(m, 0);
+  Features.perkMachines.push(m);
+  // emprise au sol (la machine arrête les corps et les balles)
+  const w = D.w * s, rx = -fz, rz = fx;
+  const ax = [pm.x + rx * w / 2, pm.x - rx * w / 2, pm.x + rx * w / 2 + fx * depth, pm.x - rx * w / 2 + fx * depth];
+  const az = [pm.z + rz * w / 2, pm.z - rz * w / 2, pm.z + rz * w / 2 + fz * depth, pm.z - rz * w / 2 + fz * depth];
+  owFill(OW.surf, Math.min(...ax) + 0.15, Math.min(...az) + 0.15, Math.max(...ax) - 0.15, Math.max(...az) - 0.15, OWK.LOW, { base: pm.y, top: pm.y + Math.min(roomH, D.h * s), mat: OWM.METAL });
+  Features.interactables.push({
+    kind: 'perk', machine: m, x: pm.x + fx * (depth + 0.6), z: pm.z + fz * (depth + 0.6), y: pm.y, r: 1.6,
+    prompt() {
+      if (!m.active || (Arms.state === 'drink' && Arms.drinkId === m.id)) return null;
+      const perk = PERKS[m.id];
+      if (perk.power && !G.power) return { text: 'Il faut d\'abord rétablir le courant (centrale du Nil)', disabled: true };
+      if (player.perks.has(m.id)) return null;
+      if (player.perks.size >= MAX_PERKS) return { text: `Vous avez déjà ${MAX_PERKS} atouts`, disabled: true };
+      return { text: `Appuyez sur F pour boire ${perk.name}`, cost: perk.cost, sub: perk.desc };
+    },
+    use() {
+      if (!m.active || armsBusy() || player.perks.has(m.id) || player.perks.size >= MAX_PERKS) return;
+      if (PERKS[m.id].power && !G.power) return;
+      if (trySpend(PERKS[m.id].cost)) { startDrink(m.id); elixirPlay(m); Life.add('perks'); }
+    },
+  });
+}
+/* Boîte mystère : ses deux cases deviennent des solides bas (et retrouvent leur état quand elle part). */
+function owBoxProp(prev, L) {
+  if (prev && prev.owSaved) for (const c of prev.owSaved) owSet(OW.surf, c.x, c.z, c.kind, c);
+  if (prev) prev.owSaved = null;
+  const rx = -L.face[1], rz = L.face[0];
+  L.owSaved = [];
+  for (const sd of [0.5, -0.5]) {
+    const x = Math.floor(L.x + rx * sd), z = Math.floor(L.z + rz * sd), ch = owChunk(OW.surf, x, z), i = owIdx(x, z);
+    const c = ch ? { x, z, kind: ch.kind[i], base: ch.base[i], top: ch.top[i], lo: ch.lo[i], hi: ch.hi[i], ceil: ch.ceil[i], roof: ch.roof[i], dir: ch.dir[i], mat: ch.mat[i], door: ch.door[i] } : { x, z, kind: OWK.TERRAIN };
+    if (c.kind !== OWK.TERRAIN && c.kind !== OWK.FLOOR) continue;
+    L.owSaved.push(c);
+    owSet(OW.surf, x, z, OWK.LOW, { base: L.E, top: L.E + 0.8, mat: OWM.WOOD });
+  }
+}
+
+/* ---- Jerricans : plein du véhicule le plus proche (deux jerricans font le plein) */
+function owFuelPoint(f) {
+  const near = () => {
+    let best = null, bd = 14;
+    for (const V of VEH.list) { const d = Math.hypot(V.x - f.x, V.z - f.z); if (d < bd && V.fuel < V.T.fuel - 1) { bd = d; best = V; } }
+    return best;
+  };
+  return {
+    kind: 'fuel', x: f.x, z: f.z, y: f.y, r: 1.6,
+    prompt() {
+      const V = near();
+      if (!V) return { text: 'Jerricans : amenez un véhicule à moins de 14 m', disabled: true };
+      return { text: `Appuyez sur F pour faire le plein (${V.T.short})`, sub: `Carburant ${Math.round((V.fuel / V.T.fuel) * 100)} %` };
+    },
+    use() {
+      const V = near();
+      if (!V) return;
+      V.fuel = V.T.fuel;
+      Sound.gulp(0);
+      HUD.hint(`Plein fait : ${V.T.name}`, 2);
+    },
+  };
+}
+
+/* ---- Disjoncteurs de la centrale : armoire, levier, voyant ; F maintenue 4 s chacun */
+function owBreaker(group, b, i) {
+  const g = new THREE.Group();
+  g.position.set(b.x, b.y, b.z);
+  g.rotation.y = Math.atan2(b.nx, b.nz);
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.6, 0.4), new THREE.MeshStandardMaterial({ color: 0x5a6a62, roughness: 0.55, metalness: 0.4 }));
+  cab.position.set(0, 1.0, 0.2); g.add(cab);
+  const lever = new THREE.Group(); lever.position.set(0.18, 1.0, 0.42);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.38, 0.06), new THREE.MeshStandardMaterial({ color: 0x2a2826, roughness: 0.6 }));
+  arm.position.y = 0.17; lever.add(arm);
+  const knob = new THREE.Mesh(GEO.sph, new THREE.MeshStandardMaterial({ color: 0xb83a28, roughness: 0.5 }));
+  knob.scale.setScalar(0.06); knob.position.y = 0.36; lever.add(knob);
+  g.add(lever);
+  const lamp = new THREE.Mesh(GEO.sph, new THREE.MeshBasicMaterial({ color: 0xff2a1a }));
+  lamp.scale.setScalar(0.05); lamp.position.set(-0.25, 1.6, 0.42); g.add(lamp);
+  const plate = vehDecal([[`DISJONCTEUR ${['I', 'II', 'III'][i]}`, 0.5, 0.5, 700]], 0.7, 0.14, '#e8e0cc');
+  plate.position.set(0, 1.62, 0.405); g.add(plate);
+  group.add(g);
+  owFill(OW.surf, b.x - 0.45, b.z - 0.45, b.x + 0.45, b.z + 0.45, OWK.LOW, { base: b.y, top: b.y + 1.8, mat: OWM.METAL });
+  const B = { ...b, i, g, lever, lamp, held: 0, done: false };
+  Features.interactables.push({
+    kind: 'breaker', x: b.x + b.nx * 0.9, z: b.z + b.nz * 0.9, y: b.y, r: 1.5, hold: true,
+    prompt() {
+      if (B.done || G.power) return null;
+      const n = KHF.breakers.filter((q) => q.done).length;
+      return { text: `Maintenez F pour enclencher le disjoncteur (${b.name})`, sub: `${Math.round((B.held / 4) * 100)} % · ${n}/3 enclenchés` };
+    },
+    useHold(dt) {
+      if (B.done || G.power) return;
+      B.held = Math.min(4, B.held + dt);
+      B.lever.rotation.x = -1.1 * (B.held / 4);
+      if (B.held >= 4) {
+        B.done = true; owBreakerLook(B);
+        Sound.powerOn();
+        const n = KHF.breakers.filter((q) => q.done).length;
+        if (n >= 3) activatePower();
+        else HUD.banner(`Disjoncteur ${['I', 'II', 'III'][i]}`, `${n}/3 enclenchés · il en reste ${3 - n}`, 'power');
+      }
+    },
+  });
+  return B;
+}
+function owBreakerLook(B) {
+  B.lamp.material.color.setHex(B.done || G.power ? 0x40ff60 : 0xff2a1a);
+  B.lever.rotation.x = B.done || G.power ? -1.1 : 0;
 }
 
 /* ====================================================== fin du monde ouvert == */
