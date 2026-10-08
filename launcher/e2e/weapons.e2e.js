@@ -3,7 +3,8 @@
    réelles (pièces mobiles, paliers du Glas, dessins à la craie, présentoirs), mains articulées
    ajustées sur chaque arme (paume, doigts et pouce contre l'arme, sans la traverser ; pouce posé
    sur l'arme ou les doigts ; poignet dans l'axe de l'avant-bras ; pistolets tenus d'une main, la
-   gauche ne venant que recharger), visée alignée sur les organes de visée, rechargement de chaque arme (tactique et à vide, durées,
+   gauche ne venant que recharger ; M1911 : main basse sur la poignée, pouce droit sur le flanc
+   gauche), visée alignée sur les organes de visée, rechargement de chaque arme (tactique et à vide, durées,
    munitions ajoutées au bon moment, pièces revenues en place), coup par coup interrompu par un tir,
    réarmement de la culasse à levier et de la pompe, atout Rechargement rapide, interruption par un
    changement d'arme, pas d'erreur.
@@ -106,6 +107,19 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
       ok(!one.length, 'M1911 et Désintégrateur tenus d’une main (main gauche hors champ au repos), les autres à deux mains', one);
       ok(!nofit.length, 'chaque doigt et chaque pouce trouve sa place contre l’arme (index sur la détente)', nofit);
       ok(!Object.keys(slow).length, `ajustement des mains en moins de 150 ms par arme (calculé pendant le menu ; le plus long : ${maxMs} ms)`, slow);
+      // M1911 (tenu d'une main) : main basse sur la poignée (base de l'index pas plus haut que la détente,
+      // majeur sous le pontet), pouce passé derrière la poignée et posé sur le flanc gauche
+      {
+        HOLD_CACHE.delete('m1911');
+        const g = buildGun('m1911', 0); g.updateMatrixWorld(true);
+        const H = gunHold(g), hand = buildHand(false);
+        hand.wrist.position.copy(H.R.p); hand.wrist.quaternion.copy(H.R.q); setHandPose(hand, H.R.pose); hand.wrist.updateMatrixWorld(true);
+        const tp = triggerPoint(g, g.userData), mcp = hand.fingers[0][0].getWorldPosition(new THREE.Vector3());
+        const up = -tp.clone().sub(mcp).dot(new THREE.Vector3(1, 0, 0).applyQuaternion(H.R.q)) * 1000;
+        const tip = hand.thumb[2].localToWorld(new THREE.Vector3(0, 0, -HAND.thumb.L[2])), knuckle = hand.thumb[1].getWorldPosition(new THREE.Vector3());
+        ok(up >= 0 && up <= 10, `M1911 : main basse sur la poignée (détente ${up.toFixed(1)} mm au-dessus de la base de l’index, majeur sous le pontet)`, up);
+        ok(tip.x < -0.016 && knuckle.z > 0.025, 'M1911 : pouce droit passé derrière la poignée, posé sur le flanc gauche', [tip.toArray(), knuckle.toArray()]);
+      }
       return out;
     }, GAME)).forEach(report);
 

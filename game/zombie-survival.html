@@ -6980,7 +6980,7 @@ const GUN_MODELS = {
     k.anchor('magwell', 0, P(0.078, 0.0235)[1], P(0.078, 0.0235)[0]);
     return {
       hipRot: [0.02, 0.22, 0.05], origin: [0, O[1], O[0]], muzzle: [0, 0, -0.0015], sight: 0.0157, eye: 0.5, hip: [0.13, -0.15, -0.42], ads: -0.42, one: true,
-      lh: [0, -0.07, 0.159], rk: 'pistol', lk: 'cup', lr: 0.03, magDir: [0, -dn[1], -dn[0]],
+      lh: [0, -0.07, 0.159], rk: 'handgun', lk: 'cup', lr: 0.03, magDir: [0, -dn[1], -dn[0]],
       deco: { barrels: [], plate: [0.0118, -0.001, 0.12, 0.05, 0.012] },
     };
   },
@@ -15178,12 +15178,17 @@ function handWrap(c, f, t, left, r, along, pose) {
    main, et le poignet reste dans l'axe de l'avant-bras ; pouce vers le haut, incliné de tf vers
    l'avant) ; main gauche (doigts f et pouce t dans le repère de l'arme). along : du poignet à l'axe
    tenu, le long des doigts ; r : demi-épaisseur tenue (de l'axe à la paume). Ajustement (plus bas) :
-   lift, hauteur de l'index droit par rapport à la détente ; thumbAt, point visé par le pouce (main
-   droite : décalage depuis la poignée ; main gauche : [écart au flanc gauche, hauteur en demi-
-   épaisseurs, avance], remplacé par info.lt si l'arme en donne un) ; thumbCup : point visé par le
-   pouce gauche depuis le centre de la coupe. */
+   lift, hauteur de l'index droit par rapport à la détente (level : mesurée en travers de la main,
+   sinon le long de la poignée) ; thumbAt, point visé par le pouce (main droite : décalage depuis la
+   poignée ; main gauche : [écart au flanc gauche, hauteur en demi-épaisseurs, avance], remplacé par
+   info.lt si l'arme en donne un) ; thumbTip, point vers lequel le bout du pouce se plie ; thumbSelf,
+   le pouce bute aussi contre les doigts ; thumbCup : point visé par le pouce gauche depuis le centre
+   de la coupe. handgun : pistolet tenu d'une main (M1911) : main plus basse, majeur sous le pontet,
+   pouce qui passe derrière la poignée, sous la sûreté de poignée, et longe le flanc gauche vers
+   l'avant (sur le bouton du chargeur), comme une vraie main. */
 const HOLD_KINDS = {
   pistol: { side: 0.2, tf: 0.35, along: 0.066, r: 0.0145, pose: 'pistol', thumbAt: [-0.024, 0.03, -0.03], lift: 0.004, pitch: 0.3 },
+  handgun: { side: 0.2, tf: 0.35, along: 0.066, r: 0.0145, pose: 'pistol', thumbAt: [-0.02, 0.028, 0.03], thumbTip: [-0.024, 0.03, -0.04], thumbSelf: true, lift: -0.006, pitch: 0.3, level: true },
   wrist: { side: 0.18, tf: 0.3, along: 0.062, r: 0.019, pose: 'wrist', thumbAt: [-0.03, -0.01, -0.02], lift: 0.004, pitch: 0.3 },
   fore: { f: [0.92, 0.12, -0.32], t: [-0.05, 0.22, -1], along: 0.054, thumbAt: [0.004, -0.3, 0.09] },
   vgrip: { f: [0.24, -0.08, -1], t: [0.05, 1, -0.2], along: 0.062, thumbAt: [0.004, 0.3, -0.02] },
@@ -15488,10 +15493,12 @@ function triggerIndex(G, hand, target, P) {
 }
 /* Pouce : la première phalange visée le long de aim (repère de l'arme), écartée de l'arme si elle la
    touche ; les deux autres se ferment jusqu'au contact. Pour les trois meilleures directions, le pouce
-   tourne aussi sur lui-même (plan de flexion) : sur une pièce mince, il s'enroule par-dessus.
+   tourne aussi sur lui-même (plan de flexion) : sur une pièce mince, il s'enroule par-dessus. tip :
+   point où le bout du pouce doit arriver (il tourne alors sur lui-même dans tous les sens, pour chaque
+   direction : un pouce qui passe derrière la poignée se replie vers l'avant sur l'autre flanc).
    Rend [écart, base, milieu, bout, rotation] ou null. */
 const _ftM = new THREE.Matrix4();
-function aimThumb(G, hand, aim, def, target = null) {
+function aimThumb(G, hand, aim, def, target = null, tip = null) {
   const [t1, t2, t3] = hand.thumb, TH = HAND.thumb, t0 = t1.parent;
   t0.updateMatrixWorld(true);
   if (target) aim = target.clone().sub(t0.getWorldPosition(new THREE.Vector3()));   // visée vers un point (flanc de la pièce tenue)
@@ -15514,17 +15521,22 @@ function aimThumb(G, hand, aim, def, target = null) {
     if (!r) return;
     const fin = r.touched ? r.a : [a0, def[2], def[3]];
     set(sp, fin, rl); t1.updateMatrixWorld(true);
-    tries.push({ d, sp, a0, score: 1.5 * nearCount(G, hand.thumb, TH.L, TH.r) + d.dot(base) - 0.15 * Math.abs(rl), t: [sp + 0.35, ...fin, rl] });
+    let score = 1.5 * nearCount(G, hand.thumb, TH.L, TH.r) + d.dot(base) - 0.15 * Math.abs(rl);
+    if (tip) score -= 100 * t3.localToWorld(_ftB.set(0, 0, -TH.L[2])).distanceTo(tip);     // bout du pouce vers tip
+    tries.push({ d, sp, a0, score, t: [sp + 0.35, ...fin, rl] });
   };
+  // tip : le pouce peut tourner sur lui-même dans tous les sens (pour se plier vers l'avant autour du dos
+  // de la poignée, par exemple) ; sinon, petites rotations sur les trois meilleures directions
+  const rolls = tip ? [0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0, 2.5, -2.5, Math.PI] : [0];
   for (const d of cands) {
     const [sp, a0] = angles(d);
     if (a0 < -0.9 || a0 > 1.1) continue;
     set(sp, [a0, 0.05, 0.05]); t1.updateMatrixWorld(true);
     if (phalanxHit(G, t1, TH.L[0], TH.r[0], false)) continue;
-    attempt(d, sp, a0, 0);
+    for (const rl of rolls) attempt(d, sp, a0, rl);
   }
   tries.sort((x, y) => y.score - x.score);
-  for (const b of tries.slice(0, 3)) for (const rl of [-0.4, 0.4, -0.8, 0.8, -1.2, 1.2]) attempt(b.d, b.sp, b.a0, rl);
+  if (!tip) for (const b of tries.slice(0, 3)) for (const rl of [-0.4, 0.4, -0.8, 0.8, -1.2, 1.2]) attempt(b.d, b.sp, b.a0, rl);
   let best = null;
   for (const b of tries) if (!best || b.score > best.score) best = b;
   return best && best.t;
@@ -15555,8 +15567,11 @@ function fitHold(T0, h, left, opts = {}) {
   // main droite : glissée le long de la poignée pour que l'index arrive à hauteur de la détente
   let slide = 0, push = 0, gap;
   if (opts.slide) {
-    const mcp = hand.fingers[0][0].getWorldPosition(new THREE.Vector3());
-    slide = clamp(opts.slide.target.clone().sub(mcp).dot(opts.slide.u) + opts.slide.delta, -0.012, 0.025);
+    // hauteur de l'index mesurée le long de la poignée (u), ou en travers de la main (a : l'index se plie
+    // dans le plan perpendiculaire ; une main en biais mesurée le long de u monte d'autant que la détente
+    // est devant elle)
+    const S = opts.slide, a = S.a || S.u, mcp = hand.fingers[0][0].getWorldPosition(new THREE.Vector3());
+    slide = clamp((S.target.clone().sub(mcp).dot(a) + S.delta) / a.dot(S.u), -0.012, 0.025);
   }
   for (;;) {
     w.position.copy(p0).addScaledVector(opts.slide ? opts.slide.u : n, slide); w.updateMatrixWorld(true);
@@ -15598,7 +15613,7 @@ function fitHold(T0, h, left, opts = {}) {
       for (const f of hand.fingers) objTris(f[0], TF);
       G.next = triGrid(new Float32Array(TF), center, 0.16);
     }
-    const aimed = opts.thumb || opts.thumbAt ? aimThumb(G, hand, opts.thumb, P.t, opts.thumbAt) : null;
+    const aimed = opts.thumb || opts.thumbAt ? aimThumb(G, hand, opts.thumb, P.t, opts.thumbAt, opts.thumbTip) : null;
     if (aimed) pose.t = aimed;
     else {
       const r = closeDigit(G, hand.thumb, TH.L, TH.r, set, [0, 0, 0], cap, [1, 1, 1]) || closeDigit(G, hand.thumb, TH.L, TH.r, set, [-0.3, 0, 0], cap, [1, 1, 1]);
@@ -15650,8 +15665,8 @@ function gunHold(gun) {
   // contre l'arme et la main droite)
   const T = new Float32Array(gunTris(root)), trig = triggerPoint(root, ud);
   // pouce droit : visé vers un point du flanc gauche (au-dessus de la poignée), ou dans une direction
-  const thumbR = RK.thumbAt ? gp.clone().add(V(...RK.thumbAt)) : null;
-  const R2 = fitHold(T, R, false, { keep: [0], trigger: trig, slide: trig && { u: dn.clone().negate(), target: trig, delta: RK.lift }, thumb: RK.thumb && V(...RK.thumb), thumbAt: thumbR });
+  const thumbR = RK.thumbAt ? gp.clone().add(V(...RK.thumbAt)) : null, tipR = RK.thumbTip ? gp.clone().add(V(...RK.thumbTip)) : null;
+  const R2 = fitHold(T, R, false, { keep: [0], trigger: trig, slide: trig && { u: dn.clone().negate(), target: trig, delta: RK.lift, a: RK.level ? V(-1, 0, 0).applyQuaternion(R.q) : null }, thumb: RK.thumb && V(...RK.thumb), thumbAt: thumbR, thumbTip: tipR, thumbSelf: !!RK.thumbSelf });
   const TL = info.one ? null : info.lk === 'cup' ? (() => { const hand = _fitHands.R; hand.wrist.position.copy(R2.p); hand.wrist.quaternion.copy(R2.q); setHandPose(hand, R2.pose); return new Float32Array(objTris(hand.wrist, Array.from(T))); })() : T;
   // pouce gauche : le long du flanc gauche de la pièce tenue, vers l'avant (fût, pompe), ou visé (coupe)
   const LT = info.lt || LK.thumbAt;                 // info.lt : visée propre à l'arme (même format)
@@ -15750,8 +15765,16 @@ function rlHand(c, side, gun, t, outP, outQ) {
     outQ.copy(_rlA.q).slerp(_rlB.q, s);
   }
   const hold = gunHold(gun)[side].pose;
-  const pa = a.pose ? HAND_POSES[a.pose] : hold, pb = b.pose ? HAND_POSES[b.pose] : hold;
-  return { a: pa, b: pb, s };
+  const pz = (k) => (k.pose === 'press' ? pressPose(hold) : k.pose ? HAND_POSES[k.pose] : hold);
+  return { a: pz(a), b: pz(b), s };
+}
+/* « press » : la prise de l'arme, pouce enfoncé (bouton du chargeur, arrêtoir de glissière sous le
+   pouce posé sur le flanc). */
+const _rlPress = new WeakMap();
+function pressPose(h) {
+  let p = _rlPress.get(h);
+  if (!p) { p = { f: h.f, s: h.s, t: [h.t[0], h.t[1], h.t[2] + 0.3, h.t[3] + 0.25, h.t[4] || 0] }; _rlPress.set(h, p); }
+  return p;
 }
 /* Pièces : décalage et rotation depuis le repos (repère du parent) ; le chargeur peut être posé
    dans le repère de la vue (f: 'cam'). */
@@ -16008,7 +16031,8 @@ const rlMul = (a, k) => a.map((v) => v * k);
 
 /* Échange de chargeur. o : { dur, extra (à vide), at / r (présentation du puits), grip (main gauche
    sur le chargeur, repère du chargeur), outD / outR (chargeur tiré), drop (vitesse de chute), pouch,
-   upD / upR / preR (chargeur neuf présenté), fall (le chargeur tombe seul : bouton du pouce droit),
+   upD / upR / preR (chargeur neuf présenté), fall (le chargeur tombe seul : bouton du pouce droit ;
+   press : pose de la main droite pour ce bouton et l'arrêtoir, 'press' = la prise, pouce enfoncé),
    slap (claque de la paume : prise sous le chargeur), bolt (réarmement à vide : part, side, kp, at,
    r, grip, from, to, back) }. */
 function rlMagSwap(o, empty, ud) {
@@ -16041,7 +16065,8 @@ function rlMagSwap(o, empty, ud) {
   let R = [];
   if (o.fall) {
     // le pouce droit presse le bouton : la main reste sur la poignée
-    R = [{ t: 0 }, { t: T.rel - 0.08 }, { t: T.rel - 0.02, pose: 'thumbPush' }, { t: T.rel + 0.06, pose: 'thumbPush' }, { t: T.rel + 0.14 }];
+    const pp = o.press || 'thumbPush';
+    R = [{ t: 0 }, { t: T.rel - 0.08 }, { t: T.rel - 0.02, pose: pp }, { t: T.rel + 0.06, pose: pp }, { t: T.rel + 0.14 }];
     ev.push([T.rel - 0.02, 'snd', 'lever']);
   }
   let tEnd = T.ins;
@@ -16055,7 +16080,7 @@ function rlMagSwap(o, empty, ud) {
   const parts = { mag };
   if (empty && o.slideRelease) {
     const t0 = tEnd + 0.12;
-    R = (R.length ? R : [{ t: 0 }]).concat([{ t: t0 }, { t: t0 + 0.08, pose: 'thumbPush' }, { t: t0 + 0.16, pose: 'thumbPush' }, { t: t0 + 0.26 }]);
+    R = (R.length ? R : [{ t: 0 }]).concat([{ t: t0 }, { t: t0 + 0.08, pose: o.press || 'thumbPush' }, { t: t0 + 0.16, pose: o.press || 'thumbPush' }, { t: t0 + 0.26 }]);
     parts.slide = [{ t: 0, p: [0, 0, 0.025] }, { t: t0 + 0.12, p: [0, 0, 0.025] }, { t: t0 + 0.16, e: 'i' }];
     ev.push([t0 + 0.14, 'snd', 'slideFwd']);
     tEnd = t0 + 0.2;
@@ -16178,7 +16203,7 @@ const RELOADS = {};
     grip: rlGrip([0, -0.03, 0], [0.2, 0.25, -1], [0, 1, 0.3], true, 0.007, 0.062, 'mag'), outD: 0.03,
     pouch: { p: [-0.2, -0.5, -0.3], r: [0.7, 0.3, 0.3] }, upD: 0.12, upS: [0, -0.02, 0.02], upR: [0.2, 0.05, 0.1], preR: [0.08, 0, 0.03], drop: [0.05, -1.2, 0.1],
     slap: rlGrip([0, -0.0035, 0.0], [0.2, -0.1, -1], [0, 0.3, 1], true, 0.0, 0.05, 'flat'),
-    slideRelease: true,
+    slideRelease: true, press: 'press',
   }, { empty: { slide: { p: [0, 0, 0.025] } }, blow: { part: 'slide', p: [0, 0, 0.03] } });
 
   /* Désintégrateur : la cellule jaillit du dessus ; la main gauche l'arrache, en apporte une neuve et
