@@ -15405,7 +15405,7 @@ function nadeRingInPin(g, outM) {
   return outM;
 }
 /* Grenade complète : corps, fusée, cuillère, goupille et anneau (pièces nommées). detail : 'hi'
-   (en main), 'mid' (sur le torse), 'lo' (lancée). */
+   (en main), 'mid' (sur le torse, plus affiché), 'lo' (lancée). */
 function buildNade(detail = 'hi') {
   const G = nadeGeometries(), Mt = nadeMats();
   const root = new THREE.Group();
@@ -15435,18 +15435,20 @@ function nadeSetPin(root, s, roll, swing) {
   root.userData.s = s; root.userData.roll = roll; root.userData.swing = swing;
 }
 
-/* Torse du joueur (vu en baissant la tête pour prendre une grenade) : veste de treillis HBT vert
-   olive (même étoffe que les manches), patte de boutonnage et boutons, deux poches de poitrine à
-   rabat. Les grenades sont accrochées par leur cuillère au rabat des poches, comme une pince de
-   stylo : le rabat passe entre la cuillère et le corps de la grenade, qui pend devant, fusée en
-   haut (deux par poche, autant que de grenades restantes ; la main droite prend d'abord celles de
-   droite, l'extérieure en premier). Pour la décrocher, on la tire vers la fusée : le rabat sort de
-   la cuillère. Repère
-   du corps : origine à l'œil, x à droite, y en haut, z vers l'arrière (le joueur regarde vers −z).
-   Un vrai torse est presque sous les yeux : on ne voit ses poches qu'en baissant la tête de 70 à 80°.
-   Ici le haut de la poitrine descend en pente vers l'avant (bombée, face vers le haut) et les poches
-   sont sur cette pente : en baissant la tête d'environ 40°, on voit les grenades couchées contre la
-   poitrine, comme quand on rentre le menton. */
+/* Torse du joueur : veste de treillis HBT vert olive (même étoffe que les manches), patte de
+   boutonnage et boutons, deux poches de poitrine à rabat. Depuis le 8 octobre au soir, la tête ne
+   bouge plus pendant le geste de la grenade (demande d'Anthony) : le torse n'est plus construit ni
+   affiché ; seules les places des grenades (chestSlotPose) servent encore, sous la vue, d'endroit où
+   la main droite prend et remet la grenade. Le modèle (buildChest) reste dans le code.
+   Les grenades sont accrochées par leur cuillère au rabat des poches, comme une pince de stylo : le
+   rabat passe entre la cuillère et le corps de la grenade, qui pend devant, fusée en haut (deux par
+   poche, autant que de grenades restantes ; la main droite prend d'abord celles de droite,
+   l'extérieure en premier). Pour la décrocher, on la tire vers la fusée : le rabat sort de la
+   cuillère. Repère du corps : origine à l'œil, x à droite, y en haut, z vers l'arrière (le joueur
+   regarde vers −z). Quand la tête se baissait : un vrai torse est presque sous les yeux (on ne voit
+   ses poches qu'en baissant la tête de 70 à 80°) ; ici le haut de la poitrine descend en pente vers
+   l'avant (bombée, face vers le haut) et les poches sont sur cette pente, pour qu'on voie les
+   grenades en baissant la tête d'environ 40°. Regard droit devant, elles sont sous la vue. */
 const CHEST = {
   // profil de la poitrine (hauteur sous l'œil, avancée), puis courbure de côté
   prof: [[-0.04, 0.0], [-0.08, -0.008], [-0.11, -0.026], [-0.14, -0.068], [-0.17, -0.113], [-0.2, -0.15], [-0.24, -0.18],
@@ -16840,7 +16842,7 @@ function buildViewmodel() {
   Arms.cap.visible = false;
   Arms.capV = new THREE.Vector3();
   Arms.root.add(Arms.knife, Arms.bottle, Arms.cap);
-  // grenade Mk 2 en main et torse (lancer animé)
+  // grenade Mk 2 en main (lancer animé)
   buildNadeView();
   Arms.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare, color: 0xffd9a0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   Arms.flash.visible = false;
@@ -17463,35 +17465,34 @@ function nadeGripL(poseName = 'ringHook') {
 /* ------------------------------------------- Lancer de grenade (jeu 1.9.0) ---
    Demande d'Anthony (8 octobre 2026) : voir clairement le joueur prendre la grenade sur son torse,
    la dégoupiller et la lancer ; s'il annule, il la reprend bien en main, remet la goupille et la
-   raccroche sur son torse ; le plus réaliste possible. Prise et gestes d'après le manuel américain
+   raccroche sur son torse ; le plus réaliste possible. Le soir (20 h 03) : la tête ne bouge plus (le
+   torse ne se voit donc plus), le lancer et la goupille restent. Prise et gestes d'après le manuel américain
    FM 23-30 : grenade droite dans la main qui lance, cuillère sous le pouce, anneau tiré par l'index
    de l'autre main en tournant ; la cuillère reste serrée tant que la grenade est en main (la mèche
    ne brûle qu'une fois la cuillère partie, au lâcher).
-   · G : l'arme descend, la tête se baisse (le torse apparaît), la main droite saisit la grenade
-     accrochée à la poche, la décroche en la tirant vers sa fusée, l'amène devant la poitrine ; la
-     main gauche passe l'index dans l'anneau, tourne et tire : la goupille sort ; le bras s'arme.
+   · G : l'arme descend, la main droite descend sous la vue saisir la grenade accrochée à la poche
+     de poitrine, la décroche en la tirant vers sa fusée et la remonte devant la poitrine ; la main
+     gauche passe l'index dans l'anneau, tourne et tire : la goupille sort ; le bras s'arme.
    · G tenue : la grenade reste prête, bras armé, goupille au doigt de la main gauche ; G relâchée
      (ou déjà relâchée) : lancer par-dessus l'épaule, la cuillère saute, la goupille tombe au sol.
    · R avant le lâcher : annulation. Goupille sortie : la main droite ramène la grenade devant (pouce
      toujours sur la cuillère), la main gauche aligne la goupille sur les trous et l'enfonce, défait
-     la torsion et lâche l'anneau ; puis la main droite raccroche la grenade à sa poche, tête baissée.
+     la torsion et lâche l'anneau ; puis la main droite redescend raccrocher la grenade à sa poche.
    Temps en secondes depuis le début de chaque phase (tirer : draw ; lancer : throw ; annuler :
-   cancel). Repères : vue (x à droite, y en haut, z vers l'arrière) ; torse : celui du corps, tourné
-   dans la vue par l'inclinaison de la tête (chestSlotPose). */
+   cancel). Repères : vue (x à droite, y en haut, z vers l'arrière) ; poche : celle du torse du regard
+   droit devant (chestSlotPose), quel que soit le regard du joueur : elle reste sous la vue. */
 const NADE_T = {
-  // dip : tête baissée en 0,5 s, relevée en 0,48 s : 120 et 125°/s au plus en partant du regard droit devant (contre
-  // le vertige ; 250 et 230°/s jusqu'au 8 octobre au soir) ; hook.dip : même chose pour raccrocher la grenade.
-  // La main prend la grenade quand la tête est baissée à 90 % (grab).
-  draw: { gunDown: 0.2, dip: [0.0, 0.5, 0.54, 1.02], reach: [0.12, 0.33], grab: 0.4, unhook: 0.51, present: 0.75,
-    lIn: [0.53, 0.73], hook: [0.73, 0.83], twist: [0.83, 0.91], pull: [0.91, 1.04], cock: [1.02, 1.23] },
+  // prise et décrochage sous la vue (hors de l'écran) : rapides ; de present à cock, même geste qu'avant
+  draw: { gunDown: 0.2, reach: [0.02, 0.11], grab: 0.14, unhook: 0.2, present: 0.42,
+    lIn: [0.2, 0.4], hook: [0.4, 0.5], twist: [0.5, 0.58], pull: [0.58, 0.71], cock: [0.69, 0.9] },
   throw: { back: 0.07, release: 0.135, drop: 0.2, follow: 0.42, gunUp: [0.32, 0.6] },
   // annulation : remettre la goupille (si elle est sortie), puis raccrocher ; light : l'index était
   // dans l'anneau mais la goupille n'avait pas bougé
   repin: { bring: 0.3, insert: [0.3, 0.52], untwist: [0.52, 0.6], let: [0.6, 0.74], out: 0.92, next: 0.7 },
   light: { bring: 0, insert: [0, 0], untwist: [0, 0.1], let: [0.08, 0.22], out: 0.42, next: 0.22 },
-  hook: { pre: 0.38, dip: [0.0, 0.5, 0.58, 1.06], seat: 0.5, open: 0.56, back: 0.78, gunUp: [0.62, 1.06], end: 1.08 },
+  // raccrocher : la grenade descend sous la vue, la main y lâche la grenade (hors de l'écran) et revient à l'arme
+  hook: { pre: 0.16, seat: 0.22, open: 0.25, back: 0.38, gunUp: [0.1, 0.38], end: 0.4 },
 };
-const NADE_DIP = -0.7;                 // tête baissée : regard à 40° sous l'horizontale au plus bas
 const NADE_FUSE = 2.3;                 // s, du lâcher (cuillère partie) à l'explosion (règle du jeu)
 // poses de la grenade dans la vue : position, angles (YXZ : x penche la fusée vers le joueur)
 const _np = (p, e) => ({ p: new THREE.Vector3(...p), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0], e[1], e[2], 'YXZ')) });
@@ -17511,7 +17512,6 @@ const NADE_LH = {
 };
 const _nv1 = new THREE.Vector3(), _nv2 = new THREE.Vector3(), _nv3 = new THREE.Vector3(), _nq1 = new THREE.Quaternion(), _nq2 = new THREE.Quaternion();
 const _nM1 = new THREE.Matrix4(), _nM2 = new THREE.Matrix4(), _nM3 = new THREE.Matrix4(), _nS = new THREE.Vector3(1, 1, 1);
-const _nX = new THREE.Vector3(1, 0, 0), _nZ = new THREE.Vector3(0, 0, 1);
 const nsst = (a, b, t) => { const x = clamp((t - a) / Math.max(1e-6, b - a), 0, 1); return x * x * (3 - 2 * x); };
 const nlin = (a, b, t) => clamp((t - a) / Math.max(1e-6, b - a), 0, 1);
 const npose = () => ({ p: new THREE.Vector3(), q: new THREE.Quaternion() });
@@ -17523,15 +17523,14 @@ function nposeMul(o, a, b) { o.p.copy(b.p).applyQuaternion(a.q).add(a.p); o.q.co
 function nbez(o, a, c, b, s) { const u = 1 - s; o.x = u * u * a.x + 2 * u * s * c.x + s * s * b.x; o.y = u * u * a.y + 2 * u * s * c.y + s * s * b.y; o.z = u * u * a.z + 2 * u * s * c.z + s * s * b.z; return o; }
 
 const Nade = {
-  hand: null, chest: null, pitch: 0, tilt: 0,
+  hand: null,
   shR: null, shL: null, poleL: null,
 };
-/* Objets de la vue : grenade en main (détail fin) et torse ; appelés depuis buildViewmodel. */
+/* Objets de la vue : grenade en main (détail fin) ; appelés depuis buildViewmodel. */
 function buildNadeView() {
   Nade.hand = buildNade('hi');
   Nade.hand.visible = false;
-  Nade.chest = buildChest();
-  Arms.root.add(Nade.hand, Nade.chest);
+  Arms.root.add(Nade.hand);
   Nade.shR = Arms.armR.shoulder.clone(); Nade.shL = Arms.armL.shoulder.clone(); Nade.poleL = Arms.armL.pole.clone();
   NadeBits.init();
   // prises calculées au chargement (20 à 50 ms) : pas d'à-coup à la première grenade
@@ -17540,7 +17539,7 @@ function buildNadeView() {
 function nadeReset() {
   if (!Nade.hand) return;
   Arms.nd = null;
-  Nade.hand.visible = false; Nade.chest.visible = false;
+  Nade.hand.visible = false;
   Arms.armR.shoulder.copy(Nade.shR); Arms.armL.shoulder.copy(Nade.shL); Arms.armL.pole.copy(Nade.poleL);
   NadeBits.heldPin(null);
 }
@@ -17551,17 +17550,14 @@ function startThrow() {
   Arms.autoReloadAt = -1;
   const slot = Math.min(CHEST.slots.length, G.grenades) - 1;
   Arms.nd = { phase: 'draw', t: 0, slot, held: true, ev: 0, s: 0, roll: 0, swing: NADE_RING.rest, pinFree: false, released: false,
-    cap: null, inHand: false, pinOut: false, lastG: npose(), lastR: npose(), lastL: npose(), lastRing: npose(), lastPoseL: null, tilt: 0 };
+    cap: null, inHand: false, pinOut: false, lastG: npose(), lastR: npose(), lastL: npose(), lastRing: npose(), lastPoseL: null };
   Sound.nade('draw');
 }
-/* Torse → vue : rotation par l'inclinaison réelle de la caméra (souris et tête baissée). */
-function nadeBodyQ(out) { return out.setFromAxisAngle(_nX, -Nade.pitch); }
-/* Grenade accrochée (case i) dans la vue ; décalage (le long de la grenade, vers l'extérieur). */
+/* Grenade accrochée (case i) dans la vue : torse du regard droit devant (la tête ne bouge pas, la poche
+   reste sous la vue quel que soit le regard du joueur) ; décalage (le long de la grenade, vers l'extérieur). */
 function nadeChestPose(o, i, slide = 0, outw = 0) {
   chestSlotPose(i, o.p, o.q);
   if (slide || outw) o.p.add(_nv3.set(0, slide, -outw).applyQuaternion(o.q));
-  nadeBodyQ(_nq1);
-  o.p.applyQuaternion(_nq1); o.q.premultiply(_nq1);
   return o;
 }
 /* Repère de l'anneau d'une grenade posée en g (goupille : course s, torsion roll ; anneau : bascule swing). */
@@ -17643,11 +17639,6 @@ function nadeThrowG(o, t, nd) {
   o.q.copy(NADE_KEYS.back.q).slerp(NADE_KEYS.release.q, e);
   return o;
 }
-/* Inclinaison de la tête vers la cible : regard abaissé jusqu'à NADE_DIP (jamais relevé), selon k. */
-function nadeTiltFor(k) {
-  const look = player.pitch + player.recoil + player.punch;
-  return k * Math.min(0, Math.max(-1.0, NADE_DIP - look));
-}
 /* Avance du geste (updateArms) : touches, phases, événements. */
 function nadeUpdate(dt) {
   const nd = Arms.nd;
@@ -17704,7 +17695,6 @@ function nadeCancel() {
   if (!nd.inHand) nd.cancel = { early: true, repin: false, r0: 0, from };
   else nd.cancel = { early: false, repin: engaged, P: engaged ? P : null, r0: engaged ? P.next : 0, from,
     hookStart: engaged && P === NADE_T.repin ? NADE_KEYS.repin : from.G };
-  nd.cancel.k0 = nd.lastTiltK || 0;            // inclinaison de la tête au moment de R : on en repart
   nd.phase = 'cancel'; nd.t = 0; nd.ev = 0;
   if (nd.cancel.early) nd.ev = 15;
   Sound.nade('cancel');
@@ -17769,13 +17759,12 @@ function nadeGunDown(nd) {
   }
   return 0;
 }
-/* Pose de la vue pendant le geste (updateViewmodel) : grenade, torse, mains, tête, épaules.
+/* Pose de la vue pendant le geste (updateViewmodel) : grenade, mains, épaules (la tête ne bouge pas).
    gun : cibles des mains sur l'arme (ou null) ; rend { rP, rQ, rPose, rPose2, rK, lP, lQ, lPose, lPose2, lK }. */
 function nadePose(dt, gunR, gunL) {
   const nd = Arms.nd, T = NADE_T, out = { rP: null, rQ: null, rPose: null, rPose2: null, rK: 0, lP: null, lQ: null, lPose: null, lPose2: null, lK: 0 };
-  Nade.pitch = camera.rotation.x;
   const t = nd.t, gripR = nadeGripR();
-  let gVis = false, tiltK = 0, ringFree = false;
+  let gVis = false, ringFree = false;
   const G0 = _ndG;
   // ---- grenade, goupille, mains
   if (nd.phase === 'draw') {
@@ -17783,7 +17772,6 @@ function nadePose(dt, gunR, gunL) {
     nadeDrawG(G0, t, nd);
     nadeDrawPin(t, nd);
     gVis = t >= D.grab;
-    tiltK = nsst(D.dip[0], D.dip[1], t) * (1 - nsst(D.dip[2], D.dip[3], t));
     // main droite : quitte l'arme, s'ouvre, saisit la grenade sur la poche
     if (t < D.grab) {
       nadeChestPose(_ndA, nd.slot);
@@ -17861,16 +17849,12 @@ function nadePose(dt, gunR, gunL) {
     nadeRingFromHand(_ndRing, _ndL); ringFree = !nd.pinDropped;
     if (t >= W.gunUp[0] + 0.05) { out.rP = null; out.lP = null; }
     if (t >= W.gunUp[0] + 0.05 && gunR) { out.rP = gunR.p; out.rQ = gunR.q; out.rPose = gunR.pose; if (gunL) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; } }
-    // un petit coup de tête vers l'avant au lâcher
-    tiltK = 0;
-    nd.tilt = -0.05 * Math.exp(-(((t - W.release) / 0.07) ** 2));
   } else if (nd.phase === 'cancel') {
     const C = nd.cancel;
     if (C.early) {
-      // pas encore saisie : la main droite retourne à l'arme qui remonte, la tête se relève
+      // pas encore saisie : la main droite retourne à l'arme qui remonte
       const s = nsst(0, 0.3, t);
       if (gunR) { out.rP = _ndR.p.lerpVectors(C.from.R.p, gunR.p, s); out.rQ = _ndR.q.copy(C.from.R.q).slerp(gunR.q, s); out.rPose = gunR.pose; }
-      tiltK = (1 - nsst(0, 0.5, t)) * C.k0;
       if (gunL && t > 0.25) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; }
     } else {
       const H = T.hook, F = C.from, P = C.P, th = t - C.r0;
@@ -17924,8 +17908,6 @@ function nadePose(dt, gunR, gunL) {
         out.lP = _ndL.p; out.lQ = _ndL.q; out.lPose = HAND_POSES.relax;
       }
       // main droite : tient la grenade, la lâche une fois raccrochée et retourne à l'arme
-      // tête : immobile pendant la goupille (inclinaison du moment de R), puis baissée vers la poche et relevée
-      tiltK = th < 0 ? C.k0 : (C.k0 + (1 - C.k0) * nsst(H.dip[0], H.dip[1], th)) * (1 - nsst(H.dip[2], H.dip[3], th));
       nadeHandOnNade(_ndR, G0);
       out.rPose = gripR.pose;
       if (th >= H.seat) { out.rPose2 = HAND_POSES.open; out.rK = nsst(H.seat, H.open + 0.04, th); }
@@ -17967,20 +17949,9 @@ function nadePose(dt, gunR, gunL) {
   if (out.rP) { nd.lastR.p.copy(out.rP); nd.lastR.q.copy(out.rQ); }
   if (out.lP) { nd.lastL.p.copy(out.lP); nd.lastL.q.copy(out.lQ); nd.lastPoseL = out.lPose; }
   nd.lVis = !!out.lP;
-  // ---- tête, torse, épaules
-  if (nd.phase !== 'throw') nd.tilt = nadeTiltFor(tiltK);
-  nd.lastTiltK = tiltK;
-  const C = Nade.chest;
-  C.visible = nd.phase !== 'throw' || t < 0.05;
-  if (C.visible) {
-    C.quaternion.setFromAxisAngle(_nX, -Nade.pitch);
-    C.userData.nades.forEach((n, i) => { n.visible = i < G.grenades && !(i === nd.slot && nd.inHand); });
-  }
-  // épaules : elles suivent le torse quand la tête se baisse ; la droite recule pour armer, avance au lancer
-  const tilt = Arms.headTilt;
-  _nq1.setFromAxisAngle(_nX, -tilt);
-  Arms.armR.shoulder.copy(Nade.shR).applyQuaternion(_nq1);
-  Arms.armL.shoulder.copy(Nade.shL).applyQuaternion(_nq1);
+  // ---- épaules : la droite recule pour armer, avance au lancer
+  Arms.armR.shoulder.copy(Nade.shR);
+  Arms.armL.shoulder.copy(Nade.shL);
   let cockK = 0, fwdK = 0;
   if (nd.phase === 'draw') cockK = nsst(T.draw.cock[0], T.draw.cock[1], t);
   else if (nd.phase === 'hold') cockK = 1;
@@ -19267,13 +19238,12 @@ function updateViewmodel(dt) {
     Arms.knife.updateMatrixWorld(true);
     lP = _handL.copy(KNIFE_HOLD.p).applyMatrix4(Arms.knife.matrixWorld); lQ = _vmQL.copy(Arms.knife.quaternion).multiply(KNIFE_HOLD.q); lPose = HAND_POSES.fist;
   } else if (st === 'nade' && Arms.nd) {
-    // grenade : mains, grenade, torse, tête (cibles des mains sur l'arme, pour les quitter et y revenir)
+    // grenade : mains et grenade (cibles des mains sur l'arme, pour les quitter et y revenir)
     const gR = rP && gun ? { p: rP.clone(), q: rQ.clone(), pose: rPose } : null;
     const gL = lP && gun ? { p: lP.clone(), q: lQ.clone(), pose: lPose } : null;
     const o = nadePose(dt, gR, gL);
     rP = o.rP; rQ = o.rQ; rPose = o.rPose; rPose2 = o.rPose2; rK = o.rK;
     lP = o.lP; lQ = o.lQ; lPose = o.lPose; lPose2 = o.lPose2; lK = o.lK;
-    if (Arms.nd) Arms.headTilt = Arms.nd.tilt;
   }
   AR.root.visible = !!rP;
   if (rP) { solveArm(AR, rP, rQ); setHandPose(AR.hand, rPose, rPose2, rK); }

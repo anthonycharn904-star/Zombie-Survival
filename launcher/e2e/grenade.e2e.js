@@ -1,12 +1,12 @@
 'use strict';
 /* Grenade Mk 2 et lancer animé (jeu 1.9.0), dans la fenêtre du jeu du launcher : modèle (corps
-   quadrillé de 40 plots, 58 × 114 mm, fusée, cuillère, goupille, anneau), torse et grenades
-   accrochées selon le nombre restant ; G : arme baissée, tête baissée vers le torse (sans brusquer :
-   vitesse limitée ; sans saut quand R arrive tête baissée), grenade prise
-   puis décrochée, présentée, anneau tiré par l'index gauche (goupille sortie), bras armé, lancer
+   quadrillé de 40 plots, 58 × 114 mm, fusée, cuillère, goupille, anneau) ; G : la tête ne bouge
+   pas (pas de torse dans la vue), arme baissée, grenade prise sous la vue (hors de l'écran) puis
+   montée et présentée, anneau tiré par l'index gauche (goupille sortie), bras armé, lancer
    (grenade lâchée, cuillère qui saute, goupille qui tombe, explosion 2,3 s après le lâcher) ; G
    tenue : grenade prête sans limite de temps ; R : annulation avec ou sans goupille à remettre,
-   grenade raccrochée à sa place, aucune grenade perdue ; à terre ; sons ; rendu.
+   grenade raccrochée à sa place sous la vue, tête immobile, aucune grenade perdue ; à terre ; sons ;
+   rendu.
      xvfb-run -a node e2e/grenade.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -61,7 +61,7 @@ const USER = path.join(TMP, 'joueur');
       const nCols = dips(ring, rmax - 0.002), nRows = dips(mer, -0.002);
       ok(nCols === 8 && nRows === 6, `corps quadrillé : ${nCols} gorges sur le tour, ${nRows} gorges le long du corps (5 rangées de 8 plots = 40)`, { nCols, nRows });
       const G = nadeGeometries(), tri = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
-      ok(tri(G.body.hi) < 20000 && tri(G.body.mid) < 8000 && tri(G.body.lo) < 3000, `triangles : ${tri(G.body.hi)} en main, ${tri(G.body.mid)} sur le torse, ${tri(G.body.lo)} lancée`);
+      ok(tri(G.body.hi) < 20000 && tri(G.body.mid) < 8000 && tri(G.body.lo) < 3000, `triangles : ${tri(G.body.hi)} en main, ${tri(G.body.lo)} lancée (${tri(G.body.mid)} pour le torse, plus affiché)`);
       // goupille : enfoncée, la cuillère tenue ; anneau du côté opposé à la paume
       nadeSetPin(n, 0, 0, NADE_RING.rest); n.updateMatrixWorld(true);
       const ringC = P.ring.getWorldPosition(new THREE.Vector3());
@@ -103,8 +103,9 @@ const USER = path.join(TMP, 'joueur');
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
       __fresh(4);
       const T = NADE_T.draw, W = NADE_T.throw, log = [];
-      let tRelease = -1, tExplode = -1, minTilt = 0, chestSeen = false, slotHidden = false, maxS = 0, pinFreeAt = -1, ringOnFinger = Infinity, rightOnNade = 0, gunDown = 0, fired = 0;
-      let prevTilt = Arms.headTilt, downSpeed = 0, upSpeed = 0, t90 = -1;
+      let tRelease = -1, tExplode = -1, maxTilt = 0, pitchDev = 0, grabY = null, presentY = null, maxS = 0, pinFreeAt = -1, ringOnFinger = Infinity, rightOnNade = 0, gunDown = 0;
+      const pitch0 = camera.rotation.x, v = new THREE.Vector3();
+      const ndcY = (o) => { Arms.root.updateMatrixWorld(true); o.getWorldPosition(v); return v.project(vmCamera).y; };
       const shots0 = G.stats.shots || 0;
       __press('KeyG');
       let t = 0;
@@ -113,12 +114,12 @@ const USER = path.join(TMP, 'joueur');
         if (t > 0.1) __up('KeyG');
         if (t > 0.3 && t < 0.4) { Input.lmb = true; Input.lmbDown = true; } else Input.lmb = false;
         const nd = Arms.nd;
-        minTilt = Math.min(minTilt, Arms.headTilt);
-        // vitesse de la tête qui se baisse (regard droit devant au départ)
-        downSpeed = Math.max(downSpeed, (prevTilt - Arms.headTilt) * 60); upSpeed = Math.max(upSpeed, (Arms.headTilt - prevTilt) * 60); prevTilt = Arms.headTilt;
-        if (t90 < 0 && Arms.headTilt <= 0.9 * NADE_DIP) t90 = t;
-        if (Nade.chest.visible) chestSeen = true;
-        if (nd && nd.inHand && Nade.chest.visible && !Nade.chest.userData.nades[nd.slot].visible && Nade.hand.visible) slotHidden = true;
+        // la tête ne bouge pas : la vue reste où le joueur regarde
+        maxTilt = Math.max(maxTilt, Math.abs(Arms.headTilt));
+        if (Arms.state === 'nade') pitchDev = Math.max(pitchDev, Math.abs(camera.rotation.x - pitch0));   // (l'explosion secoue la vue ensuite)
+        // grenade prise sous la vue (centre sous le bas de l'écran : y < −1), puis montée dans la vue
+        if (nd && nd.inHand && grabY === null) grabY = ndcY(Nade.hand);
+        if (nd && nd.phase === 'draw' && presentY === null && nd.t >= T.present) presentY = ndcY(Nade.hand);
         if (nd) { maxS = Math.max(maxS, nd.s); if (nd.pinFree && pinFreeAt < 0) pinFreeAt = t; }
         if (nd && Arms.state === 'nade') gunDown = Math.max(gunDown, nadeGunDown(nd));
         // index gauche dans l'anneau pendant la traction
@@ -143,10 +144,10 @@ const USER = path.join(TMP, 'joueur');
       ok(Math.abs(tRelease - expect) < 0.05, `G tapée : grenade lâchée ${tRelease.toFixed(2)} s après l'appui (prise, goupille, bras armé : ${expect.toFixed(2)} s)`);
       ok(G.grenades === 3, 'une grenade en moins, au lâcher', G.grenades);
       ok(tExplode > 0 && Math.abs(tExplode - tRelease - NADE_FUSE) < 0.06, `explosion ${(tExplode - tRelease).toFixed(2)} s après le lâcher (cuillère partie : ${NADE_FUSE} s)`);
-      ok(minTilt < -0.6 && minTilt > -0.75, `tête baissée vers le torse : ${(minTilt * 57.3).toFixed(0)}° (regard à 40° sous l'horizontale)`);
-      ok(downSpeed < 2.3 && upSpeed < 2.3 && t90 > 0 && t90 <= T.grab + 0.02, `tête sans brusquer (vertige) : ${(downSpeed * 57.3).toFixed(0)}°/s au plus en se baissant, ${(upSpeed * 57.3).toFixed(0)}°/s en se relevant (130 au maximum ; 250 et 230 à l'origine), 90 % du chemin à ${t90.toFixed(2)} s (prise à ${T.grab} s)`, { downSpeed, upSpeed, t90 });
-      ok(Math.abs(Arms.headTilt) < 0.01 && Arms.state === 'idle', 'puis tête relevée et arme en main', { tilt: Arms.headTilt, st: Arms.state });
-      ok(chestSeen && slotHidden, 'torse visible, la grenade prise quitte sa place sur la poche');
+      ok(maxTilt === 0 && pitchDev < 1e-9, 'tête immobile pendant tout le geste : la vue ne bouge pas', { maxTilt, pitchDev });
+      ok(Nade.chest === undefined, 'pas de torse dans la vue');
+      ok(grabY !== null && grabY < -1.2 && presentY !== null && Math.abs(presentY) < 1, `grenade prise sous la vue, hors de l'écran (centre à y = ${grabY && grabY.toFixed(2)}), puis montée dans la vue (y = ${presentY && presentY.toFixed(2)})`, { grabY, presentY });
+      ok(Arms.state === 'idle', 'puis arme en main', Arms.state);
       ok(gunDown > 0.99, 'arme baissée hors de la vue pendant le geste');
       ok(maxS >= NADE_OUT && pinFreeAt > 0, `goupille tirée : course ${(maxS * 1000).toFixed(0)} mm (libre au-delà de ${(NADE_OUT * 1000).toFixed(0)} mm)`);
       ok(ringOnFinger < 0.03, `index gauche dans l'anneau pendant la traction (articulation à ${(ringOnFinger * 1000).toFixed(0)} mm du centre de l'anneau)`);
@@ -183,7 +184,7 @@ const USER = path.join(TMP, 'joueur');
       __press('KeyG'); __run(1.6);
       const slot = Arms.nd.slot;
       __press('KeyR');
-      let t = 0, sMax = 0, sEnd = -1, repinned = -1, minTilt = 0, handBack = -1, prevTilt = Arms.headTilt, jump = 0;
+      let t = 0, sMax = 0, sEnd = -1, repinned = -1, maxTilt = 0, handBack = -1;
       const seq = [];
       __run(3, () => {
         t += 1 / 60;
@@ -194,22 +195,20 @@ const USER = path.join(TMP, 'joueur');
           if (repinned < 0 && nd.s < 0.0005 && nd.phase === 'cancel') repinned = t;
           if (!nd.inHand && handBack < 0 && repinned > 0) handBack = t;
         }
-        minTilt = Math.min(minTilt, Arms.headTilt);
-        jump = Math.max(jump, Math.abs(Arms.headTilt - prevTilt)); prevTilt = Arms.headTilt;
+        maxTilt = Math.max(maxTilt, Math.abs(Arms.headTilt));
       });
       ok(repinned > 0.4 && repinned < 0.7, `R : goupille renfoncée ${repinned.toFixed(2)} s après (index gauche, cuillère toujours tenue)`);
-      ok(handBack > repinned && minTilt < -0.6 && jump < 0.052, `puis grenade raccrochée à sa poche, tête baissée sans saut (${handBack.toFixed(2)} s ; au plus ${(jump * 57.3).toFixed(1)}° d'une image à l'autre)`, { jump });
+      ok(handBack > repinned && maxTilt === 0, `puis grenade raccrochée à sa poche, sous la vue (${handBack.toFixed(2)} s), tête immobile`, { maxTilt });
       ok(Arms.state === 'idle' && !Arms.nd && G.grenades === 3 && !FX.grenades.length, 'annulation : aucune grenade perdue ni lancée, arme en main', { st: Arms.state, n: G.grenades });
       ok(NadeBits.list.length === 0, 'rien n’est tombé (cuillère et goupille restées sur la grenade)', NadeBits.list.length);
-      // la grenade est revenue à sa place : elle se voit sur le torse au tirer suivant
+      // la grenade est revenue à sa place : la main la reprend au tirer suivant
       __press('KeyG'); __run(0.25);
-      const vis = Nade.chest.userData.nades.map((g) => g.visible);
-      ok(vis.filter(Boolean).length === 3 && vis[slot], 'au tirer suivant, la grenade est de nouveau sur sa poche', vis);
+      ok(Arms.nd && Arms.nd.slot === slot && Arms.nd.inHand && G.grenades === 3, 'au tirer suivant, la main reprend la même grenade (3 restantes)', { slot: Arms.nd && Arms.nd.slot, n: G.grenades });
       __up('KeyG'); __press('KeyR'); __run(1.2);
       return out;
     })).forEach(report);
 
-    // R avant la prise, R avant la goupille, R pendant la traction
+    // R avant la prise, juste après, goupille en place, pendant la traction
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
@@ -218,20 +217,19 @@ const USER = path.join(TMP, 'joueur');
         __press('KeyG'); __run(at); __up('KeyG');
         const before = { s: Arms.nd.s, inHand: Arms.nd.inHand, pinOut: Arms.nd.pinOut };
         __press('KeyR');
-        let ended = -1, t = 0, prev = Arms.headTilt, jump = 0;
-        __run(3, () => { t += 1 / 60; jump = Math.max(jump, Math.abs(Arms.headTilt - prev)); prev = Arms.headTilt; if (ended < 0 && Arms.state === 'idle') ended = t; });
-        return { before, ended, n: G.grenades, flying: FX.grenades.length, st: Arms.state, jump };
+        let ended = -1, t = 0, maxTilt = 0;
+        __run(3, () => { t += 1 / 60; maxTilt = Math.max(maxTilt, Math.abs(Arms.headTilt)); if (ended < 0 && Arms.state === 'idle') ended = t; });
+        return { before, ended, n: G.grenades, flying: FX.grenades.length, st: Arms.state, maxTilt };
       };
-      const a = cancelAt(0.2);
+      const a = cancelAt(0.08);
       ok(!a.before.inHand && a.ended > 0 && a.ended < 0.9 && a.n === 4 && !a.flying, `R avant la prise : la main revient à l'arme (${a.ended.toFixed(2)} s)`, a);
-      const d = cancelAt(0.45);
-      ok(d.before.inHand && !d.before.pinOut && d.ended > 0 && d.ended < NADE_T.hook.end + 0.1 && d.n === 4 && !d.flying, `R juste après la prise, tête baissée : grenade raccrochée (${d.ended.toFixed(2)} s)`, d);
-      const b = cancelAt(0.6);
+      const d = cancelAt(0.17);
+      ok(d.before.inHand && !d.before.pinOut && d.ended > 0 && d.ended < NADE_T.hook.end + 0.1 && d.n === 4 && !d.flying, `R juste après la prise (sous la vue) : grenade raccrochée (${d.ended.toFixed(2)} s)`, d);
+      const b = cancelAt(0.35);
       ok(b.before.inHand && !b.before.pinOut && b.ended > 0 && b.ended < NADE_T.hook.end + 0.1 && b.n === 4 && !b.flying, `R grenade en main, goupille en place : raccrochée sans regoupiller (${b.ended.toFixed(2)} s)`, b);
-      const c = cancelAt(0.99);
+      const c = cancelAt(0.65);
       ok(c.before.pinOut && c.ended > 0.9 && c.n === 4 && !c.flying, `R pendant la traction : goupille renfoncée puis grenade raccrochée (${c.ended.toFixed(2)} s)`, c);
-      const jumps = [a, d, b, c].map((x) => +(x.jump * 57.3).toFixed(1));
-      ok(Math.max(...jumps) < 3, `R à 0,2, 0,45, 0,6 et 0,99 s : la tête repart de là où elle est, sans saut (au plus ${Math.max(...jumps)}° d'une image à l'autre ; avant : jusqu'à 40°)`, jumps);
+      ok([a, d, b, c].every((x) => x.maxTilt === 0), 'R à 0,08, 0,17, 0,35 et 0,65 s : tête immobile', [a, d, b, c].map((x) => x.maxTilt));
       // G sans grenade : rien
       __fresh(0);
       __press('KeyG'); __run(0.5);
@@ -280,7 +278,7 @@ const USER = path.join(TMP, 'joueur');
       __run(0.5); render();
       renderEnabled = false;
       const progs = renderer.info.programs.filter((p) => p.diagnostics && !p.diagnostics.runnable).length;
-      ok(e1 === 0 && progs === 0, 'rendu du torse et de la grenade en main sans erreur', { e1, progs });
+      ok(e1 === 0 && progs === 0, 'rendu de la grenade en main sans erreur', { e1, progs });
       __up('KeyG'); __press('KeyR'); __run(2);
       return out;
     })).forEach(report);
