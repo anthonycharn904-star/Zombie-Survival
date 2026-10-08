@@ -2523,15 +2523,8 @@ const Sound = (() => {
     const t = ctx.currentTime, o = out(null, 0.18);
     noiseHit(t, 0.08, 0.5, 'bandpass', 1200, 2400, 1.5, o);
   }
-  function knife(hit) {
-    if (!ctx) return;
-    const t = ctx.currentTime, o = out(null, 0.35);
-    noiseHit(t, 0.16, 0.5, 'bandpass', 900, 3500, 1.4, o, 0.02);
-    if (hit) {
-      noiseHit(t + 0.06, 0.14, 0.8, 'lowpass', 700, 200, 1, o);
-      tone('sine', 140, 60, t + 0.06, 0.12, 0.6, o);
-    }
-  }
+  /* Contexte et bus des effets, pour un module qui joue ses propres sons (couteau) ; null sans son. */
+  function bus() { return ctx && ctx.state !== 'closed' ? { ctx, sortie: sfxBus } : null; }
   function hitmark(kill) {
     if (!ctx) return;
     const t = ctx.currentTime, o = out(null, kill ? 0.16 : 0.1);
@@ -3416,7 +3409,7 @@ const Sound = (() => {
   }
   return {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
-    gun, empty, reload, mech, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce, nade,
+    gun, empty, reload, mech, bolt, pump, swap, bus, hitmark, headshot, grenadeBounce, nade,
     zombie, rise, helmet, bodyFall, gib, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, creak, say, rankStamp, rankUp, prestige,
@@ -6619,7 +6612,6 @@ function buildMaterials() {
   MAT.camo = std({ map: TEX.camo, roughness: 0.32, metalness: 0.45, emissive: 0x3a0f5c, emissiveIntensity: 0.35 });
   MAT.sleeve = std({ color: 0x4f5638, map: TEX.cloth, roughness: 0.95 });
   MAT.glove = std({ color: 0x3b2a1d, roughness: 0.7 });
-  MAT.blade = std({ color: 0xb8bcc0, roughness: 0.25, metalness: 0.9 });
   MAT.bottleGlass = std({ color: 0x8fa596, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.34, depthWrite: false });
   // capsule : peu métallique (sans reflet d'environnement, un laiton très métallique paraît noir)
   MAT.bottleCap = std({ color: 0xa47c4c, roughness: 0.9, metalness: 0 });     // bouchon de liège
@@ -16615,7 +16607,7 @@ const Arms = {
   slots: [null, null], cur: 0,
   state: 'idle', t: 0, dur: 0, nextFire: 0, autoReloadAt: -1, pending: -1,
   bloom: 0, kick: 0, kickRot: 0, swayX: 0, swayY: 0, sprintK: 0, cycleT: 0,
-  knifeDone: false, throwDone: false, drinkId: null, ev: 0, headTilt: 0, capV: null, capW: [0, 0, 0], capT: 0, nd: null,
+  throwDone: false, drinkId: null, ev: 0, headTilt: 0, capV: null, capW: [0, 0, 0], capT: 0, nd: null,
   root: null, holder: null, gun: null, models: {}, flash: null, flashT: 0,
 };
 const _dir = new THREE.Vector3(), _mw = new THREE.Vector3(), _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3();
@@ -16829,21 +16821,17 @@ function buildViewmodel() {
   Arms.armR = buildArm(false);
   Arms.armL = buildArm(true);
   Arms.root.add(Arms.armR.root, Arms.armL.root);
-  // couteau (main gauche) : lame vers −z, manche autour de l'origine
-  Arms.knife = new THREE.Group();
-  const blade = new THREE.Mesh(GEO.box, MAT.blade); blade.scale.set(0.01, 0.035, 0.2); blade.position.z = -0.13;
-  const handle = new THREE.Mesh(GEO.box, MAT.gunWoodDark); handle.scale.set(0.024, 0.034, 0.1); handle.position.z = 0.02;
-  const guard = new THREE.Mesh(GEO.box, MAT.gunMetal); guard.scale.set(0.02, 0.06, 0.012); guard.position.z = -0.03;
-  Arms.knife.add(blade, handle, guard); Arms.knife.visible = false;
   // fiole d'élixir (habillée aux couleurs de l'atout acheté) et son bouchon qui saute
   Arms.bottle = buildBottle('souffle');
   Arms.bottle.visible = false;
   Arms.cap = new THREE.Mesh(bottleGeometries().cap, MAT.bottleCap);
   Arms.cap.visible = false;
   Arms.capV = new THREE.Vector3();
-  Arms.root.add(Arms.knife, Arms.bottle, Arms.cap);
+  Arms.root.add(Arms.bottle, Arms.cap);
   // grenade Mk 2 en main (lancer animé)
   buildNadeView();
+  // couteau « Fossoyeur » (sa propre vue, rendue par-dessus celle de l'arme)
+  buildKnife();
   Arms.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare, color: 0xffd9a0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   Arms.flash.visible = false;
   vmScene.add(Arms.flash);
@@ -17969,6 +17957,1310 @@ function nadePose(dt, gunR, gunL) {
 function nadeDrawGAt(o, t, nd) { return nadeDrawG(o, t, nd); }
 
 
+/* ==========================================================================
+   COUTEAU « FOSSOYEUR » ZS-1 — édition Zombie Survival
+   --------------------------------------------------------------------------
+   Même couteau et mêmes animations que les versions 1 et 2, réunies dans un seul fichier :
+     decision: 'appui'    version 2 : l'animation (touché ou raté) est choisie à l'appui,
+                          chaque animation est unique dès la première image
+     decision: 'contact'  version 1 : début commun, choix au moment où la lame arrive
+   Ajouts pour un jeu qui a déjà sa propre vue de l'arme :
+     vueSeparee: true     le bras a sa propre scène et sa propre caméra : appeler
+                          couteau.rendreVue(renderer) après le rendu du jeu
+     choisirCible(moment, cibleVerrouillee)   le jeu applique ses propres règles de mêlée
+     couleurs             gant et manche aux couleurs des bras du jeu
+     enchainement         un nouvel appui pendant le retour en garde relance un coup aussitôt
+     retirerSecousse()    à appeler en début d'image quand le jeu lisse lui-même son champ de vision
+     annuler()            remet le couteau au repos (nouvelle partie)
+   Compatible three.js r128 → r16x. Script classique : définit window.creerCouteauMelee.
+   Intégré au jeu 1.9.0 le 8 octobre 2026 (demande d'Anthony) : fonction du script du jeu (plus de
+   window.creerCouteauMelee) ; option audio : le contexte et le bus des effets du jeu (volume général,
+   son étouffé, compresseur) au lieu d'un contexte à part ; debug.jouer(nom) pour les essais. Réglages
+   et règles de mêlée du jeu : KNIFE, buildKnife, knifeChoose (section 08, « Couteau »).
+   ========================================================================== */
+const creerCouteauMelee = (function () {
+  'use strict';
+
+  function creerCouteauMelee(THREE, options) {
+    if (!THREE) throw new Error('creerCouteauMelee : passe l’objet THREE en premier argument');
+    var o = Object.assign({
+      camera: null,             // THREE.PerspectiveCamera du joueur (obligatoire)
+      scene: null,              // THREE.Scene (obligatoire)
+      renderer: null,           // conseillé : sert aux reflets du métal et à la taille des particules
+      touche: 'KeyV',           // KeyV = touche V en AZERTY comme en QWERTY
+      ecouterClavier: true,     // false si tu appelles toi-même couteau.frapper()
+      portee: 2.1,              // m entre l'œil du joueur et la surface du zombie
+      margeAppui: 0.15,         // m ajoutés à la portée à l'appui (le zombie avance pendant l'armé)
+      decision: 'appui',        // 'appui' : version 2 (animation choisie à l'appui) · 'contact' : version 1 (début commun)
+      vueSeparee: false,        // true : le bras a sa propre scène et sa propre caméra → couteau.rendreVue(renderer)
+      fovVue: 72,               // champ vertical (°) de cette vue ; les poses sont réglées pour 72°
+      choisirCible: null,       // function(moment, cibleVerrouillee) → { cible, point, rayon } ou null ('appui' | 'contact')
+      couleurs: null,           // { gant: 0x3b2a1d, manche: 0x4f5638 } : couleurs sRGB, comme dans le jeu
+      enchainement: true,       // un nouvel appui pendant le retour en garde relance un coup aussitôt
+      angleCone: 38,            // ° demi-angle du cône de frappe
+      degats: 150,
+      getTargets: function () { return []; },   // renvoie la liste des zombies
+      getHitPoint: null,        // function(zombie) -> THREE.Vector3 monde (sinon position + hauteurImpact)
+      hauteurImpact: 1.35,      // m au-dessus de zombie.position (si position = pieds)
+      rayonCible: 0.35,         // m, si le zombie n'a pas de .radius
+      bloque: null,             // function(origine, point) -> true si un mur bloque le coup
+      onHit: null,              // function(zombie, info) : applique les dégâts ici
+      onMiss: null,
+      gravite: 9.81,            // m/s² pour le sang (1.62 sur ta map lunaire)
+      hauteurSol: null,         // y du sol : le sang s'y dépose au lieu de passer à travers
+      son: true,
+      volume: 0.7,
+      audio: null,              // function() → { ctx, sortie } : contexte et bus du jeu (null tant qu'il n'y en a pas)
+      secousseCamera: true,
+      secousseFOV: true,
+      modeCamera: 'reinitialise', // 'reinitialise' si ton code refixe la rotation de la caméra à chaque frame, sinon 'incremental'
+      envMap: null
+    }, options || {});
+
+    var camera = o.camera, scene = o.scene;
+    if (!camera || !scene) throw new Error('creerCouteauMelee : camera et scene sont obligatoires');
+    if (!camera.parent && !o.vueSeparee) scene.add(camera);
+
+    var V3 = THREE.Vector3, Q = THREE.Quaternion;
+    var DEG = Math.PI / 180;
+
+    /* ------------------------------------------------------------------ outils */
+    function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function lisse(a, b, x) { var t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+    function alea(seed) {
+      var s = seed >>> 0;
+      return function () {
+        s = (s + 0x6D2B79F5) >>> 0; var t = s;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function interp(pts, x) { // Catmull-Rom sur une liste [[x,y],...] triée
+      if (x <= pts[0][0]) return pts[0][1];
+      var n = pts.length;
+      if (x >= pts[n - 1][0]) return pts[n - 1][1];
+      var i = 0; while (i < n - 2 && x > pts[i + 1][0]) i++;
+      var p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(n - 1, i + 2)];
+      var t = (x - p1[0]) / (p2[0] - p1[0]);
+      var m1 = (p2[1] - p0[1]) / ((p2[0] - p0[0]) || 1) * (p2[0] - p1[0]);
+      var m2 = (p3[1] - p1[1]) / ((p3[0] - p1[0]) || 1) * (p2[0] - p1[0]);
+      var t2 = t * t, t3 = t2 * t;
+      return (2 * t3 - 3 * t2 + 1) * p1[1] + (t3 - 2 * t2 + t) * m1 + (-2 * t3 + 3 * t2) * p2[1] + (t3 - t2) * m2;
+    }
+    var E = {
+      lin: function (t) { return t; },
+      inQuad: function (t) { return t * t; },
+      outQuad: function (t) { return t * (2 - t); },
+      inCubic: function (t) { return t * t * t; },
+      outCubic: function (t) { return 1 - Math.pow(1 - t, 3); },
+      inOutCubic: function (t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; },
+      outQuart: function (t) { return 1 - Math.pow(1 - t, 4); },
+      inQuart: function (t) { return t * t * t * t; },
+      outExpo: function (t) { return t === 1 ? 1 : 1 - Math.pow(2, -10 * t); },
+      inOutSine: function (t) { return -(Math.cos(Math.PI * t) - 1) / 2; },
+      outBack: function (t) { var c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); },
+      inBack: function (t) { var c1 = 1.4, c3 = c1 + 1; return c3 * t * t * t - c1 * t * t; }
+    };
+    function toile(w, h) {
+      var c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+    }
+    function texCouleur(tex) {
+      if ('colorSpace' in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+      else if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+      return tex;
+    }
+
+    /* ------------------------------------------------------- textures procédurales */
+    function texBrosse() { // rayures de brossage le long de la lame (roughness)
+      var c = toile(64, 512), g = c.getContext('2d'), r = alea(7);
+      g.fillStyle = 'rgb(70,70,70)'; g.fillRect(0, 0, 64, 512);
+      for (var i = 0; i < 260; i++) {
+        var x = r() * 64, a = 0.05 + r() * 0.18, v = r() < 0.5 ? 40 : 110;
+        g.strokeStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + a + ')';
+        g.lineWidth = 0.5 + r() * 1.2;
+        g.beginPath(); g.moveTo(x, r() * 40); g.lineTo(x + (r() - 0.5) * 2, 512 - r() * 40); g.stroke();
+      }
+      var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+    }
+    function texMoucheture() { // revêtement « stonewash » (roughness)
+      var c = toile(256, 256), g = c.getContext('2d'), r = alea(11);
+      g.fillStyle = 'rgb(128,128,128)'; g.fillRect(0, 0, 256, 256);
+      for (var i = 0; i < 2600; i++) {
+        var v = r() < 0.5 ? 95 : 165;
+        g.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + (0.15 + r() * 0.35) + ')';
+        var s = 0.6 + r() * 2.2;
+        g.fillRect(r() * 256, r() * 256, s, s * (0.6 + r()));
+      }
+      var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+    }
+    function texQuadrillage() { // quadrillage en losanges du manche (bump)
+      var c = toile(128, 128), g = c.getContext('2d');
+      g.fillStyle = '#808080'; g.fillRect(0, 0, 128, 128);
+      g.strokeStyle = '#1a1a1a'; g.lineWidth = 7;
+      for (var k = -128; k <= 256; k += 32) {
+        g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 128, 128); g.stroke();
+        g.beginPath(); g.moveTo(k, 128); g.lineTo(k + 128, 0); g.stroke();
+      }
+      g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2;
+      for (var k2 = -128; k2 <= 256; k2 += 32) {
+        g.beginPath(); g.moveTo(k2 + 6, 0); g.lineTo(k2 + 134, 128); g.stroke();
+      }
+      var t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(7, 16); return t;
+    }
+    function texSang() { // traînées de sang sur la lame (alphaMap) — u = largeur, v = longueur
+      var c = toile(128, 512), g = c.getContext('2d'), r = alea(23);
+      g.fillStyle = '#000'; g.fillRect(0, 0, 128, 512);
+      // la pointe (haut de l'image) est la plus couverte
+      for (var i = 0; i < 70; i++) {
+        var y = Math.pow(r(), 1.8) * 300, x = 30 + r() * 98, rx = 6 + r() * 26, ry = 10 + r() * 46;
+        var gr = g.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
+        var a = 0.35 + r() * 0.5;
+        gr.addColorStop(0, 'rgba(255,255,255,' + a + ')'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill();
+      }
+      for (var j = 0; j < 22; j++) { // coulures vers la garde
+        var x0 = 40 + r() * 86, y0 = 40 + r() * 180, len = 40 + r() * 200, w = 1.5 + r() * 4;
+        g.strokeStyle = 'rgba(255,255,255,' + (0.4 + r() * 0.5) + ')'; g.lineWidth = w; g.lineCap = 'round';
+        g.beginPath(); g.moveTo(x0, y0);
+        g.bezierCurveTo(x0 + (r() - 0.5) * 8, y0 + len * 0.3, x0 + (r() - 0.5) * 10, y0 + len * 0.7, x0 + (r() - 0.5) * 6, y0 + len); g.stroke();
+        g.fillStyle = 'rgba(255,255,255,0.8)'; g.beginPath(); g.arc(x0, y0 + len, w * 1.2, 0, Math.PI * 2); g.fill();
+      }
+      var t = new THREE.CanvasTexture(c); return t;
+    }
+    function texGravure() { // marquage gravé « ZS-1 »
+      var c = toile(256, 96), g = c.getContext('2d');
+      g.clearRect(0, 0, 256, 96);
+      g.fillStyle = 'rgba(205,210,215,0.95)';
+      g.font = '700 58px "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
+      g.textBaseline = 'middle'; g.fillText('ZS-1', 70, 50);
+      g.strokeStyle = 'rgba(205,210,215,0.95)'; g.lineWidth = 5;
+      g.beginPath(); g.arc(34, 48, 22, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.moveTo(22, 48); g.lineTo(46, 48); g.moveTo(34, 36); g.lineTo(34, 60); g.stroke();
+      return texCouleur(new THREE.CanvasTexture(c));
+    }
+    function texPoint() { // sprite rond doux
+      var c = toile(64, 64), g = c.getContext('2d');
+      var gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.55, 'rgba(255,255,255,0.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      return new THREE.CanvasTexture(c);
+    }
+    function texEnvironnement() { // studio lumineux pour les reflets du métal
+      var c = toile(512, 256), g = c.getContext('2d');
+      var gr = g.createLinearGradient(0, 0, 0, 256);
+      gr.addColorStop(0, '#aeb7c0'); gr.addColorStop(0.42, '#5d646b'); gr.addColorStop(0.52, '#2d3136'); gr.addColorStop(1, '#0d0e10');
+      g.fillStyle = gr; g.fillRect(0, 0, 512, 256);
+      function boite(x, y, w, h, coul, flou) {
+        if ('filter' in g) g.filter = 'blur(' + flou + 'px)';
+        g.fillStyle = coul; g.fillRect(x, y, w, h);
+        if ('filter' in g) g.filter = 'none';
+      }
+      boite(70, 26, 120, 52, 'rgba(255,255,255,1)', 8);
+      boite(330, 40, 26, 120, 'rgba(255,240,220,0.9)', 5);
+      boite(200, 98, 260, 10, 'rgba(190,210,255,0.7)', 3);
+      boite(10, 120, 40, 70, 'rgba(255,170,120,0.45)', 10);
+      var t = new THREE.CanvasTexture(c);
+      t.mapping = THREE.EquirectangularReflectionMapping;
+      return texCouleur(t);
+    }
+
+    var tex = {
+      brosse: texBrosse(), moucheture: texMoucheture(), quadrillage: texQuadrillage(),
+      sang: texSang(), gravure: texGravure(), point: texPoint()
+    };
+    var envMap = o.envMap;
+    if (!envMap && o.renderer && THREE.PMREMGenerator) {
+      try {
+        var pm = new THREE.PMREMGenerator(o.renderer);
+        var envTex = texEnvironnement();
+        envMap = pm.fromEquirectangular(envTex).texture;
+        envTex.dispose(); pm.dispose();
+      } catch (e) { envMap = null; }
+    }
+
+    /* ---------------------------------------------------------------- matériaux */
+    function mat(p) { var m = new THREE.MeshStandardMaterial(p); if (envMap) { m.envMap = envMap; } return m; }
+    var M = {
+      revetement: mat({ color: 0x1d1f23, metalness: 0.45, roughness: 1.0, roughnessMap: tex.moucheture, envMapIntensity: 0.8 }),
+      fil: mat({ color: 0xe6eaef, metalness: 1.0, roughness: 0.48, roughnessMap: tex.brosse, envMapIntensity: 1.5 }),
+      acier: mat({ color: 0x3c3f45, metalness: 0.92, roughness: 0.36, envMapIntensity: 1.1 }),
+      acierClair: mat({ color: 0x8d9299, metalness: 1.0, roughness: 0.3, envMapIntensity: 1.2 }),
+      caoutchouc: mat({ color: 0x1b1f18, metalness: 0.0, roughness: 0.78, bumpMap: tex.quadrillage, bumpScale: 0.004, envMapIntensity: 0.5 }),
+      paracorde: mat({ color: 0xb3522a, metalness: 0.0, roughness: 0.92, envMapIntensity: 0.35 }),
+      gravure: mat({ color: 0xffffff, map: tex.gravure, transparent: true, metalness: 0.7, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false }),
+      gant: mat({ color: 0x25272a, metalness: 0.0, roughness: 0.9, envMapIntensity: 0.45 }),
+      gantPaume: mat({ color: 0x161719, metalness: 0.0, roughness: 0.68, envMapIntensity: 0.5 }),
+      coque: mat({ color: 0x353c2f, metalness: 0.1, roughness: 0.5, envMapIntensity: 0.6 }),
+      sangle: mat({ color: 0x4b5240, metalness: 0.0, roughness: 0.9, envMapIntensity: 0.35 }),
+      veste: mat({ color: 0x2a3023, metalness: 0.0, roughness: 0.95, envMapIntensity: 0.3 }),
+      sang: mat({ color: 0x5a0909, metalness: 0.15, roughness: 0.22, transparent: true, opacity: 0, alphaMap: tex.sang, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6, envMapIntensity: 1.2 })
+    };
+
+    // three.js sans gestion des couleurs (r128, celui du jeu) : les couleurs ci-dessus sont des sRGB, à
+    // convertir comme le jeu le fait pour ses matières (sinon caoutchouc, revêtement et sangle bien trop clairs)
+    if (!(THREE.ColorManagement && THREE.ColorManagement.enabled)) {
+      Object.keys(M).forEach(function (k) { if (M[k].color) M[k].color.convertSRGBToLinear(); });
+    }
+
+    // couleurs des bras du jeu (données en sRGB, converties comme le jeu le fait pour ses propres bras)
+    if (o.couleurs) {
+      var enLin = function (hex) { var c = new THREE.Color(hex); return c.convertSRGBToLinear ? c.convertSRGBToLinear() : c; };
+      if (o.couleurs.gant !== undefined) {
+        M.gant.color.copy(enLin(o.couleurs.gant));
+        M.gantPaume.color.copy(M.gant.color).multiplyScalar(0.6);
+        M.coque.color.copy(M.gant.color).multiplyScalar(0.8);
+      }
+      if (o.couleurs.manche !== undefined) M.veste.color.copy(enLin(o.couleurs.manche));
+    }
+
+    /* ============================================================ LE COUTEAU */
+    // Repère du couteau : +Y = vers la pointe, +X = côté tranchant, Z = épaisseur.
+    // La garde est en y≈0, le manche descend jusqu'à y≈-0.113, le pommeau jusqu'à -0.131.
+    var LAME = { y0: 0.004, L: 0.176, T0: 0.0052, UG: 0.42 };
+    var profilTranchant = [[0, 0.0172], [0.05, 0.0176], [0.10, 0.0186], [0.40, 0.0193], [0.58, 0.0191], [0.72, 0.0171], [0.84, 0.0127], [0.93, 0.0067], [0.985, 0.0021], [1, 0.0010]];
+    var profilDos = [[0, -0.0140], [0.60, -0.0140], [0.70, -0.0131], [0.80, -0.0105], [0.90, -0.0063], [0.97, -0.0019], [1, 0.0010]];
+    function xTranchant(s) { return interp(profilTranchant, s); }
+    function xDos(s) { return interp(profilDos, s); }
+    function dent(s) { // dos scie : creux (vers +x) entre s=0.10 et 0.42
+      if (s < 0.1 || s > 0.42) return 0;
+      var y = (s - 0.1) * LAME.L, per = 0.0062, ph = (y / per) % 1;
+      var p = ph < 0.72 ? ph / 0.72 : (1 - ph) / 0.28;
+      return 0.0026 * p * lisse(0.1, 0.112, s) * (1 - lisse(0.408, 0.42, s));
+    }
+    function gouttiere(u, s) {
+      var u0 = 0.15, u1 = 0.36;
+      if (u <= u0 || u >= u1) return 0;
+      var travers = 0.5 * (1 - Math.cos(2 * Math.PI * (u - u0) / (u1 - u0)));
+      return 0.00105 * travers * lisse(0.16, 0.215, s) * (1 - lisse(0.55, 0.605, s));
+    }
+    function demiEp(u, s) {
+      var tDos = LAME.T0 * (1 - 0.8 * lisse(0.58, 1.0, s));
+      if (u <= LAME.UG) {
+        var h = tDos / 2;
+        h *= 0.6 + 0.4 * lisse(0, 0.085, u); // chanfrein du dos
+        return Math.max(0.00012, h - gouttiere(u, s));
+      }
+      var k = (u - LAME.UG) / (1 - LAME.UG);
+      return lerp(tDos / 2, 0.00014, Math.pow(k, 0.9));
+    }
+    function posLame(u, s, face, out) {
+      var xs = xDos(s), xe = xTranchant(s);
+      var x = xs + u * (xe - xs) + dent(s) * (1 - lisse(0, 0.11, u));
+      var y = LAME.y0 + s * LAME.L;
+      var z = face * demiEp(u, s);
+      out[0] = x; out[1] = y; out[2] = z; return out;
+    }
+    function echantillonsS() {
+      var a = [], s = 0;
+      while (s < 1) {
+        a.push(s);
+        if (s >= 0.095 && s < 0.425) s += 0.0034;
+        else if (s >= 0.86) s += 0.007;
+        else s += 0.012;
+      }
+      a.push(1); return a;
+    }
+    function lin(a, b, n) { var r = []; for (var i = 0; i < n; i++) r.push(a + (b - a) * i / (n - 1)); return r; }
+
+    function grilleLame(us, ss, coteFermeture) {
+      // construit les deux faces (z+ et z-) d'une bande de colonnes us, plus le bord de fermeture
+      var pos = [], uv = [], idx = [], tmp = [0, 0, 0];
+      var nu = us.length, ns = ss.length;
+      function face(signe) {
+        var base = pos.length / 3;
+        for (var j = 0; j < ns; j++) {
+          for (var i = 0; i < nu; i++) {
+            posLame(us[i], ss[j], signe, tmp); pos.push(tmp[0], tmp[1], tmp[2]); uv.push(us[i], ss[j]);
+          }
+        }
+        for (var j2 = 0; j2 < ns - 1; j2++) {
+          for (var i2 = 0; i2 < nu - 1; i2++) {
+            var a = base + j2 * nu + i2, b = a + 1, c = a + nu + 1, d = a + nu;
+            if (signe > 0) idx.push(a, b, c, a, c, d); else idx.push(a, c, b, a, d, c);
+          }
+        }
+      }
+      face(1); face(-1);
+      // bord : relie la colonne de fermeture (dos ou tranchant) des deux faces
+      var col = coteFermeture === 'dos' ? 0 : nu - 1;
+      var b2 = pos.length / 3;
+      for (var j3 = 0; j3 < ns; j3++) {
+        posLame(us[col], ss[j3], 1, tmp); pos.push(tmp[0], tmp[1], tmp[2]); uv.push(us[col], ss[j3]);
+        posLame(us[col], ss[j3], -1, tmp); pos.push(tmp[0], tmp[1], tmp[2]); uv.push(us[col], ss[j3]);
+      }
+      for (var j4 = 0; j4 < ns - 1; j4++) {
+        var p0 = b2 + j4 * 2, p1 = p0 + 1, p2 = p0 + 3, p3 = p0 + 2;
+        if (coteFermeture === 'dos') idx.push(p0, p3, p2, p0, p2, p1); else idx.push(p0, p2, p3, p0, p1, p2);
+      }
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    function construireCouteau() {
+      var g = new THREE.Group(); g.name = 'couteau-fossoyeur';
+      var ss = echantillonsS();
+      var usPlat = [0, 0.022, 0.045, 0.07, 0.095, 0.12].concat(lin(0.15, 0.36, 13), [0.39, LAME.UG]);
+      var usFil = lin(LAME.UG, 1, 15);
+      var geoPlat = grilleLame(usPlat, ss, 'dos');
+      var geoFil = grilleLame(usFil, ss, 'fil');
+      var plat = new THREE.Mesh(geoPlat, M.revetement), fil = new THREE.Mesh(geoFil, M.fil);
+      g.add(plat, fil);
+      var sang1 = new THREE.Mesh(geoPlat, M.sang), sang2 = new THREE.Mesh(geoFil, M.sang);
+      sang1.renderOrder = 2; sang2.renderOrder = 2;
+      g.add(sang1, sang2);
+
+      // gravure « ZS-1 » sur le talon, des deux côtés
+      var sG = 0.07, uG = 0.27;
+      var tmp = [0, 0, 0]; posLame(uG, sG, 1, tmp);
+      var pg = new THREE.PlaneGeometry(0.0175, 0.0066);
+      [1, -1].forEach(function (cote) {
+        var m = new THREE.Mesh(pg, M.gravure);
+        m.position.set(tmp[0], tmp[1], cote * (demiEp(uG, sG) + 0.00004));
+        m.rotation.z = Math.PI / 2; if (cote < 0) m.rotation.y = Math.PI;
+        m.renderOrder = 1; g.add(m);
+      });
+
+      // garde
+      var forme = new THREE.Shape(), x0 = -0.0235, z0 = -0.0085, w = 0.0545, h = 0.017, r = 0.0055;
+      forme.moveTo(x0 + r, z0); forme.lineTo(x0 + w - r, z0); forme.quadraticCurveTo(x0 + w, z0, x0 + w, z0 + r);
+      forme.lineTo(x0 + w, z0 + h - r); forme.quadraticCurveTo(x0 + w, z0 + h, x0 + w - r, z0 + h);
+      forme.lineTo(x0 + r, z0 + h); forme.quadraticCurveTo(x0, z0 + h, x0, z0 + h - r);
+      forme.lineTo(x0, z0 + r); forme.quadraticCurveTo(x0, z0, x0 + r, z0);
+      var geoGarde = new THREE.ExtrudeGeometry(forme, { depth: 0.0056, bevelEnabled: true, bevelThickness: 0.0009, bevelSize: 0.0009, bevelSegments: 3, curveSegments: 8 });
+      geoGarde.rotateX(-Math.PI / 2); geoGarde.translate(0, -0.0012, 0);
+      var garde = new THREE.Mesh(geoGarde, M.acier); g.add(garde);
+
+      // manche : profil tourné, rainures pour les doigts et anneaux d'adhérence
+      function rayonManche(d) {
+        var r0 = 0.0127 + 0.0010 * lisse(0, 0.008, d);
+        var fen = lisse(0.006, 0.012, d) * (1 - lisse(0.084, 0.09, d));
+        r0 -= 0.00105 * (0.5 + 0.5 * Math.cos(2 * Math.PI * (d - 0.018) / 0.020)) * fen;
+        r0 += 0.0006 * Math.exp(-Math.pow((d - 0.052) / 0.025, 2));
+        r0 += 0.0013 * lisse(0.09, 0.104, d) - 0.0008 * lisse(0.106, 0.1125, d);
+        r0 += 0.00016 * Math.sin(2 * Math.PI * d / 0.0021) * lisse(0.012, 0.016, d) * (1 - lisse(0.082, 0.086, d));
+        return r0;
+      }
+      var ptsM = [];
+      for (var i = 220; i >= 0; i--) { var d = 0.1125 * i / 220; ptsM.push(new THREE.Vector2(rayonManche(d), -0.0005 - d)); }
+      var geoManche = new THREE.LatheGeometry(ptsM, 36);
+      geoManche.scale(1.12, 1, 0.8);
+      var manche = new THREE.Mesh(geoManche, M.caoutchouc); g.add(manche);
+
+      // vis du manche
+      var geoVis = new THREE.CylinderGeometry(0.0026, 0.0026, 0.0012, 6);
+      [-0.022, -0.074].forEach(function (y) {
+        [1, -1].forEach(function (cote) {
+          var v = new THREE.Mesh(geoVis, M.acierClair);
+          v.rotation.x = Math.PI / 2; v.position.set(0.001, y, cote * (rayonManche(-y) * 0.8 - 0.0002));
+          g.add(v);
+        });
+      });
+
+      // pommeau
+      var prof = [[0.0001, -0.1310], [0.0050, -0.1306], [0.0085, -0.1295], [0.0110, -0.1276], [0.0128, -0.1256], [0.0145, -0.1231], [0.0153, -0.1206], [0.0158, -0.1186], [0.0158, -0.1161], [0.0150, -0.1146], [0.0146, -0.1126], [0.0141, -0.1104]];
+      var geoPom = new THREE.LatheGeometry(prof.map(function (p) { return new THREE.Vector2(p[0], p[1]); }), 36);
+      geoPom.scale(1.1, 1, 0.84);
+      g.add(new THREE.Mesh(geoPom, M.acier));
+      var anneau = new THREE.Mesh(new THREE.TorusGeometry(0.0052, 0.0016, 10, 22), M.acierClair);
+      anneau.position.set(0, -0.1322, 0); g.add(anneau);
+
+      g.userData = { sang: [sang1, sang2], ancreDragonne: new V3(0, -0.1368, 0) };
+      return g;
+    }
+
+    /* ======================================================= MAIN GANTÉE */
+    // Repère du poing : le manche suit l'axe Y (lame vers +Y), +X = devant du poing (côté tranchant),
+    // +Z = dos de la main, -Z = paume. L'avant-bras part du poignet W vers (-cos30°, -sin30°, 0).
+    var POIGNET = new V3(-0.074, -0.004, 0.012);
+    var DEVIATION = 30 * DEG;
+    var DIR_AVANTBRAS = new V3(-Math.cos(DEVIATION), -Math.sin(DEVIATION), 0);
+
+    function tubeVariable(points, rayons, segs, radial) {
+      var courbe = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
+      var cadres = courbe.computeFrenetFrames(segs, false);
+      var pos = [], nor = [], idx = [], p = new V3(), n = new V3();
+      for (var i = 0; i <= segs; i++) {
+        var t = i / segs; courbe.getPointAt(t, p);
+        var r = interp(rayons, t);
+        var N = cadres.normals[i], B = cadres.binormals[i];
+        for (var j = 0; j <= radial; j++) {
+          var v = j / radial * Math.PI * 2, c = Math.cos(v), s = Math.sin(v);
+          n.set(c * N.x + s * B.x, c * N.y + s * B.y, c * N.z + s * B.z);
+          pos.push(p.x + r * n.x, p.y + r * n.y, p.z + r * n.z); nor.push(n.x, n.y, n.z);
+        }
+      }
+      for (var i2 = 0; i2 < segs; i2++) {
+        for (var j2 = 0; j2 < radial; j2++) {
+          var a = i2 * (radial + 1) + j2, b = a + radial + 1;
+          idx.push(a, b, a + 1, b, b + 1, a + 1);
+        }
+      }
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+      geo.setIndex(idx);
+      return { geo: geo, courbe: courbe };
+    }
+    function boiteArrondie(lx, ly, lz, r, seg) { // boîte aux arêtes arrondies (extrusion)
+      var f = new THREE.Shape(), x = -lx / 2 + r, y = -ly / 2 + r, w = lx - 2 * r, h = ly - 2 * r;
+      f.moveTo(x, y - r); f.lineTo(x + w, y - r); f.quadraticCurveTo(x + w + r, y - r, x + w + r, y);
+      f.lineTo(x + w + r, y + h); f.quadraticCurveTo(x + w + r, y + h + r, x + w, y + h + r);
+      f.lineTo(x, y + h + r); f.quadraticCurveTo(x - r, y + h + r, x - r, y + h);
+      f.lineTo(x - r, y); f.quadraticCurveTo(x - r, y - r, x, y - r);
+      var geo = new THREE.ExtrudeGeometry(f, { depth: Math.max(0.0002, lz - 2 * r), bevelEnabled: true, bevelThickness: r, bevelSize: r * 0.98, bevelSegments: seg || 4, curveSegments: 6 });
+      geo.translate(0, 0, -(lz - 2 * r) / 2);
+      return geo;
+    }
+
+    function construireMain() {
+      var g = new THREE.Group(); g.name = 'main-gantee';
+      // doigts : enroulés autour du manche (ellipse 1.12 × 0.8), assez épais pour se toucher
+      var doigts = [
+        { y: 0.0305, r: 0.0098, fin: -163 }, { y: 0.0105, r: 0.0102, fin: -166 },
+        { y: -0.0095, r: 0.0096, fin: -160 }, { y: -0.0282, r: 0.0086, fin: -146 }
+      ];
+      function ellipsoide(rx, ry, rz, materiau, seg) {
+        var m = new THREE.Mesh(new THREE.SphereGeometry(1, seg || 22, Math.round((seg || 22) * 0.7)), materiau);
+        m.scale.set(rx, ry, rz); return m;
+      }
+      doigts.forEach(function (d, k) {
+        var rm = 0.0128 + (k === 3 ? 0.0006 : 0);
+        var ax = rm * 1.12 + d.r + 0.0003, az = rm * 0.8 + d.r + 0.0003;
+        var angles = [104, 66, 24, -26, -78, -122, d.fin];
+        var echelle = [1.12, 1.06, 1.03, 1.0, 0.99, 0.98, 0.96];
+        var pts = angles.map(function (a, i) {
+          var t = a * DEG;
+          var px = ax * echelle[i] * Math.cos(t), pz = az * echelle[i] * Math.sin(t);
+          if (i === 0) { px -= 0.007; pz += 0.002; }
+          return new V3(px, d.y + (i - 3) * 0.00035 * (k - 1.5), pz);
+        });
+        var rr = [[0, d.r * 1.08], [0.12, d.r * 1.12], [0.3, d.r * 0.98], [0.4, d.r * 1.05], [0.55, d.r * 0.94], [0.68, d.r * 0.97], [0.85, d.r * 0.88], [1, d.r * 0.84]];
+        var t = tubeVariable(pts, rr, 44, 14);
+        g.add(new THREE.Mesh(t.geo, M.gant));
+        var bout = new THREE.Mesh(new THREE.SphereGeometry(d.r * 0.84, 14, 10), M.gant);
+        bout.position.copy(pts[pts.length - 1]); g.add(bout);
+        // renfort de gant sur la phalange moyenne
+        var renfort = ellipsoide(d.r * 1.0, d.r * 0.92, d.r * 0.5, M.gantPaume, 16);
+        var pj = t.courbe.getPointAt(0.37); renfort.position.copy(pj);
+        var dirOut = new V3(pj.x, 0, pj.z).normalize(); renfort.position.addScaledVector(dirOut, d.r * 0.5);
+        renfort.lookAt(renfort.position.clone().add(dirOut)); g.add(renfort);
+        // jointure (bosse de l'articulation métacarpienne)
+        var jointure = ellipsoide(d.r * 1.05, d.r * 0.98, d.r * 0.95, M.gant, 16);
+        jointure.position.copy(pts[0]).add(new V3(0.002, 0, 0.0015)); g.add(jointure);
+      });
+
+      // dos de la main : volume bombé qui file vers le poignet
+      var dos = ellipsoide(0.047, 0.047, 0.0165, M.gant, 28);
+      dos.position.set(-0.037, 0.001, 0.0205); dos.rotation.y = -0.08; g.add(dos);
+      // talon de la main (côté paume, derrière le manche)
+      var talon = ellipsoide(0.033, 0.043, 0.0165, M.gantPaume, 24);
+      talon.position.set(-0.045, -0.006, -0.004); g.add(talon);
+      // éminence thénar + pouce replié sur l'index
+      var thenar = ellipsoide(0.027, 0.019, 0.016, M.gantPaume, 20);
+      thenar.position.set(-0.041, 0.03, -0.002); thenar.rotation.z = 0.35; g.add(thenar);
+      var ptsP = [new V3(-0.05, 0.035, 0.004), new V3(-0.031, 0.048, -0.01), new V3(-0.009, 0.048, -0.019), new V3(0.011, 0.042, -0.0235), new V3(0.022, 0.035, -0.0225)];
+      var pouce = tubeVariable(ptsP, [[0, 0.0128], [0.35, 0.0106], [0.7, 0.0094], [1, 0.0085]], 32, 14);
+      g.add(new THREE.Mesh(pouce.geo, M.gant));
+      var bp = new THREE.Mesh(new THREE.SphereGeometry(0.0085, 14, 10), M.gant); bp.position.copy(ptsP[4]); g.add(bp);
+      var onglePouce = ellipsoide(0.0075, 0.006, 0.003, M.gantPaume, 12);
+      onglePouce.position.copy(ptsP[3]).add(new V3(0.004, 0.006, -0.002)); g.add(onglePouce);
+
+      // protections : plaque dorsale rembourrée + coques de jointures
+      var plaque = ellipsoide(0.03, 0.041, 0.0045, M.coque, 24);
+      plaque.position.set(-0.038, 0.001, 0.0352); plaque.rotation.y = -0.1; g.add(plaque);
+      for (var kq = 0; kq < 4; kq++) {
+        var c = new THREE.Mesh(boiteArrondie(0.014, 0.0165, 0.0065, 0.003, 3), M.coque);
+        c.position.set(-0.009, doigts[kq].y, 0.0385);
+        c.rotation.y = -0.45; g.add(c);
+      }
+
+      // poignet du gant + sangle auto-agrippante
+      var poignet = new THREE.Group(); poignet.position.copy(POIGNET);
+      poignet.quaternion.setFromUnitVectors(new V3(0, 1, 0), DIR_AVANTBRAS);
+      var revers = new THREE.Mesh(new THREE.CylinderGeometry(0.0325, 0.0345, 0.034, 20, 1, true), M.gant);
+      revers.position.y = 0.012; revers.scale.set(1, 1, 0.82); poignet.add(revers);
+      var sangle = new THREE.Mesh(new THREE.CylinderGeometry(0.0352, 0.0356, 0.013, 20, 1, true), M.sangle);
+      sangle.position.y = 0.016; sangle.scale.set(1, 1, 0.84); poignet.add(sangle);
+      var languette = new THREE.Mesh(boiteArrondie(0.016, 0.013, 0.004, 0.0015, 2), M.sangle);
+      languette.position.set(0.0, 0.016, 0.031); poignet.add(languette);
+      g.add(poignet);
+      return g;
+    }
+
+    function construireAvantBras() {
+      var g = new THREE.Group(); g.name = 'avant-bras';
+      // le cylindre suit +Y local ; on l'aligne ensuite sur la direction de l'avant-bras
+      var manche = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.049, 0.42, 22, 10, true), M.veste);
+      manche.position.y = 0.21 + 0.03; manche.scale.set(1, 1, 0.86); g.add(manche);
+      var pos = manche.geometry.attributes.position, v = new V3();
+      for (var i = 0; i < pos.count; i++) { // plis du tissu
+        v.fromBufferAttribute(pos, i);
+        var t = (v.y + 0.21) / 0.42, ang = Math.atan2(v.z, v.x);
+        var pli = 0.0026 * Math.sin(t * 38 + ang * 2) * (1 - t) + 0.0016 * Math.sin(ang * 5 + t * 9);
+        var rr = Math.sqrt(v.x * v.x + v.z * v.z), k = (rr + pli) / rr;
+        pos.setXYZ(i, v.x * k, v.y, v.z * k);
+      }
+      manche.geometry.computeVertexNormals();
+      var poignetVeste = new THREE.Mesh(new THREE.TorusGeometry(0.0365, 0.0045, 8, 24), M.veste);
+      poignetVeste.rotation.x = Math.PI / 2; poignetVeste.position.y = 0.032; poignetVeste.scale.set(1, 0.86, 1);
+      g.add(poignetVeste);
+      var avantBras = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.031, 0.05, 16, 1, true), M.gant);
+      avantBras.position.y = 0.02; avantBras.scale.set(1, 1, 0.82); g.add(avantBras);
+      return g;
+    }
+
+    /* ================================================================ RIG */
+    var rig = new THREE.Group(); rig.name = 'couteau-viewmodel'; rig.visible = false;
+    // vue séparée : le bras a sa propre scène et sa propre caméra (fixe à l'origine), rendues après le jeu
+    var sceneVue = null, cameraVue = null, lumVue = null;
+    if (o.vueSeparee) {
+      sceneVue = new THREE.Scene();
+      cameraVue = new THREE.PerspectiveCamera(o.fovVue, camera.aspect || 1, 0.01, 10);
+      sceneVue.add(cameraVue);
+      lumVue = { hemi: new THREE.HemisphereLight(0xd8d2c4, 0x1e1712, 0.6), cle: new THREE.DirectionalLight(0xffe2c0, 0.6) };
+      lumVue.cle.position.set(0.6, 1, 0.4);
+      sceneVue.add(lumVue.hemi, lumVue.cle);
+    }
+    var porteur = cameraVue || camera;
+    porteur.add(rig);
+    var balance = new THREE.Group(); rig.add(balance);   // inertie quand la caméra tourne
+    var bras = new THREE.Group(); balance.add(bras);     // pose animée (repère du poing)
+    var avantBras = construireAvantBras();
+    avantBras.position.copy(POIGNET);
+    avantBras.quaternion.setFromUnitVectors(new V3(0, 1, 0), DIR_AVANTBRAS);
+    bras.add(avantBras);
+    var pivotPoignet = new THREE.Group(); pivotPoignet.position.copy(POIGNET); bras.add(pivotPoignet);
+    var contenuMain = new THREE.Group(); contenuMain.position.copy(POIGNET).negate(); pivotPoignet.add(contenuMain);
+    var main = construireMain(); contenuMain.add(main);
+    var couteau = construireCouteau(); couteau.position.set(0, 0.048, 0); contenuMain.add(couteau);
+
+    rig.traverse(function (m) {
+      if (m.isMesh) { m.frustumCulled = false; m.castShadow = false; m.receiveShadow = false; }
+    });
+
+    /* --------------------------------------------------------- dragonne (corde) */
+    var NC = 8, SEG = 0.0092;
+    var corde = { p: [], q: [], mesh: [] };
+    var geoCorde = new THREE.CylinderGeometry(0.0019, 0.0019, 1, 7);
+    for (var ic = 0; ic < NC; ic++) { corde.p.push(new V3()); corde.q.push(new V3()); }
+    for (var im = 0; im < NC - 1; im++) { var mc = new THREE.Mesh(geoCorde, M.paracorde); mc.frustumCulled = false; rig.add(mc); corde.mesh.push(mc); }
+    var noeud = new THREE.Mesh(new THREE.SphereGeometry(0.0036, 10, 8), M.paracorde); noeud.frustumCulled = false; rig.add(noeud);
+    var cordePrete = false;
+    var gMonde = new V3(), tmpA = new V3(), tmpB = new V3(), tmpC = new V3();
+    function reinitCorde() {
+      couteau.updateMatrixWorld(true);
+      var a = couteau.localToWorld(tmpA.copy(couteau.userData.ancreDragonne));
+      for (var i = 0; i < NC; i++) { corde.p[i].set(a.x, a.y - i * SEG, a.z); corde.q[i].copy(corde.p[i]); }
+      cordePrete = true;
+    }
+    function majCorde(dt) {
+      if (!cordePrete) reinitCorde();
+      var a = couteau.localToWorld(tmpA.copy(couteau.userData.ancreDragonne));
+      corde.p[0].copy(a); corde.q[0].copy(a);
+      gMonde.set(0, -9.81 * dt * dt, 0);
+      for (var i = 1; i < NC; i++) {
+        var p = corde.p[i], q = corde.q[i];
+        tmpB.copy(p).sub(q).multiplyScalar(0.965);
+        q.copy(p); p.add(tmpB).add(gMonde);
+      }
+      for (var it = 0; it < 5; it++) {
+        corde.p[0].copy(a);
+        for (var j = 0; j < NC - 1; j++) {
+          var p1 = corde.p[j], p2 = corde.p[j + 1];
+          tmpB.copy(p2).sub(p1); var d = tmpB.length() || 1e-6, diff = (d - SEG) / d;
+          if (j === 0) p2.addScaledVector(tmpB, -diff);
+          else { p1.addScaledVector(tmpB, diff * 0.5); p2.addScaledVector(tmpB, -diff * 0.5); }
+        }
+      }
+      // rendu dans le repère du rig
+      for (var k = 0; k < NC - 1; k++) {
+        var A = rig.worldToLocal(tmpB.copy(corde.p[k])), B = rig.worldToLocal(tmpC.copy(corde.p[k + 1]));
+        var m = corde.mesh[k];
+        m.position.copy(A).add(B).multiplyScalar(0.5);
+        var dir = tmpA.copy(B).sub(A); var len = dir.length() || 1e-6;
+        m.scale.set(1, len + 0.0012, 1);
+        m.quaternion.setFromUnitVectors(Y_UNIT, dir.multiplyScalar(1 / len));
+      }
+      noeud.position.copy(rig.worldToLocal(tmpB.copy(corde.p[NC - 1])));
+    }
+    var Y_UNIT = new V3(0, 1, 0);
+
+    /* ------------------------------------------------------------ traînée de lame */
+    var NT = 18;
+    var traineePos = new Float32Array(NT * 2 * 3), traineeA = new Float32Array(NT * 2);
+    var geoTrainee = new THREE.BufferGeometry();
+    geoTrainee.setAttribute('position', new THREE.BufferAttribute(traineePos, 3));
+    geoTrainee.setAttribute('aAlpha', new THREE.BufferAttribute(traineeA, 1));
+    var idxT = [];
+    for (var it2 = 0; it2 < NT - 1; it2++) { var a0 = it2 * 2; idxT.push(a0, a0 + 1, a0 + 2, a0 + 1, a0 + 3, a0 + 2); }
+    geoTrainee.setIndex(idxT);
+    var matTrainee = new THREE.ShaderMaterial({
+      uniforms: { uCouleur: { value: new THREE.Color(0xdfe8ff) } },
+      vertexShader: 'attribute float aAlpha; varying float vA; void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 uCouleur; varying float vA; void main(){ gl_FragColor = vec4(uCouleur * vA, vA); }',
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+    });
+    var trainee = new THREE.Mesh(geoTrainee, matTrainee); trainee.frustumCulled = false; trainee.renderOrder = 5;
+    rig.add(trainee);
+    var traineeForce = 0, traineeVide = true;
+    var baseLame = new V3(0, 0.03, 0), pointe = new V3(0.001, 0.178, 0), dernierePointe = new V3(), pointeRig = new V3();
+    function majTrainee(dt) {
+      var b = rig.worldToLocal(couteau.localToWorld(tmpA.copy(baseLame)));
+      var p = rig.worldToLocal(couteau.localToWorld(tmpB.copy(pointe)));
+      pointeRig.copy(p);
+      if (traineeVide) {
+        for (var i = 0; i < NT; i++) { traineePos.set([b.x, b.y, b.z, p.x, p.y, p.z], i * 6); }
+        dernierePointe.copy(p); traineeVide = false;
+      }
+      var vit = dt > 0 ? p.distanceTo(dernierePointe) / dt : 0; dernierePointe.copy(p);
+      var cible = clamp((vit - 1.2) / 3.5, 0, 1) * traineeActive;
+      traineeForce = lerp(traineeForce, cible, 1 - Math.exp(-dt * 30));
+      traineePos.copyWithin(6, 0, (NT - 1) * 6);
+      traineePos.set([b.x, b.y, b.z, p.x, p.y, p.z], 0);
+      for (var k = 0; k < NT; k++) {
+        var f = Math.pow(1 - k / (NT - 1), 1.6) * traineeForce;
+        traineeA[k * 2] = f * 0.12; traineeA[k * 2 + 1] = f * 0.62;
+      }
+      geoTrainee.attributes.position.needsUpdate = true; geoTrainee.attributes.aAlpha.needsUpdate = true;
+    }
+    var traineeActive = 0;
+
+    /* ------------------------------------------------------------ particules de sang */
+    var NP = 260;
+    var pPos = new Float32Array(NP * 3), pTaille = new Float32Array(NP), pAlpha = new Float32Array(NP), pCoul = new Float32Array(NP * 3);
+    var pVit = [], pVie = new Float32Array(NP), pVieMax = new Float32Array(NP), pTailleBase = new Float32Array(NP), pTrainee = new Float32Array(NP);
+    for (var ip = 0; ip < NP; ip++) { pVit.push(new V3()); pPos[ip * 3 + 1] = -9999; }
+    var geoP = new THREE.BufferGeometry();
+    geoP.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    geoP.setAttribute('aTaille', new THREE.BufferAttribute(pTaille, 1));
+    geoP.setAttribute('aAlpha', new THREE.BufferAttribute(pAlpha, 1));
+    geoP.setAttribute('aCouleur', new THREE.BufferAttribute(pCoul, 3));
+    var matP = new THREE.ShaderMaterial({
+      uniforms: { uEchelle: { value: 600 } },
+      vertexShader: 'attribute float aTaille; attribute float aAlpha; attribute vec3 aCouleur; varying float vA; varying vec3 vC; uniform float uEchelle;' +
+        'void main(){ vA = aAlpha; vC = aCouleur; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = max(1.0, aTaille * uEchelle / max(0.05, -mv.z)); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying float vA; varying vec3 vC; void main(){ vec2 c = gl_PointCoord - 0.5; float d = dot(c,c); if (d > 0.25) discard; float a = vA * smoothstep(0.25, 0.08, d); gl_FragColor = vec4(vC * (0.75 + 0.5 * smoothstep(0.25, 0.0, d)), a); }',
+      transparent: true, depthWrite: false
+    });
+    var particules = new THREE.Points(geoP, matP); particules.frustumCulled = false; particules.renderOrder = 4;
+    scene.add(particules);
+    var curseurP = 0;
+    function emettreSang(origine, dir, n, opt) {
+      opt = opt || {};
+      var r = Math.random;
+      for (var i = 0; i < n; i++) {
+        var k = curseurP; curseurP = (curseurP + 1) % NP;
+        pPos[k * 3] = origine.x; pPos[k * 3 + 1] = origine.y; pPos[k * 3 + 2] = origine.z;
+        var v = pVit[k];
+        v.set(r() - 0.5, r() - 0.5, r() - 0.5).multiplyScalar(opt.dispersion || 2.4);
+        v.addScaledVector(dir, (opt.vitesse || 3) * (0.5 + r()));
+        v.y += opt.montee !== undefined ? opt.montee : 1.0;
+        pVieMax[k] = pVie[k] = (opt.vie || 0.9) * (0.6 + r() * 0.8); pTrainee[k] = 0;
+        pTailleBase[k] = (opt.taille || 0.022) * (0.4 + r() * 1.1);
+        var sombre = 0.55 + r() * 0.35;
+        pCoul[k * 3] = 0.42 * sombre + 0.05; pCoul[k * 3 + 1] = 0.02 * sombre; pCoul[k * 3 + 2] = 0.025 * sombre;
+      }
+    }
+    function majParticules(dt) {
+      var g = o.gravite;
+      for (var k = 0; k < NP; k++) {
+        if (pVie[k] <= 0) { pAlpha[k] = 0; continue; }
+        pVie[k] -= dt;
+        var v = pVit[k];
+        v.y -= g * dt; v.multiplyScalar(1 - 0.6 * dt);
+        pPos[k * 3] += v.x * dt; pPos[k * 3 + 1] += v.y * dt; pPos[k * 3 + 2] += v.z * dt;
+        if (o.hauteurSol !== null && pPos[k * 3 + 1] < o.hauteurSol + 0.004) {
+          pPos[k * 3 + 1] = o.hauteurSol + 0.004; v.set(0, 0, 0);
+          if (pTrainee[k] === 0) { pTrainee[k] = 1; pVie[k] = Math.max(pVie[k], 2.5); pVieMax[k] = pVie[k]; pTailleBase[k] *= 1.6; }
+        }
+        var vie = clamp(pVie[k] / pVieMax[k], 0, 1);
+        pAlpha[k] = vie < 0.35 ? vie / 0.35 : 1;
+        pTaille[k] = pTailleBase[k] * (0.7 + 0.3 * vie);
+      }
+      geoP.attributes.position.needsUpdate = true; geoP.attributes.aAlpha.needsUpdate = true;
+      geoP.attributes.aTaille.needsUpdate = true; geoP.attributes.aCouleur.needsUpdate = true;
+      if (o.renderer && o.renderer.getDrawingBufferSize) {
+        var s = o.renderer.getDrawingBufferSize(new THREE.Vector2());
+        matP.uniforms.uEchelle.value = s.y / (2 * Math.tan((camera.fov * DEG) / 2));
+      } else if (typeof window !== 'undefined') {
+        matP.uniforms.uEchelle.value = window.innerHeight * (window.devicePixelRatio || 1) / (2 * Math.tan((camera.fov * DEG) / 2));
+      }
+    }
+
+    /* =========================================================== AUDIO */
+    var audio = { ctx: null, maitre: null, bruit: null, externe: false };
+    function ctxAudio() {
+      if (!o.son) return null;
+      if (!audio.ctx) {
+        var sortie = null;
+        if (o.audio) {
+          // son du jeu : son contexte et son bus des effets (rien tant que le jeu n'a pas de son)
+          var ext = o.audio();
+          if (!ext || !ext.ctx) return null;
+          audio.ctx = ext.ctx; audio.externe = true; sortie = ext.sortie || null;
+        } else {
+          var AC = (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext);
+          if (!AC) return null;
+          try { audio.ctx = new AC(); } catch (e) { return null; }
+        }
+        audio.maitre = audio.ctx.createGain(); audio.maitre.gain.value = o.volume; audio.maitre.connect(sortie || audio.ctx.destination);
+        var n = audio.ctx.sampleRate, b = audio.ctx.createBuffer(1, n, n), d = b.getChannelData(0);
+        for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+        audio.bruit = b;
+      }
+      if (audio.ctx.state === 'closed') return null;
+      if (audio.ctx.state === 'suspended' && !audio.externe) audio.ctx.resume();   // le contexte du jeu, c'est le jeu qui le gère
+      return audio.ctx;
+    }
+    function bruit(t0, duree, type, f0, f1, q, gain, att) {
+      var c = audio.ctx, s = c.createBufferSource(); s.buffer = audio.bruit; s.loop = true;
+      var f = c.createBiquadFilter(); f.type = type; f.Q.value = q;
+      f.frequency.setValueAtTime(f0, t0); f.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + duree);
+      var g = c.createGain(); g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + (att || 0.02));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + duree);
+      s.connect(f); f.connect(g); g.connect(audio.maitre);
+      s.start(t0, Math.random() * 0.5); s.stop(t0 + duree + 0.05);
+    }
+    function ton(t0, duree, type, f0, f1, gain, att) {
+      var c = audio.ctx, osc = c.createOscillator(); osc.type = type;
+      osc.frequency.setValueAtTime(f0, t0); osc.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t0 + duree);
+      var g = c.createGain(); g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + (att || 0.005));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + duree);
+      osc.connect(g); g.connect(audio.maitre); osc.start(t0); osc.stop(t0 + duree + 0.05);
+    }
+    var SONS = {
+      sortie: function (t) { ton(t, 0.2, 'triangle', 3150, 2900, 0.08); ton(t, 0.16, 'sine', 4720, 4600, 0.035); bruit(t, 0.09, 'highpass', 5000, 7000, 0.7, 0.07); },
+      elan: function (t) { bruit(t, 0.22, 'bandpass', 520, 2600, 1.1, 0.42, 0.06); },
+      impact: function (t) {
+        ton(t, 0.17, 'sine', 150, 42, 0.95); ton(t, 0.07, 'square', 90, 50, 0.12);
+        bruit(t, 0.045, 'highpass', 1800, 900, 0.8, 0.5, 0.003);
+        bruit(t + 0.01, 0.24, 'bandpass', 760, 380, 2.8, 0.42, 0.01);
+      },
+      torsion: function (t) { bruit(t, 0.17, 'bandpass', 460, 300, 3.5, 0.32, 0.03); },
+      arrachage: function (t) { bruit(t, 0.2, 'bandpass', 1050, 280, 2.4, 0.42, 0.015); bruit(t + 0.02, 0.12, 'bandpass', 800, 2400, 1, 0.16, 0.03); },
+      secoue: function (t) {
+        bruit(t, 0.09, 'bandpass', 1300, 3200, 1.2, 0.2, 0.02);
+        for (var i = 0; i < 3; i++) bruit(t + 0.06 + Math.random() * 0.12, 0.012, 'bandpass', 2600, 2400, 4, 0.08, 0.002);
+      },
+      rate: function (t) { bruit(t, 0.36, 'bandpass', 640, 2900, 1.0, 0.5, 0.05); bruit(t + 0.2, 0.28, 'lowpass', 900, 500, 0.7, 0.09, 0.05); },
+      moulinet: function (t) { bruit(t, 0.26, 'bandpass', 900, 2200, 1.6, 0.17, 0.08); bruit(t + 0.1, 0.16, 'bandpass', 1500, 2600, 1.6, 0.12, 0.05); },
+      rangement: function (t) { bruit(t, 0.18, 'lowpass', 700, 400, 0.7, 0.08, 0.04); ton(t + 0.1, 0.06, 'triangle', 2200, 2100, 0.03); }
+    };
+    function jouer(nom) {
+      var c = ctxAudio(); if (!c || !SONS[nom]) return;
+      try { SONS[nom](c.currentTime + 0.005); } catch (e) { /* audio indisponible */ }
+    }
+
+    /* ======================================================= ANIMATION */
+    // Une clé = position de la main dans le repère caméra (m), direction de la lame,
+    // direction du coude (où part l'avant-bras), et deux réglages de poignet (flick, roulis).
+    var mTmp = new THREE.Matrix4(), bP = new V3(), bD = new V3(), bX = new V3(), bZ = new V3();
+    function baseMain(Y, h, outQ, outD) {
+      // la lame suit exactement Y (normalisé) ; l'avant-bras part vers h en respectant l'angle anatomique (120°)
+      bP.copy(h).addScaledVector(Y, -h.dot(Y));
+      if (bP.lengthSq() < 1e-8) bP.set(1, 0, 0).addScaledVector(Y, -Y.x);
+      bP.normalize();
+      bD.copy(Y).multiplyScalar(-Math.sin(DEVIATION)).addScaledVector(bP, Math.cos(DEVIATION)).normalize();
+      bX.copy(bD).addScaledVector(Y, Math.sin(DEVIATION)).multiplyScalar(-1 / Math.cos(DEVIATION)).normalize();
+      bZ.crossVectors(bX, Y).normalize();
+      mTmp.makeBasis(bX, Y, bZ);
+      if (outD) outD.copy(bD);
+      return outQ.setFromRotationMatrix(mTmp);
+    }
+    function cles(def) {
+      return def.map(function (k) {
+        var Y = new V3().fromArray(k.lame).normalize(), D = new V3();
+        var q = baseMain(Y, new V3().fromArray(k.coude).normalize(), new Q(), D);
+        // W : direction de la lame perpendiculaire à l'avant-bras (la pronation du poignet)
+        var W = Y.clone().addScaledVector(D, Math.sin(DEVIATION)).normalize();
+        return { t: k.t, p: new V3().fromArray(k.p), q: q, D: D, W: W, flick: (k.flick || 0) * DEG, roulis: (k.roulis || 0) * DEG, ease: E[k.ease || 'inOutSine'] };
+      });
+    }
+    function slerpVec(a, b, t, out) { // interpolation sur la sphère (t peut sortir de [0,1] pour les dépassements)
+      var th = Math.acos(clamp(a.dot(b), -1, 1));
+      if (th < 1e-4) return out.copy(a).lerp(b, t).normalize();
+      var s = Math.sin(th);
+      return out.copy(a).multiplyScalar(Math.sin((1 - t) * th) / s).addScaledVector(b, Math.sin(t * th) / s).normalize();
+    }
+    var POSES = {
+      cache:     { p: [0.30, -0.44, -0.22], lame: [0.1, 0.5, -0.86], coude: [0.35, -0.6, 0.72] },
+      monte:     { p: [0.25, -0.10, -0.31], lame: [0.2, 0.9, -0.2], coude: [0.65, -0.35, 0.68] },
+      arme:      { p: [0.24, 0.07, -0.27], lame: [0.3, 0.8, 0.5], coude: [0.8, 0.15, 0.58] },
+      contact:   { p: [0.0, -0.08, -0.36], lame: [-0.55, 0.45, -0.7], coude: [0.6, 0.4, 0.7] },
+      // branche TOUCHÉ
+      enfonce:   { p: [-0.01, -0.085, -0.40], lame: [-0.45, 0.3, -0.84], coude: [0.6, 0.35, 0.72] },
+      torsion:   { p: [-0.01, -0.09, -0.395], lame: [-0.45, 0.28, -0.85], coude: [0.6, 0.35, 0.72] },
+      arrache:   { p: [0.12, -0.10, -0.32], lame: [-0.4, -0.1, -0.91], coude: [0.6, -0.3, 0.74] },
+      secoue:    { p: [0.15, -0.10, -0.32], lame: [0.05, 0.55, -0.83], coude: [0.5, -0.5, 0.7] },
+      pose:      { p: [0.19, -0.13, -0.33], lame: [0.1, 0.72, -0.68], coude: [0.48, -0.55, 0.68] },
+      // branche RATÉ (V2) : coup de poing-couteau qui part d'en bas et se fend dans le vide.
+      // Prise marteau : quand le poing pousse vers l'avant, la lame reste dressée (120° avec l'avant-bras).
+      recul:     { p: [0.20, -0.22, -0.25], lame: [0.02, 0.86, -0.51], coude: [0.5, -0.5, 0.7] },
+      estoc:     { p: [0.03, -0.13, -0.44], lame: [-0.12, 0.82, -0.56], coude: [0.5, -0.45, 0.74] },
+      surextension: { p: [-0.03, -0.14, -0.50], lame: [-0.22, 0.70, -0.68], coude: [0.40, -0.50, 0.77] },
+      retrait:   { p: [0.12, -0.12, -0.33], lame: [0.05, 0.55, -0.83], coude: [0.50, -0.50, 0.70] },
+      // branche RATÉ (V1) : élan qui traverse l'écran, déséquilibre, reprise
+      elan:      { p: [-0.18, -0.14, -0.33], lame: [-0.79, -0.53, -0.29], coude: [0.65, -0.35, 0.68] },
+      desequilibre: { p: [-0.21, -0.17, -0.32], lame: [-0.54, -0.63, -0.55], coude: [0.6, -0.4, 0.69] },
+      reprise:   { p: [-0.02, -0.11, -0.35], lame: [-0.25, 0.5, -0.83], coude: [0.62, -0.25, 0.74] },
+      moulinet:  { p: [0.16, -0.12, -0.34], lame: [0.08, 0.72, -0.69], coude: [0.5, -0.55, 0.67] }
+    };
+    function k(t, nom, extra) { var b = POSES[nom], r = { t: t, p: b.p, lame: b.lame, coude: b.coude }; return Object.assign(r, extra || {}); }
+    // instant où la lame passe dans la zone de frappe, pour chaque animation
+    var T_CONTACT = { touche: 0.225, rate: 0.15 };
+    var TC = T_CONTACT.touche;
+    var SEQ = {
+      touche: cles([
+        k(0.0, 'cache'),
+        k(0.075, 'monte', { ease: 'outCubic' }),
+        k(0.145, 'arme', { ease: 'inOutSine', flick: 10 }),
+        k(TC, 'contact', { ease: 'inCubic', flick: -6 }),
+        k(TC + 0.035, 'enfonce', { ease: 'outExpo', flick: -10 }),
+        k(TC + 0.15, 'torsion', { ease: 'inOutCubic', flick: -12, roulis: 42 }),
+        k(TC + 0.29, 'arrache', { ease: 'outQuart', flick: 14, roulis: 20 }),
+        k(TC + 0.37, 'secoue', { ease: 'outCubic', flick: -34 }),
+        k(TC + 0.45, 'pose', { ease: 'outBack', flick: 6 }),
+        k(TC + 0.63, 'cache', { ease: 'inCubic' })
+      ]),
+      rate: cles([
+        k(0.0, 'cache'),
+        k(0.06, 'recul', { ease: 'outCubic', flick: 6 }),
+        k(T_CONTACT.rate, 'estoc', { ease: 'inQuad', flick: -4 }),
+        k(0.23, 'surextension', { ease: 'outCubic', flick: -12 }),
+        k(0.34, 'retrait', { ease: 'inOutCubic', flick: 16 }),
+        k(0.52, 'moulinet', { ease: 'inOutCubic', roulis: -360 }),
+        k(0.60, 'pose', { ease: 'outBack', roulis: -360 }),
+        k(0.77, 'cache', { ease: 'inCubic', roulis: -360 })
+      ])
+    };
+    // raté de la version 1 (début commun, décision au contact) et de la version 2 (estoc dans le vide)
+    var SEQ_RATE = { appui: SEQ.rate, contact: cles([
+      k(0.0, 'cache'),
+      k(0.075, 'monte', { ease: 'outCubic' }),
+      k(0.145, 'arme', { ease: 'inOutSine', flick: 10 }),
+      k(TC, 'contact', { ease: 'inCubic', flick: -6 }),
+      k(TC + 0.13, 'elan', { ease: 'outCubic', flick: -14 }),
+      k(TC + 0.23, 'desequilibre', { ease: 'inOutSine', flick: -22 }),
+      k(TC + 0.33, 'reprise', { ease: 'inOutCubic', flick: 4 }),
+      k(TC + 0.56, 'moulinet', { ease: 'inOutCubic', roulis: 360 }),
+      k(TC + 0.64, 'pose', { ease: 'outBack', roulis: 360 }),
+      k(TC + 0.81, 'cache', { ease: 'inCubic', roulis: 360 })
+    ]) };
+    var DUREE = { touche: SEQ.touche[SEQ.touche.length - 1].t, rate: SEQ.rate[SEQ.rate.length - 1].t };
+    // à partir de quand un nouvel appui relance un coup (l'action est finie, la main revient en garde)
+    var FENETRE = { touche: TC + 0.32, rate: 0.36 };
+    var decisionActive = 'appui', decisionEnAttente = false;
+    function appliquerDecision() {   // 'contact' = version 1, 'appui' = version 2 : seuls le raté et ses instants changent
+      decisionActive = o['decision'] === 'contact' ? 'contact' : 'appui';
+      var v1 = decisionActive === 'contact';
+      SEQ.rate = SEQ_RATE[decisionActive];
+      T_CONTACT.rate = v1 ? TC : 0.15;
+      DUREE.rate = SEQ.rate[SEQ.rate.length - 1].t;
+      FENETRE.rate = v1 ? TC + 0.36 : 0.36;
+      decisionEnAttente = false;
+    }
+    appliquerDecision();
+
+    var poseCourante = { p: new V3(), q: new Q(), flick: 0, roulis: 0 };
+    function catmull(p0, p1, p2, p3, t, out) {
+      var t2 = t * t, t3 = t2 * t;
+      out.x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+      out.y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+      out.z = 0.5 * ((2 * p1.z) + (-p0.z + p2.z) * t + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3);
+      return out;
+    }
+    var iY = new V3(), iD = new V3(), iW = new V3();
+    function evaluer(seq, t, out) {
+      var n = seq.length;
+      if (t <= seq[0].t) { var a0 = seq[0]; out.p.copy(a0.p); out.q.copy(a0.q); out.flick = a0.flick; out.roulis = a0.roulis; return out; }
+      if (t >= seq[n - 1].t) { var z = seq[n - 1]; out.p.copy(z.p); out.q.copy(z.q); out.flick = z.flick; out.roulis = z.roulis; return out; }
+      var i = 0; while (i < n - 2 && t > seq[i + 1].t) i++;
+      var a = seq[i], b = seq[i + 1];
+      var u = (t - a.t) / (b.t - a.t), e = b.ease(u), ec = clamp(e, -0.25, 1.25);
+      catmull(seq[Math.max(0, i - 1)].p, a.p, b.p, seq[Math.min(n - 1, i + 2)].p, e, out.p);
+      // Rotation interpolée comme un vrai bras : l'avant-bras balaie le grand cercle entre les deux clés,
+      // la pronation tourne autour de lui, et la lame garde ses 120° avec l'avant-bras.
+      // (Un slerp direct des quaternions faisait passer l'avant-bras par l'axe de la caméra pendant le raté.)
+      slerpVec(a.D, b.D, ec, iD); slerpVec(a.W, b.W, ec, iW);
+      iW.addScaledVector(iD, -iW.dot(iD)).normalize();
+      iY.copy(iD).multiplyScalar(-Math.sin(DEVIATION)).addScaledVector(iW, Math.cos(DEVIATION));
+      baseMain(iY, iD, out.q);
+      out.flick = lerp(a.flick, b.flick, e); out.roulis = lerp(a.roulis, b.roulis, e);
+      return out;
+    }
+    var axeFlick = new V3(0, 0, 1), qFlick = new Q(), qRoulis = new Q();
+    function appliquerPose(pose) {
+      bras.position.copy(pose.p); bras.quaternion.copy(pose.q);
+      qFlick.setFromAxisAngle(axeFlick, pose.flick);
+      qRoulis.setFromAxisAngle(DIR_AVANTBRAS, pose.roulis);
+      pivotPoignet.quaternion.copy(qRoulis).multiply(qFlick);
+    }
+
+    /* ------------------------------------------------- caméra : ressorts amortis */
+    function ressort(k, amort) { return { x: 0, v: 0, k: k, c: 2 * Math.sqrt(k) * amort }; }
+    var R = { tangage: ressort(170, 0.5), lacet: ressort(170, 0.5), roulis: ressort(150, 0.45), fov: ressort(140, 0.6) };
+    function impulsion(r, v) { r.v += v; }
+    function majRessort(r, dt) { var a = -r.k * r.x - r.c * r.v; r.v += a * dt; r.x += r.v * dt; }
+    var tremblement = 0;
+    var qSecousse = new Q(), qSecousseInv = new Q(), eSecousse = new THREE.Euler(0, 0, 0, 'YXZ'), secousseAppliquee = false;
+    var fovDecalage = 0;   // part du champ de vision ajoutée par la secousse (retirée par retirerSecousse)
+
+    /* ===================================================== LOGIQUE DE MÊLÉE */
+    var etat = 'repos', tSeq = 0, branche = 'rate', geleImpact = 0, echelleTemps = 1;
+    var evenementsFaits = {}, demandeEnAttente = false, resultat = null, cibleTouchee = null;
+    var sangLame = 0, delaiSechage = 0;
+    var camPos = new V3(), camDir = new V3(), vecT = new V3(), pointImpact = new V3();
+
+    function pointDeFrappe(t, out) {
+      if (o.getHitPoint) { var p = o.getHitPoint(t); if (p) return out.copy(p); }
+      var src = t.position || (t.object3D && t.object3D.position) || (t.mesh && t.mesh.position);
+      if (!src) return null;
+      out.copy(src); out.y += (t.hauteurImpact !== undefined ? t.hauteurImpact : o.hauteurImpact);
+      return out;
+    }
+    // marge (m) et angleEnPlus (°) élargissent la zone ; seule = ne tester que ce zombie-là
+    function chercherCible(marge, angleEnPlus, seule) {
+      camera.getWorldPosition(camPos); camera.getWorldDirection(camDir);
+      var liste = seule ? [seule] : ((o.getTargets && o.getTargets()) || []), meilleur = null, dMin = Infinity, p = new V3();
+      for (var i = 0; i < liste.length; i++) {
+        var t = liste[i];
+        if (!t || t.alive === false || t.dead === true || t.mort === true) continue;
+        if (!pointDeFrappe(t, p)) continue;
+        vecT.subVectors(p, camPos);
+        var d = vecT.length(), r = t.radius !== undefined ? t.radius : o.rayonCible;
+        if (d - r > o.portee + (marge || 0)) continue;
+        var ang = vecT.angleTo(camDir) / DEG, tol = o.angleCone + (angleEnPlus || 0) + Math.atan2(r, Math.max(d, 0.01)) / DEG;
+        if (ang > tol) continue;
+        if (o.bloque && o.bloque(camPos.clone(), p.clone())) continue;
+        if (d < dMin) { dMin = d; meilleur = { cible: t, point: p.clone(), distance: d, rayon: r }; }
+      }
+      return meilleur;
+    }
+
+    // règles de mêlée fournies par le jeu : choisirCible(moment, cibleVerrouillee) → { cible, point, rayon } ou null
+    function cibleJeu(moment, verrou) {
+      var r = null;
+      try { r = o.choisirCible(moment, verrou); } catch (e) { console.error(e); }
+      if (!r || !r.cible) return null;
+      camera.getWorldPosition(camPos); camera.getWorldDirection(camDir);
+      var p = r.point ? new V3().copy(r.point) : pointDeFrappe(r.cible, new V3());
+      if (!p) return null;
+      var rayon = r.rayon !== undefined ? r.rayon : (r.cible.radius !== undefined ? r.cible.radius : o.rayonCible);
+      return { cible: r.cible, point: p, distance: p.distanceTo(camPos), rayon: rayon };
+    }
+
+    var poseDepart = { p: new V3(), q: new Q(), flick: 0, roulis: 0 }, qFondu = new Q(), tFondu = 0, DUREE_FONDU = 0.1, abaisseDepart = 0;
+    function fondre() {   // la pose actuelle devient le départ d'un fondu de DUREE_FONDU
+      poseDepart.p.copy(poseCourante.p); poseDepart.q.copy(poseCourante.q); poseDepart.flick = poseCourante.flick;
+      poseDepart.roulis = Math.atan2(Math.sin(poseCourante.roulis), Math.cos(poseCourante.roulis));   // un tour complet = aucun tour
+      tFondu = DUREE_FONDU;
+    }
+    function frapper() {
+      var relance = false;
+      if (etat !== 'repos') {
+        // enchaînement : pendant le retour en garde, un nouvel appui relance un coup tout de suite
+        if (o.enchainement && tSeq >= FENETRE[branche] && geleImpact <= 0) relance = true;
+        else {
+          if (tSeq > DUREE[branche] - 0.16) demandeEnAttente = true;
+          return false;
+        }
+      }
+      // V2 : la décision se prend à l'appui, le zombie trouvé est verrouillé jusqu'au contact.
+      // V1 (decision 'contact') : rien n'est décidé avant que la lame arrive.
+      var vise = null;
+      if (decisionActive !== 'contact') vise = o.choisirCible ? cibleJeu('appui', null) : chercherCible(o.margeAppui, 0, null);
+      if (relance) { fondre(); abaisseDepart = abaissement(); } else { tFondu = 0; abaisseDepart = 0; cordePrete = false; }
+      etat = 'actif'; tSeq = 0; evenementsFaits = {}; demandeEnAttente = false;
+      if (decisionActive === 'contact') { branche = 'rate'; resultat = null; cibleTouchee = null; }
+      else { branche = vise ? 'touche' : 'rate'; resultat = branche; cibleTouchee = vise ? vise.cible : null; }
+      rig.visible = true; traineeVide = true;
+      if (!relance) appliquerPose(evaluer(SEQ[branche], 0, poseCourante));
+      jouer('sortie');
+      if (o.secousseCamera) impulsion(R.roulis, -6);
+      return true;
+    }
+
+    function resoudreContact() {
+      var c = null;
+      if (decisionActive === 'contact') {
+        // version 1 : le résultat se décide maintenant, au moment où la lame arrive
+        c = o.choisirCible ? cibleJeu('contact', null) : chercherCible(0, 0, null);
+        if (!c) {
+          resultat = 'rate';
+          jouer('rate');
+          if (o.secousseCamera) { impulsion(R.roulis, 70); impulsion(R.lacet, 30); impulsion(R.tangage, -25); if (o.secousseFOV) impulsion(R.fov, 35); }
+          if (o.onMiss) { try { o.onMiss(); } catch (e3) { console.error(e3); } }
+          return;
+        }
+        branche = 'touche'; cibleTouchee = c.cible;
+      } else if (branche === 'rate') {
+        // V2, raté prévu à l'appui. Si un zombie est quand même là au contact (il a surgi pendant l'armé),
+        // le coup porte : on enchaîne par un fondu sur la fin du touché (torsion, arrachage).
+        c = o.choisirCible ? cibleJeu('contact', null) : chercherCible(0, 0, null);
+        if (!c) {
+          // la lame se fend dans le vide : le corps suit l'estoc vers l'avant
+          jouer('rate');
+          if (o.secousseCamera) { impulsion(R.tangage, -18); impulsion(R.roulis, 22); impulsion(R.lacet, 12); if (o.secousseFOV) impulsion(R.fov, 45); }
+          if (o.onMiss) { try { o.onMiss(); } catch (e0) { console.error(e0); } }
+          return;
+        }
+        fondre(); branche = 'touche'; tSeq = TC; evenementsFaits = { elan: true, contact: true }; cibleTouchee = c.cible;
+      } else if (o.choisirCible) {
+        // le zombie verrouillé à l'appui est-il toujours là ? Le jeu en juge avec ses propres règles.
+        c = cibleJeu('contact', cibleTouchee);
+        if (c) cibleTouchee = c.cible;
+      } else {
+        // le zombie verrouillé est-il toujours là ? Marge large : la décision est déjà prise et l'animation lancée.
+        // S'il a quitté la liste (mort) ou si getTargets recrée ses objets à chaque appel, on prend le zombie
+        // le plus proche dans cette même zone élargie.
+        var liste = (o.getTargets && o.getTargets()) || [], marge = Math.max(0.6, o.margeAppui + 0.3);
+        if (cibleTouchee && liste.indexOf(cibleTouchee) >= 0) c = chercherCible(marge, 25, cibleTouchee);
+        if (!c) c = chercherCible(marge, 25, null);
+        if (c) cibleTouchee = c.cible;
+      }
+      if (c) {
+        resultat = 'touche';
+        geleImpact = 0.075;
+        sangLame = Math.min(0.95, sangLame + 0.5); delaiSechage = 8;
+        // point d'entrée : surface du zombie face au joueur
+        vecT.subVectors(c.point, camPos).normalize();
+        pointImpact.copy(c.point).addScaledVector(vecT, -c.rayon * 0.85);
+        var dirSang = vecT.clone().multiplyScalar(-0.35); dirSang.x += (Math.random() - 0.5) * 0.4;
+        emettreSang(pointImpact, dirSang, 46, { vitesse: 2.6, dispersion: 2.8, montee: 1.6, vie: 0.95, taille: 0.03 });
+        emettreSang(pointImpact, vecT, 16, { vitesse: 1.2, dispersion: 1.0, montee: 0.4, vie: 0.5, taille: 0.055 });
+        emettreSang(pointImpact, dirSang, 10, { vitesse: 0.7, dispersion: 0.7, montee: 0.25, vie: 0.32, taille: 0.11 });
+        jouer('impact');
+        if (o.secousseCamera) {
+          impulsion(R.tangage, -30); impulsion(R.lacet, 40); impulsion(R.roulis, -45);
+          if (o.secousseFOV) impulsion(R.fov, -60);
+          tremblement = 0.14;
+        }
+        if (o.onHit) {
+          try { o.onHit(c.cible, { point: pointImpact.clone(), direction: vecT.clone(), degats: o.degats, distance: c.distance }); } catch (e) { console.error(e); }
+        }
+      } else {
+        // V2, touché prévu à l'appui mais plus personne au contact (zombie arrêté net, mort ou projeté entre-temps) :
+        // on bascule par un fondu sur l'estoc dans le vide, pour ne pas jouer la torsion sans zombie
+        resultat = 'rate';
+        if (decisionActive !== 'contact' && branche === 'touche') {
+          fondre(); branche = 'rate'; tSeq = T_CONTACT.rate + 0.03; evenementsFaits = { elan: true, contact: true };
+          if (o.secousseCamera) { impulsion(R.tangage, -18); impulsion(R.roulis, 22); impulsion(R.lacet, 12); if (o.secousseFOV) impulsion(R.fov, 45); }
+        }
+        jouer('rate');
+        if (o.onMiss) { try { o.onMiss(); } catch (e2) { console.error(e2); } }
+      }
+    }
+
+    var vPointe = new V3(), vDernierePointeMonde = new V3(), pointeMonde = new V3();
+    function evenements() {
+      function une(nom, t, fn) { if (!evenementsFaits[nom] && tSeq >= t) { evenementsFaits[nom] = true; fn(); } }
+      if (branche === 'touche') {
+        une('elan', 0.12, function () { jouer('elan'); });
+        une('contact', TC, resoudreContact);
+        une('rangement', TC + 0.49, function () { jouer('rangement'); });
+        if (resultat !== 'touche') return; // cible perdue pendant l'armé : ni chair ni sang
+        une('torsion', TC + 0.06, function () { jouer('torsion'); if (o.secousseCamera) impulsion(R.roulis, 25); });
+        une('arrachage', TC + 0.16, function () {
+          jouer('arrachage');
+          if (o.secousseCamera) { impulsion(R.lacet, -50); impulsion(R.tangage, 15); }
+          projeterDepuisLame(10, 1.2);
+        });
+        une('secoue', TC + 0.31, function () {
+          jouer('secoue'); sangLame = Math.max(0, sangLame - 0.12);
+          projeterDepuisLame(14, 2.2);
+        });
+      } else if (decisionActive === 'contact') {
+        une('elan', 0.12, function () { jouer('elan'); });
+        une('contact', TC, resoudreContact);
+        if (branche !== 'rate') return;     // touché : la suite passe par la branche « touche »
+        une('moulinet', TC + 0.34, function () { jouer('moulinet'); });
+        une('rangement', TC + 0.66, function () { jouer('rangement'); });
+      } else {
+        une('elan', 0.05, function () { jouer('elan'); });
+        une('contact', T_CONTACT.rate, resoudreContact);
+        une('retrait', 0.25, function () { if (o.secousseCamera) { impulsion(R.tangage, 12); impulsion(R.roulis, -10); } });
+        une('moulinet', 0.38, function () { jouer('moulinet'); });
+        une('rangement', 0.62, function () { jouer('rangement'); });
+      }
+    }
+    function versMonde(v) { // vue séparée : la caméra du bras est fixe à l'origine, on repasse dans le monde du jeu
+      if (cameraVue) { camera.updateMatrixWorld(); v.applyMatrix4(camera.matrixWorld); }
+      return v;
+    }
+    function projeterDepuisLame(n, force) {
+      if (sangLame < 0.08) return;
+      versMonde(couteau.localToWorld(pointeMonde.copy(pointe)));
+      vPointe.copy(pointeMonde).sub(vDernierePointeMonde);
+      var dir = vPointe.lengthSq() > 1e-8 ? vPointe.normalize() : camDir;
+      emettreSang(pointeMonde, dir, Math.round(n * Math.min(1, sangLame + 0.3)), { vitesse: force, dispersion: 0.8, montee: 0.2, vie: 0.7, taille: 0.008 });
+    }
+
+    function abaissement() {
+      if (etat === 'repos') return 0;
+      var fin = DUREE[branche];
+      if (tSeq < 0.06) return Math.max(abaisseDepart, E.outCubic(tSeq / 0.06));
+      if (tSeq > fin - 0.17) return 1 - E.inOutSine(clamp((tSeq - (fin - 0.17)) / 0.17, 0, 1));
+      return 1;
+    }
+
+    var fwdPrec = null, vFwd = new V3(), qInvCam = new Q(), balY = 0, balX = 0;
+    function balancement(dt) {
+      // inertie : le couteau traîne légèrement derrière la caméra quand elle tourne
+      camera.getWorldDirection(vFwd);
+      var cibleX = 0, cibleY = 0;
+      if (fwdPrec && dt > 0) {
+        camera.getWorldQuaternion(qInvCam); if (qInvCam.invert) qInvCam.invert(); else qInvCam.inverse();
+        var local = fwdPrec.clone().applyQuaternion(qInvCam);
+        var vx = Math.atan2(local.x, -local.z) / dt, vy = Math.atan2(local.y, -local.z) / dt;
+        cibleY = clamp(vx * 0.03, -0.09, 0.09); cibleX = clamp(-vy * 0.03, -0.07, 0.07);
+      }
+      fwdPrec = (fwdPrec || new V3()).copy(vFwd);
+      var k = 1 - Math.exp(-dt * 10);
+      balY += (cibleY - balY) * k; balX += (cibleX - balX) * k;
+      balance.rotation.set(balX, balY, 0);
+    }
+
+    function retirerSecousse() {
+      if (secousseAppliquee) { camera.quaternion.multiply(qSecousseInv); secousseAppliquee = false; }
+      if (fovDecalage !== 0) { camera.fov -= fovDecalage; fovDecalage = 0; camera.updateProjectionMatrix(); }
+    }
+    function appliquerSecousseCamera(dt) {
+      if (o.modeCamera === 'incremental') retirerSecousse();
+      majRessort(R.tangage, dt); majRessort(R.lacet, dt); majRessort(R.roulis, dt); majRessort(R.fov, dt);
+      var tx = 0, ty = 0;
+      if (tremblement > 0) { tremblement -= dt; var a = 0.012 * clamp(tremblement / 0.14, 0, 1); tx = (Math.random() - 0.5) * a; ty = (Math.random() - 0.5) * a; }
+      if (o.secousseCamera) {
+        eSecousse.set(R.tangage.x * DEG + tx, R.lacet.x * DEG + ty, R.roulis.x * DEG, 'YXZ');
+        qSecousse.setFromEuler(eSecousse);
+        camera.quaternion.multiply(qSecousse);
+        qSecousseInv.copy(qSecousse); qSecousseInv.invert ? qSecousseInv.invert() : qSecousseInv.inverse();
+        secousseAppliquee = true;
+      }
+      if (o.secousseFOV) {
+        // base = champ de vision du jeu, sans notre secousse de l'image précédente (si retirerSecousse n'a pas été appelé)
+        var f = camera.fov - fovDecalage + R.fov.x;
+        if (Math.abs(f - camera.fov) > 1e-4) { camera.fov = f; camera.updateProjectionMatrix(); }
+        fovDecalage = R.fov.x;
+      }
+    }
+
+    function update(dtReel) {
+      var dt = clamp(dtReel || 0, 0, 1 / 20) * echelleTemps;
+      var dtAnim = dt;
+      if (geleImpact > 0) { geleImpact -= dt; dtAnim = dt * 0.04; }
+      if (etat === 'actif') {
+        if (rig.visible) versMonde(couteau.localToWorld(vDernierePointeMonde.copy(pointe)));
+        tSeq += dtAnim;
+        evenements();
+        var seq = SEQ[branche];
+        if (branche === 'touche') traineeActive = (tSeq > 0.12 && tSeq < TC + 0.05) ? 1 : (tSeq > TC + 0.14 && tSeq < TC + 0.38 ? 0.7 : 0);
+        else if (decisionActive === 'contact') traineeActive = (tSeq > 0.12 && tSeq < TC + 0.6) ? 1 : 0;
+        else traineeActive = (tSeq > 0.07 && tSeq < 0.27) ? 1 : (tSeq > 0.38 && tSeq < 0.56 ? 0.6 : 0);
+        evaluer(seq, tSeq, poseCourante);
+        if (tFondu > 0) {   // relance pendant le retour en garde : on part de la pose où était la main
+          tFondu = Math.max(0, tFondu - dtAnim);
+          var kf = 1 - tFondu / DUREE_FONDU; kf = kf * kf * (3 - 2 * kf);
+          poseCourante.p.lerpVectors(poseDepart.p, poseCourante.p, kf);
+          qFondu.copy(poseDepart.q).slerp(poseCourante.q, kf); poseCourante.q.copy(qFondu);
+          poseCourante.flick = lerp(poseDepart.flick, poseCourante.flick, kf);
+          poseCourante.roulis = lerp(poseDepart.roulis, poseCourante.roulis, kf);
+        }
+        appliquerPose(poseCourante);
+        if (tSeq >= DUREE[branche]) {
+          etat = 'repos'; rig.visible = false; traineeForce = 0;
+          if (decisionEnAttente) appliquerDecision();
+          if (demandeEnAttente) { demandeEnAttente = false; frapper(); }
+        }
+      }
+      if (rig.visible) {
+        balancement(dt);
+        rig.updateMatrixWorld(true);
+        majCorde(dt);
+        majTrainee(dtAnim);
+      } else { fwdPrec = null; }
+      majParticules(dt);
+      // sang sur la lame
+      if (delaiSechage > 0) delaiSechage -= dt; else sangLame = Math.max(0, sangLame - dt * 0.03);
+      M.sang.opacity = sangLame;
+      M.sang.visible = sangLame > 0.01;
+      appliquerSecousseCamera(dt);
+    }
+
+    function rendreVue(r) {
+      if (!sceneVue || !rig.visible || !r) return;
+      if (cameraVue.aspect !== camera.aspect) { cameraVue.aspect = camera.aspect; cameraVue.updateProjectionMatrix(); }
+      var ac = r.autoClear; r.autoClear = false;
+      r.clearDepth();
+      r.render(sceneVue, cameraVue);
+      r.autoClear = ac;
+    }
+    function annuler() {
+      etat = 'repos'; tSeq = 0; rig.visible = false; demandeEnAttente = false; traineeForce = 0; tFondu = 0; geleImpact = 0;
+      tremblement = 0; ['tangage', 'lacet', 'roulis', 'fov'].forEach(function (n) { R[n].x = 0; R[n].v = 0; });
+      retirerSecousse();
+    }
+
+    function surTouche(e) {
+      if (e.code === o.touche || (o.touche === 'KeyV' && (e.key === 'v' || e.key === 'V'))) {
+        if (e.repeat) return;
+        frapper();
+      }
+    }
+    if (o.ecouterClavier && typeof window !== 'undefined') window.addEventListener('keydown', surTouche);
+
+    return {
+      rig: rig, modele: couteau, main: main,
+      sceneVue: sceneVue, cameraVue: cameraVue, lumieres: lumVue, rendreVue: rendreVue, annuler: annuler,
+      update: update,
+      frapper: frapper,
+      get occupe() { return etat !== 'repos'; },
+      get abaissementArme() { return abaissement(); },
+      get dernierResultat() { return resultat; },
+      get sangSurLame() { return sangLame; },
+      set sangSurLame(v) { sangLame = clamp(v, 0, 0.95); delaiSechage = 8; },
+      echelleTemps: function (s) { echelleTemps = clamp(s, 0.02, 2); },
+      regler: function (opts) {
+        Object.assign(o, opts || {});
+        if (audio.maitre && opts && opts.volume !== undefined) audio.maitre.gain.value = opts.volume;
+        if (opts && opts.decision !== undefined) { if (etat === 'repos') appliquerDecision(); else decisionEnAttente = true; }
+      },
+      get decision() { return decisionActive; },
+      retirerSecousse: retirerSecousse,
+      activerSon: function () { ctxAudio(); },
+      debug: {
+        poser: function (nomBranche, t) {
+          branche = nomBranche; rig.visible = true;
+          appliquerPose(evaluer(SEQ[nomBranche], t, poseCourante));
+          rig.updateMatrixWorld(true);
+          cordePrete = false; majCorde(1 / 60);
+        },
+        duree: DUREE, contact: T_CONTACT, poses: POSES, seq: SEQ, branche: function () { return branche; },
+        jouer: jouer
+      },
+      detruire: function () {
+        if (typeof window !== 'undefined') window.removeEventListener('keydown', surTouche);
+        retirerSecousse();
+        porteur.remove(rig); scene.remove(particules);
+        rig.traverse(function (m) { if (m.geometry) m.geometry.dispose(); });
+        Object.keys(M).forEach(function (k) { M[k].dispose(); });
+        Object.keys(tex).forEach(function (k) { tex[k].dispose(); });
+        geoP.dispose(); matP.dispose();
+        if (audio.ctx && audio.ctx.close && !audio.externe) audio.ctx.close();
+      }
+    };
+  }
+
+  return creerCouteauMelee;
+})();
+
 /* ---------------------------------------------- Rechargements (jeu 1.9.0) ---
    Inspirés de Call of Duty 4 : l'arme pivote pour montrer ce que font les mains, le chargeur vide
    tombe, la main gauche va chercher le plein à la ceinture, l'engage, le claque ; à vide, il faut
@@ -18705,6 +19997,8 @@ function resetArms() {
   Arms.state = 'idle'; Arms.t = 0; Arms.dur = 0; Arms.nextFire = 0; Arms.autoReloadAt = -1;
   Arms.ev = 0; Arms.headTilt = 0; Arms.drinkId = null;
   nadeReset();
+  if (Couteau) { Couteau.annuler(); Couteau.sangSurLame = 0; }   // nouvelle partie : lame propre
+  KnifeLunge.m = 0;
   if (Arms.bottle) { Arms.bottle.visible = false; Arms.cap.visible = false; }
   Arms.bloom = Arms.kick = Arms.kickRot = 0; Arms.cycleT = 0; Arms.cyc = null; Arms.rl = null; Arms.blow = 0;
   giveWeapon(CUR.map ? CUR.map.rules.startWeapon : 'm1911');
@@ -18748,9 +20042,14 @@ function requestSwap(target) {
   Arms.autoReloadAt = -1;
   Sound.swap();
 }
+/* V ou E : coup de couteau (module « Fossoyeur ») ; pendant le retour en garde, un nouvel appui relance
+   un coup aussitôt ; pendant l'estoc, il ne compte pas. Le coup annule un rechargement en cours, comme avant. */
 function startKnife() {
-  if (!['idle', 'reload', 'swapIn'].includes(Arms.state) || player.down) return;
-  Arms.state = 'knife'; Arms.t = 0; Arms.dur = 0.5; Arms.knifeDone = false;
+  if (player.down || !Couteau) return;
+  if (Arms.state === 'knife') { Couteau.frapper(); return; }
+  if (!['idle', 'reload', 'swapIn'].includes(Arms.state)) return;
+  Couteau.regler({ hauteurSol: player.gy });
+  if (Couteau.frapper()) { Arms.state = 'knife'; Arms.t = 0; Arms.dur = 0; }
 }
 /* Boisson d'atout (temps en secondes depuis l'achat) : l'arme descend, la main droite apporte la
    bouteille et fait sauter la capsule du pouce, porte le goulot à la bouche (la main tourne) et le
@@ -19029,27 +20328,101 @@ function muzzleFlash(def, up) {
   FX.muzzleLight.intensity = 2.6;
 }
 
-function knifeStrike() {
-  let best = null, bd = 2.1;
+/* ------------------------------------------------ Couteau : règles du jeu (1.9.0) ---
+   Demande d'Anthony (8 octobre 2026, 20 h 54) : intégrer le couteau « Fossoyeur » fait avec lui dans une
+   page à part (module creerCouteauMelee, plus haut : bras ganté, lame, dragonne, traînée, sang, sons,
+   animations touché et raté). Le module dessine et joue ; le jeu choisit la cible et applique ses
+   dégâts. À l'appui, le zombie le plus proche devant le joueur (2,1 m à plat, 60° de part et d'autre
+   du regard, même étage, pas sous terre, pas derrière un mur) décide de l'animation (touché ou raté) ;
+   le joueur s'élance vers lui (0,55 m au plus, en 0,2 s) s'il est à plus de 1,15 m et dans la pièce.
+   Quand la lame arrive (0,225 s), ce zombie s'il est encore là (0,6 m et 78° de marge), sinon un autre
+   à portée, prend 150 dégâts : +130 points s'il meurt, +10 sinon, éliminations au corps-à-corps et XP
+   du couteau (règles du jeu, inchangées). La vue ne bouge pas : secousse de caméra du module coupée
+   (vertige, comme pour la grenade). */
+const KNIFE = {
+  damage: 150,                       // dégâts d'un coup (comme l'ancien couteau, et celui du mode Zombies)
+  range: 2.1, cone: 0.5,             // portée (m, du joueur au zombie, à plat) ; cosinus du demi-angle (60°)
+  pressMargin: 0.15,                 // m de plus à l'appui (le zombie avance pendant l'armé)
+  lockMargin: 0.6, lockCone: 0.2,    // au contact, pour le zombie choisi à l'appui (78°)
+  lunge: 0.55, lungeFrom: 1.15, lungeTime: 0.2,   // élan vers le zombie (m, au-delà de, en s)
+  volume: 0.27,                      // niveau des sons du module dans le bus des effets du jeu (impact ≈ ancien couteau)
+};
+let Couteau = null;
+const KnifeLunge = { dx: 0, dz: 0, m: 0, done: 0, t: 0 };
+const _knP = new THREE.Vector3();
+/* Point visé : la poitrine ; plus bas pour un chien, un rampant ou un zombie à terre. */
+function knifePoint(z, out) {
+  const h = z.dog ? 0.6 : z.crawl || z.knockT > 0 ? 0.35 : 1.3;
+  return out.set(z.pos.x, z.gy + h, z.pos.z);
+}
+/* Distance à plat si le zombie est à portée du couteau (demi-angle, étage, mur), sinon Infinity. */
+function knifeReach(z, range, cone) {
+  if (!z.alive || z.state === 'rise' || Math.abs(z.gy - player.gy) > 1) return Infinity;
   const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-  for (const z of Zombies.list) {
-    if (!z.alive || z.state === 'rise' || Math.abs(z.gy - player.gy) > 1) continue;
-    const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz);
-    if (d > bd || (dx * fx + dz * fz) / (d || 1) < 0.5) continue;
-    best = z; bd = d;
-  }
-  Sound.knife(!!best);
-  if (!best) return;
-  if (bd > 1.15 && !best.outside) {
-    const m = Math.min(0.55, bd - 1.0);
-    player.pos.x += fx * m; player.pos.z += fz * m;
-    settleBody(player, player.radius);
-    player.pos.y = player.gy;
-  }
-  const dx = best.pos.x - player.pos.x, dz = best.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
-  bloodBurst(best.pos.x - dx / d * 0.3, best.gy + (best.dog ? 0.6 : 1.3), best.pos.z - dz / d * 0.3, -dx / d, -dz / d, 8, 0.8);
-  const killed = damageZombie(best, 150, { kind: 'knife', dx: dx / d, dz: dz / d, force: 1.2 });
+  const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz);
+  if (d > range || (dx * fx + dz * fz) / (d || 1) < cone) return Infinity;
+  knifePoint(z, _knP);
+  if (!sightClear(camera.position.x, camera.position.y, camera.position.z, _knP.x, _knP.y, _knP.z)) return Infinity;
+  return d;
+}
+function knifeBest(range, cone) {
+  let best = null, bd = Infinity;
+  for (const z of Zombies.list) { const d = knifeReach(z, range, cone); if (d < bd) { best = z; bd = d; } }
+  return best;
+}
+/* Cible pour le module : à l'appui (et l'élan), puis quand la lame arrive. */
+function knifeChoose(moment, lock) {
+  let z = null;
+  if (moment === 'contact' && lock && knifeReach(lock, KNIFE.range + KNIFE.lockMargin, KNIFE.lockCone) < Infinity) z = lock;
+  if (!z) z = knifeBest(moment === 'appui' ? KNIFE.range + KNIFE.pressMargin : KNIFE.range, KNIFE.cone);
+  if (!z) return null;
+  if (moment === 'appui') knifeLungeAt(z);
+  return { cible: z, point: knifePoint(z, new THREE.Vector3()), rayon: z.dog ? 0.28 : 0.3 };
+}
+/* Élan vers le zombie choisi à l'appui (pas vers un zombie dehors, derrière sa fenêtre). */
+function knifeLungeAt(z) {
+  const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz);
+  KnifeLunge.m = 0;
+  if (d <= KNIFE.lungeFrom || z.outside) return;
+  KnifeLunge.dx = dx / d; KnifeLunge.dz = dz / d;
+  KnifeLunge.m = Math.min(KNIFE.lunge, d - 1.0); KnifeLunge.done = 0; KnifeLunge.t = 0;
+}
+function knifeLungeStep(dt) {
+  if (KnifeLunge.m <= 0) return;
+  KnifeLunge.t += dt;
+  const want = KnifeLunge.m * smooth(clamp(KnifeLunge.t / KNIFE.lungeTime, 0, 1)), step = want - KnifeLunge.done;
+  KnifeLunge.done = want;
+  player.pos.x += KnifeLunge.dx * step; player.pos.z += KnifeLunge.dz * step;
+  settleBody(player, player.radius);
+  player.pos.y = player.gy;
+  if (KnifeLunge.t >= KNIFE.lungeTime) KnifeLunge.m = 0;
+}
+/* La lame touche : dégâts, points et décompte du jeu. */
+function knifeOnHit(z) {
+  const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
+  const killed = damageZombie(z, KNIFE.damage, { kind: 'knife', dx: dx / d, dz: dz / d, force: 1.2 });
   HUD.hitmarker(killed);
+}
+/* Le module : bras ganté aux couleurs des gants et des manches du jeu, vue à part rendue par-dessus
+   l'arme (render), reflets des armes du jeu (petit cube de genGlasEnv : le studio du module, préfiltré
+   par PMREMGenerator, prenait 16 s au chargement en rendu logiciel), son dans le bus des effets du jeu,
+   règles du jeu ; il n'écoute pas le clavier (V et E passent par updateArms) et ne secoue pas la vue. */
+function buildKnife() {
+  Couteau = creerCouteauMelee(THREE, {
+    camera, scene, renderer,
+    envMap: GK.env || (GK.env = genGlasEnv()),               // reflets des armes du jeu (pas d'environnement de studio)
+    ecouterClavier: false, vueSeparee: true, fovVue: 72, decision: 'appui', enchainement: true,
+    choisirCible: knifeChoose, onHit: knifeOnHit, degats: KNIFE.damage,
+    couleurs: { gant: 0x3b2a1d, manche: 0x4f5638 },          // MAT.glove, MAT.sleeve
+    gravite: 9.81, hauteurSol: 0,
+    son: true, volume: KNIFE.volume, audio: () => Sound.bus(),
+    secousseCamera: false, secousseFOV: false, modeCamera: 'reinitialise',
+  });
+  // manche : la matière des bras du jeu (même couleur, même toile ; sans elle, la manche unie paraissait
+  // deux fois plus claire que celle du bras qui tient l'arme)
+  Couteau.rig.traverse((m) => { if (m.material && m.material.color && !m.material.map && m.material.color.equals(MAT.sleeve.color)) m.material = MAT.sleeve; });
+  // matières compilées au chargement : pas d'à-coup au premier coup de couteau
+  Couteau.rig.visible = true; renderer.compile(Couteau.sceneVue, Couteau.cameraVue); Couteau.rig.visible = false;
 }
 
 function updateArms(dt) {
@@ -19077,8 +20450,9 @@ function updateArms(dt) {
       break;
     case 'swapIn': if (Arms.t >= Arms.dur) Arms.state = 'idle'; break;
     case 'knife':
-      if (!Arms.knifeDone && Arms.t >= 0.13) { Arms.knifeDone = true; knifeStrike(); }
-      if (Arms.t >= Arms.dur) Arms.state = 'idle';
+      if (player.down) { Couteau.annuler(); KnifeLunge.m = 0; Arms.state = 'idle'; break; }
+      knifeLungeStep(dt);
+      if (!Couteau.occupe) Arms.state = 'idle';
       break;
     case 'nade': nadeUpdate(dt); break;
     case 'drink': {
@@ -19141,7 +20515,7 @@ function updateViewmodel(dt) {
     const down = t < DRINK.lower ? smooth(t / DRINK.lower) : t < DRINK.follow ? 1 : 1 - smooth(clamp((t - DRINK.follow) / (DRINK.end - DRINK.follow), 0, 1));
     y -= 0.5 * down; rx -= 0.9 * down;
   }
-  else if (st === 'knife') { const c = Math.sin(k * Math.PI); x += 0.08 * c; y -= 0.13 * c; rz -= 0.3 * c; }
+  else if (st === 'knife') { const q = Couteau ? Couteau.abaissementArme : 0; y -= 0.34 * q; rx -= 0.95 * q; }   // sous la vue
   else if (st === 'nade') { const q = nadeGunDown(Arms.nd); y -= 0.34 * q; rx -= 0.95 * q; }
   if (player.down) { y -= 0.04; rz += 0.15; }
   // clip en cours : rechargement, ou réarmement après un tir (culasse, pompe)
@@ -19165,10 +20539,9 @@ function updateViewmodel(dt) {
   Arms.root.updateMatrixWorld(true);
   const ch = clip ? rlApply(clip.c, clip.t, gun) : null;
   updateLoose(dt);
-  // mains : prises sur l'arme, ou objets tenus (couteau, grenade, fiole)
+  // mains : prises sur l'arme, ou objets tenus (grenade, fiole) ; le couteau a sa propre vue
   const AR = Arms.armR, AL = Arms.armL, hold = gun ? gunHold(gun) : null;
   let rP = null, rQ = null, rPose = null, lP = null, lQ = null, lPose = null;
-  Arms.knife.visible = st === 'knife';
   Arms.bottle.visible = false;
   let rPose2 = null, rK = 0, lPose2 = null, lK = 0;
   if (gun) {
@@ -19231,13 +20604,7 @@ function updateViewmodel(dt) {
     AR.pole.fromArray(ARM_POLE_R).lerp(_vmV3.fromArray(ARM_POLE_R_FREE), Arms.poleK);
     Arms.headTilt = damp(Arms.headTilt, 0, 12, dt);
   }
-  if (st === 'knife') {
-    const q = smooth(k);
-    Arms.knife.position.set(lerp(-0.32, 0.12, q), lerp(-0.12, -0.24, q) + Math.sin(q * Math.PI) * 0.05, lerp(-0.32, -0.5, Math.sin(q * Math.PI)));
-    Arms.knife.rotation.set(-0.2, lerp(0.9, -0.6, q), lerp(0.5, -0.4, q));
-    Arms.knife.updateMatrixWorld(true);
-    lP = _handL.copy(KNIFE_HOLD.p).applyMatrix4(Arms.knife.matrixWorld); lQ = _vmQL.copy(Arms.knife.quaternion).multiply(KNIFE_HOLD.q); lPose = HAND_POSES.fist;
-  } else if (st === 'nade' && Arms.nd) {
+  if (st === 'nade' && Arms.nd) {
     // grenade : mains et grenade (cibles des mains sur l'arme, pour les quitter et y revenir)
     const gR = rP && gun ? { p: rP.clone(), q: rQ.clone(), pose: rPose } : null;
     const gL = lP && gun ? { p: lP.clone(), q: lQ.clone(), pose: lPose } : null;
@@ -19285,14 +20652,6 @@ function bottleHold() {
   if (!_bottleHold) _bottleHold = handWrap(new THREE.Vector3(0, 0.05, 0), new THREE.Vector3(-0.15, 0.05, -1), new THREE.Vector3(0, 1, 0.15), false, 0.046, 0.03, 'bottle');
   return _bottleHold;
 }
-/* Main gauche sur le couteau (repère du couteau : lame vers −z, manche autour de l'origine). */
-const KNIFE_HOLD = (() => {
-  const q = handBasis(new THREE.Vector3(0, -1, 0.15), new THREE.Vector3(0, 0, -1), true);
-  const p = new THREE.Vector3(0.0, 0.0, 0.03);
-  const y = new THREE.Vector3(0, 1, 0).applyQuaternion(q), f = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
-  p.addScaledVector(y, 0.03).addScaledVector(f, -0.05);
-  return { p, q };
-})();
 
 /* =============================================================== 09 ZOMBIES ==
    Cycle de vie : sortie de terre → file d'attente à une fenêtre → arrache les
@@ -24041,12 +25400,14 @@ function initRenderer() {
   return true;
 }
 function update(dt) {
+  if (Couteau) Couteau.retirerSecousse();      // (secousse coupée ; utile si on la remet : la vue est refaite ici)
   G.time += dt;
   G.stats.time = G.time;
   Life.tick(dt);
   runEvents();
   updatePlayer(dt);
   updateArms(dt);
+  if (Couteau) Couteau.update(dt);
   updateInteract(dt);
   updateKeypad(dt);
   updateZombies(dt);
@@ -24090,6 +25451,7 @@ function render() {
   if (G.state === 'playing' || G.state === 'paused') {
     renderer.clearDepth();
     renderer.render(vmScene, vmCamera);
+    if (Couteau) Couteau.rendreVue(renderer);   // le bras au couteau, par-dessus
   }
 }
 let lastT = performance.now();
