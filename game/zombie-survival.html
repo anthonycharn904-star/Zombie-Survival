@@ -17479,14 +17479,16 @@ function nadeGripL(poseName = 'ringHook') {
    cancel). Repères : vue (x à droite, y en haut, z vers l'arrière) ; torse : celui du corps, tourné
    dans la vue par l'inclinaison de la tête (chestSlotPose). */
 const NADE_T = {
-  draw: { gunDown: 0.2, dip: [0.03, 0.27, 0.47, 0.74], reach: [0.05, 0.26], grab: 0.33, unhook: 0.44, present: 0.68,
+  // dip : tête baissée en 0,4 s (150°/s au plus en partant du regard droit devant ; 0,24 s et 250°/s avant le
+  // 8 octobre au soir), relevée en 0,27 s ; hook.dip : même descente pour raccrocher la grenade
+  draw: { gunDown: 0.2, dip: [0.0, 0.4, 0.47, 0.74], reach: [0.05, 0.26], grab: 0.33, unhook: 0.44, present: 0.68,
     lIn: [0.46, 0.66], hook: [0.66, 0.76], twist: [0.76, 0.84], pull: [0.84, 0.97], cock: [0.95, 1.16] },
   throw: { back: 0.07, release: 0.135, drop: 0.2, follow: 0.42, gunUp: [0.32, 0.6] },
   // annulation : remettre la goupille (si elle est sortie), puis raccrocher ; light : l'index était
   // dans l'anneau mais la goupille n'avait pas bougé
   repin: { bring: 0.3, insert: [0.3, 0.52], untwist: [0.52, 0.6], let: [0.6, 0.74], out: 0.92, next: 0.7 },
   light: { bring: 0, insert: [0, 0], untwist: [0, 0.1], let: [0.08, 0.22], out: 0.42, next: 0.22 },
-  hook: { pre: 0.32, dip: [0.0, 0.26, 0.5, 0.76], seat: 0.44, open: 0.5, back: 0.72, gunUp: [0.46, 0.76], end: 0.78 },
+  hook: { pre: 0.32, dip: [0.0, 0.4, 0.5, 0.76], seat: 0.44, open: 0.5, back: 0.72, gunUp: [0.46, 0.76], end: 0.78 },
 };
 const NADE_DIP = -0.7;                 // tête baissée : regard à 40° sous l'horizontale au plus bas
 const NADE_FUSE = 2.3;                 // s, du lâcher (cuillère partie) à l'explosion (règle du jeu)
@@ -17701,6 +17703,7 @@ function nadeCancel() {
   if (!nd.inHand) nd.cancel = { early: true, repin: false, r0: 0, from };
   else nd.cancel = { early: false, repin: engaged, P: engaged ? P : null, r0: engaged ? P.next : 0, from,
     hookStart: engaged && P === NADE_T.repin ? NADE_KEYS.repin : from.G };
+  nd.cancel.k0 = nd.lastTiltK || 0;            // inclinaison de la tête au moment de R : on en repart
   nd.phase = 'cancel'; nd.t = 0; nd.ev = 0;
   if (nd.cancel.early) nd.ev = 15;
   Sound.nade('cancel');
@@ -17866,7 +17869,7 @@ function nadePose(dt, gunR, gunL) {
       // pas encore saisie : la main droite retourne à l'arme qui remonte, la tête se relève
       const s = nsst(0, 0.3, t);
       if (gunR) { out.rP = _ndR.p.lerpVectors(C.from.R.p, gunR.p, s); out.rQ = _ndR.q.copy(C.from.R.q).slerp(gunR.q, s); out.rPose = gunR.pose; }
-      tiltK = (1 - nsst(0, 0.3, t)) * (nd.lastTiltK || 0);
+      tiltK = (1 - nsst(0, 0.3, t)) * C.k0;
       if (gunL && t > 0.25) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; }
     } else {
       const H = T.hook, F = C.from, P = C.P, th = t - C.r0;
@@ -17920,7 +17923,9 @@ function nadePose(dt, gunR, gunL) {
         out.lP = _ndL.p; out.lQ = _ndL.q; out.lPose = HAND_POSES.relax;
       }
       // main droite : tient la grenade, la lâche une fois raccrochée et retourne à l'arme
-      tiltK = th < 0 ? 0 : nsst(H.dip[0], H.dip[1], th) * (1 - nsst(H.dip[2], H.dip[3], th));
+      // tête : relevée depuis son inclinaison du moment pendant la goupille, puis baissée vers la poche
+      const k1 = C.k0 * (1 - nsst(0, 0.3, C.r0));
+      tiltK = th < 0 ? C.k0 * (1 - nsst(0, 0.3, t)) : (k1 + (1 - k1) * nsst(H.dip[0], H.dip[1], th)) * (1 - nsst(H.dip[2], H.dip[3], th));
       nadeHandOnNade(_ndR, G0);
       out.rPose = gripR.pose;
       if (th >= H.seat) { out.rPose2 = HAND_POSES.open; out.rK = nsst(H.seat, H.open + 0.04, th); }
