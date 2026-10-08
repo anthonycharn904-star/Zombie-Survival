@@ -205,6 +205,18 @@ body {
   80% { opacity: 1; }
   100% { opacity: 0; transform: translate(-50%, 0); }
 }
+/* Khamsin (jeu 2.0.0) : mini-carte en haut à droite (nord en haut), boussole en haut au milieu */
+.ow-minimap { position: absolute; right: calc(22px + env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); width: clamp(132px, 15vw, 220px); height: auto; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55)); }
+.ow-compass { position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); width: min(520px, calc(100vw - 2 * clamp(132px, 15vw, 220px) - 80px)); height: auto; }
+.ow-drive { position: absolute; right: calc(28px + env(safe-area-inset-right, 0px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
+.ow-drive .nm { font-weight: 600; font-size: 16px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper); }
+.ow-drive .row { display: flex; align-items: baseline; gap: 6px; }
+.ow-drive .spd { font-weight: 700; font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; color: var(--paper); }
+.ow-drive .u { font-size: 18px; font-weight: 600; color: var(--steel); }
+.ow-drive .fuel { width: 150px; height: 8px; background: rgba(0, 0, 0, 0.55); box-shadow: 0 0 0 1px rgba(245, 200, 141, 0.55); }
+.ow-drive .fuel i { display: block; height: 100%; background: #e9884d; }
+.ow-drive .fuel.low i { background: var(--blood-hi); }
+#hud.ow-driving #crosshair, #hud.ow-driving #weapon { visibility: hidden; }
 #zone-name {
   position: absolute; left: calc(26px + env(safe-area-inset-left, 0px)); top: calc(22px + env(safe-area-inset-top, 0px));
   font-family: var(--font-type); font-size: 19px; color: var(--paper-2); opacity: 0; letter-spacing: 0.04em; text-shadow: 0 1px 0 #000;
@@ -5102,7 +5114,7 @@ let airBands = [];
 const idx = (x, z) => z * GW + x;
 const node = (li, x, z) => li * GN + z * GW + x;
 const inb = (x, z) => x >= 0 && z >= 0 && x < GW && z < GH;
-const levelOfNode = (k) => (k / GN) | 0;
+const levelOfNode = (k) => (OW.on ? owKl(k) : (k / GN) | 0);    // monde ouvert : couche du nœud
 const DIR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const dirIndex = (dx, dz) => (dx === 1 ? 0 : dx === -1 ? 1 : dz === 1 ? 2 : 3);
 const World = { windows: [], doors: {}, lights: [], risers: [], stairs: [], links: [], railEdges: [], root: null, props: null, ground: null, outskirts: null };
@@ -5234,6 +5246,7 @@ function cellTex(k, layer) {
 /* ------------------------------------------------------------ Surfaces -- */
 /* Hauteur du sol sous (x, z) sur le nœud k : plat, pente droite ou marches dansantes. */
 function surfY(k, x, z) {
+  if (OW.on) { const g = owGroundAt(owKl(k), x, z); return Number.isFinite(g) ? g : owH(x, z); }
   const kind = surfK[k];
   if (kind <= 1) return surfH0[k];
   const c = k % GN, cx = (c % GW) + 0.5, cz = ((c / GW) | 0) + 0.5;
@@ -5288,7 +5301,7 @@ function buildEdges() {
   }
 }
 
-const walkNode = (k) => surfK[k] > 0 && (grid[k] === T.FLOOR || (grid[k] === T.DOOR && doorOpen[k] === 1));
+const walkNode = (k) => (OW.on ? k >= 0 && owWalkCell(owKl(k), owKx(k), owKz(k)) : surfK[k] > 0 && (grid[k] === T.FLOOR || (grid[k] === T.DOOR && doorOpen[k] === 1)));
 /* Nœud voisin atteint en passant le côté d (0 : +x, 1 : -x, 2 : +z, 3 : -z), ou -1. */
 function passD(k, d) {
   const t = edgeTo[k * 4 + d];
@@ -5307,6 +5320,7 @@ function diagPass(k, dx, dz) {
 }
 /* Nœud où se tient un corps en (x, z), le plus proche de la hauteur yHint ; -1 s'il n'y en a pas. */
 function locateNode(x, z, yHint = 0, walkOnly = false) {
+  if (OW.on) return owLocate(x, z, yHint, walkOnly);
   const cx = Math.floor(x), cz = Math.floor(z);
   if (!inb(cx, cz)) return -1;
   let best = -1, bd = Infinity;
@@ -5320,6 +5334,7 @@ function locateNode(x, z, yHint = 0, walkOnly = false) {
 }
 /* Comme locateNode, mais cherche aussi dans les cases voisines (corps coincé dans un mur). */
 function nearestNode(x, z, yHint = 0) {
+  if (OW.on) return owNearest(x, z, yHint);
   let k = locateNode(x, z, yHint, true);
   if (k >= 0) return k;
   let best = -1, bd = Infinity;
@@ -5334,14 +5349,16 @@ function nearestNode(x, z, yHint = 0) {
   }
   return best;
 }
-const nodeCX = (k) => ((k % GN) % GW) + 0.5;
-const nodeCZ = (k) => (((k % GN) / GW) | 0) + 0.5;
+const nodeCX = (k) => (OW.on ? owKx(k) : (k % GN) % GW) + 0.5;
+const nodeCZ = (k) => (OW.on ? owKz(k) : ((k % GN) / GW) | 0) + 0.5;
 function zoneAt(x, z, yHint = 0) {
+  if (OW.on) return KH.locs.indexOf(khNearestLoc(x, z).loc);      // monde ouvert : le lieu le plus proche
   const k = locateNode(x, z, yHint);
   return k >= 0 ? zoneOf[k] : -1;
 }
 /* Sol sous un point (débris, grenades, particules) : la surface la plus haute sous y. */
 function floorBelow(x, z, y) {
+  if (OW.on) return owFloorBelow(x, z, y);
   const cx = Math.floor(x), cz = Math.floor(z);
   if (!inb(cx, cz)) return 0;
   let best = -1e9;
@@ -5369,6 +5386,7 @@ function levelAtY(y) {
 }
 /* Le point (x, y, z) est-il dans un mur, une caisse, une dalle ? (débris qui rebondissent) */
 function solidPoint(x, y, z) {
+  if (OW.on) return owSolidPoint(x, y, z);
   const cx = Math.floor(x), cz = Math.floor(z);
   if (!inb(cx, cz)) return false;
   for (let li = 0; li < NL; li++) {
@@ -5444,6 +5462,7 @@ function followCells(k, p) {
 /* Corps (joueur, zombie, cadavre) après un déplacement : change de case (et de niveau) si le
    passage est ouvert, est repoussé sinon, puis se pose sur la surface. b : { pos, k, gy }. */
 function settleBody(b, r) {
+  if (OW.on) { owSettle(b, r); return; }
   if (b.k < 0) b.k = nearestNode(b.pos.x, b.pos.z, b.gy || 0);
   if (b.k < 0) return;
   let k = followCells(b.k, b.pos);
@@ -5460,6 +5479,7 @@ function settleBody(b, r) {
 }
 /* Ligne de vue au sol sur un même niveau (sol plat, praticable), à r près de chaque côté. */
 function losClear(k0, x0, z0, x1, z1, r = 0.2) {
+  if (OW.on) return owLosClear(k0, x0, z0, x1, z1, r);
   if (k0 < 0) return false;
   const dx = x1 - x0, dz = z1 - z0, d = Math.hypot(dx, dz);
   if (d < 0.01) return true;
@@ -5484,6 +5504,7 @@ function _cand(a, b, y0, y1, tEnter, oy, dy, enx, enz) {
   if (t < _bt) { _bt = t; _bnx = nx; _bny = ny; _bnz = nz; }
 }
 function raycast(ox, oy, oz, dx, dy, dz, maxT) {
+  if (OW.on) return owRaycast(ox, oy, oz, dx, dy, dz, maxT);
   let cx = Math.floor(ox), cz = Math.floor(oz);
   const stepX = dx > 0 ? 1 : -1, stepZ = dz > 0 ? 1 : -1;
   const tdx = dx !== 0 ? Math.abs(1 / dx) : Infinity, tdz = dz !== 0 ? Math.abs(1 / dz) : Infinity;
@@ -5570,6 +5591,7 @@ function sightClear(x0, y0, z0, x1, y1, z1) {
 const DIRS8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 /* Distances (en cases) de chaque nœud praticable jusqu'au nœud k0 du joueur. */
 function computeFlow(k0) {
+  if (OW.on) { owComputeFlow(); return; }
   flow.fill(1e9);
   let s = k0;
   if (s < 0 || !walkNode(s)) {
@@ -5624,9 +5646,10 @@ function computeFlow(k0) {
     }
   }
 }
-const flowAt = (k) => (k >= 0 ? flow[k] : 1e9);
+const flowAt = (k) => (OW.on ? owFlowAt(k) : k >= 0 ? flow[k] : 1e9);
 /* Direction conseillée depuis le nœud k (position x, z) : vers la case voisine la plus proche du joueur. */
 function flowDir(k, x, z, out) {
+  if (OW.on) return owFlowDir(k, x, z, out);
   if (k < 0) return false;
   let best = flow[k], bj = -1;
   if (!walkNode(k)) {
@@ -6520,6 +6543,7 @@ function applyMapLayout(map) {
 }
 /* Charge une carte (déjà passée par normalizeMap) dans la scène. editor : rendu pour les Mod Tools. */
 function buildWorld(map, opts = {}) {
+  owUnload();                                   // retour d'un monde ouvert
   disposeWorld();
   CUR.map = map;
   CUR.editor = !!opts.editor;
@@ -15671,7 +15695,7 @@ class PointPool {
       any = 1;
       this.vel[k + 1] -= this.g * dt;
       this.pos[k] += this.vel[k] * dt; this.pos[k + 1] += this.vel[k + 1] * dt; this.pos[k + 2] += this.vel[k + 2] * dt;
-      const fy = NL > 1 ? floorBelow(this.pos[k], this.pos[k + 2], this.pos[k + 1] - this.vel[k + 1] * dt) + 0.015 : 0.015;
+      const fy = NL > 1 || OW.on ? floorBelow(this.pos[k], this.pos[k + 2], this.pos[k + 1] - this.vel[k + 1] * dt) + 0.015 : 0.015;
       if (this.pos[k + 1] < fy) { this.pos[k + 1] = fy; this.vel[k] *= 0.2; this.vel[k + 2] *= 0.2; this.vel[k + 1] = 0; }
       if (this.colored) {
         const f = this.life[i] / this.max[i];
@@ -15786,7 +15810,7 @@ function buildGlass() {
 const _glassCol = new THREE.Color(), _glassObj = new THREE.Object3D();
 /* Hauteur où un éclat se pose : sol du niveau, ou dessus d'une caisse ou d'un objet. */
 function surfaceBelow(x, z, y) {
-  if (NL > 1) return floorBelow(x, z, y);
+  if (NL > 1 || OW.on) return floorBelow(x, z, y);
   const cx = Math.floor(x), cz = Math.floor(z);
   if (!inb(cx, cz)) return 0;
   const k = cz * GW + cx, ty = grid[k];
@@ -15948,6 +15972,7 @@ function clearGlass() {
 }
 
 function addDecal(kind, x, y, z, nx, ny, nz, size) {
+  if (OW.on && ny === 1 && !nx && !nz) { const n = owDecalSlope(x, y, z); if (n) { nx = n.x; ny = n.y; nz = n.z; y = n.y0 + 0.002; } }   // dans la pente
   const m = FX.decals[FX.decalIdx];
   FX.decalIdx = (FX.decalIdx + 1) % FX.decals.length;
   m.material = FX.decalMats[kind];
@@ -16017,23 +16042,27 @@ function sparkBurst(x, y, z, nx, ny, nz, amount = 6) {
   }
 }
 function dirtBurst(x, z, y = 0) {
+  if (OW.on) { owSandBurst(x, z, y); return; }   // monde ouvert : du sable
   for (let i = 0; i < 14; i++) FX.dirt.emit(x + rand(-0.3, 0.3), y + 0.05, z + rand(-0.3, 0.3), rand(-1.2, 1.2), rand(1.5, 3.5), rand(-1.2, 1.2), rand(0.4, 0.9));
   spawnPuff(x, y + 0.4, z, 1.4, 1.2, 0x3e3428, 0.55, 0.3);
 }
 /* Rien entre un point (explosion, joueur) et un zombie ? Sur une carte d'un seul niveau, la ligne
    de vue au sol d'avant les étages ; sinon, au sol d'un même niveau ou par un rayon vers sa poitrine. */
 function clearToZombie(x, y, z, k0, zb) {
+  if (OW.on) return owSightClear(x, y + 0.3, z, zb.pos.x, zb.pos.y + 0.9, zb.pos.z);
   if (NL === 1) return losClear(k0, x, z, zb.pos.x, zb.pos.z, 0);
   if (k0 >= 0 && zb.k >= 0 && levelOfNode(k0) === levelOfNode(zb.k) && stairAt[k0] < 0 && stairAt[zb.k] < 0 && losClear(k0, x, z, zb.pos.x, zb.pos.z, 0)) return true;
   return sightClear(x, y, z, zb.pos.x, zb.pos.y + 0.9, zb.pos.z);
 }
 /* Nœud du sol sous un point (une seule hauteur : la case, comme avant les étages). */
 function nodeUnder(x, z, y) {
+  if (OW.on) return owLocate(x, z, owFloorBelow(x, z, y + 0.1));
   if (NL === 1) { const cx = Math.floor(x), cz = Math.floor(z); return inb(cx, cz) ? cz * GW + cx : -1; }
   return locateNode(x, z, floorBelow(x, z, y + 0.1));
 }
 /* Débris qui rebondit : une seule hauteur, comme avant (cases fermées, depuis l'intérieur) ; sinon le plein. */
 function debrisHit(x, y, z, ox, oz) {
+  if (OW.on) return owSolidPoint(x, y, z);
   if (NL === 1) {
     const cx = Math.floor(x), cz = Math.floor(z);
     return (!inb(cx, cz) || !walkNode(cz * GW + cx)) && interior[Math.floor(oz) * GW + Math.floor(ox)] === 1;
@@ -16046,7 +16075,7 @@ function debrisHit(x, y, z, ox, oz) {
 function explode(x, y, z, radius, damage, opts = {}) {
   const big = clamp(radius / 4.5, 0.4, 1.6);
   Sound.explosion({ x, y, z }, big);
-  const fl = NL > 1 ? floorBelow(x, z, y + 0.1) : 0;
+  const fl = NL > 1 || OW.on ? floorBelow(x, z, y + 0.1) : 0;
   FX.boomLight.position.set(x, Math.max(y, fl + 0.5) + 0.3, z);
   FX.boomLight.decay = lightBandDecay(FX.boomLight.position.y, levelAtY(fl + 0.1));
   FX.boomLight.color.setHex(opts.color || 0xff8a3a);
@@ -16059,14 +16088,14 @@ function explode(x, y, z, radius, damage, opts = {}) {
     FX.sparks.emit(x, y + 0.2, z, Math.cos(a) * s, rand(1, 6), Math.sin(a) * s, rand(0.3, 0.8), col.r, col.g, col.b);
   }
   if (y - fl < 1.2) addDecal('scorch', x, fl + 0.001, z, 0, 1, 0, radius * 0.6);
-  const d = Math.hypot(player.pos.x - x, player.pos.z - z, NL > 1 ? Math.max(0, Math.abs(player.gy + 0.9 - y) - 0.9) : 0);
+  const d = Math.hypot(player.pos.x - x, player.pos.z - z, NL > 1 || OW.on ? Math.max(0, Math.abs(player.gy + 0.9 - y) - 0.9) : 0);
   FX.shake = Math.min(1.2, FX.shake + Math.max(0, 1 - d / (radius * 3)) * 0.9 * big);
   // dégâts
   let hit = 0;
   const k0 = nodeUnder(x, z, y);
   for (const zb of Zombies.list) {
     if (!zb.alive) continue;
-    const dz = Math.hypot(zb.pos.x - x, zb.pos.z - z, NL > 1 ? Math.max(0, Math.abs(zb.pos.y + 0.9 - y) - 0.9) : 0);
+    const dz = Math.hypot(zb.pos.x - x, zb.pos.z - z, NL > 1 || OW.on ? Math.max(0, Math.abs(zb.pos.y + 0.9 - y) - 0.9) : 0);
     if (dz > radius + 0.3) continue;
     if (!clearToZombie(x, y, z, k0, zb)) continue;
     const f = clamp(1 - dz / (radius + 0.3), 0, 1), ux = (zb.pos.x - x) / (dz || 1), uz = (zb.pos.z - z) / (dz || 1);
@@ -16237,7 +16266,7 @@ const NadeBits = {
       m.position.x = nx; m.position.z = nz; m.position.y += b.v.y * dt;
       const wl = b.w.length();
       if (wl > 1e-4) { _ngQ.setFromAxisAngle(_ngA.copy(b.w).divideScalar(wl), wl * dt); m.quaternion.premultiply(_ngQ); }
-      const fy = (NL > 1 ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0) + (b.type === 'lever' ? 0.004 : 0.003);
+      const fy = (NL > 1 || OW.on ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0) + (b.type === 'lever' ? 0.004 : 0.003);
       if (m.position.y < fy) {
         m.position.y = fy;
         if (b.v.y < -1.2 && b.tink < 3) { b.tink++; Sound.nade('tink', { x: m.position.x, y: m.position.y, z: m.position.z }, Math.min(1, -b.v.y / 5)); }
@@ -16280,7 +16309,7 @@ function updateGrenades(dt) {
         if (sp > 2) Sound.grenadeBounce({ x: g.x, y: g.y, z: g.z });
       } else { g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt; }
     }
-    const gf = NL > 1 ? floorBelow(g.x, g.z, g.y + 0.3) : 0;
+    const gf = NL > 1 || OW.on ? floorBelow(g.x, g.z, g.y + 0.3) : 0;
     if (g.y < gf + 0.031) {
       g.y = gf + 0.031; g.vy = Math.abs(g.vy) * 0.3; g.vx *= 0.7; g.vz *= 0.7; onFloor = true;
       // elle roule sur ses plots : rotation liée à la vitesse au sol, puis elle se couche
@@ -16314,7 +16343,7 @@ function updateFX(dt) {
     if (debrisHit(m.position.x, m.position.y, nz, m.position.x, m.position.z)) { d.vz *= -0.4; nz = m.position.z; }
     m.position.x = nx; m.position.z = nz; m.position.y += d.vy * dt;
     m.rotation.x += d.ax * dt; m.rotation.y += d.ay * dt; m.rotation.z += d.az * dt;
-    const dfy = NL > 1 ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0;
+    const dfy = NL > 1 || OW.on ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0;
     if (m.position.y < dfy + d.sy) {
       m.position.y = dfy + d.sy; d.vy = Math.abs(d.vy) * 0.25; d.vx *= 0.6; d.vz *= 0.6;
       d.ax *= 0.5; d.ay *= 0.5; d.az *= 0.5;
@@ -16333,7 +16362,7 @@ function updateFX(dt) {
     if (debrisHit(m.position.x, m.position.y, nz, m.position.x, m.position.z)) { h.vz *= -0.35; nz = m.position.z; }
     m.position.x = nx; m.position.z = nz; m.position.y += h.vy * dt;
     m.rotation.x += h.ax * dt; m.rotation.y += h.ay * dt; m.rotation.z += h.az * dt;
-    const hfy = NL > 1 ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0;
+    const hfy = NL > 1 || OW.on ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0;
     if (m.position.y < hfy + 0.08) {
       m.position.y = hfy + 0.08;
       h.vy = Math.abs(h.vy) > 1 ? Math.abs(h.vy) * 0.3 : 0;
@@ -16399,6 +16428,13 @@ const _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.
 
 /* Pose le joueur en (x, z) sur le niveau lv (ou au plus près de la hauteur actuelle). */
 function placePlayer(x, z, lv) {
+  if (OW.on) {
+    // monde ouvert : posé sur le terrain (le sous-sol si lv < 0)
+    player.pos.set(x, 0, z); player.layer = lv !== undefined && lv < 0 ? 1 : 0; player.k = -1; player.gy = NaN;
+    owSettle(player, 0.3);
+    player.pos.y = player.gy;
+    return;
+  }
   const li = lv === undefined ? -1 : levelIndex(lv);
   const y = li >= 0 ? LVY[li] : player.gy;
   player.pos.set(x, 0, z);
@@ -16421,6 +16457,7 @@ function resetPlayer() {
 
 function playerDamage(amount, self = false) {
   if (player.down || G.state !== 'playing' || G.god || G.cheat) return;   // G.cheat : digi pass (immortel)
+  if (OW.on && owDriving()) amount *= VEH.drive.T.protect;           // au volant : la caisse protège (légère, aucune, lourde)
   player.hp -= amount;
   player.lastHit = G.time;
   player.punch = Math.min(0.12, player.punch + 0.05);
@@ -16488,7 +16525,8 @@ function updatePlayer(dt) {
   p.recoilYaw = damp(p.recoilYaw, 0, 9, dt);
   p.punch = damp(p.punch, 0, 8, dt);
 
-  // --- déplacement
+  // --- déplacement (Khamsin : au volant, le véhicule remplace la marche)
+  if (OW.on && owDriving()) { owDriveStep(dt); owPlayerVitals(dt); return; }
   const slot = curSlot();
   const mobility = slot ? WEAPONS[slot.id].mobility : 1;
   let f = (key('KeyW') ? 1 : 0) - (key('KeyS') ? 1 : 0);
@@ -20229,7 +20267,7 @@ function fireWeapon(s) {
 function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
   const def = WEAPONS[s.id];
   raycast(ox, oy, oz, dx, dy, dz, 140);
-  const wallT = RAY.t, wallHit = RAY.hit;
+  const wallT = RAY.t, wallHit = RAY.hit, wallSand = OW.on && RAY.hit && RAY.type >= 16;
   const wx = RAY.x, wy = RAY.y, wz = RAY.z, wnx = RAY.nx, wny = RAY.ny, wnz = RAY.nz;
   _hits.length = 0;
   for (const z of Zombies.list) {
@@ -20273,9 +20311,12 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
   const ex = ox + dx * endT, ey = oy + dy * endT, ez = oz + dz * endT;
   if (Math.random() < (def.auto ? 0.5 : 0.85)) addTracer(mw.x, mw.y, mw.z, ex, ey, ez, def.kind === 'shotgun' ? 0.6 : 1);
   if (!stopped && wallHit) {
-    addDecal('hole', wx, wy, wz, wnx, wny, wnz, rand(0.07, 0.11));
-    sparkBurst(wx, wy, wz, wnx, wny, wnz, def.kind === 'shotgun' ? 2 : 4);
-    if (Math.random() < 0.3) spawnPuff(wx + wnx * 0.05, wy + wny * 0.05, wz + wnz * 0.05, 0.25, 0.5, 0x8a8478, 0.35, 0.2);
+    if (wallSand) owSandHit(wx, wy, wz, wnx, wny, wnz);                    // monde ouvert : le sable gicle
+    else {
+      addDecal('hole', wx, wy, wz, wnx, wny, wnz, rand(0.07, 0.11));
+      sparkBurst(wx, wy, wz, wnx, wny, wnz, def.kind === 'shotgun' ? 2 : 4);
+      if (Math.random() < 0.3) spawnPuff(wx + wnx * 0.05, wy + wny * 0.05, wz + wnz * 0.05, 0.25, 0.5, 0x8a8478, 0.35, 0.2);
+    }
     if (boom && explode(wx + wnx * 0.25, wy + wny * 0.25, wz + wnz * 0.25, boom.r, boom.dmg, { color: 0xff7a30, src: 'rounds', slot: s })) Arms.shotHit = true;
   }
 }
@@ -20426,6 +20467,7 @@ function buildKnife() {
 }
 
 function updateArms(dt) {
+  if (OW.on && owDriving()) { player.ads = 0; return; }        // au volant : seul, on ne tire pas
   const s = curSlot();
   Arms.bloom = Math.max(0, Arms.bloom - dt * 5);
   if (pressed('KeyR')) startReload();
@@ -20635,7 +20677,7 @@ function updateViewmodel(dt) {
     const d2 = (l.light.position.x - player.pos.x) ** 2 + (l.light.position.z - player.pos.z) ** 2;
     lum += (l.light.intensity / (1 + d2 * 0.07)) * 0.45;
   }
-  lum = clamp(lum, 0.42, 1.1);
+  lum = OW.on ? owViewLum() : clamp(lum, 0.42, 1.1);       // monde ouvert : la lumière du jour
   Arms.hemi.intensity = damp(Arms.hemi.intensity, lum * 0.58, 4, dt);
   Arms.keyLight.intensity = damp(Arms.keyLight.intensity, lum * 0.78, 4, dt);
 }
@@ -20807,7 +20849,7 @@ function spawnZombie(sp, hp) {
   z.speed = rand(SPEEDS[z.speedType][0], SPEEDS[z.speedType][1]) * type.mult.speed;
   if (sp.riser) {
     z.outside = false;
-    z.gy = LVY[sp.li]; z.k = sp.k;
+    z.gy = OW.on ? sp.y : LVY[sp.li]; z.k = sp.k; z.layer = sp.layer | 0;
     z.pos.set(sp.x + rand(-0.25, 0.25), 0, sp.z + rand(-0.25, 0.25));
     z.riseD = riseDepth(sp.li, z.pos.x, z.pos.z);
     z.yaw = Math.atan2(player.pos.x - z.pos.x, player.pos.z - z.pos.z);
@@ -20960,9 +21002,10 @@ function popHelmet(z, dx = 0, dz = 0, force = 1) {
 function updateZombies(dt) {
   Zombies.flowT -= dt;
   const pc = player.k;
-  if (Zombies.flowT <= 0 || pc !== Zombies.lastCell) {
+  // monde ouvert : le champ (160 × 160 m) est refait toutes les 0,25 s, pas à chaque case
+  if (Zombies.flowT <= 0 || (pc !== Zombies.lastCell && !OW.on)) {
     computeFlow(pc);
-    Zombies.flowT = 0.3;
+    Zombies.flowT = OW.on ? 0.25 : 0.3;
     Zombies.lastCell = pc;
   }
   for (let i = Zombies.list.length - 1; i >= 0; i--) {
@@ -21693,7 +21736,7 @@ function spawnLimb(z, side, dx, dz) {
   L.life = 7;
   return L;
 }
-const limbFloor = (x, z, y) => (NL > 1 ? floorBelow(x, z, y + 0.3) : 0);
+const limbFloor = (x, z, y) => (NL > 1 || OW.on ? floorBelow(x, z, y + 0.3) : 0);
 /* Un pas du bras qui vole : gravité, rebonds sur le sol et les murs (hit), puis il se couche à plat. */
 function stepLimb(L, dt, floorY, hit) {
   L.life -= dt;
@@ -22881,6 +22924,7 @@ function rdFloor(x, z, yb) {
 /* Haut de ce qui occupe la case au niveau de la hauteur y : Infinity (mur, porte fermée),
    appui de fenêtre, dessus d'une caisse, -Infinity (libre). */
 function rdTop(cx, cz, y) {
+  if (OW.on) return owRdTop(cx, cz, y);
   if (!inb(cx, cz)) return Infinity;
   const li = levelAtY(y), k = node(li, cx, cz), E = LVY[li];
   switch (grid[k]) {
@@ -23076,6 +23120,7 @@ function zRagdollWrite(z) {
 
 /* Fenêtre ou apparition au sol d'une pièce ouverte ; les plus proches du joueur sont favorisées. */
 function pickSpawnPoint() {
+  if (OW.on) return owPickSpawn();
   const cand = World.windows.filter((w) => G.activeZones.has(w.zone));
   for (const r of World.risers) {
     if (!G.activeZones.has(r.zone)) continue;
@@ -24513,6 +24558,7 @@ function updateLanterns(time) {
 
 /* ------------------------------------------------------- Interactions -- */
 function updateInteract(dt) {
+  if (OW.on && owDriving()) { HUD.prompt(null); return; }
   if (Keypad.open) { HUD.prompt(null); return; }            // F sert alors à refermer le clavier
   let best = null, bestScore = 1e9, bestPrompt = null;
   if (!player.down) {
@@ -24587,6 +24633,7 @@ function resetFeatures() {
   clearPowerups();
   resetDigipass();
   if (CUR.map && CUR.map.rules.powerOn) powerOnQuiet();
+  if (OW.on) owResetVehicles();
 }
 
 /* ================================================================= 11 PARTIE ==
@@ -24853,6 +24900,7 @@ function newGame(save) {
   Zombies.flowT = 0;
   computeFlow(player.k);
   if (save) restoreSave(save);
+  if (OW.on && G.dogs) G.dogs.off = true;              // monde ouvert : pas de manches de chiens
   HUD.full();
 }
 function serializeGame() {
@@ -25248,10 +25296,10 @@ function refreshMenu() {
   $('best').textContent = best > 0 ? `Meilleure partie sur cette carte : ${best} manche${best > 1 ? 's' : ''}` : 'Aucune partie terminée sur cette carte';
   const map = CUR.map;
   if (map) {
-    $('menu-eyebrow').textContent = `Rapport d'incident · ${map.name} · nuit du 14 décembre`;
+    $('menu-eyebrow').textContent = map.eyebrow || `Rapport d'incident · ${map.name} · nuit du 14 décembre`;
     // consignes adaptées à la carte (le texte d'origine reste celui du Bunker 7)
     const b7 = map.id === 'bunker7';
-    $('menu-lead').textContent = `${b7 ? 'Tenez le bunker' : 'Tenez bon'} le plus longtemps possible. Chaque manche amène des morts plus nombreux, plus rapides et plus coriaces.`;
+    $('menu-lead').textContent = map.lead || `${b7 ? 'Tenez le bunker' : 'Tenez bon'} le plus longtemps possible. Chaque manche amène des morts plus nombreux, plus rapides et plus coriaces.`;
     $('tip-box').hidden = !map.boxes.length;
     const powered = map.power || map.rules.powerOn;
     $('tip-power').hidden = !powered || (!map.perks.some((p) => PERKS[p.p].power) && !map.amp);
@@ -25417,10 +25465,11 @@ function update(dt) {
   updateGrenades(dt);
   updateFX(dt);
   updateLights(dt, G.time);
+  if (OW.on) owUpdate(dt);
   G.timers.insta = Math.max(0, G.timers.insta - dt);
   G.timers.double = Math.max(0, G.timers.double - dt);
   G.creakT -= dt;
-  if (G.creakT <= 0) { G.creakT = rand(8, 18); Sound.creak(); }
+  if (G.creakT <= 0) { G.creakT = rand(8, 18); if (!OW.on) Sound.creak(); }   // pas de grincements de bunker au désert
   HUD.update(dt);
 }
 /* Vue du menu : définie dans la carte, sinon depuis le départ vers la boîte mystère. */
@@ -25440,6 +25489,7 @@ function menuCamera(dt) {
   camera.lookAt(v.look[0], v.look[1], v.look[2]);
   updateLights(dt, G.menuT);
   if (Features.box) Features.box.beam.material.opacity = 0.2 + Math.sin(G.menuT * 2.2) * 0.06;
+  if (OW.on) owUpdateView(dt);
 }
 /* Caméra de rendu : celle du joueur, ou celle des Mod Tools quand ils sont ouverts. */
 let viewCamera = null;
@@ -25463,7 +25513,7 @@ function frame(now) {
     if (G.state === 'playing') update(dt);
     else if (G.state === 'menu') menuCamera(dt);
     else if (G.state === 'editor' && window.ZSEditor) window.ZSEditor.frame(dt);
-    else if (G.state === 'gameover') { updateFX(dt); updateLights(dt, G.time += dt * 0.3); camera.position.y = damp(camera.position.y, player.gy + 0.4, 1.5, dt); }
+    else if (G.state === 'gameover') { updateFX(dt); updateLights(dt, G.time += dt * 0.3); camera.position.y = damp(camera.position.y, player.gy + 0.4, 1.5, dt); if (OW.on) owUpdateView(dt); }
     if (G.state !== 'playing') Sound.glasHum(0);              // le bourdonnement du Glas ne suit pas dans les menus
   } catch (err) {
     console.error(err);
@@ -25474,10 +25524,2561 @@ function frame(now) {
   if (Models.open) { try { renderModels(dt); } catch (err) { console.error(err); } }
 }
 
+/* ========================================================== 12 MONDE OUVERT ==
+   Khamsin (jeu 2.0.0) : demande d'Anthony du 8 octobre 2026, 23 h 41, d'après sa planche « Khamsin —
+   map zombie (Égypte) » (8 pages) : « une toute nouvelle map », « très très grande », tous les modèles
+   et les véhicules, deuxième carte du menu Jouer. Douze kilomètres carrés (4 × 3 km) entre la mer de
+   sable et le Nil, sept lieux reliés par la R47 et des pistes, une tempête toutes les quatre manches.
+   La grille de cases de 1 m du reste du jeu (160 × 160 cases au plus, un tableau par case et par
+   niveau) ne tient pas à cette taille : ce monde a son propre moteur. Quand OW.on est vrai, les
+   fonctions de la grille (sol, collisions, rayons, flux des zombies, apparitions) passent la main
+   à celles d'ici :
+     terrain    champ de hauteurs tous les 4 m (dunes, plateau, oued et falaises, vallée du Nil),
+                routes aplanies, morceaux de 256 m dessinés à quatre niveaux de détail
+     solides    grille de cases de 1 m par morceaux de 64 × 64 créés à la demande (bâtiments, murs,
+                pyramides, caisses) ; une seconde grille pour le sous-sol (sanctuaire, tunnels)
+     zombies    champ de flux de 160 × 160 m autour du joueur, en ligne droite au-delà
+   Repère : x vers l'est (0 à 4000 m), z vers le sud (0 à 3000 m), y en haut ; le nord est en haut du plan.
+   ============================================================================ */
+const OW = {
+  on: false, map: null, seed: 4747,
+  W: 4000, D: 3000,                       // zone jouable (m)
+  // champ de hauteurs : de -1024 à 5120 m en x, de -1024 à 4096 m en z, un point tous les 4 m
+  X0: -1024, Z0: -1024, STEP: 4, NX: 1537, NZ: 1281,
+  H: null, bio: null, steep: null, water: null,
+  root: null, t: 0,
+};
+// matières du sol (une par point du champ de hauteurs)
+const OWB = { SAND: 0, SEA: 1, PLATEAU: 2, ROCK: 3, WADI: 4, FIELD: 5, MUD: 6, RIVER: 7, OASIS: 8, PAD: 9, ROAD: 10, TRACK: 11, RUNWAY: 12 };
+const owSmoothstep = (e0, e1, x) => { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+
+/* ------------------------------------------------------------- Bruit --- */
+function owHash(ix, iz) {
+  let h = Math.imul(ix | 0, 374761393) + Math.imul(iz | 0, 668265263) + OW.seed;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+/* Bruit de valeur lissé, de 0 à 1. */
+function owNoise(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+  const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = owHash(ix, iz), b = owHash(ix + 1, iz), c = owHash(ix, iz + 1), d = owHash(ix + 1, iz + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function owFbm(x, z, oct = 4) {
+  let s = 0, a = 0.5, f = 1, n = 0;
+  for (let i = 0; i < oct; i++) { s += a * owNoise(x * f + i * 17.3, z * f - i * 9.1); n += a; a *= 0.5; f *= 2.03; }
+  return s / n;
+}
+
+/* ------------------------------------------------------ Plan de Khamsin --
+   Positions relevées sur le plan de la planche (page 2 : 4 × 3 km, graduation 500 m), en mètres. */
+const KH = {
+  // les sept lieux (A à G) : centre, rayon d'influence (nom à l'écran, lumière du lieu)
+  locs: [
+    { id: 'A', name: 'Camp de fouilles', sub: 'Départ', x: 2300, z: 1965, r: 170 },
+    { id: 'B', name: 'Plateau des pyramides', sub: 'Sanctuaire · faisceau', x: 2030, z: 1360, r: 560 },
+    { id: 'C', name: 'Relais Km 47', sub: 'Carburant · garage', x: 1395, z: 2585, r: 150 },
+    { id: 'D', name: 'Oasis de Sekhet', sub: 'Village · puits', x: 820, z: 740, r: 240 },
+    { id: 'E', name: 'Centrale du Nil', sub: 'Courant', x: 3520, z: 1620, r: 190 },
+    { id: 'F', name: 'Nécropole des falaises', sub: 'Tombeaux · tunnels', x: 640, z: 2265, r: 240 },
+    { id: 'G', name: 'Aérodrome', sub: 'Fuite finale', x: 2960, z: 400, r: 330 },
+  ],
+  // contour du plateau des pyramides (relevé sur le plan)
+  plateau: [[1400, 1300], [1430, 1180], [1520, 1080], [1680, 990], [1880, 930], [2100, 905], [2300, 915], [2480, 960],
+    [2580, 1060], [2610, 1180], [2560, 1300], [2470, 1420], [2420, 1520], [2380, 1640], [2260, 1760], [2080, 1830],
+    [1880, 1840], [1680, 1800], [1520, 1700], [1430, 1560], [1395, 1420]],
+  plateauTop: 32,
+  // les trois pyramides : centre, côté, hauteur (Khéops, Khéphren, Mykérinos à l'échelle du plan)
+  pyramids: [
+    { x: 2120, z: 1240, side: 200, h: 128, beam: true },
+    { x: 1915, z: 1440, side: 170, h: 109 },
+    { x: 1750, z: 1620, side: 90, h: 58 },
+  ],
+  // routes : R47 goudronnée (D → G → E → A → C), pistes, piste de l'aérodrome
+  roads: [
+    { id: 'r47', kind: 'road', w: 8, pts: [[930, 734], [1000, 712], [1400, 664], [1800, 614], [2200, 572], [2600, 528], [2800, 512],
+      [3120, 512], [3230, 556], [3360, 660], [3455, 840], [3500, 1060], [3510, 1300], [3480, 1520], [3440, 1690], [3380, 1760],
+      [3200, 1880], [2900, 2000], [2600, 2062], [2420, 2100], [2200, 2210], [2000, 2340], [1800, 2430], [1600, 2500], [1420, 2550], [1360, 2566]] },
+    { id: 'cf', kind: 'track', w: 6, pts: [[1360, 2566], [1250, 2560], [1120, 2540], [960, 2470], [830, 2390], [720, 2330], [640, 2300]] },
+    { id: 'df', kind: 'track', w: 6, pts: [[700, 790], [640, 980], [580, 1180], [520, 1400], [490, 1620], [480, 1840], [500, 2040], [560, 2200], [620, 2270]] },
+    { id: 'db', kind: 'track', w: 6, pts: [[930, 800], [1180, 920], [1450, 1040], [1650, 1130], [1790, 1220], [1840, 1300]] },
+    { id: 'eb', kind: 'track', w: 6, pts: [[3420, 1640], [3150, 1600], [2850, 1550], [2600, 1500], [2420, 1460], [2240, 1420]] },
+    { id: 'ab', kind: 'track', w: 6, pts: [[2290, 1905], [2250, 1820], [2190, 1700], [2130, 1580], [2100, 1520]] },
+    { id: 'runway', kind: 'runway', w: 30, pts: [[2390, 268], [3560, 178]] },
+  ],
+  nileBank: (z) => 3790 + 26 * Math.sin(z / 180 + 0.7) + 11 * Math.sin(z / 61 + 2.1),
+  oasis: { x: 734, z: 732, rx: 44, rz: 19 },
+  // couloir du Khamsin : bande sud-ouest → nord-est (n · P entre 1818 et 2930 m), axe vers le nord-est
+  corridor: { nx: 0.598, nz: 0.8015, s0: 1818, s1: 2930, ax: 0.8015, az: -0.598 },
+  spawn: { pos: [2350, 1992], yaw: 2.45 },
+};
+/* Couloir du Khamsin : 1 au milieu, 0 dehors (bords fondus sur 120 m). */
+function khCorridor(x, z) {
+  const c = KH.corridor, s = c.nx * x + c.nz * z;
+  return owSmoothstep(c.s0 - 60, c.s0 + 60, s) * (1 - owSmoothstep(c.s1 - 60, c.s1 + 60, s));
+}
+/* Lieu le plus proche et distance à son bord (négative dedans). */
+function khNearestLoc(x, z) {
+  let best = null, bd = Infinity;
+  for (const L of KH.locs) {
+    const d = Math.hypot(x - L.x, z - L.z) - L.r;
+    if (d < bd) { bd = d; best = L; }
+  }
+  return { loc: best, d: bd };
+}
+
+/* --------------------------------------------------------------- Terrain --
+   Champ de hauteurs (un point tous les 4 m, de -1024 à 5120 m en x et de -1024 à 4096 m en z) :
+   collines et dunes, mer de sable et ses crêtes nord-sud à l'ouest, mur de sable au bord ouest,
+   plateau des pyramides (+32 m, escarpement raide au sud et à l'est), oued et falaises de la
+   nécropole, vallée du Nil (champs, berge, fleuve), oasis ; puis lieux aplanis et routes posées
+   avec une pente bornée. La hauteur entre les points suit les deux triangles du maillage dessiné. */
+/* Distance signée à un polygone (négative dedans) et normale extérieure du bord le plus proche. */
+function owPolySd(poly, x, z, out) {
+  let d2 = Infinity, inside = false, nx = 0, nz = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const ax = poly[j][0], az = poly[j][1], bx = poly[i][0], bz = poly[i][1];
+    if ((bz > z) !== (az > z) && x < ((ax - bx) * (z - bz)) / (az - bz) + bx) inside = !inside;
+    const ex = bx - ax, ez = bz - az, l2 = ex * ex + ez * ez;
+    const t = clamp(((x - ax) * ex + (z - az) * ez) / l2, 0, 1);
+    const qx = ax + ex * t - x, qz = az + ez * t - z, q2 = qx * qx + qz * qz;
+    if (q2 < d2) { d2 = q2; nx = ez; nz = -ex; }
+  }
+  if (out) { const l = Math.hypot(nx, nz) || 1; out.nx = nx / l; out.nz = nz / l; }
+  return (inside ? -1 : 1) * Math.sqrt(d2);
+}
+/* Distance d'un point à une polyligne : t (abscisse curviligne), côté (+1 à droite), point le plus proche. */
+function owPolylineNear(pts, cum, x, z, out) {
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const ax = pts[i][0], az = pts[i][1], ex = pts[i + 1][0] - ax, ez = pts[i + 1][1] - az, l2 = ex * ex + ez * ez;
+    const t = clamp(((x - ax) * ex + (z - az) * ez) / l2, 0, 1);
+    const qx = ax + ex * t, qz = az + ez * t, d = Math.hypot(x - qx, z - qz);
+    if (d < best) {
+      best = d;
+      out.d = d; out.s = cum[i] + Math.sqrt(l2) * t; out.x = qx; out.z = qz;
+      out.side = (x - ax) * ez - (z - az) * ex >= 0 ? 1 : -1;
+    }
+  }
+  return out;
+}
+/* Polyligne lissée (Catmull-Rom), un point tous les `step` m ; longueurs cumulées. */
+function owSmoothLine(pts, step) {
+  const out = [];
+  const P = (i) => pts[clamp(i, 0, pts.length - 1)];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    const n = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  out.push(pts[pts.length - 1].slice());
+  const cum = [0];
+  for (let i = 1; i < out.length; i++) cum.push(cum[i - 1] + Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]));
+  return { pts: out, cum, len: cum[cum.length - 1] };
+}
+
+/* Relief naturel (avant plateau, oued, Nil, lieux et routes). */
+function owNatural(x, z) {
+  // collines larges
+  let h = 8 + (owFbm(x / 700, z / 700, 3) - 0.5) * 7;
+  // dunes ordinaires : crêtes allongées, orientées par le vent du nord-ouest
+  const u = x * 0.8 + z * 0.6, v = -x * 0.6 + z * 0.8;
+  const r = 1 - Math.abs(2 * owNoise(u / 62, v / 150) - 1);
+  h += (r * r - 0.33) * 3.2 + (owFbm(x / 38, z / 38, 2) - 0.5) * 1.6;
+  // mer de sable : longues crêtes nord-sud (seifs), plus hautes vers le mur de sable
+  const sea = 1 - owSmoothstep(760, 1180, x);
+  if (sea > 0) {
+    const ph = x / 120 + 0.45 * Math.sin(z / 230 + 1.3) + (owFbm(x / 300, z / 300, 2) - 0.5) * 1.2;
+    const crest = Math.pow(1 - Math.abs(Math.sin(Math.PI * ph)), 2.2);
+    const amp = lerp(13, 6, clamp((x - 200) / 900, 0, 1));
+    h += sea * (crest * amp - amp * 0.28);
+  }
+  // le mur de sable : dunes qui montent à l'ouest ; dunes hors de la carte au nord et au sud
+  h += owSmoothstep(260, -260, x) * 18;
+  h += owSmoothstep(-30, -320, z) * 9 + owSmoothstep(3030, 3320, z) * 9;
+  return h;
+}
+
+/* Oued de la nécropole : cuvette ouest-est sous les falaises, vallée jusqu'au relais Km 47.
+   Renvoie la distance signée (négative dedans) ; out.north : côté nord (falaise). */
+function owWadiSd(x, z, out) {
+  // cuvette
+  const ex = (x - 520) / 470, ez = (z - 2300) / 175;
+  const de = (Math.sqrt(ex * ex + ez * ez) - 1) * 175;
+  // vallée vers le relais (capsule)
+  const ax = 860, az = 2320, bx = 1310, bz = 2560, vx = bx - ax, vz = bz - az, l2 = vx * vx + vz * vz;
+  const t = clamp(((x - ax) * vx + (z - az) * vz) / l2, 0, 1);
+  const dc = Math.hypot(x - (ax + vx * t), z - (az + vz * t)) - 62;
+  let sd, north;
+  if (de < dc) { sd = de; north = owSmoothstep(40, -40, z - 2300); }
+  else { sd = dc; north = owSmoothstep(-40, 40, (x - ax) * 0.48 + (z - az) * -0.877); }
+  // bords irréguliers
+  sd += (owFbm(x / 70, z / 70, 2) - 0.5) * 34;
+  out.north = north; out.t = t; out.inBasin = de < dc;
+  return sd;
+}
+
+function owGenTerrain() {
+  const { NX, NZ, X0, Z0, STEP } = OW;
+  const n = NX * NZ;
+  const H = new Float32Array(n), bio = new Uint8Array(n);
+  const pe = { nx: 0, nz: 0 }, wo = { north: false, t: 0, inBasin: false };
+  const PT = KH.plateauTop;
+  for (let j = 0; j < NZ; j++) {
+    const z = Z0 + j * STEP;
+    const xb = KH.nileBank(z), xf = xb + 380 + 30 * Math.sin(z / 400);
+    for (let i = 0; i < NX; i++) {
+      const x = X0 + i * STEP, k = j * NX + i;
+      let h = owNatural(x, z), b = x < 1100 && x > 200 ? OWB.SEA : OWB.SAND;
+      // plateau : escarpement raide au sud et à l'est, pente douce au nord et à l'ouest
+      if (x > 1200 && x < 2800 && z > 700 && z < 2050) {
+        let ps = owPolySd(KH.plateau, x, z, pe);
+        ps += (owFbm(x / 90, z / 90, 2) - 0.5) * 46;
+        const steep = pe.nx + pe.nz > 0.35;
+        const w = steep ? 24 : 85;
+        if (ps < w) {
+          const top = PT + (owFbm(x / 180, z / 180, 2) - 0.5) * 3.2 + (owFbm(x / 25, z / 25, 2) - 0.5) * 0.6;
+          const q = clamp((w - ps) / (1.3 * w), 0, 1);
+          const shape = steep ? (q < 0.68 ? 0.32 * Math.pow(q / 0.68, 1.4) : 0.32 + 0.68 * smooth((q - 0.68) / 0.32)) : smooth(q);
+          h = lerp(h, top, shape);
+          if (q > 0.85) b = OWB.PLATEAU;
+        }
+      }
+      // oued et falaises de la nécropole
+      if (x < 1720 && z > 1780 && z < 2960) {
+        const sd = owWadiSd(x, z, wo);
+        const floorH = 2.5 + (owFbm(x / 120, z / 120, 2) - 0.5) * 2 + (wo.inBasin ? 0 : wo.t * 4.5);
+        const nw = wo.north;      // 1 au nord (falaise), 0 au sud (pente douce), fondu entre les deux
+        if (sd > 0) {
+          // corniche : la terre se relève au nord de l'oued (13 m au bord, rien à 280 m)
+          h += nw * 13 * (1 - owSmoothstep(0, 280, sd));
+          if (sd < 70 && nw < 1) { const k2 = owSmoothstep(70, -20, sd) * (1 - nw); h = lerp(h, floorH, k2); if (k2 > 0.6) b = OWB.WADI; }
+        } else {
+          // dans l'oued : à pic sous la corniche, en pente douce ailleurs
+          const cliff = lerp(h + 13 * nw, floorH, 1 - owSmoothstep(-9, 0, sd));
+          const soft = lerp(h, floorH, owSmoothstep(70, -20, sd));
+          h = lerp(soft, cliff, nw);
+          b = nw > 0.5 && sd > -9 * 0.92 ? OWB.ROCK : OWB.WADI;
+        }
+      }
+      // vallée du Nil : champs, berge, fleuve, rive d'en face
+      if (x > 3150) {
+        const v = owSmoothstep(3225, 3335, x);
+        const fieldsH = 3 + (owNoise(x / 50, z / 50) - 0.5) * 0.35;
+        if (v > 0) { h = lerp(h, fieldsH, v); if (v > 0.5) b = OWB.FIELD; }
+        if (x > xb - 26) { h = lerp(h, 0.5, owSmoothstep(xb - 26, xb, x)); b = OWB.MUD; }
+        if (x > xb) {
+          h = lerp(0.5, -3.2, owSmoothstep(xb, xb + 40, x));
+          b = OWB.RIVER;
+          if (x > xf - 40) { h = lerp(-3.2, 2.6, owSmoothstep(xf - 40, xf + 10, x)); b = x > xf ? OWB.FIELD : OWB.MUD; }
+          // île
+          const ie = Math.hypot((x - 3935) / 62, (z - 2200) / 24);
+          if (ie < 1.2) { h = Math.max(h, lerp(1.6, -3.2, owSmoothstep(0.8, 1.2, ie))); if (ie < 1) b = OWB.MUD; }
+        }
+      }
+      H[k] = h; bio[k] = b;
+    }
+  }
+  OW.H = H; OW.bio = bio;
+  // lieux aplanis (hauteur moyenne du terrain sous chacun)
+  const pads = [
+    { x: 2320, z: 1965, r: 125, b: 60 },     // A camp de fouilles
+    { x: 1395, z: 2585, r: 88, b: 50 },      // C relais Km 47
+    { x: 840, z: 745, r: 230, b: 100 },      // D oasis
+    { x: 3515, z: 1620, r: 140, b: 40 },     // E centrale
+    { x: 2990, z: 445, r: 210, b: 70, rect: [2770, 320, 3210, 570] },   // G aérodrome
+  ];
+  for (const p of KH.pyramids) pads.push({ x: p.x, z: p.z, r: p.side * 0.72, b: 30, keep: true });
+  for (const p of pads) owFlattenPad(p);
+  // routes : profil le long de chaque route, pente bornée, puis terrain aplani de part et d'autre
+  OW.roads = KH.roads.map((r) => owLayRoad(r));
+  OW._bestD = OW._bestS = null;          // tableaux de travail des routes (16 Mo) rendus
+  // oasis : le bassin, son eau et l'herbe autour
+  const O = KH.oasis, oasisH = owHeightAtGrid(O.x, O.z);
+  OW.oasisWater = oasisH - 0.55;
+  owEachPoint(O.x - 160, O.z - 120, O.x + 160, O.z + 120, (k, x, z) => {
+    const e = Math.hypot((x - O.x) / O.rx, (z - O.z) / O.rz);
+    if (e < 1.05) { H[k] = lerp(oasisH - 1.9, oasisH, owSmoothstep(0.75, 1.05, e)); bio[k] = OWB.MUD; }
+    else if (e < 3.4 && bio[k] !== OWB.ROAD && bio[k] !== OWB.TRACK) bio[k] = OWB.OASIS;
+  });
+  // pentes trop raides (falaises, escarpement) et eau : on n'y marche pas
+  const steep = new Uint8Array(n), water = new Uint8Array(n);
+  for (let j = 1; j < NZ - 1; j++) {
+    for (let i = 1; i < NX - 1; i++) {
+      const k = j * NX + i;
+      const sx = Math.abs(H[k + 1] - H[k - 1]) / (2 * STEP), sz = Math.abs(H[k + NX] - H[k - NX]) / (2 * STEP);
+      const s = Math.max(sx, sz, Math.abs(H[k + 1] - H[k]) / STEP, Math.abs(H[k + NX] - H[k]) / STEP, Math.abs(H[k] - H[k - 1]) / STEP, Math.abs(H[k] - H[k - NX]) / STEP);
+      const paved = bio[k] === OWB.ROAD || bio[k] === OWB.TRACK || bio[k] === OWB.RUNWAY;
+      if (s > 0.82 && !paved) { steep[k] = 1; if (bio[k] === OWB.SAND || bio[k] === OWB.SEA || bio[k] === OWB.PLATEAU || bio[k] === OWB.WADI) bio[k] = OWB.ROCK; }
+      if (bio[k] === OWB.RIVER) water[k] = 1;
+    }
+  }
+  owEachPoint(O.x - 60, O.z - 30, O.x + 60, O.z + 30, (k, x, z) => { if (Math.hypot((x - O.x) / O.rx, (z - O.z) / O.rz) < 0.97) water[k] = 1; });
+  OW.steep = steep; OW.water = water;
+}
+/* Appelle fn(k, x, z) pour chaque point du champ de hauteurs dans le rectangle. */
+function owEachPoint(x0, z0, x1, z1, fn) {
+  const { NX, NZ, X0, Z0, STEP } = OW;
+  const i0 = clamp(Math.floor((x0 - X0) / STEP), 0, NX - 1), i1 = clamp(Math.ceil((x1 - X0) / STEP), 0, NX - 1);
+  const j0 = clamp(Math.floor((z0 - Z0) / STEP), 0, NZ - 1), j1 = clamp(Math.ceil((z1 - Z0) / STEP), 0, NZ - 1);
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) fn(j * NX + i, X0 + i * STEP, Z0 + j * STEP);
+}
+function owHeightAtGrid(x, z) {
+  const i = clamp(Math.round((x - OW.X0) / OW.STEP), 0, OW.NX - 1), j = clamp(Math.round((z - OW.Z0) / OW.STEP), 0, OW.NZ - 1);
+  return OW.H[j * OW.NX + i];
+}
+function owFlattenPad(p) {
+  const H = OW.H, bio = OW.bio;
+  // hauteur visée : moyenne du terrain sous le lieu
+  let s = 0, c = 0;
+  const inPad = (x, z) => (p.rect ? x >= p.rect[0] && x <= p.rect[2] && z >= p.rect[1] && z <= p.rect[3] : Math.hypot(x - p.x, z - p.z) <= p.r);
+  const R = p.rect ? Math.max(p.rect[2] - p.rect[0], p.rect[3] - p.rect[1]) : p.r;
+  owEachPoint(p.x - R - p.b, p.z - R - p.b, p.x + R + p.b, p.z + R + p.b, (k, x, z) => { if (inPad(x, z)) { s += H[k]; c++; } });
+  const target = p.y !== undefined ? p.y : c ? s / c : owHeightAtGrid(p.x, p.z);
+  p.y = target;
+  owEachPoint(p.x - R - p.b, p.z - R - p.b, p.x + R + p.b, p.z + R + p.b, (k, x, z) => {
+    let d;
+    if (p.rect) {
+      const dx = Math.max(p.rect[0] - x, 0, x - p.rect[2]), dz = Math.max(p.rect[1] - z, 0, z - p.rect[3]);
+      d = Math.hypot(dx, dz);
+    } else d = Math.max(0, Math.hypot(x - p.x, z - p.z) - p.r);
+    const w = 1 - owSmoothstep(0, p.b, d);
+    if (w <= 0) return;
+    H[k] = lerp(H[k], target, w);
+    if (w > 0.9 && !p.keep) bio[k] = OWB.PAD;
+  });
+}
+/* Pose une route : ligne lissée, profil en long (moyenne glissante, pente bornée), terrain aplani. */
+function owLayRoad(r) {
+  const line = owSmoothLine(r.pts, 4);
+  const N = line.pts.length;
+  const raw = new Float32Array(N), prof = new Float32Array(N);
+  for (let i = 0; i < N; i++) raw[i] = owHeightAtGrid(line.pts[i][0], line.pts[i][1]);
+  // moyenne glissante sur ±(15 à 40) m
+  const win = r.kind === 'runway' ? 60 : r.kind === 'road' ? 10 : 6;
+  for (let i = 0; i < N; i++) {
+    let s = 0, c = 0;
+    for (let j = Math.max(0, i - win); j <= Math.min(N - 1, i + win); j++) { s += raw[j]; c++; }
+    prof[i] = s / c;
+  }
+  // pente bornée (deux passes)
+  const maxG = r.kind === 'road' ? 0.075 : r.kind === 'runway' ? 0.01 : 0.11;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 1; i < N; i++) { const dl = line.cum[i] - line.cum[i - 1]; prof[i] = clamp(prof[i], prof[i - 1] - maxG * dl, prof[i - 1] + maxG * dl); }
+    for (let i = N - 2; i >= 0; i--) { const dl = line.cum[i + 1] - line.cum[i]; prof[i] = clamp(prof[i], prof[i + 1] - maxG * dl, prof[i + 1] + maxG * dl); }
+  }
+  // plat sur toute la chaussée et un peu au-delà (le maillage est de 4 m), talus d'au plus ~0,75 :
+  // la largeur du talus grandit avec la hauteur du déblai ou du remblai
+  const half = r.w / 2 + (r.kind === 'road' ? 1.6 : r.kind === 'runway' ? 6 : 1.6);
+  const blend = r.kind === 'road' ? 16 : r.kind === 'runway' ? 45 : 11;
+  const bioK = r.kind === 'road' ? OWB.ROAD : r.kind === 'runway' ? OWB.RUNWAY : OWB.TRACK;
+  const H = OW.H, bio = OW.bio, NX = OW.NX, reach = half + blend + 60;
+  const profAt = (s) => {
+    let lo = 0, hi = N - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (line.cum[m] <= s) lo = m; else hi = m; }
+    const t = clamp((s - line.cum[lo]) / Math.max(1e-6, line.cum[hi] - line.cum[lo]), 0, 1);
+    return lerp(prof[lo], prof[hi], t);
+  };
+  // segment par segment : chaque point garde la distance au segment le plus proche
+  if (!OW._bestD || OW._bestD.length !== H.length) { OW._bestD = new Float32Array(H.length).fill(Infinity); OW._bestS = new Float32Array(H.length); }
+  const bestD = OW._bestD, bestS = OW._bestS, touched = [];
+  for (let i = 0; i < N - 1; i++) {
+    const ax = line.pts[i][0], az = line.pts[i][1], ex = line.pts[i + 1][0] - ax, ez = line.pts[i + 1][1] - az, l2 = ex * ex + ez * ez || 1e-6;
+    owEachPoint(Math.min(ax, ax + ex) - reach, Math.min(az, az + ez) - reach, Math.max(ax, ax + ex) + reach, Math.max(az, az + ez) + reach, (k, x, z) => {
+      const t = clamp(((x - ax) * ex + (z - az) * ez) / l2, 0, 1);
+      const d = Math.hypot(x - ax - ex * t, z - az - ez * t);
+      if (d >= reach || d >= bestD[k]) return;
+      if (bestD[k] === Infinity) touched.push(k);
+      bestD[k] = d; bestS[k] = line.cum[i] + Math.sqrt(l2) * t;
+    });
+  }
+  for (const k of touched) {
+    const d = bestD[k], py = profAt(bestS[k]), bl = blend + Math.abs(py - H[k]) * 2;
+    bestD[k] = Infinity;
+    if (d >= half + bl) continue;
+    H[k] = lerp(H[k], py, 1 - owSmoothstep(half, half + bl, d));
+    if (d < r.w / 2 + 0.5 && bio[k] !== OWB.RIVER) bio[k] = bioK;
+  }
+  return { id: r.id, kind: r.kind, w: r.w, line, prof, profAt };
+}
+
+/* Hauteur du terrain en (x, z) : interpolée sur les deux triangles du maillage (diagonale b–c). */
+function owH(x, z) {
+  const NX = OW.NX;
+  let fx = (x - OW.X0) * 0.25, fz = (z - OW.Z0) * 0.25;
+  if (fx < 0) fx = 0; else if (fx > NX - 1.0001) fx = NX - 1.0001;
+  if (fz < 0) fz = 0; else if (fz > OW.NZ - 1.0001) fz = OW.NZ - 1.0001;
+  const i = fx | 0, j = fz | 0, tx = fx - i, tz = fz - j, k = j * NX + i, H = OW.H;
+  if (tx + tz <= 1) { const a = H[k]; return a + (H[k + 1] - a) * tx + (H[k + NX] - a) * tz; }
+  const d = H[k + NX + 1];
+  return d + (H[k + NX] - d) * (1 - tx) + (H[k + 1] - d) * (1 - tz);
+}
+/* Normale du terrain (triangle sous le point). */
+function owNormal(x, z, out) {
+  const NX = OW.NX;
+  let fx = (x - OW.X0) * 0.25, fz = (z - OW.Z0) * 0.25;
+  fx = clamp(fx, 0, NX - 1.0001); fz = clamp(fz, 0, OW.NZ - 1.0001);
+  const i = fx | 0, j = fz | 0, tx = fx - i, tz = fz - j, k = j * NX + i, H = OW.H;
+  let gx, gz;
+  if (tx + tz <= 1) { gx = (H[k + 1] - H[k]) / 4; gz = (H[k + NX] - H[k]) / 4; }
+  else { gx = (H[k + NX + 1] - H[k + NX]) / 4; gz = (H[k + NX + 1] - H[k + 1]) / 4; }
+  const l = Math.hypot(gx, 1, gz);
+  out.x = -gx / l; out.y = 1 / l; out.z = -gz / l;
+  return out;
+}
+/* Point du champ de hauteurs le plus proche : matière, pente raide, eau. */
+function owPointIndex(x, z) {
+  const i = clamp(Math.round((x - OW.X0) * 0.25), 0, OW.NX - 1), j = clamp(Math.round((z - OW.Z0) * 0.25), 0, OW.NZ - 1);
+  return j * OW.NX + i;
+}
+const owBioAt = (x, z) => OW.bio[owPointIndex(x, z)];
+/* Terrain praticable en (x, z) : ni falaise, ni eau, ni hors des limites (mur de sable, fleuve). */
+function owTerrainWalk(x, z) {
+  if (x < 150 || x > 3990 || z < 10 || z > 2990) return false;
+  const i = Math.floor((x - OW.X0) * 0.25), j = Math.floor((z - OW.Z0) * 0.25), NX = OW.NX, k = j * NX + i;
+  // la case de 1 m est bloquée si l'un des quatre points qui l'entourent l'est (falaises nettes)
+  const S = OW.steep, Wt = OW.water;
+  return !(S[k] | S[k + 1] | S[k + NX] | S[k + NX + 1] | Wt[k] | Wt[k + 1] | Wt[k + NX] | Wt[k + NX + 1]);
+}
+
+/* ------------------------------------------------------------- Solides --
+   Cases de 1 m, par morceaux de 64 × 64 créés à la demande (le désert n'en a pas) ; deux couches :
+   la surface (OW.surf : hors des morceaux, le terrain) et le sous-sol (OW.under : hors des
+   morceaux, la roche). Une case dit ce qu'il y a dans sa colonne :
+     TERRAIN  le sol du terrain                    FLOOR   un sol plat à base, plafond éventuel (ceil → roof)
+     SOLID    plein de base à top (mur, pyramide)  LOW     plein de base à top, bas (caisse, muret, rebord)
+     WINDOW   plein sauf l'ouverture lo → hi       DOOR    plein tant qu'elle est fermée (sinon FLOOR)
+     RAMP     pente de base à top dans le sens dir  WATER   eau à base (on n'y marche pas)
+     ROCK     roche (sous-sol hors des salles)      VOID    rien (trou)
+   mat : matière pour les impacts (0 pierre, 1 sable, 2 bois, 3 métal, 4 toile, 5 brique crue). */
+const OWK = { TERRAIN: 0, FLOOR: 1, SOLID: 2, LOW: 3, WINDOW: 4, DOOR: 5, RAMP: 6, WATER: 7, ROCK: 8, VOID: 9 };
+const OWM = { STONE: 0, SAND: 1, WOOD: 2, METAL: 3, CLOTH: 4, MUD: 5 };
+function owNewLayer(def) { return { CW: 64, CD: 48, chunks: new Array(64 * 48).fill(null), def, n: 0 }; }
+function owChunkNew(L) {
+  const c = {
+    kind: new Uint8Array(4096).fill(L.def), base: new Float32Array(4096), top: new Float32Array(4096),
+    lo: new Float32Array(4096), hi: new Float32Array(4096), ceil: new Float32Array(4096), roof: new Float32Array(4096),
+    dir: new Uint8Array(4096), mat: new Uint8Array(4096), door: new Int16Array(4096).fill(-1),
+  };
+  L.n++;
+  return c;
+}
+/* Morceau d'une case (null s'il n'existe pas) ; make : le créer. */
+function owChunk(L, cx, cz, make) {
+  if (cx < 0 || cz < 0 || cx >= 4096 || cz >= 3072) return null;
+  const ci = (cz >> 6) * L.CW + (cx >> 6);
+  let ch = L.chunks[ci];
+  if (!ch && make) ch = L.chunks[ci] = owChunkNew(L);
+  return ch;
+}
+const owIdx = (cx, cz) => ((cz & 63) << 6) | (cx & 63);
+/* Écrit une case. o : { base, top, lo, hi, ceil, roof, dir, mat, door } (absolus, en m). */
+function owSet(L, cx, cz, kind, o) {
+  const ch = owChunk(L, cx, cz, true);
+  if (!ch) return;
+  const i = owIdx(cx, cz);
+  ch.kind[i] = kind;
+  ch.base[i] = o.base !== undefined ? o.base : 0;
+  ch.top[i] = o.top !== undefined ? o.top : ch.base[i];
+  ch.lo[i] = o.lo || 0; ch.hi[i] = o.hi || 0;
+  ch.ceil[i] = o.ceil || 0; ch.roof[i] = o.roof || 0;
+  ch.dir[i] = o.dir || 0; ch.mat[i] = o.mat || 0; ch.door[i] = o.door !== undefined ? o.door : -1;
+}
+/* Remplit un rectangle de cases [x0, x1) × [z0, z1) (m, arrondis vers l'intérieur des cases touchées). */
+function owFill(L, x0, z0, x1, z1, kind, o) {
+  for (let cz = Math.floor(z0); cz < Math.ceil(z1); cz++) for (let cx = Math.floor(x0); cx < Math.ceil(x1); cx++) owSet(L, cx, cz, kind, typeof o === 'function' ? o(cx, cz) : o);
+}
+/* Mur d'épaisseur 1 case le long d'un segment. */
+function owLine(L, ax, az, bx, bz, kind, o) {
+  const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) * 2));
+  for (let i = 0; i <= n; i++) { const t = i / n; owSet(L, Math.floor(ax + (bx - ax) * t), Math.floor(az + (bz - az) * t), kind, typeof o === 'function' ? o(i) : o); }
+}
+/* Lecture : genre de case (TERRAIN ou ROCK hors des morceaux). */
+function owKind(L, cx, cz) {
+  const ch = owChunk(L, cx, cz);
+  return ch ? ch.kind[owIdx(cx, cz)] : L.def;
+}
+/* Hauteur d'une rampe en (x, z). */
+function owRampY(ch, i, cx, cz, x, z) {
+  const d = ch.dir[i], fx = x - cx, fz = z - cz;
+  const t = d === 0 ? fx : d === 1 ? 1 - fx : d === 2 ? fz : 1 - fz;
+  return ch.base[i] + (ch.top[i] - ch.base[i]) * clamp(t, 0, 1);
+}
+/* Sol de la couche en (x, z) : terrain, plancher, rampe ; dessus des solides ; NaN dans la roche. */
+function owGroundAt(layer, x, z) {
+  const L = layer ? OW.under : OW.surf, cx = Math.floor(x), cz = Math.floor(z);
+  const ch = owChunk(L, cx, cz);
+  if (!ch) return layer ? NaN : owH(x, z);
+  const i = owIdx(cx, cz), k = ch.kind[i];
+  if (k === OWK.TERRAIN) return owH(x, z);
+  if (k === OWK.FLOOR || k === OWK.WATER) return ch.base[i];
+  if (k === OWK.RAMP) return owRampY(ch, i, cx, cz, x, z);
+  if (k === OWK.DOOR) return ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open ? ch.base[i] : ch.top[i];
+  if (k === OWK.ROCK) return NaN;
+  if (k === OWK.VOID) return -1e9;
+  return ch.top[i];
+}
+/* Case praticable (à pied) dans la couche. */
+function owWalkCell(layer, cx, cz) {
+  const L = layer ? OW.under : OW.surf;
+  const ch = owChunk(L, cx, cz);
+  if (!ch) return layer ? false : owTerrainWalk(cx + 0.5, cz + 0.5);
+  const i = owIdx(cx, cz), k = ch.kind[i];
+  if (k === OWK.TERRAIN) return layer ? false : owTerrainWalk(cx + 0.5, cz + 0.5);
+  if (k === OWK.FLOOR || k === OWK.RAMP) return true;
+  if (k === OWK.DOOR) return ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open;
+  return false;
+}
+/* Sol d'une case (au centre) pour les marches entre cases. */
+function owCellGround(layer, cx, cz) { return owGroundAt(layer, cx + 0.5, cz + 0.5); }
+/* Plafond au-dessus d'un point (pour le saut et les rayons) : Infinity s'il n'y en a pas. */
+function owCeilAt(layer, x, z) {
+  const L = layer ? OW.under : OW.surf, ch = owChunk(L, Math.floor(x), Math.floor(z));
+  if (!ch) return Infinity;
+  const i = owIdx(Math.floor(x), Math.floor(z));
+  return ch.ceil[i] > 0 && (ch.kind[i] === OWK.FLOOR || ch.kind[i] === OWK.RAMP) ? ch.ceil[i] : Infinity;
+}
+/* Pyramides dans la grille : chaque case pleine jusqu'à la hauteur de la pente en son centre. */
+function owRasterPyramids() {
+  for (const p of KH.pyramids) {
+    const half = p.side / 2, y0 = owH(p.x, p.z);
+    p.y0 = y0;
+    for (let cz = Math.floor(p.z - half); cz < Math.ceil(p.z + half); cz++) {
+      for (let cx = Math.floor(p.x - half); cx < Math.ceil(p.x + half); cx++) {
+        const m = Math.max(Math.abs(cx + 0.5 - p.x), Math.abs(cz + 0.5 - p.z)) / half;
+        if (m > 1) continue;
+        owSet(OW.surf, cx, cz, OWK.SOLID, { base: y0 - 2, top: y0 + p.h * (1 - m) + 0.2, mat: OWM.STONE });
+      }
+    }
+  }
+}
+
+/* ------------------------------------------------- Corps, rayons, flux --
+   Un corps (joueur, zombie) garde k = couche · 2²⁴ + z · 4096 + x : la case où il se tient. */
+const owK = (layer, cx, cz) => layer * 16777216 + cz * 4096 + cx;
+const owKx = (k) => (k % 16777216) % 4096;
+const owKz = (k) => ((k % 16777216) / 4096) | 0;
+const owKl = (k) => (k / 16777216) | 0;
+/* Corps après un déplacement : cases infranchissables (non praticables, ou marche de plus de
+   0,75 m) repoussées comme dans le reste du jeu, puis posé sur le sol. Le joueur tombe d'un
+   rebord (sa hauteur reste continue) au lieu de descendre d'un coup. */
+function owSettle(b, r) {
+  const layer = b.layer | 0;
+  let cx0, cz0;
+  if (b.k >= 0 && owKl(b.k) === layer) { cx0 = owKx(b.k); cz0 = owKz(b.k); }
+  else { cx0 = Math.floor(b.pos.x); cz0 = Math.floor(b.pos.z); }
+  const gy0 = Number.isFinite(b.gy) ? b.gy : owGroundAt(layer, b.pos.x, b.pos.z);
+  const blocked = (cx, cz) => {
+    if (cx === cx0 && cz === cz0) return false;
+    if (!owWalkCell(layer, cx, cz)) return true;
+    return owCellGround(layer, cx, cz) > gy0 + 0.75;
+  };
+  collideCircle(b.pos, r, blocked);
+  if (VEH.list.length) vehPushBody(b, r);
+  let cx = Math.floor(b.pos.x), cz = Math.floor(b.pos.z);
+  if ((cx !== cx0 || cz !== cz0) && blocked(cx, cz)) {
+    // case d'arrivée fermée (grand déplacement, coin) : le corps reste au bord de la sienne
+    b.pos.x = clamp(b.pos.x, cx0 + 0.001, cx0 + 0.999);
+    b.pos.z = clamp(b.pos.z, cz0 + 0.001, cz0 + 0.999);
+    cx = cx0; cz = cz0;
+  }
+  let g = owGroundAt(layer, b.pos.x, b.pos.z);
+  if (!Number.isFinite(g)) g = gy0;
+  if (b === player) {
+    // hauteur absolue continue : un rebord fait tomber, une montée pendant le saut se rattrape
+    const A = gy0 + player.y;
+    if (player.grounded) {
+      if (gy0 - g > 0.45) { player.y = gy0 - g; player.grounded = false; player.vy = 0; }
+    } else {
+      player.y = A - g;
+      if (player.y <= 0) { player.y = 0; player.vy = 0; player.grounded = true; }
+    }
+  }
+  b.gy = g;
+  b.k = owK(layer, cx, cz);
+}
+
+/* Nœud d'un corps en (x, z) : la couche dont le sol est le plus proche de yHint ; -1 hors du monde
+   (équivalent de locateNode). walkOnly : seulement une case praticable. */
+function owLocate(x, z, yHint = 0, walkOnly = false) {
+  const cx = Math.floor(x), cz = Math.floor(z);
+  if (cx < 0 || cz < 0 || cx >= 4096 || cz >= 3072) return -1;
+  let best = -1, bd = Infinity;
+  for (let layer = 0; layer < 2; layer++) {
+    if (layer && (!OW.under || !OW.under.n || !owChunk(OW.under, cx, cz))) break;
+    if (walkOnly && !owWalkCell(layer, cx, cz)) continue;
+    const g = owGroundAt(layer, x, z);
+    if (!Number.isFinite(g)) continue;
+    const d = Math.abs(g - yHint);
+    if (d < bd) { bd = d; best = owK(layer, cx, cz); }
+  }
+  return best;
+}
+/* Comme owLocate, mais cherche aussi dans les cases voisines (équivalent de nearestNode). */
+function owNearest(x, z, yHint = 0) {
+  const k = owLocate(x, z, yHint, true);
+  if (k >= 0) return k;
+  let best = -1, bd = Infinity;
+  for (let r = 1; r <= 3 && best < 0; r++) {
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      const j = owLocate(x + dx, z + dz, yHint, true);
+      if (j < 0) continue;
+      const d = Math.hypot(dx, dz) + Math.abs(owGroundAt(owKl(j), x + dx, z + dz) - yHint) * 0.5;
+      if (d < bd) { bd = d; best = j; }
+    }
+  }
+  return best;
+}
+/* Corps physique des morts (rdTop) : haut de ce qui occupe la case à la hauteur y ; le terrain
+   n'est qu'un sol (rdFloor), jamais un mur. */
+function owRdTop(cx, cz, y) {
+  const layer = owLayerAt(cx + 0.5, y, cz + 0.5), ch = owChunk(layer ? OW.under : OW.surf, cx, cz);
+  if (!ch) return layer ? Infinity : -Infinity;
+  const i = owIdx(cx, cz);
+  switch (ch.kind[i]) {
+    case OWK.SOLID: case OWK.LOW: return y < ch.base[i] - 0.3 ? -Infinity : ch.top[i];
+    case OWK.DOOR: return ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open ? -Infinity : ch.top[i];
+    case OWK.WINDOW: return y + 0.05 >= ch.hi[i] ? ch.top[i] : ch.lo[i];
+    case OWK.ROCK: return Infinity;
+    default: return -Infinity;
+  }
+}
+
+/* Rayon : terrain (marche puis dichotomie), cases solides (pas de case en case), pyramides comprises.
+   Remplit RAY comme raycast (type : matière OWM + 16 si c'est le terrain). */
+function owRaycast(ox, oy, oz, dx, dy, dz, maxT) {
+  RAY.hit = false;
+  let best = maxT, nx = 0, ny = 0, nz = 0, type = 0;
+  const layer = owLayerAt(ox, oy, oz);
+  const L = layer ? OW.under : OW.surf;
+  // --- terrain (couche de surface seulement)
+  if (!layer) {
+    let t = 0, f0 = oy - owH(ox, oz);
+    if (f0 > -0.05) {
+      while (t < best) {
+        const y = oy + dy * t, x = ox + dx * t, z = oz + dz * t;
+        const step = clamp(Math.max(0.4, (y - owH(x, z)) * 0.6), 0.4, 3);
+        const t1 = Math.min(best, t + step);
+        const f1 = oy + dy * t1 - owH(ox + dx * t1, oz + dz * t1);
+        if (f1 <= 0) {
+          let a = t, b = t1;
+          for (let it = 0; it < 7; it++) { const m = (a + b) / 2; if (oy + dy * m - owH(ox + dx * m, oz + dz * m) > 0) a = m; else b = m; }
+          best = b;
+          const hx = ox + dx * b, hz = oz + dz * b;
+          owNormal(hx, hz, _owN); nx = _owN.x; ny = _owN.y; nz = _owN.z;
+          type = 16 + (owBioAt(hx, hz) === OWB.ROAD || owBioAt(hx, hz) === OWB.RUNWAY ? OWM.STONE : OWM.SAND);
+          break;
+        }
+        t = t1;
+      }
+    }
+  }
+  // --- cases solides : pas de case en case, en sautant les morceaux absents
+  let cx = Math.floor(ox), cz = Math.floor(oz);
+  const stepX = dx > 0 ? 1 : -1, stepZ = dz > 0 ? 1 : -1;
+  const tdx = dx !== 0 ? Math.abs(1 / dx) : Infinity, tdz = dz !== 0 ? Math.abs(1 / dz) : Infinity;
+  let tmx = dx > 0 ? (cx + 1 - ox) / dx : dx < 0 ? (cx - ox) / dx : Infinity;
+  let tmz = dz > 0 ? (cz + 1 - oz) / dz : dz < 0 ? (cz - oz) / dz : Infinity;
+  let tEnter = 0, enx = 0, enz = 0;
+  for (let guard = 0; guard < 4096 && tEnter < best; guard++) {
+    const ch = owChunk(L, cx, cz);
+    if (!ch && !layer) {
+      // morceau absent : rien que du terrain, on file jusqu'au morceau suivant
+      const bx = dx > 0 ? ((cx >> 6) + 1) << 6 : (cx >> 6) << 6, bz = dz > 0 ? ((cz >> 6) + 1) << 6 : (cz >> 6) << 6;
+      const tx = dx !== 0 ? (bx - ox) / dx : Infinity, tz = dz !== 0 ? (bz - oz) / dz : Infinity;
+      const tn = Math.min(tx, tz);
+      if (!(tn < best) || tn > 1e6) break;
+      tEnter = tn + 1e-4;
+      enx = tx < tz ? -stepX : 0; enz = tx < tz ? 0 : -stepZ;
+      cx = Math.floor(ox + dx * tEnter); cz = Math.floor(oz + dz * tEnter);
+      if (cx < -64 || cz < -64 || cx > 4160 || cz > 3136) break;
+      tmx = dx > 0 ? (cx + 1 - ox) / dx : dx < 0 ? (cx - ox) / dx : Infinity;
+      tmz = dz > 0 ? (cz + 1 - oz) / dz : dz < 0 ? (cz - oz) / dz : Infinity;
+      continue;
+    }
+    const tExit = Math.min(tmx, tmz, best);
+    const y0 = oy + dy * tEnter, y1 = oy + dy * tExit;
+    _bt = Infinity;
+    if (!ch) _cand(-1e9, 1e9, y0, y1, tEnter, oy, dy, enx, enz);          // roche du sous-sol
+    else {
+      const i = owIdx(cx, cz), k = ch.kind[i], B = ch.base[i], T = ch.top[i];
+      if (k === OWK.SOLID || k === OWK.LOW) _cand(B, T, y0, y1, tEnter, oy, dy, enx, enz);
+      else if (k === OWK.WINDOW) { _cand(B, ch.lo[i], y0, y1, tEnter, oy, dy, enx, enz); _cand(ch.hi[i], T, y0, y1, tEnter, oy, dy, enx, enz); }
+      else if (k === OWK.DOOR && !(ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open)) _cand(B, T, y0, y1, tEnter, oy, dy, enx, enz);
+      else if (k === OWK.ROCK) _cand(-1e9, 1e9, y0, y1, tEnter, oy, dy, enx, enz);
+      else if (k === OWK.FLOOR || k === OWK.DOOR || k === OWK.RAMP) {
+        _cand(layer ? -1e9 : B - 0.3, k === OWK.RAMP ? (B + T) / 2 : B, y0, y1, tEnter, oy, dy, enx, enz);
+        if (ch.ceil[i] > 0) _cand(ch.ceil[i], layer ? 1e9 : ch.roof[i], y0, y1, tEnter, oy, dy, enx, enz);
+      }
+      if (_bt < Infinity) type = ch.mat[i];
+    }
+    if (_bt <= tExit && _bt < best) { best = _bt; nx = _bnx; ny = _bny; nz = _bnz; RAY.cell = owK(layer, cx, cz); break; }
+    if (tExit >= best) break;
+    if (tmx < tmz) { tEnter = tmx; tmx += tdx; cx += stepX; enx = -stepX; enz = 0; }
+    else { tEnter = tmz; tmz += tdz; cz += stepZ; enx = 0; enz = -stepZ; }
+  }
+  if (best < maxT) {
+    RAY.hit = true; RAY.t = best; RAY.nx = nx; RAY.ny = ny; RAY.nz = nz; RAY.type = type;
+  } else RAY.t = maxT;
+  RAY.x = ox + dx * RAY.t; RAY.y = oy + dy * RAY.t; RAY.z = oz + dz * RAY.t;
+  return RAY;
+}
+const _owN = { x: 0, y: 1, z: 0 };
+/* Couche d'un point : le sous-sol si une salle du sous-sol l'entoure, sinon la surface. */
+function owLayerAt(x, y, z) {
+  if (!OW.under || !OW.under.n) return 0;
+  const ch = owChunk(OW.under, Math.floor(x), Math.floor(z));
+  if (!ch) return 0;
+  const i = owIdx(Math.floor(x), Math.floor(z)), k = ch.kind[i];
+  if (k !== OWK.FLOOR && k !== OWK.RAMP && k !== OWK.DOOR) return 0;
+  const top = ch.ceil[i] > 0 ? ch.ceil[i] : Infinity;
+  return y >= ch.base[i] - 0.4 && y <= top + 0.1 && y < owH(x, z) - 0.3 ? 1 : 0;
+}
+function owSightClear(x0, y0, z0, x1, y1, z1) {
+  const dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, d = Math.hypot(dx, dy, dz);
+  if (d < 0.05) return true;
+  owRaycast(x0, y0, z0, dx / d, dy / d, dz / d, d);
+  return !RAY.hit || RAY.t >= d - 0.05;
+}
+/* Point dans un solide (débris qui rebondissent). */
+function owSolidPoint(x, y, z) {
+  const layer = owLayerAt(x, y, z), L = layer ? OW.under : OW.surf;
+  const cx = Math.floor(x), cz = Math.floor(z), ch = owChunk(L, cx, cz);
+  if (!ch) return layer ? true : y < owH(x, z) - 0.02;
+  const i = owIdx(cx, cz), k = ch.kind[i];
+  if (k === OWK.TERRAIN) return y < owH(x, z) - 0.02;
+  if (k === OWK.SOLID || k === OWK.LOW || (k === OWK.DOOR && !(ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open))) return y >= ch.base[i] && y <= ch.top[i];
+  if (k === OWK.WINDOW) return (y >= ch.base[i] && y < ch.lo[i]) || (y > ch.hi[i] && y <= ch.top[i]);
+  if (k === OWK.ROCK) return true;
+  if (ch.ceil[i] > 0 && y >= ch.ceil[i] && y <= (layer ? 1e9 : ch.roof[i])) return true;
+  return y < owGroundAt(layer, x, z) - 0.02;
+}
+/* Sol sous un point (débris, grenades, particules) : la surface la plus haute sous y. */
+function owFloorBelow(x, z, y) {
+  const layer = owLayerAt(x, y, z), L = layer ? OW.under : OW.surf;
+  const cx = Math.floor(x), cz = Math.floor(z), ch = owChunk(L, cx, cz);
+  if (!ch) return layer ? y - 50 : owH(x, z);
+  const i = owIdx(cx, cz), k = ch.kind[i];
+  if (k === OWK.TERRAIN) return owH(x, z);
+  if (k === OWK.SOLID || k === OWK.LOW || k === OWK.WINDOW || k === OWK.DOOR) {
+    const top = k === OWK.WINDOW ? (y + 0.05 >= ch.top[i] ? ch.top[i] : y + 0.05 >= ch.lo[i] && y < ch.hi[i] ? ch.lo[i] : ch.base[i]) : ch.top[i];
+    if (top <= y + 0.05) return top;
+    return k === OWK.DOOR ? ch.base[i] : layer ? ch.base[i] : owH(x, z);
+  }
+  if (ch.ceil[i] > 0 && y > ch.roof[i] - 0.05 && !layer) return ch.roof[i];
+  const g = owGroundAt(layer, x, z);
+  return Number.isFinite(g) ? g : y - 50;
+}
+
+/* Ligne droite praticable (zombies : poursuite à vue) sur une même couche. */
+function owLosClear(k0, x0, z0, x1, z1, r = 0.2) {
+  if (k0 < 0) return false;
+  const layer = owKl(k0);
+  const dx = x1 - x0, dz = z1 - z0, d = Math.hypot(dx, dz);
+  if (d < 0.01) return true;
+  const ux = dx / d, uz = dz / d, px = -uz * r, pz = ux * r;
+  let gPrev = owGroundAt(layer, x0, z0);
+  for (let s = 0.33; s <= d; s += 0.5) {
+    const x = x0 + ux * s, z = z0 + uz * s;
+    if (!owWalkCell(layer, Math.floor(x + px), Math.floor(z + pz)) || !owWalkCell(layer, Math.floor(x - px), Math.floor(z - pz))) return false;
+    const g = owGroundAt(layer, x, z);
+    if (Math.abs(g - gPrev) > 0.6) return false;
+    gPrev = g;
+  }
+  return true;
+}
+
+/* Champ de flux : 160 × 160 m autour du joueur, sur sa couche ; refait quand il s'éloigne du centre. */
+const OWNAV = { N: 160, x0: 0, z0: 0, layer: -1, walk: null, g: null, flow: null, hI: null, hD: null, ready: false };
+function owNavInit() {
+  const n = OWNAV.N * OWNAV.N;
+  OWNAV.walk = new Uint8Array(n); OWNAV.g = new Float32Array(n); OWNAV.flow = new Float32Array(n);
+  OWNAV.hI = new Int32Array(n * 4); OWNAV.hD = new Float32Array(n * 4);
+}
+function owNavWindow(layer, pcx, pcz) {
+  const N = OWNAV.N;
+  OWNAV.x0 = pcx - (N >> 1); OWNAV.z0 = pcz - (N >> 1); OWNAV.layer = layer;
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const cx = OWNAV.x0 + i, cz = OWNAV.z0 + j, w = owWalkCell(layer, cx, cz) ? 1 : 0;
+      OWNAV.walk[j * N + i] = w;
+      OWNAV.g[j * N + i] = w ? owCellGround(layer, cx, cz) : 0;
+    }
+  }
+  OWNAV.ready = true;
+}
+function owComputeFlow() {
+  const p = player, layer = p.layer | 0, pcx = Math.floor(p.pos.x), pcz = Math.floor(p.pos.z), N = OWNAV.N;
+  if (!OWNAV.flow) owNavInit();
+  if (!OWNAV.ready || OWNAV.layer !== layer || Math.abs(pcx - (OWNAV.x0 + N / 2)) > 26 || Math.abs(pcz - (OWNAV.z0 + N / 2)) > 26) owNavWindow(layer, pcx, pcz);
+  const flow = OWNAV.flow, walk = OWNAV.walk, g = OWNAV.g, hI = OWNAV.hI, hD = OWNAV.hD;
+  flow.fill(1e9);
+  const si = pcx - OWNAV.x0, sj = pcz - OWNAV.z0;
+  if (si < 0 || sj < 0 || si >= N || sj >= N) return;
+  let n = 0;
+  const push = (i, d) => {
+    let k = n++;
+    hI[k] = i; hD[k] = d;
+    while (k > 0) { const q = (k - 1) >> 1; if (hD[q] <= hD[k]) break; const ti = hI[q], td = hD[q]; hI[q] = hI[k]; hD[q] = hD[k]; hI[k] = ti; hD[k] = td; k = q; }
+  };
+  const s0 = sj * N + si;
+  flow[s0] = 0; push(s0, 0);
+  while (n > 0) {
+    const i = hI[0], d = hD[0];
+    n--;
+    if (n > 0) {
+      hI[0] = hI[n]; hD[0] = hD[n];
+      let k = 0;
+      for (;;) {
+        const l = 2 * k + 1, r = l + 1;
+        let m = k;
+        if (l < n && hD[l] < hD[m]) m = l;
+        if (r < n && hD[r] < hD[m]) m = r;
+        if (m === k) break;
+        const ti = hI[m], td = hD[m]; hI[m] = hI[k]; hD[m] = hD[k]; hI[k] = ti; hD[k] = td;
+        k = m;
+      }
+    }
+    if (d > flow[i]) continue;
+    const ci = i % N, cj = (i / N) | 0, gi = g[i];
+    for (let q = 0; q < 8; q++) {
+      const ddx = DIRS8[q][0], ddz = DIRS8[q][1], ni = ci + ddx, nj = cj + ddz;
+      if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+      const j = nj * N + ni;
+      if (!walk[j] || Math.abs(g[j] - gi) > 0.75) continue;
+      if (q >= 4 && (!walk[cj * N + ni] || !walk[nj * N + ci])) continue;
+      const nd = d + (q >= 4 ? 1.4142 : 1);
+      if (nd < flow[j] && n < hI.length) { flow[j] = nd; push(j, nd); }
+    }
+  }
+}
+function owFlowAt(k) {
+  if (k < 0) return 1e9;
+  const N = OWNAV.N, i = owKx(k) - OWNAV.x0, j = owKz(k) - OWNAV.z0;
+  if (owKl(k) === OWNAV.layer && i >= 0 && j >= 0 && i < N && j < N && OWNAV.flow[j * N + i] < 1e8) return OWNAV.flow[j * N + i];
+  return Math.hypot(owKx(k) - player.pos.x, owKz(k) - player.pos.z) + 60;
+}
+/* Direction conseillée : la case voisine la plus proche du joueur dans le champ ; sinon tout droit. */
+function owFlowDir(k, x, z, out) {
+  const N = OWNAV.N;
+  if (k >= 0 && owKl(k) === OWNAV.layer) {
+    const ci = owKx(k) - OWNAV.x0, cj = owKz(k) - OWNAV.z0;
+    if (ci >= 0 && cj >= 0 && ci < N && cj < N && OWNAV.flow[cj * N + ci] < 1e8) {
+      let best = OWNAV.flow[cj * N + ci], bi = -1, bj = -1;
+      for (let q = 0; q < 8; q++) {
+        const ni = ci + DIRS8[q][0], nj = cj + DIRS8[q][1];
+        if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+        const f = OWNAV.flow[nj * N + ni];
+        if (f < best) { best = f; bi = ni; bj = nj; }
+      }
+      if (bi >= 0) {
+        const tx = OWNAV.x0 + bi + 0.5 - x, tz = OWNAV.z0 + bj + 0.5 - z, d = Math.hypot(tx, tz) || 1;
+        out.x = tx / d; out.z = tz / d;
+        return true;
+      }
+    }
+  }
+  const tx = player.pos.x - x, tz = player.pos.z - z, d = Math.hypot(tx, tz) || 1;
+  out.x = tx / d; out.z = tz / d;
+  return true;
+}
+
+/* Apparition : dans le sable autour du joueur (de 16 à 38 m), plutôt derrière lui. */
+function owPickSpawn() {
+  const p = player;
+  const others = Zombies.list.filter((z) => z.alive && z.state === 'rise');
+  const V = VEH.drive, fast = V && Math.abs(V.v) > 6;
+  for (let tries = 0; tries < 30; tries++) {
+    let x, z;
+    if (fast) {
+      // au volant : ils sortent du sable devant, sur le chemin (le moteur les attire)
+      const [fx, fz] = vehFwd(V.yaw), d = rand(45, 95) * Math.sign(V.v), lat = rand(-24, 24);
+      x = p.pos.x + fx * d - fz * lat; z = p.pos.z + fz * d + fx * lat;
+    } else {
+      const behind = Math.random() < 0.65;
+      const a = p.yaw + Math.PI + (behind ? rand(-1.7, 1.7) : rand(-Math.PI, Math.PI));
+      const d = rand(16, V ? V.T.noise * 0.6 : 38);
+      x = p.pos.x - Math.sin(a) * d; z = p.pos.z - Math.cos(a) * d;
+    }
+    const cx = Math.floor(x), cz = Math.floor(z);
+    if (owKind(OW.surf, cx, cz) !== OWK.TERRAIN || !owWalkCell(0, cx, cz)) continue;
+    const g = owGroundAt(0, x, z);
+    if (Math.abs(g - p.gy) > 8) continue;
+    if (others.some((o) => Math.hypot(o.pos.x - x, o.pos.z - z) < 3)) continue;
+    const near = khNearestLoc(x, z);
+    return { riser: true, x, z, li: 0, k: owK(0, cx, cz), zone: KH.locs.indexOf(near.loc), layer: 0, y: g };
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------ Dessin --
+   Terrain en morceaux de 256 m (pas de 4, 8, 16 ou 32 m selon la distance, bords rabattus pour
+   cacher les fentes), routes en rubans posés sur le terrain (cachés au loin : la couleur du
+   terrain prend le relais), Nil et bassin de l'oasis, ciel en dôme qui suit la caméra, soleil,
+   trois pyramides, faisceau de la Grande Pyramide (hors du brouillard), palmiers, poteaux. */
+const OWC = {
+  // couleurs de la planche (page 8), en sRGB
+  sand: 0xe5b685, sandDark: 0xc99662, sea: 0xdcab76, plateau: 0xd9c4a0, rock: 0xae8c6b, rockDark: 0x8a6a4e,
+  wadi: 0xb08560, mud: 0x7d6a4c, pad: 0xd8b383, road: 0x585a5e, track: 0xcda678, runway: 0x8d8984,
+  fields: [0x6f8b3d, 0x86a047, 0x9db25a, 0x5d7c37, 0x8c7a4a, 0xa49554], oasis: 0x7c8f45,
+};
+const _owCol = new THREE.Color(), _owCol2 = new THREE.Color();
+/* Couleur du sol en un point du champ (linéaire, pour les couleurs des sommets). */
+function owGroundColor(k, x, z, out) {
+  const b = OW.bio[k], h = OW.H[k];
+  const n = owNoise(x / 23, z / 23), n2 = owNoise(x / 140 + 7, z / 140 - 3);
+  switch (b) {
+    case OWB.SEA: case OWB.SAND: {
+      _owCol.setHex(b === OWB.SEA ? OWC.sea : OWC.sand);
+      // creux un peu plus sombres, crêtes plus claires (l'ombre prend le bleu du ciel)
+      const NX = OW.NX, i = k % NX, j = (k / NX) | 0;
+      const c = i > 0 && j > 0 && i < NX - 1 && j < OW.NZ - 1 ? (OW.H[k - 1] + OW.H[k + 1] + OW.H[k - NX] + OW.H[k + NX]) / 4 - h : 0;
+      _owCol2.setHex(OWC.sandDark);
+      _owCol.lerp(_owCol2, clamp(0.25 + c * 0.35 + (n - 0.5) * 0.3 + (n2 - 0.5) * 0.25, 0, 0.75));
+      break;
+    }
+    case OWB.PLATEAU: _owCol.setHex(OWC.plateau).lerp(_owCol2.setHex(OWC.rock), clamp((n - 0.35) * 0.9 + (n2 - 0.5) * 0.3, 0, 0.7)); break;
+    case OWB.ROCK: _owCol.setHex(OWC.rock).lerp(_owCol2.setHex(OWC.rockDark), clamp(n * 0.8, 0, 1)); break;
+    case OWB.WADI: _owCol.setHex(OWC.wadi).lerp(_owCol2.setHex(OWC.rockDark), clamp((n - 0.3) * 0.6, 0, 0.5)); break;
+    case OWB.FIELD: {
+      // parcelles de 40 × 60 m, une culture chacune
+      const px = Math.floor((x + 13) / 46), pz = Math.floor((z + 7) / 62);
+      _owCol.setHex(OWC.fields[Math.floor(owHash(px, pz) * OWC.fields.length)]);
+      const fx = ((x + 13) % 46 + 46) % 46, fz = ((z + 7) % 62 + 62) % 62;
+      if (fx < 2.5 || fz < 2.5) _owCol.lerp(_owCol2.setHex(OWC.mud), 0.6);   // sentiers entre les parcelles
+      _owCol.lerp(_owCol2.setHex(0x4a5f2a), (n - 0.5) * 0.3 + 0.1);
+      break;
+    }
+    case OWB.MUD: case OWB.RIVER: _owCol.setHex(OWC.mud).lerp(_owCol2.setHex(0x5b4a35), clamp(n * 0.6, 0, 1)); break;
+    case OWB.OASIS: _owCol.setHex(OWC.oasis).lerp(_owCol2.setHex(OWC.sand), clamp((n - 0.2) * 0.7, 0, 0.7)); break;
+    case OWB.PAD: _owCol.setHex(OWC.pad).lerp(_owCol2.setHex(OWC.sandDark), clamp((n - 0.5) * 0.5, 0, 0.4)); break;
+    case OWB.ROAD: _owCol.setHex(OWC.sandDark).lerp(_owCol2.setHex(OWC.road), 0.6); break;    // le ruban fait le détail de près
+    case OWB.TRACK: _owCol.setHex(OWC.track); break;
+    case OWB.RUNWAY: _owCol.setHex(OWC.runway); break;
+    default: _owCol.setHex(OWC.sand);
+  }
+  out.copy(_owCol).convertSRGBToLinear();
+  return out;
+}
+/* Texture de détail du sable (grains, petites rides), répétée tous les 8 m. */
+function owSandTexture() {
+  const S = 256, c = makeCanvas(S, S), g = c.getContext('2d');
+  const n = valueNoise(S, S, [[16, 16, 1], [64, 64, 0.5]], 1.4);
+  paintPixels(g, S, S, (x, y, col) => {
+    const r = Math.sin((y + Math.sin(x / 19) * 6) / 3.2) * 0.5 + 0.5;
+    const v = 240 + (n[y * S + x] - 0.5) * 22 + (r - 0.5) * 9 + (Math.random() - 0.5) * 12;
+    col[0] = v; col[1] = v * 0.985; col[2] = v * 0.96;
+  });
+  const t = toTex(c);
+  t.anisotropy = 8;
+  return t;
+}
+const OWT = {};    // textures du monde ouvert (gardées d'une partie à l'autre)
+function owTextures() {
+  if (OWT.sand) return OWT;
+  OWT.sand = share(owSandTexture());
+  // asphalte : bords blancs, tirets au milieu (3 m sur 9 m) ; u en travers, v le long
+  {
+    const c = makeCanvas(64, 256), g = c.getContext('2d');
+    const n = valueNoise(64, 256, [[8, 32, 1], [32, 128, 0.6]], 1.3);
+    paintPixels(g, 64, 256, (x, y, col) => { const v = 92 + (n[y * 64 + x] - 0.5) * 24 + (Math.random() - 0.5) * 10; col[0] = v * 0.96; col[1] = v * 0.97; col[2] = v; });
+    g.fillStyle = 'rgba(232,226,210,0.82)';
+    g.fillRect(3, 0, 2, 256); g.fillRect(59, 0, 2, 256);
+    g.fillRect(31, 0, 2, 86);
+    // sable poussé sur les bords
+    g.fillStyle = 'rgba(205,166,120,0.55)'; g.fillRect(0, 0, 2, 256); g.fillRect(62, 0, 2, 256);
+    OWT.road = share(toTex(c));
+  }
+  // piste : sable tassé, deux ornières, bords irréguliers (transparence)
+  {
+    const c = makeCanvas(64, 128), g = c.getContext('2d');
+    const n = valueNoise(64, 128, [[8, 16, 1], [32, 64, 0.5]], 1.3);
+    const img = g.createImageData(64, 128);
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 64; x++) {
+      const p = (y * 64 + x) * 4, u = x / 63;
+      const rut = Math.exp(-Math.pow((u - 0.28) / 0.07, 2)) + Math.exp(-Math.pow((u - 0.72) / 0.07, 2));
+      const v = 196 + (n[y * 64 + x] - 0.5) * 30 - rut * 34;
+      img.data[p] = v * 1.02; img.data[p + 1] = v * 0.84; img.data[p + 2] = v * 0.6;
+      const edge = Math.min(u, 1 - u) * 64 + (n[y * 64 + x] - 0.5) * 10;
+      img.data[p + 3] = edge > 3 ? 255 : 0;
+    }
+    g.putImageData(img, 0, 0);
+    OWT.track = share(toTex(c));
+  }
+  // piste d'aviation : béton, axe en tirets, bandes de bord
+  {
+    const c = makeCanvas(128, 256), g = c.getContext('2d');
+    const n = valueNoise(128, 256, [[16, 32, 1], [64, 128, 0.5]], 1.2);
+    paintPixels(g, 128, 256, (x, y, col) => { const v = 146 + (n[y * 128 + x] - 0.5) * 26 + (y % 64 === 0 ? -30 : 0); col[0] = v; col[1] = v * 0.98; col[2] = v * 0.94; });
+    g.fillStyle = 'rgba(240,236,226,0.9)';
+    g.fillRect(4, 0, 3, 256); g.fillRect(121, 0, 3, 256);
+    g.fillRect(62, 0, 4, 120);
+    OWT.runway = share(toTex(c));
+  }
+  // pierre de taille des pyramides : assises de 1,1 m, joints décalés
+  {
+    const S = 256, c = makeCanvas(S, S), g = c.getContext('2d');
+    const n = valueNoise(S, S, [[8, 8, 1], [32, 32, 0.6], [128, 128, 0.3]], 1.5);
+    paintPixels(g, S, S, (x, y, col) => {
+      const row = Math.floor(y / 32), off = (row % 2) * 24, j = (x + off) % 48;
+      const joint = y % 32 < 2 || j < 2 ? 0.72 : 1;
+      const v = (200 + (n[y * S + x] - 0.5) * 50 + (owHash(row, Math.floor((x + off) / 48)) - 0.5) * 22) * joint;
+      col[0] = v * 1.02; col[1] = v * 0.9; col[2] = v * 0.74;
+    });
+    OWT.stone = share(toTex(c));
+  }
+  return OWT;
+}
+
+/* ---- Terrain en morceaux */
+const OWTER = { size: 256, cols: 24, rows: 20, chunks: [], mat: null, group: null, t: 0 };
+function owTerrainMat() {
+  if (OWTER.mat) return OWTER.mat;
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, map: owTextures().sand, roughness: 0.96, metalness: 0 });
+  OWTER.mat = share(m);
+  return m;
+}
+/* Géométrie d'un morceau au pas s (4, 8, 16, 32 m), bords rabattus de `skirt` m. */
+function owChunkGeometry(c, s) {
+  const N = OWTER.size / s, V = N + 1, NX = OW.NX, H = OW.H;
+  const nv = V * V + 4 * V, pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), col = new Float32Array(nv * 3), uv = new Float32Array(nv * 2);
+  const st = s / 4;
+  const i0 = (c.x0 - OW.X0) / 4, j0 = (c.z0 - OW.Z0) / 4;
+  const color = new THREE.Color();
+  const put = (v, gi, gj, dy) => {
+    const ci = clamp(gi, 0, NX - 1), cj = clamp(gj, 0, OW.NZ - 1), k = cj * NX + ci;
+    const x = OW.X0 + gi * 4, z = OW.Z0 + gj * 4;
+    pos[v * 3] = x; pos[v * 3 + 1] = H[k] + dy; pos[v * 3 + 2] = z;
+    const l = Math.max(0, ci - st), r = Math.min(NX - 1, ci + st), u = Math.max(0, cj - st), d = Math.min(OW.NZ - 1, cj + st);
+    const gx = (H[cj * NX + r] - H[cj * NX + l]) / ((r - l) * 4 || 1), gz = (H[d * NX + ci] - H[u * NX + ci]) / ((d - u) * 4 || 1);
+    const ln = Math.hypot(gx, 1, gz);
+    nor[v * 3] = -gx / ln; nor[v * 3 + 1] = 1 / ln; nor[v * 3 + 2] = -gz / ln;
+    owGroundColor(k, x, z, color);
+    col[v * 3] = color.r; col[v * 3 + 1] = color.g; col[v * 3 + 2] = color.b;
+    uv[v * 2] = x / 8; uv[v * 2 + 1] = z / 8;
+  };
+  for (let j = 0; j < V; j++) for (let i = 0; i < V; i++) put(j * V + i, i0 + i * st, j0 + j * st, 0);
+  // bords rabattus (nord, sud, ouest, est)
+  const skirt = -2 - s * 0.6;
+  let b = V * V;
+  for (let i = 0; i < V; i++) put(b + i, i0 + i * st, j0, skirt);
+  for (let i = 0; i < V; i++) put(b + V + i, i0 + i * st, j0 + N * st, skirt);
+  for (let j = 0; j < V; j++) put(b + 2 * V + j, i0, j0 + j * st, skirt);
+  for (let j = 0; j < V; j++) put(b + 3 * V + j, i0 + N * st, j0 + j * st, skirt);
+  const idx = [];
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const a = j * V + i, bb = a + 1, cc = a + V, d = cc + 1;
+      idx.push(a, cc, bb, bb, cc, d);
+    }
+  }
+  // jupes : chaque bord avec sa copie descendue (vues de l'extérieur du morceau)
+  for (let i = 0; i < N; i++) {
+    const t0 = i, t1 = i + 1, s0 = b + i, s1 = b + i + 1;            // nord
+    idx.push(t0, t1, s0, t1, s1, s0);
+    const u0 = N * V + i, u1 = u0 + 1, w0 = b + V + i, w1 = w0 + 1;  // sud
+    idx.push(u0, w0, u1, u1, w0, w1);
+    const l0 = i * V, l1 = (i + 1) * V, m0 = b + 2 * V + i, m1 = m0 + 1;   // ouest
+    idx.push(l0, m0, l1, l1, m0, m1);
+    const r0 = i * V + N, r1 = (i + 1) * V + N, q0 = b + 3 * V + i, q1 = q0 + 1;   // est
+    idx.push(r0, r1, q0, r1, q1, q0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(nv > 65535 ? new THREE.BufferAttribute(new Uint32Array(idx), 1) : new THREE.BufferAttribute(new Uint16Array(idx), 1));
+  g.computeBoundingSphere();
+  return g;
+}
+function owBuildTerrainChunks(root) {
+  OWTER.group = new THREE.Group();
+  OWTER.group.name = 'terrain';
+  OWTER.chunks = [];
+  for (let r = 0; r < OWTER.rows; r++) {
+    for (let c = 0; c < OWTER.cols; c++) {
+      const ch = { x0: OW.X0 + c * OWTER.size, z0: OW.Z0 + r * OWTER.size, lod: -1, geo: [null, null, null, null], mesh: null };
+      ch.mesh = new THREE.Mesh(new THREE.BufferGeometry(), owTerrainMat());
+      ch.mesh.matrixAutoUpdate = false;
+      ch.mesh.frustumCulled = true;
+      OWTER.group.add(ch.mesh);
+      OWTER.chunks.push(ch);
+    }
+  }
+  root.add(OWTER.group);
+}
+const OW_LOD_STEPS = [4, 8, 16, 32];
+function owLodDistances() {
+  const q = settings.quality;
+  // pas de 4 m jusqu'à 260 m (les 9 morceaux autour de la caméra), 8 m jusqu'à 800 m, 16 m jusqu'à 1,8 km
+  return q === 'low' ? [180, 600, 1400] : q === 'high' ? [380, 1100, 2400] : [260, 800, 1800];
+}
+/* Niveau de détail de chaque morceau selon la distance de la caméra à son bord le plus proche. */
+function owUpdateTerrainLod(force) {
+  const cx = camera.position.x, cz = camera.position.z, L = owLodDistances(), S = OWTER.size;
+  let built = 0;
+  for (const ch of OWTER.chunks) {
+    const dx = Math.max(ch.x0 - cx, 0, cx - (ch.x0 + S)), dz = Math.max(ch.z0 - cz, 0, cz - (ch.z0 + S));
+    const d = Math.hypot(dx, dz);
+    const lod = d < L[0] ? 0 : d < L[1] ? 1 : d < L[2] ? 2 : 3;
+    if (lod === ch.lod) continue;
+    // au plus deux morceaux fins par image (pas d'à-coup), sauf au chargement
+    if (!ch.geo[lod]) {
+      if (!force && lod <= 1 && built >= 2) continue;
+      ch.geo[lod] = owChunkGeometry(ch, OW_LOD_STEPS[lod]);
+      built++;
+    }
+    ch.mesh.geometry = ch.geo[lod];
+    ch.lod = lod;
+    // les détails fins des morceaux lointains sont libérés
+    for (let l = 0; l < 2; l++) if (l < lod - 1 && ch.geo[l]) { ch.geo[l].dispose(); ch.geo[l] = null; }
+  }
+}
+
+/* ---- Routes : rubans posés sur le terrain, par tronçons de 200 m (cachés au-delà de 900 m) */
+function owBuildRoads(root) {
+  const T = owTextures();
+  const mats = {
+    road: new THREE.MeshStandardMaterial({ map: T.road, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+    track: new THREE.MeshStandardMaterial({ map: T.track, roughness: 0.98, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+    runway: new THREE.MeshStandardMaterial({ map: T.runway, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+  };
+  const group = new THREE.Group();
+  group.name = 'routes';
+  OW.roadParts = [];
+  for (const r of OW.roads) {
+    const pts = r.line.pts, cum = r.line.cum, half = r.w / 2, rep = r.kind === 'road' ? 9 : r.kind === 'runway' ? 40 : 12;
+    const PER = 12;    // points par tronçon (48 m)
+    for (let s0 = 0; s0 < pts.length - 1; s0 += PER) {
+      const s1 = Math.min(pts.length - 1, s0 + PER);
+      const n = s1 - s0 + 1, pos = new Float32Array(n * 2 * 3), uv = new Float32Array(n * 2 * 2), idx = [];
+      let cx = 0, cz = 0;
+      for (let q = 0; q < n; q++) {
+        const i = s0 + q, a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        let tx = b[0] - a[0], tz = b[1] - a[1];
+        const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+        const px = -tz, pz = tx;
+        for (let sd = 0; sd < 2; sd++) {
+          const o = sd ? half : -half, x = pts[i][0] + px * o, z = pts[i][1] + pz * o, v = (q * 2 + sd) * 3;
+          pos[v] = x; pos[v + 1] = owH(x, z) + 0.06; pos[v + 2] = z;
+          uv[(q * 2 + sd) * 2] = sd; uv[(q * 2 + sd) * 2 + 1] = cum[i] / rep;
+        }
+        cx += pts[i][0]; cz += pts[i][1];
+        if (q < n - 1) { const a0 = q * 2, b0 = a0 + 1, c0 = a0 + 2, d0 = a0 + 3; idx.push(a0, b0, c0, b0, d0, c0); }   // faces vers le haut
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, mats[r.kind]);
+      m.renderOrder = 1;
+      m.matrixAutoUpdate = false;
+      group.add(m);
+      // morceaux de terrain sous le tronçon : le ruban ne se montre que s'ils sont tous au pas de 4 m
+      const chunks = new Set();
+      for (let q = 0; q < n; q++) {
+        const pt = pts[s0 + q];
+        for (const o of [-half - 2, half + 2]) { chunks.add(owTerChunkIndex(pt[0] + o, pt[1])); chunks.add(owTerChunkIndex(pt[0], pt[1] + o)); }
+      }
+      OW.roadParts.push({ mesh: m, x: cx / n, z: cz / n, chunks: [...chunks].filter((c) => c >= 0) });
+    }
+  }
+  root.add(group);
+}
+function owUpdateRoads() {
+  const cx = camera.position.x, cz = camera.position.z, C = OWTER.chunks;
+  // plus loin, la couleur du terrain dessine la route (un ruban plat passerait sous le terrain simplifié)
+  for (const p of OW.roadParts) p.mesh.visible = Math.hypot(p.x - cx, p.z - cz) < 420 && p.chunks.every((c) => C[c].lod === 0);
+}
+/* Rang du morceau de terrain qui contient (x, z), ou -1. */
+function owTerChunkIndex(x, z) {
+  const c = Math.floor((x - OW.X0) / OWTER.size), r = Math.floor((z - OW.Z0) / OWTER.size);
+  return c < 0 || r < 0 || c >= OWTER.cols || r >= OWTER.rows ? -1 : r * OWTER.cols + c;
+}
+
+/* ---- Eau : le Nil et le bassin de l'oasis */
+function owBuildWater(root) {
+  const nile = new THREE.Mesh(new THREE.PlaneGeometry(1700, 5600, 1, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x1d5a66, roughness: 0.14, metalness: 0.35, envMap: GK.env || (GK.env = genGlasEnv()), envMapIntensity: 0.9 }));
+  nile.position.set(4500, 0.35, 1500);
+  nile.name = 'Nil';
+  root.add(nile);
+  const O = KH.oasis;
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x2b6c74, roughness: 0.1, metalness: 0.35, envMap: GK.env, envMapIntensity: 1 }));
+  pool.scale.set(O.rx * 1.02, 1, O.rz * 1.02);
+  pool.position.set(O.x, OW.oasisWater, O.z);
+  root.add(pool);
+  OW.waterMats = [nile.material, pool.material];
+}
+
+/* ---- Ciel : dôme qui suit la caméra (dégradé, soleil, brume à l'horizon de la couleur du brouillard).
+   Ses couleurs sortent telles quelles à l'écran (toneMapped: false) : dans three r128, le brouillard
+   se mélange après l'étalonnage et l'encodage sRGB ; l'horizon du ciel et le terrain au loin se
+   rejoignent ainsi exactement. */
+function owBuildSky(root) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTop: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uGround: { value: new THREE.Color() },
+      uHaze: { value: new THREE.Color() }, uHazeK: { value: 0.3 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSunCol: { value: new THREE.Color() }, uSunK: { value: 1 }, uStars: { value: 0 }, uTime: { value: 0 },
+    },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform vec3 uTop, uHorizon, uGround, uHaze, uSunCol, uSunDir; uniform float uHazeK, uSunK, uStars, uTime; varying vec3 vDir;',
+      'float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+      'void main(){',
+      '  vec3 d = normalize(vDir); float e = d.y;',
+      '  vec3 c = e > 0.0 ? mix(uHorizon, uTop, pow(clamp(e, 0.0, 1.0), 0.55)) : mix(uHorizon, uGround, clamp(-e * 6.0, 0.0, 1.0));',
+      '  float s = max(dot(d, normalize(uSunDir)), 0.0);',
+      '  c += uSunCol * (pow(s, 900.0) * 6.0 + pow(s, 24.0) * 0.35 + pow(s, 4.0) * 0.12) * uSunK;',
+      '  if (uStars > 0.0 && e > 0.0) { vec2 g = floor(d.xz / (d.y + 0.25) * 260.0); float st = step(0.9965, h21(g)); c += vec3(st * uStars * clamp(e * 3.0, 0.0, 1.0)); }',
+      '  float hz = uHazeK * (1.0 - smoothstep(0.0, 0.32, abs(e)));',
+      '  c = mix(c, uHaze, clamp(hz + (e < 0.0 ? uHazeK : 0.0), 0.0, 1.0));',
+      '  gl_FragColor = vec4(c, 1.0);',
+      '  #include <tonemapping_fragment>',
+      '  #include <encodings_fragment>',
+      '}',
+    ].join('\n'),
+    side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(4000, 48, 24), mat);
+  sky.renderOrder = -10;
+  sky.frustumCulled = false;
+  sky.name = 'ciel';
+  OW.sky = sky;
+  root.add(sky);
+  // soleil (lumière directionnelle) ; la cible suit la caméra
+  const sun = new THREE.DirectionalLight(0xffffff, 1);
+  sun.name = 'soleil';
+  root.add(sun, sun.target);
+  OW.sunLight = sun;
+}
+
+/* ---- Pyramides et faisceau */
+function owBuildPyramids(root) {
+  const T = owTextures();
+  const mat = new THREE.MeshStandardMaterial({ map: T.stone, vertexColors: true, roughness: 0.9 });
+  for (const p of KH.pyramids) {
+    const half = p.side / 2, y0 = p.y0, h = p.h, slant = Math.hypot(half, h);
+    const corners = [[-half, -half], [half, -half], [half, half], [-half, half]];
+    const pos = [], uv = [], col = [];
+    const c0 = new THREE.Color(0xc8a77e).convertSRGBToLinear(), c1 = new THREE.Color(0xe6cfa6).convertSRGBToLinear();
+    for (let f = 0; f < 4; f++) {
+      const a = corners[f], b = corners[(f + 1) % 4];
+      // une face : deux coins de la base et le sommet (vue de l'extérieur)
+      const verts = [[a[0], 0, a[1]], [0, h, 0], [b[0], 0, b[1]]];
+      const uvs = [[0, 0], [half / 2.2, slant / 1.1], [p.side / 2.2, 0]];
+      for (let q = 0; q < 3; q++) {
+        pos.push(p.x + verts[q][0], y0 + verts[q][1] - 1.5, p.z + verts[q][2]);
+        uv.push(uvs[q][0] / 2.18, uvs[q][1] / 2.18);
+        const c = verts[q][1] > 0 ? c1 : c0;
+        col.push(c.r, c.g, c.b);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat);
+    m.name = 'pyramide';
+    root.add(m);
+    if (p.beam) owBuildBeam(root, p.x, y0 + h - 1.5, p.z);
+  }
+}
+function owBuildBeam(root, x, y, z) {
+  const g = new THREE.Group();
+  g.name = 'faisceau';
+  const mk = (r, op) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, 3200, 16, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x5ff2e2, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+  const core = mk(1.4, 0.95), glow = mk(5, 0.16), haze = mk(14, 0.05);
+  for (const m of [core, glow, haze]) { m.position.set(x, y + 1600, z); m.renderOrder = 5; g.add(m); }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ff2e2, transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+  halo.position.set(x, y + 1, z); halo.scale.set(70, 70, 1); halo.renderOrder = 6;
+  const star = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare || TEX.glow, color: 0xbffcf6, transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending }));
+  star.position.copy(halo.position); star.scale.set(160, 24, 1); star.renderOrder = 6;
+  g.add(halo, star);
+  OW.beam = { group: g, core, glow, haze, halo, star, x, y, z };
+  root.add(g);
+}
+
+/* ---- Palmiers (instanciés) : le long du Nil et du canal, dans l'oasis, quelques-uns aux lieux */
+function owPalmGeometries() {
+  const trunk = new THREE.CylinderGeometry(0.17, 0.26, 1, 7, 6, true);
+  trunk.translate(0, 0.5, 0);
+  const tp = trunk.attributes.position;
+  for (let i = 0; i < tp.count; i++) { const y = tp.getY(i); tp.setX(i, tp.getX(i) + Math.sin(y * 1.4) * 0.06 * y); }
+  trunk.computeVertexNormals();
+  // couronne : 9 palmes (rubans qui retombent)
+  const pos = [], idx = [];
+  for (let f = 0; f < 9; f++) {
+    const a = (f / 9) * TAU + (f % 2) * 0.2, ca = Math.cos(a), sa = Math.sin(a), L = 2.6 + (f % 3) * 0.35, base = pos.length / 3;
+    for (let s = 0; s <= 5; s++) {
+      const t = s / 5, r = L * t, y = Math.sin(t * Math.PI * 0.75) * 0.9 - t * t * 1.25, w = 0.42 * Math.sin(t * Math.PI) + 0.05;
+      const cx = ca * r, cz = sa * r;
+      pos.push(cx - sa * w, y, cz + ca * w, cx + sa * w, y - 0.06, cz - ca * w);
+      if (s < 5) { const q = base + s * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+    }
+  }
+  const crown = new THREE.BufferGeometry();
+  crown.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  crown.setIndex(idx);
+  crown.computeVertexNormals();
+  return { trunk, crown };
+}
+function owPalmSpots() {
+  const out = [], rnd = mulberry32(911);
+  const add = (x, z, h) => { if (x > 20 && x < 4000 && z > -200 && z < 3200) out.push([x, z, h || 7 + rnd() * 6, rnd() * TAU, 0.85 + rnd() * 0.3]); };
+  // berge du Nil, deux rangs irréguliers
+  for (let z = -300; z < 3300; z += 11 + rnd() * 9) { const xb = KH.nileBank(z); add(xb - 18 - rnd() * 14, z); if (rnd() < 0.5) add(xb - 40 - rnd() * 30, z + rnd() * 6); }
+  // canal et bords des champs
+  for (let z = -100; z < 3200; z += 16 + rnd() * 22) add(3360 + rnd() * 6 - 3, z);
+  for (let i = 0; i < 160; i++) { const x = 3340 + rnd() * 420, z = rnd() * 3000; if (owBioAt(x, z) === OWB.FIELD && rnd() < 0.6) add(x, z); }
+  // oasis : palmeraie autour du bassin
+  const O = KH.oasis;
+  for (let i = 0; i < 170; i++) {
+    const a = rnd() * TAU, r = 1.25 + Math.pow(rnd(), 0.7) * 4.6;
+    const x = O.x + Math.cos(a) * O.rx * r * 1.6, z = O.z + Math.sin(a) * O.rz * r * 2.4;
+    if (owBioAt(x, z) !== OWB.ROAD) add(x, z, 6 + rnd() * 7);
+  }
+  return out;
+}
+function owBuildPalms(root) {
+  const G = owPalmGeometries();
+  const spots = owPalmSpots();
+  const trunkM = new THREE.MeshStandardMaterial({ color: 0x6b5236, roughness: 0.95 });
+  const crownM = new THREE.MeshStandardMaterial({ color: 0x4d7a32, roughness: 0.85, side: THREE.DoubleSide });
+  const trunks = new THREE.InstancedMesh(G.trunk, trunkM, spots.length), crowns = new THREE.InstancedMesh(G.crown, crownM, spots.length);
+  const o = new THREE.Object3D(), col = new THREE.Color();
+  spots.forEach(([x, z, h, ry, s], i) => {
+    const y = owH(x, z) - 0.2;
+    o.position.set(x, y, z); o.rotation.set(0, ry, (owHash(i, 3) - 0.5) * 0.18); o.scale.set(s, h, s); o.updateMatrix();
+    trunks.setMatrixAt(i, o.matrix);
+    o.position.set(x + Math.sin(o.rotation.z) * -h * 0.5, y + h, z); o.rotation.set(0, ry, 0); o.scale.setScalar(s * (0.9 + h / 26)); o.updateMatrix();
+    crowns.setMatrixAt(i, o.matrix);
+    crowns.setColorAt(i, col.setHex(0xffffff).multiplyScalar(0.8 + owHash(i, 9) * 0.35));
+    // tronc : un obstacle
+    owSet(OW.surf, Math.floor(x), Math.floor(z), OWK.SOLID, { base: y, top: y + h, mat: OWM.WOOD });
+  });
+  trunks.frustumCulled = false; crowns.frustumCulled = false;
+  root.add(trunks, crowns);
+}
+
+/* ---- Poteaux télégraphiques le long de la R47 (et leurs fils) */
+function owBuildPoles(root) {
+  const r47 = OW.roads.find((r) => r.id === 'r47');
+  const pts = r47.line.pts, cum = r47.line.cum, spots = [];
+  let next = 20;
+  for (let i = 1; i < pts.length; i++) {
+    if (cum[i] < next) continue;
+    next += 48;
+    const a = pts[i - 1], b = pts[i], tx = b[0] - a[0], tz = b[1] - a[1], tl = Math.hypot(tx, tz) || 1;
+    const x = pts[i][0] + (tz / tl) * 9, z = pts[i][1] - (tx / tl) * 9;
+    if (owBioAt(x, z) === OWB.RIVER) continue;
+    spots.push([x, owH(x, z), z, Math.atan2(tx, tz)]);
+  }
+  const pole = new THREE.CylinderGeometry(0.09, 0.13, 7.5, 6);
+  pole.translate(0, 3.75, 0);
+  const arm = new THREE.BoxGeometry(1.6, 0.1, 0.1);
+  arm.translate(0, 7.0, 0);
+  const geo = mergeGeoms([pole, arm]);
+  const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.95 }), spots.length);
+  const o = new THREE.Object3D(), wires = [];
+  spots.forEach(([x, y, z, ry], i) => {
+    o.position.set(x, y - 0.3, z); o.rotation.set((owHash(i, 1) - 0.5) * 0.06, ry, (owHash(i, 2) - 0.5) * 0.08); o.updateMatrix();
+    mesh.setMatrixAt(i, o.matrix);
+    owSet(OW.surf, Math.floor(x), Math.floor(z), OWK.SOLID, { base: y - 1, top: y + 7, mat: OWM.WOOD });
+    if (i > 0) {
+      const p = spots[i - 1];
+      for (const side of [-0.7, 0.7]) {
+        const ax = p[0] + Math.cos(p[3]) * side, az = p[2] - Math.sin(p[3]) * side, bx = x + Math.cos(ry) * side, bz = z - Math.sin(ry) * side;
+        let px = ax, py = p[1] + 6.95, pz = az;
+        for (let s = 1; s <= 8; s++) {
+          const t = s / 8, sag = Math.sin(t * Math.PI) * 0.9;
+          const nx = lerp(ax, bx, t), ny = lerp(p[1] + 6.95, y + 6.95, t) - sag, nz = lerp(az, bz, t);
+          wires.push(px, py, pz, nx, ny, nz);
+          px = nx; py = ny; pz = nz;
+        }
+      }
+    }
+  });
+  mesh.frustumCulled = false;
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.Float32BufferAttribute(wires, 3));
+  const lines = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: new THREE.Color(0x2a221c).convertSRGBToLinear() }));
+  root.add(mesh, lines);
+}
+/* Fusionne des géométries indexées ou non (positions, normales, uv). */
+function mergeGeoms(list) {
+  const pos = [], nor = [], uv = [], idx = [];
+  let base = 0;
+  for (let g of list) {
+    if (g.index) g = g.toNonIndexed();
+    const p = g.attributes.position, n = g.attributes.normal, u = g.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      if (n) nor.push(n.getX(i), n.getY(i), n.getZ(i)); else nor.push(0, 1, 0);
+      if (u) uv.push(u.getX(i), u.getY(i)); else uv.push(0, 0);
+      idx.push(base + i);
+    }
+    base += p.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  return out;
+}
+
+/* ---- Au-delà du champ de hauteurs : un anneau de sable jusqu'à 12 km (fondu dans la brume) */
+function owBuildFarRing(root) {
+  const g = new THREE.RingGeometry(3600, 12000, 64, 2).rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xd9aa78, roughness: 1 }));
+  m.position.set(2048, 12, 1536);
+  m.name = 'horizon';
+  root.add(m);
+}
+/* ---- Mur de sable (bord ouest) : rideau de poussière qui monte jusqu'au ciel */
+function owBuildSandWall(root) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uCol: { value: new THREE.Color(0x7e3a1b).convertSRGBToLinear() }, uCol2: { value: new THREE.Color(0xc77a43).convertSRGBToLinear() }, uHaze: { value: new THREE.Color() }, uFogD: { value: 0.00058 } },
+    vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: [
+      'uniform float uTime, uFogD; uniform vec3 uCol, uCol2, uHaze; varying vec2 vUv; varying vec3 vW;',
+      'float h(vec2 p){ return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5); }',
+      'float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }',
+      'void main(){',
+      '  vec2 p = vec2(vW.z / 60.0 + uTime * 0.05, vW.y / 45.0 - uTime * 0.12);',
+      '  float c = n(p) * 0.55 + n(p * 2.3 + 7.0) * 0.3 + n(p * 5.1 - 3.0) * 0.15;',
+      '  float top = 1.0 - smoothstep(0.55, 1.0, vUv.y + (c - 0.5) * 0.25);',
+      '  float a = clamp(top * (0.75 + c * 0.35), 0.0, 1.0) * smoothstep(0.0, 0.14, vUv.x) * smoothstep(1.0, 0.86, vUv.x);',
+      '  vec3 col = mix(uCol, uCol2, clamp(c * 1.2 - vUv.y * 0.4, 0.0, 1.0));',
+      '  float d = length(vW - cameraPosition), f = 1.0 - exp(-uFogD * uFogD * d * d);',
+      '  col = mix(col, uHaze, f * 0.7);',
+      '  gl_FragColor = vec4(col, a);',
+      '  #include <tonemapping_fragment>',
+      '  #include <encodings_fragment>',
+      '}',
+    ].join('\n'),
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false,
+  });
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(6400, 520, 64, 8).rotateY(Math.PI / 2), mat);
+  wall.position.set(70, 250, 1500);
+  wall.renderOrder = 3;
+  OW.sandWall = wall;
+  root.add(wall);
+}
+
+/* ------------------------------------------------- Lumière de chaque lieu --
+   « Une heure du jour par lieu » (planche, page 8) : matin au camp, heure bleue au relais, fin
+   d'après-midi à l'oasis, nuit à la centrale, contre-jour à la nécropole, poussière à l'aérodrome ;
+   sur la route, la fin d'après-midi de l'illustration. Les réglages se fondent avec la distance. */
+const OW_GRADES = {
+  // sun / sunI : soleil (couleur, intensité) ; hemi* : lumière du ciel ; top, horizon, ground, haze : ciel et brume (couleurs d'écran)
+  // règle d'éclairage : sunI · sin(el) + hemiI · ~0,5 ≈ 0,6 à 0,8 sur un sol plat (le sable garde sa teinte après l'étalonnage)
+  route: { az: 320, el: 9, sun: 0xffc88a, sunI: 2.4, hemiSky: 0xd8a878, hemiGround: 0xb98a5c, hemiI: 0.55, top: 0x8c4f2b, horizon: 0xeaa86a, ground: 0xd9a26e, haze: 0xe6ad74, exp: 1.0, stars: 0, sunK: 1 },
+  A: { az: 100, el: 24, sun: 0xfff1dc, sunI: 1.35, hemiSky: 0xaccdf0, hemiGround: 0xd9b48a, hemiI: 0.5, top: 0x5d93cf, horizon: 0xdce6ec, ground: 0xe0c49c, haze: 0xe8d5b8, exp: 1.0, stars: 0, sunK: 1 },
+  B: { az: 245, el: 18, sun: 0xffd29a, sunI: 1.6, hemiSky: 0xc2b0a0, hemiGround: 0xd2a676, hemiI: 0.5, top: 0x8a5a3c, horizon: 0xf0bd84, ground: 0xdcae7c, haze: 0xe9b987, exp: 1.0, stars: 0, sunK: 1 },
+  C: { az: 262, el: -4, sun: 0x8f7cb8, sunI: 0.3, hemiSky: 0x5a6fae, hemiGround: 0x3e3448, hemiI: 0.9, top: 0x1c2a58, horizon: 0xc08a8a, ground: 0x3a3150, haze: 0x6b5a7a, exp: 1.0, stars: 0.35, sunK: 0.6 },
+  D: { az: 250, el: 8, sun: 0xffaa5a, sunI: 2.4, hemiSky: 0xc9a87c, hemiGround: 0xc88a50, hemiI: 0.5, top: 0x6f8fb5, horizon: 0xf2c48c, ground: 0xdca06a, haze: 0xedb277, exp: 1.0, stars: 0, sunK: 1 },
+  E: { az: 140, el: 38, sun: 0x8fa6d8, sunI: 0.35, hemiSky: 0x1e2c52, hemiGround: 0x0b0f1a, hemiI: 0.9, top: 0x040a1c, horizon: 0x14244a, ground: 0x0a0f1e, haze: 0x101a33, exp: 1.0, stars: 1, sunK: 0 },
+  F: { az: 330, el: 5, sun: 0xff9a4a, sunI: 2.2, hemiSky: 0x8a6a72, hemiGround: 0x5a3a2a, hemiI: 0.55, top: 0x4a3e58, horizon: 0xe58a4e, ground: 0xa86a42, haze: 0xc9824f, exp: 1.0, stars: 0, sunK: 1 },
+  G: { az: 240, el: 14, sun: 0xff9c55, sunI: 1.6, hemiSky: 0xb0704a, hemiGround: 0x7a4a2e, hemiI: 0.6, top: 0x7a3f22, horizon: 0xd88848, ground: 0xb0683a, haze: 0xc77b45, exp: 1.0, stars: 0, sunK: 0.7 },
+};
+const OW_GRADE_KEYS = ['sun', 'hemiSky', 'hemiGround', 'top', 'horizon', 'ground', 'haze'];
+const OWG = { cur: null, tmp: new THREE.Color(), presets: null };
+function owGradePresets() {
+  if (OWG.presets) return OWG.presets;
+  OWG.presets = {};
+  for (const id in OW_GRADES) {
+    const g = OW_GRADES[id], o = { ...g };
+    for (const k of OW_GRADE_KEYS) o[k] = new THREE.Color(g[k]).convertSRGBToLinear();
+    const az = (g.az * Math.PI) / 180, el = (g.el * Math.PI) / 180;
+    o.dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+    OWG.presets[id] = o;
+  }
+  return OWG.presets;
+}
+/* Réglage de lumière en (x, z) : mélange des lieux proches et de la route. */
+function owGradeAt(x, z, out) {
+  const P = owGradePresets();
+  if (!out.sun) { for (const k of OW_GRADE_KEYS) out[k] = new THREE.Color(); out.dir = new THREE.Vector3(); }
+  const ws = [];
+  let maxW = 0;
+  for (const L of KH.locs) {
+    const d = Math.hypot(x - L.x, z - L.z);
+    const w = 1 - owSmoothstep(L.r * 0.75, L.r + 260, d);
+    if (w > 0) { ws.push([P[L.id], w]); maxW = Math.max(maxW, w); }
+  }
+  ws.push([P.route, Math.max(0.0001, 1 - maxW)]);
+  let tw = 0;
+  for (const [, w] of ws) tw += w;
+  for (const k of OW_GRADE_KEYS) out[k].setRGB(0, 0, 0);
+  out.dir.set(0, 0, 0);
+  out.sunI = out.hemiI = out.exp = out.stars = out.sunK = 0;
+  for (const [p, w0] of ws) {
+    const w = w0 / tw;
+    for (const k of OW_GRADE_KEYS) { out[k].r += p[k].r * w; out[k].g += p[k].g * w; out[k].b += p[k].b * w; }
+    out.dir.addScaledVector(p.dir, w);
+    out.sunI += p.sunI * w; out.hemiI += p.hemiI * w; out.exp += p.exp * w; out.stars += p.stars * w; out.sunK += p.sunK * w;
+  }
+  out.dir.normalize();
+  out.night = P.E && ws.find(([p]) => p === P.E) ? ws.find(([p]) => p === P.E)[1] / tw : 0;
+  return out;
+}
+const _owGrade = {};
+/* Réglage d'un seul preset (vue du menu). */
+function owGradeOf(id, out) {
+  const p = owGradePresets()[id];
+  if (!out.sun) { for (const k of OW_GRADE_KEYS) out[k] = new THREE.Color(); out.dir = new THREE.Vector3(); }
+  for (const k of OW_GRADE_KEYS) out[k].copy(p[k]);
+  out.dir.copy(p.dir);
+  out.sunI = p.sunI; out.hemiI = p.hemiI; out.exp = p.exp; out.stars = p.stars; out.sunK = p.sunK; out.night = id === 'E' ? 1 : 0;
+  return out;
+}
+function owApplyGrade(dt) {
+  const g = G.state === 'menu' ? owGradeOf('route', _owGrade) : owGradeAt(camera.position.x, camera.position.z, _owGrade);
+  const sun = OW.sunLight;
+  sun.color.copy(g.sun); sun.intensity = g.sunI;
+  sun.position.copy(camera.position).addScaledVector(g.dir, 600);
+  sun.target.position.copy(camera.position);
+  sun.target.updateMatrixWorld();
+  if (HEMI) { HEMI.color.copy(g.hemiSky); HEMI.groundColor.copy(g.hemiGround); HEMI.intensity = g.hemiI; }
+  const u = OW.sky.material.uniforms;
+  u.uTop.value.copy(g.top); u.uHorizon.value.copy(g.horizon); u.uGround.value.copy(g.ground);
+  u.uSunDir.value.copy(g.dir); u.uSunCol.value.copy(g.sun); u.uSunK.value = g.sunK; u.uStars.value = g.stars;
+  // brouillard du calme (planche, page 8 : densité √3 ÷ visibilité) ; la tempête le prend ensuite en main
+  const fogCol = OWG.tmp.copy(g.haze);
+  if (OW.stormFog) OW.stormFog(fogCol, u);
+  else { scene.fog.density = 0.00058; u.uHazeK.value = 0.5; }
+  // three r128 mélange le brouillard après l'étalonnage et l'encodage : sa couleur est une couleur d'écran
+  scene.fog.color.copy(fogCol).convertLinearToSRGB();
+  u.uHaze.value.copy(fogCol);
+  if (OW.sandWall) { const w = OW.sandWall.material.uniforms; w.uHaze.value.copy(fogCol); w.uFogD.value = scene.fog.density; }
+  renderer.toneMappingExposure = g.exp;
+  // lune à la centrale
+  if (MOON) {
+    MOON.visible = g.night > 0.02;
+    MOON.material.opacity = 0.85 * g.night;
+    MOON.position.copy(camera.position).add(OWG.moonDir || (OWG.moonDir = new THREE.Vector3(0.45, 0.62, 0.64).normalize().multiplyScalar(3400)));
+    MOON.scale.set(160, 160, 1);
+  }
+  OW.grade = g;
+}
+
+/* ------------------------------------------------------------ Plan --
+   Plan de Khamsin dessiné d'après les données (vignette du menu et fond de la mini-carte). */
+function khPlanCanvas(w, h, opts = {}) {
+  const c = makeCanvas(w, h), g = c.getContext('2d');
+  const s = Math.min(w / 4000, h / 3000), ox = (w - 4000 * s) / 2, oz = (h - 3000 * s) / 2;
+  const X = (x) => ox + x * s, Z = (z) => oz + z * s;
+  g.fillStyle = '#0d0b09'; g.fillRect(0, 0, w, h);
+  if (OW.H && opts.relief) {
+    // relief : couleur du sol et ombrage depuis le nord-ouest
+    const img = g.createImageData(w, h), d = img.data, col = new THREE.Color();
+    for (let py = 0; py < h; py++) {
+      for (let px = 0; px < w; px++) {
+        const x = (px - ox) / s, z = (py - oz) / s;
+        if (x < 0 || z < 0 || x > 4000 || z > 3000) continue;
+        const k = owPointIndex(x, z), bk = OW.bio[k];
+        if (bk === OWB.RIVER || (OW.water[k] && bk === OWB.MUD)) col.setHex(0x1f5b73);
+        else { owGroundColor(k, x, z, col); col.convertLinearToSRGB(); }
+        const e = 4 / s, hl = owH(x - e, z - e), hr = owH(x + e, z + e);
+        const shade = clamp(1 + (hr - hl) * 0.04 * s * 4, 0.55, 1.35);
+        const p = (py * w + px) * 4;
+        d[p] = clamp(col.r * 255 * shade, 0, 255); d[p + 1] = clamp(col.g * 255 * shade, 0, 255); d[p + 2] = clamp(col.b * 255 * shade, 0, 255); d[p + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+  } else {
+    // vignette (avant le terrain) : à plat
+    g.fillStyle = '#d9a873'; g.fillRect(X(0), Z(0), 4000 * s, 3000 * s);
+    g.fillStyle = '#c99662';
+    for (let x = 230; x < 1100; x += 96) { g.beginPath(); g.moveTo(X(x), Z(0)); for (let z = 0; z <= 2150; z += 100) g.lineTo(X(x + 26 * Math.sin(z / 230 + 1.3)), Z(z)); g.lineWidth = Math.max(1, 14 * s); g.strokeStyle = 'rgba(150,100,60,0.5)'; g.stroke(); }
+    g.fillStyle = '#8d6748'; g.beginPath(); g.ellipse(X(520), Z(2300), 470 * s, 175 * s, 0, 0, TAU); g.fill();
+    g.fillStyle = '#e8d3ad'; g.beginPath(); KH.plateau.forEach(([x, z], i) => (i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z)))); g.closePath(); g.fill();
+    g.fillStyle = '#6f8b3d'; g.fillRect(X(3300), Z(0), 490 * s, 3000 * s);
+    g.fillStyle = '#1f5b73'; g.beginPath(); g.moveTo(X(3790), Z(0)); for (let z = 0; z <= 3000; z += 50) g.lineTo(X(KH.nileBank(z)), Z(z)); g.lineTo(X(4000), Z(3000)); g.lineTo(X(4000), Z(0)); g.closePath(); g.fill();
+    g.fillStyle = '#3f7a39'; for (let i = 0; i < 70; i++) { const a = i * 2.4, r = 30 + (i * 37) % 150; g.beginPath(); g.arc(X(734 + Math.cos(a) * r * 1.4), Z(732 + Math.sin(a) * r), Math.max(1, 9 * s), 0, TAU); g.fill(); }
+    g.fillStyle = '#2b6c74'; g.beginPath(); g.ellipse(X(734), Z(732), 44 * s, 19 * s, 0, 0, TAU); g.fill();
+  }
+  // couloir du Khamsin (hachures)
+  if (opts.corridor !== false) {
+    g.save(); g.beginPath(); g.rect(X(0), Z(0), 4000 * s, 3000 * s); g.clip();
+    g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = Math.max(1, 3 * s);
+    const C = KH.corridor;
+    for (let t = -6000; t < 6000; t += 60) {
+      const ax = C.ax * t + C.nx * C.s0, az = C.az * t + C.nz * C.s0, bx = C.ax * t + C.nx * C.s1, bz = C.az * t + C.nz * C.s1;
+      g.beginPath(); g.moveTo(X(ax), Z(az)); g.lineTo(X(bx), Z(bz)); g.stroke();
+    }
+    g.restore();
+  }
+  // routes et pistes
+  for (const r of KH.roads) {
+    g.beginPath();
+    r.pts.forEach(([x, z], i) => (i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))));
+    if (r.kind === 'road') { g.strokeStyle = '#f2e6d0'; g.lineWidth = Math.max(2, 22 * s); g.setLineDash([]); g.stroke(); g.strokeStyle = '#2a2420'; g.lineWidth = Math.max(1.2, 14 * s); g.stroke(); }
+    else if (r.kind === 'runway') { g.strokeStyle = '#8d8984'; g.lineWidth = Math.max(2, 30 * s); g.setLineDash([]); g.stroke(); }
+    else { g.strokeStyle = '#4a3a2c'; g.lineWidth = Math.max(1, 9 * s); g.setLineDash([Math.max(3, 30 * s), Math.max(2, 22 * s)]); g.stroke(); g.setLineDash([]); }
+  }
+  // pyramides
+  for (const p of KH.pyramids) {
+    const hs = (p.side / 2) * s;
+    g.fillStyle = '#c9a77c'; g.fillRect(X(p.x) - hs, Z(p.z) - hs, hs * 2, hs * 2);
+    g.fillStyle = '#a5845c'; g.beginPath(); g.moveTo(X(p.x), Z(p.z)); g.lineTo(X(p.x) + hs, Z(p.z) - hs); g.lineTo(X(p.x) + hs, Z(p.z) + hs); g.lineTo(X(p.x) - hs, Z(p.z) + hs); g.closePath(); g.fill();
+    if (p.beam) { g.fillStyle = '#5ff2e2'; g.beginPath(); g.arc(X(p.x), Z(p.z), Math.max(2, 10 * s), 0, TAU); g.fill(); }
+  }
+  // lieux
+  if (opts.pins !== false) {
+    const R = Math.max(7, 60 * s);
+    g.font = `700 ${Math.round(R * 1.15)}px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const L of KH.locs) {
+      g.fillStyle = '#a8432a'; g.beginPath(); g.arc(X(L.x), Z(L.z), R, 0, TAU); g.fill();
+      g.strokeStyle = '#f5e6cf'; g.lineWidth = Math.max(1, R * 0.16); g.stroke();
+      g.fillStyle = '#fff4e2'; g.fillText(L.id, X(L.x), Z(L.z) + R * 0.06);
+    }
+  }
+  return c;
+}
+
+/* ---------------------------------------------------------------- Carte --
+   Khamsin dans le catalogue : une carte « ouverte » (open), sans grille. */
+const KHAMSIN = {
+  id: 'khamsin', open: true, format: 1, name: 'Khamsin',
+  description: 'Désert égyptien. Douze kilomètres carrés entre la mer de sable et le Nil, sept lieux reliés par la route du Km 47. Le faisceau de la Grande Pyramide guide les survivants.',
+  eyebrow: 'Rapport d’incident · Khamsin · route du Km 47',
+  rules: { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null },
+  spawn: { pos: KH.spawn.pos.slice(), yaw: KH.spawn.yaw, lv: 0 },
+  ambiance: { sky: '#e6ad74', fog: '#e6ad74', fogDensity: 0.00058, hemiSky: '#9aa9c2', hemiGround: '#c8915c', hemi: 0.8, exposure: 1.0, moon: false, trees: 0, pipes: false, wallHeight: 3.5 },
+  boxes: [], perks: [], doors: [], wallbuys: [], lights: [], signs: [], props: [], zones: [], risers: [], power: null, amp: null, digipass: null,
+  thumb: null, menuCam: null, seed: 4747, updated: '2026-10-09',
+};
+function khThumb() {
+  if (!KHAMSIN.thumb) { try { KHAMSIN.thumb = khPlanCanvas(640, 360).toDataURL('image/jpeg', 0.86); } catch (e) { KHAMSIN.thumb = null; } }
+  return KHAMSIN.thumb;
+}
+/* Catalogue vu par les Mod Tools (window.ZS.MAPS) : sans les cartes ouvertes, qui ne s'éditent pas. */
+function editorMaps() {
+  const byId = Object.create(null);
+  for (const id in MAPS.byId) if (!MAPS.byId[id].open) byId[id] = MAPS.byId[id];
+  return { list: MAPS.list.filter((id) => byId[id]), byId };
+}
+
+/* --------------------------------------------------------- Chargement -- */
+function owLoad(map) {
+  disposeWorld();
+  CUR.map = map; CUR.editor = false;
+  // grille vide (8 × 8 cases) : le code de la grille ne voit rien ; tout passe par OW
+  LV = [0]; LVY = new Float32Array([0]); LI0 = 0; WALL_H = 3.5; LVL_H = 3.8;
+  allocGrid(8, 8, 1); airBands = [];
+  LAYOUT = {
+    zones: KH.locs.map((L) => ({ name: L.name, auto: false })), startZone: 0,
+    doors: {}, wallbuys: [], perks: [], boxes: [], boxStart: 0, power: null, amp: null, digipass: null, lights: [], signs: [], spawn: map.spawn,
+  };
+  CUR.levels = [0];
+  Lanterns.lights = [];
+  OW.on = true; OW.map = map;
+  if (!OW.H) {
+    owGenTerrain();
+    OW.surf = owNewLayer(OWK.TERRAIN); OW.under = owNewLayer(OWK.ROCK); OW.doors = [];
+    owRasterPyramids();
+    const sp = KH.spawn.pos, cam = [2405, 0, 2085];
+    cam[1] = owH(cam[0], cam[2]) + 2.4;
+    map.menuCam = { pos: cam, look: [2120, owH(2120, 1240) + 70, 1240], sway: [3, 1.5] };
+    void sp;
+  }
+  const root = new THREE.Group();
+  root.name = 'monde';
+  owBuildTerrainChunks(root);
+  owBuildRoads(root);
+  owBuildWater(root);
+  owBuildSky(root);
+  owBuildPyramids(root);
+  owBuildPalms(root);
+  owBuildPoles(root);
+  owBuildVehicles(root);
+  owBuildFarRing(root);
+  owBuildSandWall(root);
+  World.root = root;
+  linearizeTree(root);
+  scene.add(root);
+  owSandPool();
+  camera.near = 0.1; camera.far = 4300; camera.updateProjectionMatrix();
+  OW.lastLoc = null;
+  owHud(true);
+  OWNAV.ready = false;
+  Zombies.flowT = 0; Zombies.lastCell = -1;
+  owUpdateTerrainLod(true);
+  owApplyGrade(0);
+}
+/* Retour à une carte en grille : la caméra et le HUD reprennent leurs réglages. */
+function owUnload() {
+  if (!OW.on && !OW.hudOn) return;
+  OW.on = false; OW.map = null;
+  camera.near = 0.05; camera.far = 220; camera.updateProjectionMatrix();
+  if (MOON) { MOON.scale.set(30, 30, 1); MOON.material.opacity = 0.8; }
+  OW.lastLoc = null;
+  owHud(false);
+}
+
+/* --------------------------------------------------------- Chaque image -- */
+function owUpdateView(dt) {
+  if (!OW.on) return;
+  OW.t += dt;
+  OW.sky.position.copy(camera.position);
+  OW.sky.material.uniforms.uTime.value = OW.t;
+  OWTER.t -= dt;
+  if (OWTER.t <= 0) { OWTER.t = 0.2; owUpdateTerrainLod(false); owUpdateRoads(); }
+  if (OW.sandWall) OW.sandWall.material.uniforms.uTime.value = OW.t;
+  if (OW.beam) {
+    const k = 0.85 + Math.sin(OW.t * 2.1) * 0.08 + Math.sin(OW.t * 7.3) * 0.04;
+    const dark = clamp(1.2 - (OW.grade ? OW.grade.sunI * Math.max(0.15, OW.grade.dir.y) * 1.6 + OW.grade.hemiI * 0.3 : 1), 0, 1);
+    OW.beam.core.material.opacity = 0.9 * k; OW.beam.halo.material.opacity = (0.3 + 0.55 * dark) * k; OW.beam.star.material.opacity = 0.35 + 0.6 * dark;
+    OW.beam.star.material.rotation = Math.sin(OW.t * 0.3) * 0.05;
+  }
+  owApplyGrade(dt);
+}
+function owUpdate(dt) {
+  owUpdateView(dt);
+  if (OW.sandFX) OW.sandFX.update(dt);
+  owVehUpdate(dt);
+  // nom du lieu en entrant
+  const near = khNearestLoc(player.pos.x, player.pos.z);
+  const inside = near.d < 0 ? near.loc : null;
+  if (inside && inside !== OW.lastLoc) HUD.zone(inside.name);
+  OW.lastLoc = inside || (near.d > 60 ? null : OW.lastLoc);
+  owUpdateHud(dt);
+}
+
+/* ---------------------------------------------------- Mini-carte, boussole --
+   Mini-carte en haut à droite (nord en haut, 600 m de côté), boussole en haut au milieu avec le
+   faisceau de la Grande Pyramide (turquoise). */
+const OWH = { map: null, comp: null, bg: null, t: 0 };
+function owHud(on) {
+  OW.hudOn = on;
+  if (on && !OWH.map) {
+    const hud = $('hud');
+    OWH.map = el('canvas', 'ow-minimap'); OWH.map.width = 220; OWH.map.height = 220;
+    OWH.comp = el('canvas', 'ow-compass'); OWH.comp.width = 520; OWH.comp.height = 46;
+    // au volant : vitesse, carburant (à la place de l'arme)
+    OWH.drive = el('div', 'ow-drive');
+    OWH.drive.innerHTML = '<span class="nm"></span><span class="row"><span class="spd">0</span><span class="u">km/h</span></span><span class="fuel"><i></i></span>';
+    OWH.dName = OWH.drive.querySelector('.nm'); OWH.dSpd = OWH.drive.querySelector('.spd'); OWH.dFuel = OWH.drive.querySelector('.fuel i');
+    hud.append(OWH.map, OWH.comp, OWH.drive);
+  }
+  if (OWH.map) { OWH.map.hidden = !on; OWH.comp.hidden = !on; OWH.drive.hidden = true; }
+  if (on && !OWH.bg && OW.H) OWH.bg = khPlanCanvas(1000, 750, { relief: true });
+}
+function owUpdateHud(dt) {
+  OWH.t -= dt;
+  if (OWH.t > 0 || !OWH.map) return;
+  OWH.t = 1 / 20;
+  const p = player, V = VEH.drive, yaw = V ? V.yaw + (VEH.view ? VEH.lookYaw : 0) : p.yaw;
+  // au volant
+  HUD.el.hud.classList.toggle('ow-driving', !!V);
+  OWH.drive.hidden = !V;
+  if (V) {
+    OWH.dName.textContent = V.T.name;
+    OWH.dSpd.textContent = Math.round(Math.abs(V.v) * 3.6);
+    OWH.dFuel.style.width = `${Math.round((V.fuel / V.T.fuel) * 100)}%`;
+    OWH.dFuel.parentNode.classList.toggle('low', V.fuel / V.T.fuel < 0.2);
+  }
+  // boussole : cap du regard, lettres et faisceau
+  {
+    const c = OWH.comp, g = c.getContext('2d'), W = c.width, Hh = c.height, fovH = 1.9;
+    g.clearRect(0, 0, W, Hh);
+    g.fillStyle = 'rgba(18,14,11,0.55)'; g.fillRect(0, 10, W, 26);
+    const head = -yaw;                       // 0 = nord, sens horaire
+    const xAt = (a) => W / 2 + (wrapAngle(a - head) / fovH) * W;
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 15px ${FONT_HUD}`;
+    const marks = [['N', 0], ['NE', Math.PI / 4], ['E', Math.PI / 2], ['SE', 3 * Math.PI / 4], ['S', Math.PI], ['SO', -3 * Math.PI / 4], ['O', -Math.PI / 2], ['NO', -Math.PI / 4]];
+    for (let a = -Math.PI; a < Math.PI; a += Math.PI / 12) {
+      const x = xAt(a);
+      if (x < 0 || x > W) continue;
+      g.fillStyle = 'rgba(245,200,141,0.5)'; g.fillRect(x - 0.5, 14, 1, 6);
+    }
+    for (const [t, a] of marks) {
+      const x = xAt(a);
+      if (x < 8 || x > W - 8) continue;
+      g.fillStyle = t === 'N' ? '#e9884d' : '#f5e6cf'; g.fillText(t, x, 27);
+    }
+    const B = OW.beam;
+    if (B) {
+      const ab = Math.atan2(B.x - p.pos.x, -(B.z - p.pos.z));
+      const x = xAt(ab);
+      if (x > 4 && x < W - 4) { g.fillStyle = '#5ff2e2'; g.beginPath(); g.moveTo(x, 38); g.lineTo(x - 5, 46); g.lineTo(x + 5, 46); g.closePath(); g.fill(); g.fillRect(x - 1, 8, 2, 30); }
+    }
+    g.fillStyle = '#e9884d'; g.fillRect(W / 2 - 1, 6, 2, 8);
+  }
+  // mini-carte
+  {
+    const c = OWH.map, g = c.getContext('2d'), S = c.width, R = 300, bg = OWH.bg;
+    g.clearRect(0, 0, S, S);
+    g.save();
+    g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 3, 0, TAU); g.clip();
+    g.fillStyle = '#120e0b'; g.fillRect(0, 0, S, S);
+    if (bg) {
+      const k = bg.width / 4000;            // pixels du fond par mètre
+      g.drawImage(bg, (p.pos.x - R) * k, (p.pos.z - R) * k, 2 * R * k, 2 * R * k, 0, 0, S, S);
+    }
+    const scale = S / (2 * R), X = (x) => S / 2 + (x - p.pos.x) * scale, Z = (z) => S / 2 + (z - p.pos.z) * scale;
+    // véhicules (orange : les humains et leurs machines)
+    for (const W of VEH.list) {
+      const x = X(W.x), z = Z(W.z);
+      if (x < -10 || z < -10 || x > S + 10 || z > S + 10) continue;
+      g.save(); g.translate(x, z); g.rotate(-W.yaw);
+      g.fillStyle = W === V ? '#f5c88d' : '#e9884d'; g.strokeStyle = '#120e0b'; g.lineWidth = 1.5;
+      const l = Math.max(5, W.T.len * scale), w = Math.max(3.5, W.T.wid * scale);
+      g.fillRect(-w / 2, -l / 2, w, l); g.strokeRect(-w / 2, -l / 2, w, l);
+      g.restore();
+    }
+    // lieux hors du cadre : flèches au bord
+    g.font = `700 13px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const L of KH.locs) {
+      let x = X(L.x), z = Z(L.z);
+      const dx = x - S / 2, dz = z - S / 2, d = Math.hypot(dx, dz), lim = S / 2 - 14;
+      if (d > lim) { x = S / 2 + (dx / d) * lim; z = S / 2 + (dz / d) * lim; }
+      g.fillStyle = '#a8432a'; g.beginPath(); g.arc(x, z, 9, 0, TAU); g.fill();
+      g.fillStyle = '#fff4e2'; g.fillText(L.id, x, z + 1);
+    }
+    // joueur : flèche dans le sens du regard
+    g.translate(S / 2, S / 2); g.rotate(-yaw);
+    g.fillStyle = '#f5c88d'; g.strokeStyle = '#120e0b'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(0, -9); g.lineTo(6.5, 7); g.lineTo(0, 3.5); g.lineTo(-6.5, 7); g.closePath(); g.stroke(); g.fill();
+    g.restore();
+    g.strokeStyle = 'rgba(245,200,141,0.7)'; g.lineWidth = 2; g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 3, 0, TAU); g.stroke();
+    g.fillStyle = '#e9884d'; g.font = `700 14px ${FONT_HUD}`; g.fillText('N', S / 2, 12);
+  }
+}
+
+/* ----------------------------------------------------- Effets du désert --
+   Grains de sable (impacts de balles, zombies qui sortent du sable), éclairage de l'arme en plein
+   jour, taches posées dans la pente. */
+function owSandPool() {
+  if (OW.sandFX) return OW.sandFX;
+  // couleur des points prise telle quelle (comme les autres particules) : on la donne en linéaire
+  const m = new THREE.PointsMaterial({ color: new THREE.Color(0xcfa676).convertSRGBToLinear(), size: 0.085, map: TEX.glow, alphaTest: 0.35 });
+  OW.sandFX = new PointPool(220, share(m), 9.8, false);
+  scene.add(OW.sandFX.points);
+  return OW.sandFX;
+}
+function owSandHit(x, y, z, nx, ny, nz) {
+  const P = owSandPool();
+  for (let i = 0; i < 7; i++) P.emit(x + nx * 0.03, y + ny * 0.03, z + nz * 0.03, nx * rand(0.4, 1.4) + rand(-0.7, 0.7), ny * rand(0.6, 2) + rand(0.3, 1.4), nz * rand(0.4, 1.4) + rand(-0.7, 0.7), rand(0.35, 0.8));
+  spawnPuff(x + nx * 0.08, y + ny * 0.08, z + nz * 0.08, rand(0.3, 0.5), rand(0.55, 0.9), 0xb88a5a, 0.45, 0.25);
+}
+function owSandBurst(x, z, y) {
+  const P = owSandPool();
+  for (let i = 0; i < 16; i++) P.emit(x + rand(-0.35, 0.35), y + 0.05, z + rand(-0.35, 0.35), rand(-1.3, 1.3), rand(1.6, 3.8), rand(-1.3, 1.3), rand(0.5, 1));
+  spawnPuff(x, y + 0.4, z, 1.6, 1.4, 0xb08458, 0.55, 0.35);
+}
+/* Arme en main : plus de lumière au soleil qu'au fond du bunker (0,42 à 1,1 comme ailleurs). */
+function owViewLum() {
+  const g = OW.grade;
+  return g ? clamp(0.32 + g.sunI * 0.22 + g.hemiI * 0.35, 0.42, 1.1) : 0.8;
+}
+/* Tache à plat (sang, brûlure) sur le terrain : elle suit la pente. */
+const _owDec = { x: 0, y: 1, z: 0, y0: 0 };
+function owDecalSlope(x, y, z) {
+  if (owKind(OW.surf, Math.floor(x), Math.floor(z)) !== OWK.TERRAIN || owLayerAt(x, y, z)) return null;
+  const g = owH(x, z);
+  if (Math.abs(y - g) > 0.3) return null;
+  owNormal(x, z, _owDec);
+  _owDec.y0 = g;
+  return _owDec;
+}
+
+/* ----------------------------------------------------------- Véhicules --
+   Planche « Rouler, c'est survivre » (page 6) : 4×4 de fouilles (deux au camp, un à l'oasis,
+   gratuits), buggy des sables (garage du relais Km 47, 1 500 points), camion blindé (centrale du
+   Nil, une fois le courant rétabli). Vitesses de la planche selon le sol : route goudronnée, piste,
+   sable mou. Conduite arcade : direction d'un vélo, roues posées sur le terrain (tangage, roulis),
+   chocs contre les murs, les falaises, l'eau et les autres véhicules ; les zombies sont écrasés
+   au-dessus d'une vitesse, repoussés en dessous. Seul, le conducteur ne tire pas.
+   Repère d'un véhicule : x à droite, y en haut, l'avant vers -z (comme la caméra) ; yaw comme
+   celui du joueur (avant = (-sin yaw, -cos yaw)). */
+const VEH_TYPES = {
+  jeep: {
+    name: '4×4 de fouilles', short: 'le 4×4', len: 4.5, wid: 1.86, hgt: 2.1, wb: 2.8, track: 1.56, wr: 0.41,
+    vmax: { road: 80, track: 50, sand: 25 }, acc: 4.6, brake: 9, rev: 4.5, steer: 0.56, fuel: 6000,
+    protect: 0.5, noise: 60, kill: 6, seat: [-0.43, 0.98, 0.1], eye: 0.66, cam: [7.4, 2.8], engine: [34, 1.0],
+  },
+  buggy: {
+    name: 'Buggy des sables', short: 'le buggy', len: 3.7, wid: 1.9, hgt: 1.75, wb: 2.4, track: 1.62, wr: 0.42,
+    vmax: { road: 70, track: 65, sand: 55 }, acc: 6.2, brake: 10, rev: 5, steer: 0.62, fuel: 4000,
+    protect: 1, noise: 60, kill: 6.5, cost: 1500, seat: [-0.36, 0.55, 0.15], eye: 0.78, cam: [6.4, 2.4], engine: [46, 0.75],
+  },
+  truck: {
+    name: 'Camion blindé', short: 'le camion blindé', len: 8.8, wid: 2.5, hgt: 3.3, wb: 4.6, track: 2.04, wr: 0.6,
+    vmax: { road: 55, track: 35, sand: 15 }, acc: 2.6, brake: 6.5, rev: 3, steer: 0.48, fuel: 8000,
+    protect: 0.25, noise: 100, kill: 2.2, ram: true, power: true, seat: [-0.62, 1.62, -2.85], eye: 0.8, cam: [12, 4.2], engine: [24, 1.35],
+    axles: [-3.0, 1.15, 2.6],
+  },
+};
+// emplacements (plan, page 2) : deux 4×4 au camp, un à l'oasis, le buggy au garage du relais, le camion à la centrale
+KH.vehicles = [
+  { type: 'jeep', x: 2386, z: 2047, yaw: 2.6 },
+  { type: 'jeep', x: 2398, z: 2056, yaw: 2.6 },
+  { type: 'jeep', x: 1030, z: 870, yaw: -2.0 },
+  { type: 'buggy', x: 1432, z: 2603, yaw: 1.57 },
+  { type: 'truck', x: 3462, z: 1700, yaw: 0.2 },
+];
+const VEH = { list: [], drive: null, view: 0, lookYaw: 0, lookPitch: 0, lookT: 0, light: null, snd: null, hornT: 0, camPos: new THREE.Vector3(), camInit: false };
+const _vf = new THREE.Vector3(), _vr = new THREE.Vector3(), _vq = new THREE.Quaternion(), _ve = new THREE.Euler();
+const vehFwd = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
+
+/* ---- Matières (partagées) */
+const VMAT = {};
+function vehMaterials() {
+  if (VMAT.paint) return VMAT;
+  // peinture salie : poussière en bas, rayures (une texture pour toutes les faces)
+  const S = 256, c = makeCanvas(S, S), g = c.getContext('2d');
+  const n = valueNoise(S, S, [[8, 8, 1], [32, 32, 0.5], [128, 128, 0.25]], 1.6);
+  paintPixels(g, S, S, (x, y, col) => {
+    const v = 236 + (n[y * S + x] - 0.5) * 34 + (Math.random() - 0.5) * 8 - Math.pow(y / S, 3) * 40;
+    col[0] = v; col[1] = v * 0.97; col[2] = v * 0.91;
+  });
+  g.strokeStyle = 'rgba(80,60,40,0.18)'; g.lineWidth = 1;
+  for (let i = 0; i < 40; i++) { g.beginPath(); const x = Math.random() * S, y = Math.random() * S; g.moveTo(x, y); g.lineTo(x + rand(-30, 30), y + rand(-4, 4)); g.stroke(); }
+  const dirt = share(toTex(c));
+  const std = (o) => share(new THREE.MeshStandardMaterial(o));
+  VMAT.paint = std({ vertexColors: true, map: dirt, roughness: 0.62, metalness: 0.12 });
+  VMAT.dark = std({ vertexColors: true, roughness: 0.88, metalness: 0.05 });
+  VMAT.metal = std({ vertexColors: true, roughness: 0.38, metalness: 0.65, envMap: GK.env || (GK.env = genGlasEnv()), envMapIntensity: 0.6 });
+  VMAT.glass = std({ color: 0x1d2a33, roughness: 0.08, metalness: 0.4, transparent: true, opacity: 0.42, envMap: GK.env, envMapIntensity: 1.1, depthWrite: false });
+  VMAT.cloth = std({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
+  // pneu : sculptures (bandes sombres) sur la bande de roulement
+  {
+    const W2 = 256, H2 = 64, tc = makeCanvas(W2, H2), tg = tc.getContext('2d');
+    tg.fillStyle = '#2a2622'; tg.fillRect(0, 0, W2, H2);
+    tg.fillStyle = '#161412';
+    for (let x = 0; x < W2; x += 16) { tg.fillRect(x, 4, 7, 24); tg.fillRect(x + 8, 36, 7, 24); }
+    VMAT.tire = std({ map: toTex(tc), roughness: 0.95 });
+  }
+  return VMAT;
+}
+const vcol = (hex) => { const c = new THREE.Color(hex).convertSRGBToLinear(); return [c.r, c.g, c.b]; };
+/* Assemblage d'un modèle : pièces regroupées par matière, une géométrie par matière. */
+function vehBuilder() {
+  const parts = {};
+  const B = {
+    add(mat, geo, m, hex) { (parts[mat] || (parts[mat] = [])).push({ geo, matrix: m, color: vcol(hex) }); return B; },
+    box(mat, hex, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) { return B.add(mat, GEO.box, mtx(x, y, z, rx, ry, rz, sx, sy, sz), hex); },
+    cyl(mat, hex, x, y, z, r, h, rx = 0, ry = 0, rz = 0, r2) {
+      const g = r2 !== undefined ? new THREE.CylinderGeometry(r2, r, 1, 14) : GEO.cyl;
+      return B.add(mat, g, mtx(x, y, z, rx, ry, rz, r2 !== undefined ? 1 : r, h, r2 !== undefined ? 1 : r), hex);
+    },
+    beam(mat, hex, a, b, w) { return B.add(mat, GEO.box, beamMtx(a[0], a[1], a[2], b[0], b[1], b[2], w, w), hex); },
+    build(group) {
+      for (const mat in parts) {
+        const geo = mergeGeometries(parts[mat]);
+        const mesh = new THREE.Mesh(geo, VMAT[mat]);
+        mesh.name = mat;
+        group.add(mesh);
+      }
+      return group;
+    },
+  };
+  return B;
+}
+/* Inscription peinte (portières, caisse) : texte sur fond transparent. */
+function vehDecal(lines, w, h, color = '#f2e6cf') {
+  const c = makeCanvas(512, Math.round((512 * h) / w)), g = c.getContext('2d');
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const [txt, size, y, font] of lines) {
+    g.font = `${font || 700} ${Math.round(size * c.height)}px ${FONT_HUD}`;
+    g.fillStyle = color; g.globalAlpha = 0.9;
+    g.fillText(txt, c.width / 2, y * c.height);
+  }
+  const m = new THREE.MeshStandardMaterial({ map: toTex(c, { clamp: true }), transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
+}
+/* Roue : pneu (bande sculptée), flancs, jante ; tourne autour de x. */
+function vehWheel(r, w, rimHex = 0xb9b2a4) {
+  const g = new THREE.Group();
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 22, 1, true).rotateZ(Math.PI / 2), VMAT.tire);
+  const side = vehBuilder();
+  side.cyl('dark', 0x24211e, -w / 2 + 0.005, 0, 0, r * 0.97, 0.01, 0, 0, Math.PI / 2).cyl('dark', 0x24211e, w / 2 - 0.005, 0, 0, r * 0.97, 0.01, 0, 0, Math.PI / 2);
+  side.cyl('metal', rimHex, w / 2 - 0.02, 0, 0, r * 0.58, 0.05, 0, 0, Math.PI / 2).cyl('metal', rimHex, -w / 2 + 0.02, 0, 0, r * 0.58, 0.05, 0, 0, Math.PI / 2);
+  side.cyl('dark', 0x3a3530, w / 2 + 0.01, 0, 0, r * 0.18, 0.06, 0, 0, Math.PI / 2).cyl('dark', 0x3a3530, -w / 2 - 0.01, 0, 0, r * 0.18, 0.06, 0, 0, Math.PI / 2);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; side.cyl('dark', 0x3a3530, w / 2 + 0.012, Math.cos(a) * r * 0.36, Math.sin(a) * r * 0.36, 0.025, 0.04, 0, 0, Math.PI / 2); }
+  g.add(tire);
+  side.build(g);
+  return g;
+}
+
+/* ---- Modèles (dimensions de la planche, graduée en mètres) */
+function vehModelJeep(V) {
+  const B = vehBuilder(), K = 0xb7a57a, KD = 0x8f7f5c, DK = 0x2b2622;
+  // caisse, capot, ailes
+  B.box('paint', K, 0, 0.98, 0.15, 1.82, 0.72, 4.0);                 // bas de caisse
+  B.box('paint', K, 0, 1.39, -1.68, 1.66, 0.12, 1.12);                // capot
+  B.box('paint', KD, 0, 1.31, -1.68, 1.74, 0.06, 1.16);               // joint du capot
+  B.box('paint', K, -0.84, 1.2, -1.68, 0.2, 0.36, 1.16).box('paint', K, 0.84, 1.2, -1.68, 0.2, 0.36, 1.16);   // ailes avant
+  // habitacle : montants, toit, panneaux sous les vitres
+  B.box('paint', K, 0, 1.96, 0.62, 1.82, 0.07, 3.06);                 // toit
+  for (const x of [-0.88, 0.88]) {
+    B.box('paint', K, x, 1.67, -0.9, 0.07, 0.58, 0.08, 0.1);        // montant A
+    B.box('paint', K, x, 1.67, 0.16, 0.07, 0.58, 0.1);               // montant B
+    B.box('paint', K, x, 1.67, 1.2, 0.07, 0.58, 0.1);                // montant C
+    B.box('paint', K, x, 1.67, 2.1, 0.07, 0.58, 0.12);               // montant D
+  }
+  B.box('paint', K, 0, 1.4, 2.13, 1.82, 0.12, 0.06);                   // bas de la vitre arrière
+  B.box('paint', K, 0, 1.4, -0.92, 1.7, 0.1, 0.08);                    // bas du pare-brise
+  // vitres (teintées, un peu en retrait)
+  B.add('glass', GEO.box, mtx(0, 1.68, -0.9, 0.1, 0, 0, 1.68, 0.5, 0.02), 0xffffff);
+  for (const x of [-0.89, 0.89]) for (const [z, l] of [[-0.37, 0.95], [0.68, 0.94], [1.65, 0.8]]) B.add('glass', GEO.box, mtx(x, 1.68, z, 0, 0, 0, 0.02, 0.5, l), 0xffffff);
+  B.add('glass', GEO.box, mtx(0, 1.68, 2.14, 0, 0, 0, 1.6, 0.48, 0.02), 0xffffff);
+  // calandre, pare-chocs, passages de roues, marchepieds
+  B.box('dark', DK, 0, 1.08, -2.27, 1.3, 0.5, 0.06).box('dark', 0x4a4540, 0, 1.08, -2.3, 1.18, 0.04, 0.02);
+  for (let i = 0; i < 6; i++) B.box('dark', 0x5c554c, -0.42 + i * 0.17, 1.1, -2.31, 0.03, 0.4, 0.02);
+  B.box('dark', DK, 0, 0.58, -2.33, 1.96, 0.2, 0.18).box('dark', DK, 0, 0.6, 2.28, 1.9, 0.18, 0.14);
+  for (const z of [-1.4, 1.4]) for (const x of [-0.98, 0.98]) B.box('dark', DK, x, 1.02, z, 0.16, 0.12, 1.1);
+  B.box('dark', DK, -0.96, 0.5, 0, 0.18, 0.06, 1.2).box('dark', DK, 0.96, 0.5, 0, 0.18, 0.06, 1.2);
+  // roue de secours sur la porte arrière
+  B.cyl('dark', 0x24211e, 0, 1.3, 2.36, 0.38, 0.24, Math.PI / 2).cyl('metal', 0xb9b2a4, 0, 1.3, 2.49, 0.22, 0.04, Math.PI / 2);
+  // galerie : cadre, jerricans (vert, rouge), bâche roulée, plaques de désensablage (orange) sur le flanc
+  for (const x of [-0.84, 0.84]) B.box('dark', DK, x, 2.06, 0.65, 0.04, 0.04, 2.8);
+  for (const z of [-0.7, 0.2, 1.1, 2.0]) B.box('dark', DK, 0, 2.06, z, 1.7, 0.04, 0.04);
+  B.box('paint', 0x4f6b3a, -0.45, 2.3, 0.55, 0.18, 0.46, 0.34).box('paint', 0x4f6b3a, -0.22, 2.3, 0.55, 0.18, 0.46, 0.34).box('paint', 0x9c2f22, 0.05, 2.3, 0.55, 0.18, 0.46, 0.34);
+  B.cyl('cloth', 0xa58f68, 0.1, 2.2, 1.55, 0.17, 1.5, 0, 0, Math.PI / 2);
+  for (let i = 0; i < 2; i++) B.box('paint', 0xe9884d, 0.94, 1.05 + i * 0.07, -0.2 + i * 0.03, 0.04, 0.3, 1.25);
+  // phares (ronds), feux arrière, rampe de toit
+  for (const x of [-0.62, 0.62]) B.cyl('dark', DK, x, 1.08, -2.29, 0.13, 0.05, Math.PI / 2);
+  // antenne fouet et fanion rouge
+  B.cyl('dark', 0x1c1a18, 0.86, 2.95, 2.1, 0.012, 2.0);
+  // inscriptions des portières : « MISSION ARCHÉO » et le numéro
+  for (const sd of [-1, 1]) {
+    const d = vehDecal([['MISSION ARCHÉO', 0.22, 0.28, 600], ['03', 0.52, 0.68, 800]], 0.9, 0.42, '#2b2116');
+    d.position.set(sd * 0.917, 1.06, -0.32); d.rotation.y = sd * Math.PI / 2;
+    V.group.add(d);
+  }
+  B.build(V.group);
+  // fanion (toile qui flotte : animée)
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.36, 6, 1).translate(0.31, 0, 0), new THREE.MeshStandardMaterial({ color: 0xa8432a, roughness: 0.9, side: THREE.DoubleSide }));
+  flag.position.set(0.86, 3.75, 2.1);
+  V.group.add(flag); V.flag = flag;
+  vehLamps(V, [[-0.62, 1.08, -2.32], [0.62, 1.08, -2.32]], [[-0.84, 1.15, 2.32], [0.84, 1.15, 2.32]], [[-0.3, 2.04, -0.95], [0, 2.04, -0.95], [0.3, 2.04, -0.95]]);
+}
+function vehModelBuggy(V) {
+  const B = vehBuilder(), O = 0xe9884d, DK = 0x26221e, ST = 0x3b3833;
+  // coque : fond, flancs, nez en pente, plage arrière
+  B.box('paint', O, 0, 0.55, 0.05, 1.3, 0.3, 2.6);
+  B.box('paint', O, 0, 0.6, -1.45, 1.2, 0.18, 0.7, -0.35);
+  B.box('paint', O, -0.66, 0.68, 0.05, 0.06, 0.3, 2.4).box('paint', O, 0.66, 0.68, 0.05, 0.06, 0.3, 2.4);
+  B.box('paint', 0xc46a35, 0, 0.82, 1.05, 1.36, 0.08, 0.9);
+  // arceau (tubes) : longerons, arceaux avant et arrière, toit, renforts
+  const T = (a, b) => B.beam('metal', ST, a, b, 0.07);
+  for (const s of [-1, 1]) {
+    T([s * 0.62, 0.72, -1.15], [s * 0.6, 1.55, -0.35]);            // montant avant
+    T([s * 0.6, 1.55, -0.35], [s * 0.6, 1.58, 0.75]);               // toit
+    T([s * 0.6, 1.58, 0.75], [s * 0.66, 0.78, 1.25]);               // montant arrière
+    T([s * 0.64, 0.75, -1.2], [s * 0.68, 0.75, 1.3]);                // longeron
+    T([s * 0.6, 1.58, 0.75], [s * 0.62, 0.8, 0.2]);                  // renfort
+    T([s * 0.66, 0.6, -1.25], [s * 0.82, 0.62, -1.62]);              // triangle avant (amortisseur)
+  }
+  T([-0.6, 1.55, -0.35], [0.6, 1.55, -0.35]); T([-0.6, 1.58, 0.75], [0.6, 1.58, 0.75]); T([-0.6, 1.57, 0.2], [0.6, 1.57, 0.2]);
+  T([-0.64, 0.78, -1.2], [0.64, 0.78, -1.2]); T([-0.66, 0.8, 1.25], [0.66, 0.8, 1.25]);
+  T([-0.6, 1.58, 0.75], [0.6, 0.85, 1.25]);
+  // sièges baquets, volant, moteur à l'arrière, échappements, roue de secours
+  for (const x of [-0.34, 0.34]) { B.box('dark', 0x2e2a26, x, 0.78, 0.25, 0.46, 0.14, 0.5).box('dark', 0x2e2a26, x, 1.08, 0.48, 0.46, 0.6, 0.12, -0.25); }
+  B.cyl('dark', DK, -0.34, 1.08, -0.38, 0.17, 0.04, 1.1).beam('dark', DK, [-0.34, 0.95, -0.5], [-0.34, 0.75, -0.95], 0.05);
+  B.box('metal', 0x8d877c, 0, 0.98, 1.45, 0.62, 0.44, 0.5).box('dark', DK, 0, 1.25, 1.45, 0.5, 0.12, 0.38);
+  B.beam('metal', 0x9a8f80, [0.25, 0.85, 1.6], [0.32, 0.9, 1.95], 0.07).beam('metal', 0x9a8f80, [-0.25, 0.85, 1.6], [-0.32, 0.9, 1.95], 0.07);
+  B.cyl('dark', 0x24211e, 0, 1.0, 1.0, 0.36, 0.22, 0, 0, Math.PI / 2);
+  // amortisseurs avant (ressorts jaunes)
+  for (const s of [-1, 1]) B.cyl('paint', 0xd9b23a, s * 0.72, 0.68, -1.2, 0.06, 0.42, 0, 0, s * 0.5);
+  // antenne et fanion orange
+  B.cyl('dark', 0x1c1a18, 0.6, 2.55, 0.75, 0.012, 2.0);
+  B.build(V.group);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.32, 6, 1).translate(0.25, 0, 0), new THREE.MeshStandardMaterial({ color: 0xe9884d, roughness: 0.9, side: THREE.DoubleSide }));
+  flag.position.set(0.6, 3.35, 0.75);
+  V.group.add(flag); V.flag = flag;
+  vehLamps(V, [[-0.45, 0.82, -1.66], [0.45, 0.82, -1.66]], [[-0.55, 0.85, 1.32], [0.55, 0.85, 1.32]], [[-0.39, 1.66, -0.36], [-0.13, 1.66, -0.36], [0.13, 1.66, -0.36], [0.39, 1.66, -0.36]]);
+}
+function vehModelTruck(V) {
+  const B = vehBuilder(), OL = 0x5e6a4a, OD = 0x4a5539, DK = 0x24221f, MT = 0x55524c;
+  // châssis
+  B.box('dark', DK, 0, 0.95, 0.2, 2.0, 0.42, 8.0);
+  // cabine blindée (avant), pare-brise en fentes
+  B.box('paint', OL, 0, 1.85, -3.25, 2.42, 1.5, 1.9);
+  B.box('paint', OD, 0, 2.66, -3.25, 2.3, 0.12, 1.8);
+  B.box('paint', OL, 0, 1.55, -4.15, 2.3, 0.85, 0.3, 0.12);                    // nez
+  for (const x of [-0.75, -0.25, 0.25, 0.75]) B.add('glass', GEO.box, mtx(x, 2.28, -4.21, 0.12, 0, 0, 0.38, 0.2, 0.03), 0xffffff);
+  for (const s of [-1, 1]) B.add('glass', GEO.box, mtx(s * 1.215, 2.3, -3.4, 0, 0, 0, 0.03, 0.22, 0.7), 0xffffff);
+  // caisse (refuge roulant) : panneaux, meurtrières, inscription
+  B.box('paint', OL, 0, 2.1, 1.25, 2.5, 2.05, 5.6);
+  B.box('paint', OD, 0, 3.17, 1.25, 2.38, 0.1, 5.5);
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 5; i++) B.box('paint', OD, s * 1.262, 2.1, -1.2 + i * 1.22, 0.02, 1.9, 0.05);     // joints des panneaux
+    for (const z of [-0.75, 0.6, 1.95, 3.3]) B.box('dark', 0x0e0d0c, s * 1.264, 2.45, z, 0.02, 0.09, 0.42);   // meurtrières
+  }
+  for (const z of [-0.2, 2.7]) B.box('dark', 0x0e0d0c, 0, 2.45, 4.06, 0.42, 0.09, 0.02);
+  B.box('paint', OD, 0, 2.05, 4.07, 1.1, 1.75, 0.04);                                         // porte arrière
+  // échelle arrière, phare de recherche, bélier à pointes
+  for (const x of [-0.95, -0.6]) B.box('dark', DK, x, 1.95, 4.12, 0.05, 2.3, 0.05);
+  for (let i = 0; i < 7; i++) B.box('dark', DK, -0.775, 0.95 + i * 0.32, 4.12, 0.35, 0.04, 0.04);
+  B.cyl('metal', MT, 0.7, 2.85, -3.6, 0.18, 0.22, Math.PI / 2).box('dark', DK, 0.7, 2.74, -3.55, 0.12, 0.12, 0.12);
+  B.box('dark', 0x3a3631, 0, 0.95, -4.45, 2.6, 0.75, 0.25, -0.35);
+  for (let i = 0; i < 7; i++) B.add('dark', new THREE.ConeGeometry(0.09, 0.42, 8), mtx(-1.08 + i * 0.36, 0.95, -4.72, -Math.PI / 2, 0, 0), 0x6a645b);
+  // ailes (pare-boue) et pare-chocs arrière
+  for (const z of [-3.0, 1.15, 2.6]) for (const s of [-1, 1]) B.box('dark', DK, s * 1.12, 1.65, z, 0.3, 0.08, 1.35);
+  B.box('dark', DK, 0, 0.75, 4.15, 2.4, 0.18, 0.18);
+  const lettering = vehDecal([['CENTRALE DU NIL', 0.42, 0.5, 700]], 3.2, 0.42, '#d8d0b8');
+  for (const s of [-1, 1]) { const d = lettering.clone(); d.position.set(s * 1.266, 2.8, 1.25); d.rotation.y = s * Math.PI / 2; V.group.add(d); }
+  B.build(V.group);
+  vehLamps(V, [[-0.85, 1.55, -4.32], [0.85, 1.55, -4.32]], [[-1.05, 1.0, 4.2], [1.05, 1.0, 4.2]], [[0.7, 2.85, -3.72]]);
+}
+/* Feux : phares (blanc chaud), feux arrière (rouge), rampe ; une matière par véhicule (allumés ou non). */
+function vehLamps(V, heads, tails, extra) {
+  const head = new THREE.MeshBasicMaterial({ color: 0x6e6a60, fog: true }), tail = new THREE.MeshBasicMaterial({ color: 0x4a0d08 });
+  const g1 = [], g2 = [];
+  for (const p of heads.concat(extra)) g1.push({ geo: GEO.sph, matrix: mtx(p[0], p[1], p[2], 0, 0, 0, 0.1, 0.1, 0.05) });
+  for (const p of tails) g2.push({ geo: GEO.box, matrix: mtx(p[0], p[1], p[2], 0, 0, 0, 0.14, 0.1, 0.04) });
+  const m1 = new THREE.Mesh(mergeGeometries(g1), head), m2 = new THREE.Mesh(mergeGeometries(g2), tail);
+  V.group.add(m1, m2);
+  V.lampHead = head; V.lampTail = tail; V.heads = heads;
+  // halos des phares (sprites additifs, visibles dans la poussière)
+  V.halos = heads.map((p) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffe2b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    s.position.set(p[0], p[1], p[2] - 0.08); s.scale.set(1.3, 1.3, 1);
+    V.group.add(s);
+    return s;
+  });
+}
+const VEH_MODELS = { jeep: vehModelJeep, buggy: vehModelBuggy, truck: vehModelTruck };
+
+/* ---- Création, remise à zéro */
+function owBuildVehicles(root) {
+  vehMaterials();
+  VEH.list = [];
+  VEH.drive = null;
+  const g = new THREE.Group();
+  g.name = 'véhicules';
+  KH.vehicles.forEach((sp, i) => {
+    const T = VEH_TYPES[sp.type];
+    const V = { id: i, type: sp.type, T, sp, x: sp.x, z: sp.z, yaw: sp.yaw, y: 0, pitch: 0, roll: 0, v: 0, steer: 0, fuel: T.fuel, rot: 0, rpm: 0,
+      bought: !T.cost, lights: false, group: new THREE.Group(), body: new THREE.Group(), wheels: [], flag: null, hit: 0, bump: 0, stuckT: 0 };
+    V.group.add(V.body);
+    const save = V.group;
+    V.group = V.body;                          // les pièces vont dans le corps (qui penche) ; les roues aussi
+    VEH_MODELS[sp.type](V);
+    V.group = save;
+    // roues : avant (directrices) et arrière ; essieux du camion
+    const axles = T.axles || [-T.wb / 2, T.wb / 2];
+    for (const az of axles) for (const s of [-1, 1]) {
+      const w = vehWheel(T.wr, sp.type === 'truck' ? 0.42 : 0.3);
+      const pivot = new THREE.Group();
+      pivot.position.set(s * T.track / 2, T.wr, az);
+      pivot.add(w);
+      V.body.add(pivot);
+      V.wheels.push({ pivot, w, front: az === axles[0], s, z: az });
+    }
+    vehPose(V, 0, true);
+    g.add(V.group);
+    VEH.list.push(V);
+    Features.interactables.push(vehInteractable(V));
+  });
+  // projecteur des phares du véhicule conduit (une seule lumière : pas de recompilation des matières)
+  const L = new THREE.SpotLight(0xffe6c0, 0, 60, 0.5, 0.45, 1.4);
+  L.name = 'phares';
+  g.add(L, L.target);
+  VEH.light = L;
+  root.add(g);
+}
+function owResetVehicles() {
+  if (VEH.drive) vehExit(true);
+  for (const V of VEH.list) {
+    V.x = V.sp.x; V.z = V.sp.z; V.yaw = V.sp.yaw; V.v = 0; V.steer = 0; V.fuel = V.T.fuel; V.bought = !V.T.cost; V.lights = false; V.stuckT = 0;
+    vehPose(V, 0, true);
+  }
+}
+/* Sol sous le véhicule : route, piste ou sable mou. */
+function vehSurface(x, z) {
+  const b = owBioAt(x, z);
+  if (b === OWB.ROAD || b === OWB.RUNWAY) return 'road';
+  if (b === OWB.TRACK || b === OWB.PAD || b === OWB.PLATEAU || b === OWB.WADI || b === OWB.FIELD || b === OWB.MUD || b === OWB.ROCK) return 'track';
+  return 'sand';
+}
+/* Peut-on rouler sur ce point ? (falaises, eau, murs, objets, bords de la carte) */
+function vehCellFree(x, z, gy, T) {
+  const cx = Math.floor(x), cz = Math.floor(z), ch = owChunk(OW.surf, cx, cz);
+  if (!ch) return owTerrainWalk(x, z);
+  const i = owIdx(cx, cz), k = ch.kind[i];
+  if (k === OWK.TERRAIN) return owTerrainWalk(x, z);
+  if (k === OWK.FLOOR || k === OWK.RAMP) return !(ch.ceil[i] > 0) || ch.ceil[i] - ch.base[i] > T.hgt + 0.1;
+  if (k === OWK.DOOR) return ch.door[i] >= 0 && OW.doors[ch.door[i]] && OW.doors[ch.door[i]].open;
+  return false;
+}
+/* Pose (x, z, yaw) libre ? Points du pourtour, autres véhicules. */
+function vehBlocked(V, x, z, yaw) {
+  const T = V.T, [fx, fz] = vehFwd(yaw), rx = -fz, rz = fx, hl = T.len / 2, hw = T.wid / 2;
+  const pts = [[hl, hw], [hl, -hw], [hl, 0], [-hl, hw], [-hl, -hw], [-hl, 0], [0, hw], [0, -hw], [hl * 0.5, hw], [hl * 0.5, -hw], [-hl * 0.5, hw], [-hl * 0.5, -hw]];
+  for (const [f, r] of pts) {
+    const px = x + fx * f + rx * r, pz = z + fz * f + rz * r;
+    if (!vehCellFree(px, pz, V.y, T)) return { x: px, z: pz };
+  }
+  for (const O of VEH.list) {
+    if (O === V || Math.hypot(O.x - x, O.z - z) > (O.T.len + T.len) / 2 + 0.5) continue;
+    for (const [f, r] of pts) {
+      const px = x + fx * f + rx * r, pz = z + fz * f + rz * r;
+      if (vehInside(O, px, pz, 0.1)) return { x: px, z: pz, veh: O };
+    }
+    // et ses coins dans le nôtre
+    const [ofx, ofz] = vehFwd(O.yaw), orx = -ofz, orz = ofx, ol = O.T.len / 2, ow = O.T.wid / 2;
+    for (const [f, r] of [[ol, ow], [ol, -ow], [-ol, ow], [-ol, -ow]]) {
+      const px = O.x + ofx * f + orx * r, pz = O.z + ofz * f + orz * r;
+      if (vehInsideAt(x, z, yaw, T, px, pz, 0.1)) return { x: px, z: pz, veh: O };
+    }
+  }
+  return null;
+}
+function vehInsideAt(x, z, yaw, T, px, pz, m) {
+  const [fx, fz] = vehFwd(yaw), dx = px - x, dz = pz - z;
+  const lf = dx * fx + dz * fz, lr = dx * -fz + dz * fx;
+  return Math.abs(lf) < T.len / 2 + m && Math.abs(lr) < T.wid / 2 + m;
+}
+const vehInside = (V, px, pz, m) => vehInsideAt(V.x, V.z, V.yaw, V.T, px, pz, m);
+
+/* Pose sur le terrain : hauteur des roues, tangage, roulis (amortis). */
+function vehPose(V, dt, snap) {
+  const T = V.T, [fx, fz] = vehFwd(V.yaw), rx = -fz, rz = fx, a = T.wb / 2, b = T.track / 2;
+  const h = (f, r) => { const g = owGroundAt(0, V.x + fx * f + rx * r, V.z + fz * f + rz * r); return Number.isFinite(g) ? g : V.y; };
+  const fl = h(a, -b), fr = h(a, b), rl = h(-a, -b), rr = h(-a, b);
+  const y = (fl + fr + rl + rr) / 4, pitch = Math.atan2((fl + fr) / 2 - (rl + rr) / 2, T.wb), roll = Math.atan2((fr + rr) / 2 - (fl + rl) / 2, T.track);
+  if (snap) { V.y = y; V.pitch = pitch; V.roll = roll; V.vy = 0; }
+  else {
+    // suspension : le corps suit le sol avec un peu de retard ; une chute (rebord) se fait en tombant
+    if (V.y > y + 0.25) { V.vy = (V.vy || 0) - 14 * dt; V.y = Math.max(y, V.y + V.vy * dt); if (V.y === y) { V.bump = Math.min(1, -V.vy / 8); V.vy = 0; } }
+    else { V.y = damp(V.y, y, 18, dt); V.vy = 0; }
+    V.pitch = damp(V.pitch, pitch, 10, dt); V.roll = damp(V.roll, roll, 10, dt);
+  }
+  V.group.position.set(V.x, V.y, V.z);
+  _ve.set(V.pitch, V.yaw, V.roll, 'YXZ');
+  V.group.quaternion.setFromEuler(_ve);
+}
+
+/* ---- Monter, descendre */
+function vehInteractable(V) {
+  return {
+    get x() { return V.x; }, get z() { return V.z; }, get y() { return V.y; },
+    get r() { return V.T.len / 2 + 1.4; }, veh: V,
+    prompt() {
+      if (VEH.drive || G.state !== 'playing') return null;
+      if (V.T.power && !G.power) return { text: `${V.T.name} : sans courant`, disabled: true, sub: 'Rétablissez le courant à la centrale' };
+      if (!V.bought) return { text: `Acheter ${V.T.short}`, cost: V.T.cost };
+      return { text: `Conduire ${V.T.short}`, sub: V.fuel <= 0 ? 'Réservoir vide : faites le plein aux jerricans' : `Carburant ${Math.round((V.fuel / V.T.fuel) * 100)} %` };
+    },
+    use() {
+      if (VEH.drive) return;
+      if (V.T.power && !G.power) { Sound.deny(); return; }
+      if (!V.bought) { if (!trySpend(V.T.cost)) return; V.bought = true; HUD.banner(V.T.name, 'Il est à vous', 'power'); }
+      vehEnter(V);
+    },
+  };
+}
+function vehEnter(V) {
+  VEH.drive = V;
+  VEH.view = 0; VEH.lookYaw = 0; VEH.lookPitch = -0.12; VEH.lookT = 0; VEH.camInit = false;
+  if (Couteau) Couteau.annuler();
+  KnifeLunge.m = 0;
+  if (Arms.state === 'nade') { /* la grenade dégoupillée reste en main : rien */ }
+  Arms.root.visible = false;
+  player.sprinting = false; player.ads = 0; player.crouch = 0; player.y = 0; player.vy = 0; player.grounded = true;
+  player.yaw = V.yaw; player.pitch = 0;
+  vehSeat(V);
+  HUD.hint('Z/S accélérer, freiner · Q/D tourner · Espace frein · C vue · F descendre', 5);
+  vehSoundStart(V);
+}
+/* Le joueur suit le siège du conducteur. */
+function vehSeat(V) {
+  const T = V.T, [fx, fz] = vehFwd(V.yaw), s = T.seat;
+  player.pos.x = V.x + -fz * s[0] + fx * -s[2];
+  player.pos.z = V.z + fx * s[0] + fz * -s[2];
+  player.gy = V.y; player.pos.y = V.y;
+  player.layer = 0;
+  player.k = owLocate(player.pos.x, player.pos.z, V.y);
+}
+/* Descendre : à gauche, sinon à droite, derrière, devant (une place libre au sol). */
+function vehExit(force) {
+  const V = VEH.drive;
+  if (!V) return;
+  if (!force && Math.abs(V.v) > 4) { HUD.hint('Ralentissez pour descendre', 1.5); return; }
+  const T = V.T, [fx, fz] = vehFwd(V.yaw), rx = -fz, rz = fx;
+  const spots = [[T.seat[2] * -1, -(T.wid / 2 + 0.7)], [T.seat[2] * -1, T.wid / 2 + 0.7], [-(T.len / 2 + 0.9), 0], [T.len / 2 + 0.9, 0], [0, -(T.wid / 2 + 1.6)], [0, T.wid / 2 + 1.6]];
+  let pos = null;
+  for (const [f, r] of spots) {
+    const x = V.x + fx * f + rx * r, z = V.z + fz * f + rz * r;
+    if (!owWalkCell(0, Math.floor(x), Math.floor(z)) || VEH.list.some((O) => vehInside(O, x, z, 0.35))) continue;
+    if (Math.abs(owGroundAt(0, x, z) - V.y) > 1.5) continue;
+    pos = [x, z]; break;
+  }
+  if (!pos) { if (!force) { HUD.hint('Pas de place pour descendre ici', 1.5); return; } pos = [V.x + rx * -(T.wid / 2 + 0.7), V.z + rz * -(T.wid / 2 + 0.7)]; }
+  VEH.drive = null;
+  Arms.root.visible = true;
+  vehSoundStop();
+  player.yaw = V.yaw + VEH.lookYaw; player.pitch = 0;
+  placePlayer(pos[0], pos[1]);
+  player.vel.set(0, 0, 0);
+}
+const owDriving = () => !!VEH.drive;
+
+/* ---- Conduite (à la place du déplacement à pied, dans updatePlayer) */
+function owDriveStep(dt) {
+  const V = VEH.drive, p = player;
+  if (p.down) { vehExit(true); return; }
+  if (pressed('KeyF')) { vehExit(false); if (!VEH.drive) { Input.down.KeyF = false; return; } }
+  if (pressed('KeyC')) { VEH.view = 1 - VEH.view; VEH.lookYaw = 0; VEH.lookPitch = VEH.view ? 0 : -0.12; }
+  if (pressed('KeyL')) V.lightsManual = !V.lightsManual;
+  // regard : la souris tourne la vue autour du véhicule (elle revient derrière après un moment)
+  const sens = 0.0015 * settings.sens;
+  if (Input.dx || Input.dy) VEH.lookT = 1.6;
+  VEH.lookYaw = wrapAngle(VEH.lookYaw - Input.dx * sens);
+  VEH.lookPitch = clamp(VEH.lookPitch - Input.dy * sens * (settings.invertY ? -1 : 1), VEH.view ? -0.7 : -0.6, VEH.view ? 0.6 : 0.35);
+  VEH.lookT -= dt;
+  if (VEH.lookT <= 0 && !VEH.view) { VEH.lookYaw = damp(VEH.lookYaw, 0, 2.5, dt); VEH.lookPitch = damp(VEH.lookPitch, -0.12, 2, dt); }
+  if (VEH.view) VEH.lookYaw = clamp(VEH.lookYaw, -1.9, 1.9);
+  const ctl = {
+    f: (key('KeyW') ? 1 : 0) - (key('KeyS') ? 1 : 0),
+    s: (key('KeyD') || key('ArrowRight') ? 1 : 0) - (key('KeyA') || key('ArrowLeft') ? 1 : 0),
+    hand: key('Space'),
+  };
+  vehStep(V, dt, ctl);
+  vehSeat(V);
+  p.yaw = V.yaw + VEH.lookYaw;
+  p.vel.set(0, 0, 0);
+  vehCamera(V, dt);
+  Sound.setListener(p.pos.x, p.pos.z, p.yaw, p.gy);
+}
+/* Santé au volant (régénération, battements de cœur) : le reste de updatePlayer est sauté. */
+function owPlayerVitals(dt) {
+  const p = player;
+  if (!p.down && p.hp < p.maxHp && G.time - p.lastHit > 2.4) p.hp = Math.min(p.maxHp, p.hp + 70 * dt);
+  if (!p.down && p.hp < p.maxHp * 0.4) { p.heartT -= dt; if (p.heartT <= 0) { p.heartT = 0.85; Sound.heartbeat(); } }
+  p.bobAmt = 0;
+}
+/* Un pas de physique (conduit ou en roue libre). */
+function vehStep(V, dt, ctl) {
+  const T = V.T, surf = vehSurface(V.x, V.z);
+  let vmax = T.vmax[surf] / 3.6;
+  if (OW.stormVmax) vmax = Math.min(vmax, OW.stormVmax / 3.6);
+  if (V.stuckT > 0) { V.stuckT -= dt; vmax = Math.min(vmax, 0.4); }
+  const [fx, fz] = vehFwd(V.yaw);
+  // pente : la gravité freine en montée, pousse en descente
+  const slope = Math.sin(V.pitch);
+  let f = ctl.f;
+  if (V.fuel <= 0 && f !== 0) { f = 0; if (!V.dryT || G.time - V.dryT > 4) { V.dryT = G.time; HUD.hint('Réservoir vide : jerricans au relais Km 47, à la centrale ou à l\'aérodrome', 3); } }
+  if (f > 0) V.v = V.v < -0.3 ? approach(V.v, 0, T.brake * dt) : approach(V.v, vmax, T.acc * dt * (1 - Math.max(0, V.v) / (vmax * 1.25)));
+  else if (f < 0) V.v = V.v > 0.3 ? approach(V.v, 0, T.brake * dt) : approach(V.v, -T.rev, T.acc * 0.7 * dt);
+  else V.v = approach(V.v, 0, (surf === 'sand' ? 2.6 : 1.1) * dt);
+  if (ctl.hand) V.v = approach(V.v, 0, T.brake * 1.3 * dt);
+  if (Math.abs(V.v) > vmax) V.v = approach(V.v, Math.sign(V.v) * vmax, (surf === 'sand' ? 9 : 4) * dt);
+  V.v -= 9.8 * slope * 0.55 * dt;
+  // direction (moins de braquage à grande vitesse)
+  const sMax = T.steer * (1 - Math.min(0.62, Math.abs(V.v) / 32));
+  V.steer = approach(V.steer, ctl.s * sMax, (ctl.s ? 2.2 : 3) * dt);
+  const yawRate = (V.v / T.wb) * Math.tan(V.steer);
+  const nyaw = V.yaw - yawRate * dt;
+  const [nfx, nfz] = vehFwd(nyaw);
+  const nx = V.x + nfx * V.v * dt, nz = V.z + nfz * V.v * dt;
+  const hit = Math.abs(V.v) > 0.01 || ctl.s ? vehBlocked(V, nx, nz, nyaw) : null;
+  if (!hit) { V.x = nx; V.z = nz; V.yaw = nyaw; }
+  else {
+    // choc : on s'arrête net (léger rebond), secousse selon la vitesse
+    const sp = Math.abs(V.v);
+    if (sp > 3 && V === VEH.drive) { FX.shake = Math.min(1, FX.shake + sp / 25); Sound.bodyFall({ x: hit.x, z: hit.z }); }
+    V.v *= -0.15;
+    if (hit.veh) hit.veh.v += V.v * 0.3;
+    // la rotation seule reste permise si elle est libre
+    if (!vehBlocked(V, V.x, V.z, nyaw)) V.yaw = nyaw;
+  }
+  const dist = Math.abs(V.v) * dt;
+  V.fuel = Math.max(0, V.fuel - dist);
+  V.rot += (V.v * dt) / T.wr;
+  vehPose(V, dt);
+  vehZombies(V, dt);
+}
+const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
+
+/* Zombies contre le véhicule : écrasés au-dessus de T.kill (m/s), repoussés en dessous. */
+function vehZombies(V, dt) {
+  const T = V.T, [fx, fz] = vehFwd(V.yaw), sp = Math.abs(V.v), R = T.len / 2 + 1;
+  for (const z of Zombies.list) {
+    if (!z.alive || z.state === 'rise' || Math.abs(z.gy - V.y) > 2.2) continue;
+    const dx = z.pos.x - V.x, dz = z.pos.z - V.z;
+    if (dx * dx + dz * dz > R * R) continue;
+    const lf = dx * fx + dz * fz, lr = dx * -fz + dz * fx, m = 0.32;
+    if (Math.abs(lf) > T.len / 2 + m || Math.abs(lr) > T.wid / 2 + m) continue;
+    const front = V.v >= 0 ? lf > T.len / 2 - 0.9 : lf < -T.len / 2 + 0.9;
+    if (sp > T.kill && front) {
+      const k = Math.sign(V.v) || 1;
+      damageZombie(z, 1e6, { kind: 'vehicle', dx: fx * k, dz: fz * k, force: Math.min(14, sp * 0.8) });
+      bloodBurst(z.pos.x, z.gy + 0.9, z.pos.z, fx * k, fz * k, 12, 1.4);
+      Sound.bodyFall(z.pos);
+      if (V === VEH.drive) FX.shake = Math.min(1, FX.shake + 0.12);
+      V.v *= T.ram ? 0.97 : 0.88;
+      continue;
+    }
+    // repoussé hors de la caisse (sur le côté le plus proche)
+    const pf = T.len / 2 + m - Math.abs(lf), pr = T.wid / 2 + m - Math.abs(lr);
+    if (pr < pf) { const s = Math.sign(lr) || 1; z.pos.x += -fz * s * pr; z.pos.z += fx * s * pr; }
+    else { const s = Math.sign(lf) || 1; z.pos.x += fx * s * pf; z.pos.z += fz * s * pf; }
+    if (sp > 2) { z.stagger = Math.max(z.stagger, 0.4); z.knockX += (z.pos.x - V.x) * 0.6; z.knockZ += (z.pos.z - V.z) * 0.6; }
+  }
+}
+/* Corps (joueur à pied, zombies) repoussés hors des véhicules (appelé par owSettle). */
+function vehPushBody(b, r) {
+  for (const V of VEH.list) {
+    if (V === VEH.drive && b === player) continue;
+    if (Math.abs((b.gy || 0) - V.y) > 2.4) continue;
+    const dx = b.pos.x - V.x, dz = b.pos.z - V.z, R = V.T.len / 2 + r + 0.2;
+    if (dx * dx + dz * dz > R * R) continue;
+    const [fx, fz] = vehFwd(V.yaw), lf = dx * fx + dz * fz, lr = dx * -fz + dz * fx;
+    const pf = V.T.len / 2 + r - Math.abs(lf), pr = V.T.wid / 2 + r - Math.abs(lr);
+    if (pf <= 0 || pr <= 0) continue;
+    if (pr < pf) { const s = Math.sign(lr) || 1; b.pos.x += -fz * s * pr; b.pos.z += fx * s * pr; }
+    else { const s = Math.sign(lf) || 1; b.pos.x += fx * s * pf; b.pos.z += fz * s * pf; }
+  }
+}
+
+/* ---- Caméra : derrière le véhicule (orbite à la souris), ou au poste du conducteur (C) */
+const _vc = new THREE.Vector3(), _vl = new THREE.Vector3();
+function vehCamera(V, dt) {
+  const T = V.T;
+  camera.rotation.order = 'YXZ';
+  if (VEH.view) {
+    // poste de conduite : la tête suit la caisse (tangage, roulis)
+    _vc.set(T.seat[0], T.seat[1] + T.eye, T.seat[2]).applyQuaternion(V.group.quaternion).add(V.group.position);
+    camera.position.copy(_vc);
+    _ve.set(V.pitch + VEH.lookPitch, V.yaw + VEH.lookYaw, V.roll * 0.6, 'YXZ');
+    camera.quaternion.setFromEuler(_ve);
+    camera.rotation.setFromQuaternion(camera.quaternion, 'YXZ');
+    return;
+  }
+  const yaw = V.yaw + VEH.lookYaw, d = T.cam[0], hgt = T.cam[1];
+  const [fx, fz] = vehFwd(yaw);
+  const pitch = VEH.lookPitch;
+  _vl.set(V.x, V.y + T.hgt * 0.62, V.z);
+  _vc.set(V.x - fx * d * Math.cos(pitch), V.y + hgt - Math.sin(pitch) * d, V.z - fz * d * Math.cos(pitch));
+  // la caméra reste au-dessus du sol (dunes derrière le véhicule)
+  const g = owGroundAt(0, _vc.x, _vc.z);
+  if (Number.isFinite(g) && _vc.y < g + 0.8) _vc.y = g + 0.8;
+  if (!VEH.camInit) { VEH.camPos.copy(_vc); VEH.camInit = true; }
+  VEH.camPos.lerp(_vc, 1 - Math.exp(-10 * dt));
+  camera.position.copy(VEH.camPos);
+  camera.lookAt(_vl);
+  if (FX.shake > 0.01) { const sh = FX.shake * FX.shake; camera.rotation.x += rand(-1, 1) * sh * 0.02; camera.rotation.y += rand(-1, 1) * sh * 0.02; }
+}
+
+/* ---- Chaque image : véhicules en roue libre, roues, fanions, feux, sons */
+function owVehUpdate(dt) {
+  const dark = owDarkness();
+  for (const V of VEH.list) {
+    if (V !== VEH.drive && (Math.abs(V.v) > 0.01 || V.y > owGroundAt(0, V.x, V.z) + 0.3)) vehStep(V, dt, { f: 0, s: 0, hand: true });
+    // roues : rotation, braquage
+    for (const w of V.wheels) {
+      w.w.rotation.x = -V.rot;
+      if (w.front) w.pivot.rotation.y = V.steer;
+    }
+    if (V.flag) {
+      const pos = V.flag.geometry.attributes.position, t = G.time * 9 + V.id;
+      for (let i = 0; i < pos.count; i++) { const x = pos.getX(i); pos.setZ(i, Math.sin(t + x * 7) * 0.06 * x + x * Math.min(0.5, Math.abs(V.v) * 0.04)); }
+      pos.needsUpdate = true;
+    }
+    const on = V === VEH.drive && (dark > 0.35 || V.lightsManual);
+    if (on !== V.lights) {
+      V.lights = on;
+      V.lampHead.color.setHex(on ? 0xfff2d6 : 0x6e6a60);
+      V.lampTail.color.setHex(on ? 0xff2a1a : 0x4a0d08);
+    }
+    for (const h of V.halos) h.material.opacity = on ? 0.55 + dark * 0.3 : 0;
+  }
+  // projecteur des phares
+  const L = VEH.light, V = VEH.drive;
+  if (L) {
+    if (V && V.lights) {
+      _vc.set(0, V.heads[0][1], V.heads[0][2] - 0.3).applyQuaternion(V.group.quaternion).add(V.group.position);
+      L.position.copy(_vc);
+      _vl.set(0, V.heads[0][1] - 1.6, V.heads[0][2] - 22).applyQuaternion(V.group.quaternion).add(V.group.position);
+      L.target.position.copy(_vl); L.target.updateMatrixWorld();
+      L.intensity = 2.2 + dark * 2;
+    } else L.intensity = 0;
+  }
+  vehSoundUpdate(dt);
+}
+/* Obscurité de la vue (0 en plein jour, 1 la nuit ou au cœur du Khamsin). */
+function owDarkness() {
+  const g = OW.grade;
+  if (!g) return 0;
+  const day = g.sunI * Math.max(0, g.dir.y) * 1.4 + g.hemiI * 0.45;
+  return clamp(Math.max(1 - (day - 0.25) / 0.55, OW.stormDark || 0), 0, 1);
+}
+
+/* ---- Moteur (synthétisé) : grondement selon le régime et la charge */
+function vehSoundStart(V) {
+  vehSoundStop();
+  const b = Sound.bus();
+  if (!b) return;
+  const ctx = b.ctx, out = ctx.createGain();
+  out.gain.value = 0;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600; lp.Q.value = 2;
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), o3 = ctx.createOscillator();
+  o1.type = 'sawtooth'; o2.type = 'square'; o3.type = 'sine';
+  const g1 = ctx.createGain(), g2 = ctx.createGain(), g3 = ctx.createGain();
+  g1.gain.value = 0.35; g2.gain.value = 0.15; g3.gain.value = 0.5;
+  o1.connect(g1); o2.connect(g2); o3.connect(g3);
+  g1.connect(lp); g2.connect(lp); g3.connect(lp);
+  // grenaille : bruit filtré (gravier, sable sous les pneus)
+  const nb = ctx.createBufferSource(); nb.loop = true;
+  const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  nb.buffer = buf;
+  const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 900; nf.Q.value = 0.6;
+  const ng = ctx.createGain(); ng.gain.value = 0;
+  nb.connect(nf); nf.connect(ng); ng.connect(out);
+  lp.connect(out); out.connect(b.sortie);
+  const t = ctx.currentTime;
+  for (const o of [o1, o2, o3]) o.start(t);
+  nb.start(t);
+  out.gain.setTargetAtTime(0.22 * V.T.engine[1], t, 0.15);
+  VEH.snd = { ctx, out, lp, o1, o2, o3, ng, nb, V };
+}
+function vehSoundUpdate(dt) {
+  const S = VEH.snd;
+  if (!S) return;
+  const V = S.V, T = V.T, t = S.ctx.currentTime;
+  const load = clamp(Math.abs(V.v) / (T.vmax.road / 3.6), 0, 1);
+  V.rpm = damp(V.rpm, 0.15 + load * 0.7 + (key('KeyW') || key('KeyS') ? 0.15 : 0), 5, dt);
+  const f = T.engine[0] * (0.7 + V.rpm * 2.2);
+  S.o1.frequency.setTargetAtTime(f, t, 0.05); S.o2.frequency.setTargetAtTime(f * 0.5, t, 0.05); S.o3.frequency.setTargetAtTime(f * 0.25, t, 0.05);
+  S.lp.frequency.setTargetAtTime(380 + V.rpm * 1400, t, 0.08);
+  S.ng.gain.setTargetAtTime(Math.min(0.5, Math.abs(V.v) * 0.03) * (vehSurface(V.x, V.z) === 'road' ? 0.35 : 1), t, 0.1);
+}
+function vehSoundStop() {
+  const S = VEH.snd;
+  if (!S) return;
+  VEH.snd = null;
+  const t = S.ctx.currentTime;
+  S.out.gain.setTargetAtTime(0, t, 0.12);
+  for (const o of [S.o1, S.o2, S.o3, S.nb]) { try { o.stop(t + 0.6); } catch (e) { /* déjà arrêté */ } }
+  setTimeout(() => { try { S.out.disconnect(); } catch (e) { /* rien */ } }, 900);
+}
+
+/* ====================================================== fin du monde ouvert == */
+
 /* ------------------------------------------------- Catalogue des cartes -- */
 /* Cartes livrées dans le jeu (BUNKER7) et cartes publiées avec une mise à jour
    (dossier maps/ du paquet du jeu, liste et ordre dans maps/index.json). */
-const BUILTIN_MAPS = [BUNKER7];
+const BUILTIN_MAPS = [BUNKER7, KHAMSIN];      // Khamsin : monde ouvert (jeu 2.0.0), deuxième carte du menu
 const MAPS = { list: [], byId: Object.create(null) };
 async function fetchJson(url, ms = 5000) {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -25489,7 +28090,9 @@ async function fetchJson(url, ms = 5000) {
   } finally { clearTimeout(timer); }
 }
 function registerMap(raw, source) {
-  const m = normalizeMap(raw);
+  // carte ouverte (Khamsin) : pas de grille à normaliser ; vignette dessinée d'après son plan
+  const m = raw.open ? raw : normalizeMap(raw);
+  if (m === KHAMSIN) khThumb();
   m.source = source;
   MAPS.byId[m.id] = m;
   return m;
@@ -25504,7 +28107,7 @@ async function loadMapCatalog() {
         // files : cartes qui ont un fichier dans maps/ (les autres sont intégrées au jeu)
         const withFile = Array.isArray(index.files) ? index.files : index.maps;
         for (const id of index.maps) {
-          if (typeof id !== 'string' || !/^[a-z0-9_-]{1,40}$/.test(id) || !withFile.includes(id)) continue;
+          if (typeof id !== 'string' || !/^[a-z0-9_-]{1,40}$/.test(id) || !withFile.includes(id) || (MAPS.byId[id] && MAPS.byId[id].open)) continue;
           try { registerMap(await fetchJson(`maps/${id}.json`), 'package'); } catch (e) { console.warn(`Carte ${id} illisible : ${e.message}`); }
         }
         const listed = index.maps.filter((id) => MAPS.byId[id]);
@@ -25512,13 +28115,16 @@ async function loadMapCatalog() {
       }
     } catch (e) { /* pas de cartes publiées avec cette version */ }
   }
-  // une carte qui ne peut pas se jouer n'est pas proposée
-  MAPS.list = [...new Set(order)].filter((id) => { try { return !validateMap(MAPS.byId[id]).errors.length; } catch (e) { return false; } });
+  // Khamsin reste la deuxième carte, même quand la liste publiée ne la nomme pas
+  if (!order.includes(KHAMSIN.id)) order.splice(Math.min(1, order.length), 0, KHAMSIN.id);
+  // une carte qui ne peut pas se jouer n'est pas proposée (une carte ouverte n'a pas de grille à vérifier)
+  MAPS.list = [...new Set(order)].filter((id) => { try { const m = MAPS.byId[id]; return m.open || !validateMap(m).errors.length; } catch (e) { return false; } });
   if (!MAPS.list.length) MAPS.list = [BUNKER7.id];
 }
 /* Charge une carte pour le menu et la partie (prépare joueur, armes et navigation). */
 function loadMap(map) {
-  buildWorld(map);
+  if (map.open) owLoad(map);                     // monde ouvert (Khamsin)
+  else buildWorld(map);
   G.mapId = map.id;
   resetFeatures();
   resetPlayer();
@@ -26807,7 +29413,7 @@ window.ZS = {
   version: GAME_VERSION, editorApi: EDITOR_API, ready: false,
   get scene() { return scene; }, get camera() { return camera; }, get renderer() { return renderer; },
   TEXLIB, TEX_CATS, MODELS, MODEL_CATS, WEAPONS, PERKS, ZOMBIE_TYPES, TILES, DOOR_TYPES, DOOR_VERBS, LIGHT_FIXTURES, PAL_CHARS,
-  DEFAULT_TEXTURES, DEFAULT_AMBIANCE, DEFAULT_RULES, MAP_MIN, MAP_MAX, BUNKER7, MAPS, CUR, World, Features, G, LAYOUT_REF: () => LAYOUT,
+  DEFAULT_TEXTURES, DEFAULT_AMBIANCE, DEFAULT_RULES, MAP_MIN, MAP_MAX, BUNKER7, get MAPS() { return editorMaps(); }, CUR, World, Features, G, LAYOUT_REF: () => LAYOUT,
   normalizeMap, serializeMap, validateMap, analyzeMap, blankMap, buildWorld, disposeWorld, textureThumb, modelParts, PropBatch,
   propMatrix, levelMaterial, registerCustomTextures, colorHex, parseColor, mtx, unitGeo, famMaterial, share, linearizeTree,
   setViewCamera(cam) { viewCamera = cam; },
@@ -26885,7 +29491,7 @@ window.ZS = {
 
 /* Outils de test (console) : __zs.points(5000), __zs.give('raygun', 3)… */
 window.__zs = {
-  G, player, Arms, Zombies, World, Features, Powerups, Input, settings,
+  G, player, Arms, Zombies, World, Features, Powerups, Input, settings, OW, KH, OWNAV,
   step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) { if (G.state === 'playing') update(dt); endFrameInput(); } },
   points(n) { G.points += n; HUD.pointsChanged(n); },
   give(id, tier) { giveWeapon(id, tier === true ? 1 : tier | 0); },   // tier : palier du Glas (0 à 3)
