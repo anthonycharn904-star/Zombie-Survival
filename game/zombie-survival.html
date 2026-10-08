@@ -716,7 +716,7 @@ body {
         <dt>R</dt><dd>Recharger</dd>
         <dt>F</dt><dd>Acheter, utiliser · maintenir pour réparer ou faire sonner Le Glas</dd>
         <dt>V ou E</dt><dd>Couteau</dd>
-        <dt>G</dt><dd>Grenade</dd>
+        <dt>G</dt><dd>Grenade · maintenir pour la garder prête, R pour la remettre</dd>
         <dt>Maj</dt><dd>Sprinter</dd>
         <dt>Espace · C</dt><dd>Sauter · s'accroupir</dd>
         <dt>1, 2, molette</dt><dd>Changer d'arme</dd>
@@ -3380,9 +3380,43 @@ const Sound = (() => {
     [[0, 98], [0.35, 146.83], [0.7, 196], [1.1, 233.08]].forEach(([dt, f]) => bell(t + dt, f, 0.26, o, 2.6));
     noiseHit(t, 1.8, 0.35, 'lowpass', 260, 60, 0.7, o, 0.3);
   }
+  /* ---------------------------------------------------- Grenade Mk 2 ---- */
+  /* Gestes de la grenade (près de l'oreille, sauf pos) : étoffe de la poche, cuillère qui glisse sur
+     le rabat, goupille tournée puis tirée (frottement de l'acier, tintement), bras qui fouette,
+     cuillère chassée par le ressort du percuteur (claquement sec et sifflement de la lame qui
+     tournoie), goupille qu'on renfonce (frottement qui monte, déclic), petites pièces qui tombent. */
+  function nade(kind, pos = null, k = 1) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = out(pos, pos ? 0.5 : 0.36, 3);
+    if (!o) return;
+    const cloth = (dt, d, v, f = 1300) => noiseHit(t + dt, d, v, 'bandpass', f, f * 0.6, 0.9, o, 0.02);
+    const scrape = (dt, d, v, f0, f1) => noiseHit(t + dt, d, v, 'bandpass', f0, f1, 4, o, 0.004);
+    const ting = (dt, f, v, d = 0.18) => { tone('sine', f, f * 0.995, t + dt, d, v, o, 0.002); tone('sine', f * 2.76, f * 2.75, t + dt, d * 0.5, v * 0.35, o, 0.002); };
+    const click = (dt, f, v) => { noiseHit(t + dt, 0.025, v, 'bandpass', f, null, 6, o, 0.001); tone('square', f * 0.3, f * 0.25, t + dt, 0.015, v * 0.15, o, 0.001); };
+    switch (kind) {
+      case 'draw': cloth(0, 0.22, 0.35, 900); break;                                   // arme baissée, main vers la poitrine
+      case 'grab': cloth(0, 0.12, 0.45, 1600); click(0.01, 2600, 0.18); break;           // la main saisit la fonte
+      case 'unhook': scrape(0, 0.09, 0.3, 1800, 900); cloth(0.05, 0.12, 0.5, 1100); break; // la cuillère glisse hors du rabat
+      case 'twist': scrape(0, 0.06, 0.34, 4600, 6400); click(0.045, 5200, 0.12); break;                            // anneau tourné
+      case 'pull': scrape(0, 0.07, 0.35, 4200, 7400); ting(0.065, 3650, 0.16, 0.22); break;  // goupille arrachée
+      case 'whoosh': noiseHit(t, 0.24, 0.42, 'bandpass', 380, 1300, 0.8, o, 0.06); break;       // le bras fouette
+      case 'spoon':                                                                       // cuillère chassée, percuteur
+        click(0, 3800, 0.6); click(0.012, 1500, 0.35);
+        tone('triangle', 2350, 2080, t + 0.02, 0.32, 0.12, o, 0.003);
+        noiseHit(t + 0.02, 0.3, 0.12, 'bandpass', 5200, 3000, 6, o, 0.01, [0.1, 0.5]);
+        break;
+      case 'cancel': cloth(0, 0.14, 0.25, 1000); break;
+      case 'insert': scrape(0, 0.16, 0.3, 3000, 6000); break;                            // goupille renfoncée
+      case 'seat': click(0, 4200, 0.3); ting(0.01, 3300, 0.06, 0.12); break;             // elle arrive en place
+      case 'hookBack': cloth(0, 0.18, 0.45, 1000); scrape(0.1, 0.08, 0.22, 900, 1800); break;
+      case 'tink': ting(0, rand(3000, 4200), 0.1 * k, 0.12); click(0, 5000, 0.08 * k); break;   // pièce sur le sol
+      default: break;
+    }
+  }
   return {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
-    gun, empty, reload, mech, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
+    gun, empty, reload, mech, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce, nade,
     zombie, rise, helmet, bodyFall, gib, boardBreak, boardPlace, playerHurt, heartbeat, step, land,
     buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, creak, say, rankStamp, rankUp, prestige,
@@ -15001,6 +15035,603 @@ function makeDogSpecimen() {
     },
   };
 }
+/* ------------------------------------------------ Grenade Mk 2 (jeu 1.9.0) ---
+   Demande d'Anthony (8 octobre 2026) : une grenade réaliste. Grenade à main américaine Mk 2
+   (« ananas ») de la fin de la guerre : corps de fonte de 58 mm sur 89 mm (114 mm avec la fusée),
+   quadrillé de 40 plots (5 rangées de 8), peint vert olive avec une bague jaune sous la fusée
+   (explosif), bouchon de remplissage au fond ; fusée M10A3 : tête en alliage de zinc, cuillère
+   (levier de sûreté) en acier peint qui longe le corps, goupille fendue aux branches écartées et
+   son anneau. Repère : origine au milieu du corps, y vers la fusée, cuillère du côté +z, goupille
+   le long de x, anneau du côté −x. Mesures des tableaux en millimètres (hauteur depuis le fond). */
+const NADE_MM = 0.001;
+const NADE_Y0 = 44.5;                                          // milieu du corps (origine du repère)
+// profil du corps : [hauteur, rayon au sommet des plots] (mm)
+const NADE_PROFILE = [[0, 10.5], [1.2, 14.5], [3, 18.8], [6, 22.6], [10, 25.6], [16, 27.9], [24, 29.0], [34, 29.25], [44, 28.9],
+  [54, 27.9], [63, 26.0], [71, 23.2], [77.5, 20.0], [82, 16.8], [85.5, 14.2], [87, 13.2]];
+const NADE_BODY = {
+  rows: [5.5, 20.5, 35.5, 50.5, 65.5, 79.5],                    // gorges horizontales (hauteur, mm)
+  cols: 8, depth: 3.3, hw: 1.2, cw: 1.8,                        // gorges : profondeur, demi-fond, arrondi des plots
+  band: [83.0, 86.3],                                          // bague jaune (explosif)
+  // échantillons depuis le milieu d'une gorge (mm), selon le détail (main, torse, au sol)
+  steps: { hi: [0, 1.0, 1.7, 2.5, 3.3, 5.0], mid: [0, 1.6, 2.9, 5.0], lo: [0, 2.4] },
+};
+// fusée et goupille (mm, repère du corps : hauteur depuis le fond)
+const NADE_PIN = { y: 100.2, z: 7.4, x0: -12.2, x1: 11.6, leg: 4.6, spread: 2.6, eye: -15.0, eyeR: 2.3, wire: 0.6 };
+const NADE_RING = { R: 12.2, r: 1.15, rest: 0.6 };              // anneau : rayon, fil, bascule au repos (rad, vers −x)
+const NADE_OUT = 0.031;                                         // course de la goupille pour sortir de la fusée (m)
+// cuillère : chemin (z, y) depuis le crochet du côté opposé, par-dessus la tête, puis le long du corps
+const NADE_LEVER = [[-8.7, 103.6], [-9.0, 106.1], [-6.6, 107.9], [-1.6, 108.5], [4.4, 108.2], [8.6, 106.5], [10.15, 103.4], [10.35, 99.0],
+  [10.45, 95.2], [11.7, 91.3], [14.7, 86.9], [18.7, 82.1], [23.1, 75.4], [27.1, 66.9], [29.9, 57.9], [31.4, 49.0], [32.0, 41.0], [32.7, 35.4]];
+
+/* Rayon du profil (mm) à une hauteur (interpolation monotone). */
+const _nadeSlopes = (() => {
+  const P = NADE_PROFILE, n = P.length, d = [], m = [];
+  for (let i = 0; i < n - 1; i++) d.push((P[i + 1][1] - P[i][1]) / (P[i + 1][0] - P[i][0]));
+  m.push(d[0]);
+  for (let i = 1; i < n - 1; i++) m.push(d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2);
+  m.push(d[n - 2]);
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  return m;
+})();
+function nadeR(y) {
+  const P = NADE_PROFILE, n = P.length;
+  if (y <= P[0][0]) return P[0][1];
+  if (y >= P[n - 1][0]) return P[n - 1][1];
+  let i = 0;
+  while (i < n - 2 && y > P[i + 1][0]) i++;
+  const h = P[i + 1][0] - P[i][0], t = (y - P[i][0]) / h, t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * P[i][1] + (t3 - 2 * t2 + t) * h * _nadeSlopes[i] + (-2 * t3 + 3 * t2) * P[i + 1][1] + (t3 - t2) * h * _nadeSlopes[i + 1];
+}
+/* Longueur d'arc le long du profil (mm) : table pour passer d'une longueur à une hauteur. */
+const NADE_ARC = (() => {
+  const ys = [0], ls = [0];
+  let l = 0, py = 0, pr = nadeR(0);
+  for (let y = 0.05; y <= 87.0001; y += 0.05) { const r = nadeR(y); l += Math.hypot(y - py, r - pr); ys.push(y); ls.push(l); py = y; pr = r; }
+  const at = (y) => { const i = clamp(Math.round(y / 0.05), 0, ys.length - 1); return ls[i]; };
+  const yOf = (L) => {
+    let lo = 0, hi = ls.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (ls[m] < L) lo = m; else hi = m; }
+    const k = (L - ls[lo]) / ((ls[hi] - ls[lo]) || 1);
+    return ys[lo] + (ys[hi] - ys[lo]) * k;
+  };
+  return { at, yOf, total: l };
+})();
+/* Bruit de valeur stable (usure de la peinture). */
+function nadeHash(x, y, z) {
+  const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+/* Corps quadrillé : grille indexée (anneaux × méridiens), plots creusés par les gorges, couleurs de
+   peinture dans les sommets (vert olive, gorges sombres, arêtes usées jusqu'à la fonte, bague jaune). */
+function nadeBodyGeo(detail = 'hi') {
+  const B = NADE_BODY, steps = B.steps[detail] || B.steps.hi;
+  const Lr = B.rows.map((y) => NADE_ARC.at(y));
+  // longueurs d'arc échantillonnées : resserrées près des gorges
+  const Ls = new Set([0]);
+  const add = (v) => { if (v >= 0 && v <= NADE_ARC.total) Ls.add(+v.toFixed(3)); };
+  for (let i = 0; i < Lr.length; i++) {
+    const lo = i ? (Lr[i - 1] + Lr[i]) / 2 : 0, hi = i < Lr.length - 1 ? (Lr[i] + Lr[i + 1]) / 2 : NADE_ARC.total;
+    for (const s of steps) { if (Lr[i] - s >= lo) add(Lr[i] - s); if (Lr[i] + s <= hi) add(Lr[i] + s); }
+    add(lo); add(hi);
+  }
+  for (let v = 0; v < Lr[0] - steps[steps.length - 1]; v += 1.6) add(v);
+  for (let v = Lr[Lr.length - 1] + steps[steps.length - 1]; v < NADE_ARC.total; v += 1.4) add(v);
+  add(NADE_ARC.total);
+  const rings = [...Ls].sort((a, b) => a - b);
+  // méridiens : plots centrés sous la cuillère (θ = 0 du côté +z), gorges à π/8 + kπ/4
+  const col = TAU / B.cols, thetas = [];
+  for (let k = 0; k < B.cols; k++) {
+    const g = col / 2 + k * col;
+    const half = [];
+    for (const s of steps) half.push(s / 29);
+    half.push(col / 2);
+    for (let i = half.length - 1; i >= 1; i--) if (g - half[i] >= k * col - 1e-9) thetas.push(g - half[i]);
+    thetas.push(g);
+    for (let i = 1; i < half.length - 1; i++) thetas.push(g + half[i]);
+  }
+  const tset = [...new Set(thetas.map((t) => +(((t % TAU) + TAU) % TAU).toFixed(5)))].sort((a, b) => a - b);
+  const nr = rings.length, nt = tset.length;
+  const pos = new Float32Array(nr * nt * 3), colA = new Float32Array(nr * nt * 3), uv = new Float32Array(nr * nt * 2);
+  const lin = (h) => { const c = new THREE.Color(h).convertSRGBToLinear(); return [c.r, c.g, c.b]; };
+  const OD = lin(0x4b4d30), ODD = lin(0x2a2b1b), IRON = lin(0x4a4842), YEL = lin(0xa38a38), DIRT = lin(0x383223);
+  const sst = (x) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
+  const dep = (s) => 1 - sst((s - B.hw) / B.cw);
+  for (let i = 0; i < nr; i++) {
+    const L = rings[i], y = NADE_ARC.yOf(L), r0 = nadeR(y);
+    const D = B.depth * clamp(r0 / 29, 0.55, 1);
+    let sh = Infinity;
+    for (const l of Lr) sh = Math.min(sh, Math.abs(L - l));
+    const inZone = L >= Lr[0] && L <= Lr[Lr.length - 1];
+    for (let j = 0; j < nt; j++) {
+      const th = tset[j];
+      let a = ((th - col / 2) % col + col) % col;
+      a = Math.min(a, col - a);
+      const sv = a * r0;
+      const kh = dep(sh), kv = inZone ? dep(sv) : 0;
+      const d = Math.max(kh, kv) * D;
+      const r = (r0 - d) * NADE_MM;
+      const o = (i * nt + j) * 3;
+      pos[o] = Math.sin(th) * r; pos[o + 1] = (y - NADE_Y0) * NADE_MM; pos[o + 2] = Math.cos(th) * r;
+      uv[(i * nt + j) * 2] = th / TAU; uv[(i * nt + j) * 2 + 1] = L / NADE_ARC.total;
+      // peinture : creux plus sombres (salissure), arêtes des plots usées jusqu'à la fonte
+      const k = 1 - d / D, n = nadeHash(Math.round(th * 40), Math.round(L * 3), 7);
+      const groove = Math.pow(1 - k, 1.4);
+      const wear = Math.exp(-(((k - 0.86) / 0.09) ** 2)) * (0.35 + 0.65 * n) * (inZone || sh < 3 ? 1 : 0.2);
+      let c = OD.map((v, q) => v + (ODD[q] - v) * groove * 0.85);
+      if (y >= B.band[0] && y <= B.band[1]) c = YEL.map((v, q) => v * (0.85 + 0.15 * n));
+      c = c.map((v, q) => v + (IRON[q] - v) * wear * 0.6);
+      c = c.map((v, q) => v + (DIRT[q] - v) * groove * groove * 0.3);
+      const vv = 0.93 + 0.14 * nadeHash(j, i, 3);
+      colA[o] = c[0] * vv; colA[o + 1] = c[1] * vv; colA[o + 2] = c[2] * vv;
+    }
+  }
+  const idx = [];
+  for (let i = 0; i < nr - 1; i++) for (let j = 0; j < nt; j++) {
+    const a = i * nt + j, b = i * nt + (j + 1) % nt, c = (i + 1) * nt + (j + 1) % nt, d = (i + 1) * nt + j;
+    idx.push(a, b, c, a, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(colA, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // fond (bouchon de remplissage fendu) et col sous la fusée : petites pièces tournées, mêmes couleurs
+  const c3 = (geo, h) => { const c = lin(h), n = geo.attributes.position.count, a = new Float32Array(n * 3); for (let q = 0; q < n; q++) a.set(c, q * 3); geo.setAttribute('color', new THREE.BufferAttribute(a, 3)); return geo; };
+  const lathe = (pts, seg) => {
+    const geo = gkRevolve(pts.map(([y, r]) => [(y - NADE_Y0) * NADE_MM, r * NADE_MM]), { seg, crease: 50 });
+    geo.rotateX(-Math.PI / 2);               // axe du tour (z) → y
+    return geo;
+  };
+  const seg = detail === 'hi' ? 40 : detail === 'mid' ? 24 : 14;
+  const base = c3(lathe([[0, 0], [-1.25, 0.001], [-1.25, 6.6], [-0.9, 7.1], [0, 7.25], [0, 10.6]], seg), 0x45473a);
+  const neck = c3(lathe([[87, 13.2], [87.35, 12.9], [91.6, 12.9], [91.6, 9.2]], seg), 0x4f5434);
+  // la fente du bouchon : deux lèvres sombres
+  const slot = c3(new THREE.BoxGeometry(14.2 * NADE_MM, 0.5 * NADE_MM, 1.5 * NADE_MM), 0x161613);
+  slot.translate(0, (-1.3 - NADE_Y0) * NADE_MM, 0);
+  const extra = [base, neck, slot].map((x) => (x.index ? x.toNonIndexed() : x));
+  const flat = g.toNonIndexed();
+  const all = [flat, ...extra];
+  let count = 0;
+  for (const x of all) count += x.attributes.position.count;
+  const P = new Float32Array(count * 3), N = new Float32Array(count * 3), Cc = new Float32Array(count * 3), U = new Float32Array(count * 2);
+  let o = 0;
+  for (const x of all) {
+    const n = x.attributes.position.count;
+    if (!x.attributes.normal) x.computeVertexNormals();
+    P.set(x.attributes.position.array, o * 3); N.set(x.attributes.normal.array, o * 3); Cc.set(x.attributes.color.array, o * 3);
+    if (x.attributes.uv) U.set(x.attributes.uv.array, o * 2);
+    o += n;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(Cc, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+  return out;
+}
+/* Fusée M10A3 : collet à pans vissé dans le col, tête (logement du percuteur) aux angles arrondis,
+   oreilles de la goupille du côté de la cuillère, rivets de l'axe du percuteur. */
+function nadeFuzeGeo() {
+  const parts = [];
+  const M = (x, y, z) => new THREE.Matrix4().makeTranslation(x * NADE_MM, (y - NADE_Y0) * NADE_MM, z * NADE_MM);
+  const collar = new THREE.CylinderGeometry(11.1 * NADE_MM, 11.5 * NADE_MM, 6 * NADE_MM, 12, 1);
+  parts.push({ geo: gkCrease(collar, 25), matrix: M(0, 89.5, 0) });
+  const ring = new THREE.CylinderGeometry(9.6 * NADE_MM, 10.6 * NADE_MM, 1.2 * NADE_MM, 24, 1);
+  parts.push({ geo: gkCrease(ring, 40), matrix: M(0, 93.0, 0) });
+  // tête : profil arrondi (z, y) extrudé le long de x
+  const sh = new THREE.Shape(), r = 4.4, z0 = -7.4, z1 = 7.0, y0 = 93.4, y1 = 106.2;
+  sh.moveTo(z0 + 1, y0);
+  sh.lineTo(z1 - 1, y0);
+  sh.quadraticCurveTo(z1, y0, z1, y0 + 1);
+  sh.lineTo(z1, y1 - r);
+  sh.quadraticCurveTo(z1, y1, z1 - r, y1);
+  sh.lineTo(z0 + r, y1);
+  sh.quadraticCurveTo(z0, y1, z0, y1 - r);
+  sh.lineTo(z0, y0 + 1);
+  sh.quadraticCurveTo(z0, y0, z0 + 1, y0);
+  const head = new THREE.ExtrudeGeometry(sh, { depth: 15.6, bevelEnabled: true, bevelThickness: 0.7, bevelSize: 0.7, bevelSegments: 2, curveSegments: 6 });
+  head.translate(0, 0, -7.8);
+  head.rotateY(-Math.PI / 2);              // (z, y, x) → x le long de l'extrusion
+  head.scale(NADE_MM, NADE_MM, NADE_MM);
+  head.translate(0, -NADE_Y0 * NADE_MM, 0);
+  parts.push({ geo: gkCrease(head, 40), matrix: new THREE.Matrix4() });
+  // oreilles de la goupille (du côté de la cuillère), percées
+  for (const s of [-1, 1]) {
+    const ear = new THREE.BoxGeometry(2.0 * NADE_MM, 8.6 * NADE_MM, 4.6 * NADE_MM);
+    parts.push({ geo: gkCrease(ear, 40), matrix: M(s * 7.1, NADE_PIN.y, 7.2) });
+    const rv = new THREE.CylinderGeometry(1.6 * NADE_MM, 1.75 * NADE_MM, 0.8 * NADE_MM, 10);
+    rv.rotateZ(Math.PI / 2);
+    parts.push({ geo: gkCrease(rv, 40), matrix: M(s * 8.25, 101.2, -3.4) });
+  }
+  return mergeGeometries(parts);
+}
+/* Cuillère : bande d'acier embouti (bords recourbés vers le corps) le long de son chemin, plus large
+   sur la tête, joues percées pour la goupille. */
+function nadeLeverGeo() {
+  const pts = NADE_LEVER.map(([z, y]) => new THREE.Vector3(0, y, z));
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  const N = 64, W = 7, len = curve.getLength();
+  const P = [], C = [], I = [];
+  const lin = (h) => { const c = new THREE.Color(h).convertSRGBToLinear(); return [c.r, c.g, c.b]; };
+  const OD = lin(0x4d5033), BARE = lin(0x6e6c63);
+  const widthAt = (u) => {
+    const s = u * len;
+    const w = s < 17 ? 17.4 : s < 24 ? 17.4 - (s - 17) / 7 * 3.8 : 13.6 - Math.max(0, (s - 60) / (len - 60)) * 1.8;
+    const end = len - s;
+    return end < 3 ? w * Math.sqrt(Math.max(0.05, end / 3) * (2 - end / 3)) : w;
+  };
+  const rows = [];
+  for (let i = 0; i <= N; i++) {
+    const u = i / N, p = curve.getPointAt(u), t = curve.getTangentAt(u);
+    // normale vers l'extérieur (loin du corps) dans le plan (y, z)
+    const n = new THREE.Vector3(0, -t.z, t.y);
+    const ref = p.y > 92 ? new THREE.Vector3(0, 99, 0) : new THREE.Vector3(0, p.y, 0);
+    if (n.dot(p.clone().sub(ref)) < 0) n.negate();
+    n.normalize();
+    const w = widthAt(u), row = [];
+    for (let k = 0; k <= W; k++) {
+      const a = k / W * 2 - 1, x = a * w / 2, c = -0.7 * a * a;
+      for (const off of [0, -1.25]) {
+        P.push(x * NADE_MM, (p.y + n.y * (c + off) - NADE_Y0) * NADE_MM, (p.z + n.z * (c + off)) * NADE_MM);
+        const edge = Math.abs(a) > 0.82 || i < 2 || i > N - 2 ? 0.55 : 0.12 * nadeHash(i, k, 5);
+        C.push(...OD.map((v, q) => v + (BARE[q] - v) * edge));
+      }
+      row.push(P.length / 3 - 2);
+    }
+    rows.push(row);
+  }
+  for (let i = 0; i < N; i++) for (let k = 0; k < W; k++) {
+    const a = rows[i][k], b = rows[i][k + 1], c = rows[i + 1][k + 1], d = rows[i + 1][k];
+    I.push(a, d, c, a, c, b);                                 // dessus
+    I.push(a + 1, b + 1, c + 1, a + 1, c + 1, d + 1);          // dessous
+  }
+  for (let i = 0; i < N; i++) for (const k of [0, W]) {
+    const a = rows[i][k], d = rows[i + 1][k], f = k === 0;
+    if (f) I.push(a, a + 1, d + 1, a, d + 1, d); else I.push(a, d, d + 1, a, d + 1, a + 1);
+  }
+  for (const i of [0, N]) for (let k = 0; k < W; k++) {
+    const a = rows[i][k], b = rows[i][k + 1];
+    if (i === 0) I.push(a, b, b + 1, a, b + 1, a + 1); else I.push(a, a + 1, b + 1, a, b + 1, b);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  g.setIndex(I);
+  const lever = gkCrease(g.toNonIndexed(), 50);
+  // joues : de part et d'autre des oreilles, percées par la goupille
+  const parts = [{ geo: lever, matrix: new THREE.Matrix4(), color: [1, 1, 1] }];
+  for (const s of [-1, 1]) {
+    const sh = new THREE.Shape(gkPoly([[10.3, 105.4], [10.3, 95.5], [6.4, 96.6], [4.2, 99.4], [4.6, 102.8], [7.0, 105.2]]).map(([a, b]) => new THREE.Vector2(a, b)));
+    const hole = new THREE.Path();
+    hole.absarc(NADE_PIN.z, NADE_PIN.y, 1.0, 0, TAU, true);
+    sh.holes.push(hole);
+    const cheek = new THREE.ExtrudeGeometry(sh, { depth: 1.1, bevelEnabled: false, curveSegments: 8 });
+    cheek.rotateY(-Math.PI / 2);
+    cheek.scale(NADE_MM, NADE_MM, NADE_MM);
+    cheek.translate((s > 0 ? 9.7 : -8.6) * NADE_MM, -NADE_Y0 * NADE_MM, 0);
+    parts.push({ geo: gkCrease(cheek, 40), matrix: new THREE.Matrix4(), color: OD.map((v) => v * 1.05) });
+  }
+  // dans mergeGeometries, la couleur d'une pièce remplace celle des sommets : la cuillère garde les siennes
+  const merged = mergeGeometries(parts.slice(1));
+  const all = [lever, merged];
+  let count = 0;
+  for (const x of all) count += x.attributes.position.count;
+  const Pp = new Float32Array(count * 3), Nn = new Float32Array(count * 3), Cc = new Float32Array(count * 3);
+  let o = 0;
+  for (const x of all) { const n = x.attributes.position.count; Pp.set(x.attributes.position.array, o * 3); Nn.set(x.attributes.normal.array, o * 3); Cc.set(x.attributes.color.array, o * 3); o += n; }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(Pp, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(Nn, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(Cc, 3));
+  return out;
+}
+/* Goupille fendue (deux demi-fils, œil du côté −x, branches écartées du côté +x) dans son repère :
+   origine au centre de l'œil, x le long de la goupille (vers la fusée). spread : écart des branches
+   (1 : recourbées, 0 : droites, quand elles passent dans la fusée). */
+function nadePinGeo(spread = 1) {
+  const p = NADE_PIN, parts = [], w = p.wire * NADE_MM;
+  const L = p.x1 - p.eye, l0 = p.x0 - p.eye;               // longueur droite depuis l'œil
+  for (const s of [-1, 1]) {
+    const leg = new THREE.CylinderGeometry(w, w, (L - l0) * NADE_MM, 8);
+    leg.rotateZ(-Math.PI / 2);
+    parts.push({ geo: leg, matrix: new THREE.Matrix4().makeTranslation(((l0 + L) / 2) * NADE_MM, s * w * 0.95, 0) });
+    // branche recourbée au bout
+    const a = Math.atan2(p.spread * spread, p.leg);
+    const tip = new THREE.CylinderGeometry(w, w * 0.8, Math.hypot(p.leg, p.spread * spread) * NADE_MM, 8);
+    tip.rotateZ(-Math.PI / 2);
+    const m = new THREE.Matrix4().makeRotationZ(s * a);
+    m.setPosition((L + p.leg / 2) * NADE_MM, s * (w * 0.95 + Math.sin(a) * Math.hypot(p.leg, p.spread * spread) / 2 * NADE_MM), 0);
+    parts.push({ geo: tip, matrix: m });
+  }
+  // œil : boucle dans le plan (x, y), traversée par l'anneau le long de z
+  const eye = new THREE.TorusGeometry(p.eyeR * NADE_MM, w * 1.05, 6, 14);
+  parts.push({ geo: eye, matrix: new THREE.Matrix4() });
+  const neck = new THREE.CylinderGeometry(w * 1.6, w * 1.6, (l0 - p.eyeR) * NADE_MM, 8);
+  neck.rotateZ(-Math.PI / 2);
+  parts.push({ geo: neck, matrix: new THREE.Matrix4().makeTranslation(((l0 + p.eyeR) / 2) * NADE_MM, 0, 0) });
+  return mergeGeometries(parts);
+}
+/* Anneau dans son repère : centre à l'origine, dans le plan (x, y) ; il passe dans l'œil en (+R, 0, 0). */
+function nadeRingGeo() {
+  return new THREE.TorusGeometry(NADE_RING.R * NADE_MM, NADE_RING.r * NADE_MM, 8, 30);
+}
+/* Matières : fonte peinte (couleurs des sommets), zinc de la fusée, acier de la goupille. */
+function nadeMats() {
+  if (GK.nade) return GK.nade;
+  gunBaseMats();
+  const env = GK.env;
+  const std = (o) => linearize(share(new THREE.MeshStandardMaterial(Object.assign({ envMap: env, envMapIntensity: 0.6 }, o))));
+  GK.nade = {
+    body: std({ vertexColors: true, roughness: 0.7, metalness: 0.18, envMapIntensity: 0.35 }),
+    fuze: std({ color: 0x8b8c84, roughness: 0.46, metalness: 0.62 }),
+    lever: std({ vertexColors: true, roughness: 0.55, metalness: 0.3, envMapIntensity: 0.45 }),
+    steel: std({ color: 0xa3a19a, roughness: 0.28, metalness: 0.88 }),
+  };
+  return GK.nade;
+}
+const NADE_GEO = {};
+function nadeGeometries() {
+  if (NADE_GEO.fuze) return NADE_GEO;
+  NADE_GEO.body = { hi: share(nadeBodyGeo('hi')), mid: share(nadeBodyGeo('mid')), lo: share(nadeBodyGeo('lo')) };
+  NADE_GEO.fuze = share(nadeFuzeGeo());
+  NADE_GEO.lever = share(nadeLeverGeo());
+  NADE_GEO.pin = share(nadePinGeo(1));
+  NADE_GEO.pinStraight = share(nadePinGeo(0));
+  NADE_GEO.ring = share(nadeRingGeo());
+  return NADE_GEO;
+}
+/* Repère de la goupille dans la fusée : œil au repos, goupille enfoncée (s = 0) ; s : course vers −x ;
+   roll : rotation sur elle-même (torsion de l'anneau). */
+const NADE_EYE = new THREE.Vector3(NADE_PIN.eye * NADE_MM, (NADE_PIN.y - NADE_Y0) * NADE_MM, NADE_PIN.z * NADE_MM);
+function nadePinPose(s, roll, outM) {
+  return outM.makeRotationX(roll).setPosition(NADE_EYE.x - s, NADE_EYE.y, NADE_EYE.z);
+}
+/* Anneau accroché à l'œil : bascule g autour de l'axe du trou de l'œil (z de la goupille) ; 0 : pendu
+   vers le bas, π/2 : tendu vers −x (tiré). Repère de l'anneau : centre, plan (x, y), œil en +x. */
+function nadeRingInPin(g, outM) {
+  // centre de l'anneau : sous l'œil (g = 0) ou du côté −x (g = π/2) ; +x de l'anneau vers l'œil
+  const R = (NADE_RING.R) * NADE_MM;
+  const dx = -Math.sin(g), dy = -Math.cos(g);
+  // repère : x vers l'œil (−d), z = axe du trou de l'œil (z de la goupille), y = z × x
+  const ex = new THREE.Vector3(-dx, -dy, 0), ez = new THREE.Vector3(0, 0, 1), ey = new THREE.Vector3().crossVectors(ez, ex);
+  // l'anneau traverse l'œil : son plan contient z ; il tourne donc d'un quart de tour (plan (x, z))
+  outM.makeBasis(ex, ez.clone().negate(), ey);
+  outM.setPosition(dx * R, dy * R, 0);
+  return outM;
+}
+/* Grenade complète : corps, fusée, cuillère, goupille et anneau (pièces nommées). detail : 'hi'
+   (en main), 'mid' (sur le torse), 'lo' (lancée). */
+function buildNade(detail = 'hi') {
+  const G = nadeGeometries(), Mt = nadeMats();
+  const root = new THREE.Group();
+  const body = new THREE.Mesh(G.body[detail] || G.body.hi, Mt.body);
+  const fuze = new THREE.Mesh(G.fuze, Mt.fuze);
+  const lever = new THREE.Mesh(G.lever, Mt.lever);
+  const pin = new THREE.Group(), pinMesh = new THREE.Mesh(G.pin, Mt.steel);
+  pin.add(pinMesh);
+  const ring = new THREE.Mesh(G.ring, Mt.steel);
+  pin.add(ring);
+  root.add(body, fuze, lever, pin);
+  root.userData = { parts: { body, fuze, lever, pin, pinMesh, ring }, s: 0, roll: 0, swing: NADE_RING.rest };
+  nadeSetPin(root, 0, 0, NADE_RING.rest);
+  return root;
+}
+const _nadeM = new THREE.Matrix4(), _nadeM2 = new THREE.Matrix4();
+/* Place la goupille (course s, torsion roll) et l'anneau (bascule swing) d'une grenade. */
+function nadeSetPin(root, s, roll, swing) {
+  const P = root.userData.parts;
+  nadePinPose(s, roll, _nadeM);
+  _nadeM.decompose(P.pin.position, P.pin.quaternion, P.pin.scale);
+  nadeRingInPin(swing, _nadeM2);
+  _nadeM2.decompose(P.ring.position, P.ring.quaternion, P.ring.scale);
+  // branches de la goupille : droites dans la fusée et pendant qu'elles en sortent
+  const straight = s > 0.0005;
+  P.pinMesh.geometry = straight ? nadeGeometries().pinStraight : nadeGeometries().pin;
+  root.userData.s = s; root.userData.roll = roll; root.userData.swing = swing;
+}
+
+/* Torse du joueur (vu en baissant la tête pour prendre une grenade) : veste de treillis HBT vert
+   olive (même étoffe que les manches), patte de boutonnage et boutons, deux poches de poitrine à
+   rabat. Les grenades sont accrochées par leur cuillère au rabat des poches, comme une pince de
+   stylo : le rabat passe entre la cuillère et le corps de la grenade, qui pend devant, fusée en
+   haut (deux par poche, autant que de grenades restantes ; la main droite prend d'abord celles de
+   droite, l'extérieure en premier). Pour la décrocher, on la tire vers la fusée : le rabat sort de
+   la cuillère. Repère
+   du corps : origine à l'œil, x à droite, y en haut, z vers l'arrière (le joueur regarde vers −z).
+   Un vrai torse est presque sous les yeux : on ne voit ses poches qu'en baissant la tête de 70 à 80°.
+   Ici le haut de la poitrine descend en pente vers l'avant (bombée, face vers le haut) et les poches
+   sont sur cette pente : en baissant la tête d'environ 40°, on voit les grenades couchées contre la
+   poitrine, comme quand on rentre le menton. */
+const CHEST = {
+  // profil de la poitrine (hauteur sous l'œil, avancée), puis courbure de côté
+  prof: [[-0.04, 0.0], [-0.08, -0.008], [-0.11, -0.026], [-0.14, -0.068], [-0.17, -0.113], [-0.2, -0.15], [-0.24, -0.18],
+    [-0.28, -0.195], [-0.34, -0.2], [-0.44, -0.195], [-0.58, -0.188], [-0.8, -0.182]],
+  kx: 1.55,
+  pocket: { x0: 0.034, x1: 0.176, y0: -0.145, y1: -0.28 },        // poche droite (la gauche en miroir)
+  flap: { x0: 0.03, x1: 0.18, y0: -0.135, y1: -0.185 },
+  // grenades : place sur le rabat et légère inclinaison (rad), dans l'ordre où la main droite les
+  // prend (la dernière d'abord) ; hauteur de la couture du rabat
+  slots: [[-0.138, 0.16], [0.138, -0.14], [-0.072, -0.07], [0.072, 0.09]], seam: -0.137,
+};
+function chestZ(x, y) {
+  const P = CHEST.prof;
+  let z = P[P.length - 1][1];
+  if (y >= P[0][0]) z = P[0][1];
+  else for (let i = 0; i < P.length - 1; i++) {
+    if (y <= P[i][0] && y >= P[i + 1][0]) { const t = (y - P[i][0]) / (P[i + 1][0] - P[i][0]), s = t * t * (3 - 2 * t); z = P[i][1] + (P[i + 1][1] - P[i][1]) * s; break; }
+  }
+  return z + CHEST.kx * x * x;
+}
+/* Normale de la poitrine vers l'extérieur (vers l'avant et le haut sur la pente). */
+function chestN(x, y, out = new THREE.Vector3()) {
+  const e = 0.002, dx = (chestZ(x + e, y) - chestZ(x - e, y)) / (2 * e), dy = (chestZ(x, y + e) - chestZ(x, y - e)) / (2 * e);
+  return out.set(dx, dy, -1).normalize();
+}
+/* Point de la poitrine avancé de o le long de sa normale. */
+function chestAt(x, y, o = 0, out = new THREE.Vector3()) {
+  chestN(x, y, out);
+  return out.multiplyScalar(o).add(_chestP.set(x, y, chestZ(x, y)));
+}
+const _chestP = new THREE.Vector3();
+/* Pièce d'étoffe qui suit la poitrine, avancée de off (le long de la normale), avec ses chants. */
+function chestPatch(x0, x1, y0, y1, off, nx, ny, col, edgeCol, M = null) {
+  const P = [], C = [], U = [], I = [];
+  const _v = new THREE.Vector3();
+  const at = (x, y, o) => chestAt(x, y, o, _v).toArray();
+  const grid = [];
+  for (let j = 0; j <= ny; j++) {
+    const row = [];
+    for (let i = 0; i <= nx; i++) {
+      const x = x0 + (x1 - x0) * i / nx, y = y0 + (y1 - y0) * j / ny;
+      const e = Math.min(i, nx - i, j, ny - j) === 0;
+      P.push(...at(x, y, off)); U.push(x * 5, y * 5);
+      C.push(...(e && edgeCol ? edgeCol : col));
+      row.push(P.length / 3 - 1);
+    }
+    grid.push(row);
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const a = grid[j][i], b = grid[j][i + 1], c = grid[j + 1][i + 1], d = grid[j + 1][i];
+    I.push(a, c, d, a, b, c);                         // face vers −z (vers le joueur qui regarde)
+  }
+  // chants (épaisseur de l'étoffe) le long des quatre bords
+  const wall = (pts) => {
+    for (let k = 0; k < pts.length - 1; k++) {
+      const [xa, ya] = pts[k], [xb, yb] = pts[k + 1], n0 = P.length / 3;
+      P.push(...at(xa, ya, off), ...at(xb, yb, off), ...at(xb, yb, 0), ...at(xa, ya, 0));
+      for (let q = 0; q < 4; q++) { C.push(...(edgeCol || col)); U.push(0, 0); }
+      I.push(n0, n0 + 2, n0 + 1, n0, n0 + 3, n0 + 2);
+    }
+  };
+  const run = (xa, ya, xb, yb, n) => { const pts = []; for (let k = 0; k <= n; k++) pts.push([xa + (xb - xa) * k / n, ya + (yb - ya) * k / n]); return pts; };
+  wall(run(x0, y0, x1, y0, nx)); wall(run(x1, y0, x1, y1, ny)); wall(run(x1, y1, x0, y1, nx)); wall(run(x0, y1, x0, y0, ny));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  g.setIndex(I);
+  const out = g.toNonIndexed();
+  out.computeVertexNormals();
+  if (M) out.applyMatrix4(M);
+  return out;
+}
+function chestMats() {
+  if (GK.chest) return GK.chest;
+  GK.chest = {
+    cloth: linearize(share(new THREE.MeshStandardMaterial({ color: 0x4f5638, map: TEX.cloth, vertexColors: true, roughness: 0.95 }))),
+    button: linearize(share(new THREE.MeshStandardMaterial({ color: 0x2b2b24, roughness: 0.45, metalness: 0.35 }))),
+
+  };
+  return GK.chest;
+}
+const CHEST_GEO = {};
+function chestGeometries() {
+  if (CHEST_GEO.cloth) return CHEST_GEO;
+  const lin = (h, k = 1) => { const c = new THREE.Color(h).convertSRGBToLinear(); return [c.r * k, c.g * k, c.b * k]; };
+  const W = lin(0xffffff), SEAM = lin(0xb8b8a8), SH = lin(0xd8d8cc);
+  const parts = [];
+  // veste : grille sur la poitrine, plis verticaux et côtés plus sombres
+  {
+    const nx = 36, ny = 30, x0 = -0.25, x1 = 0.25, y0 = -0.03, y1 = -0.5, P = [], C = [], U = [], I = [];
+    for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+      const x = x0 + (x1 - x0) * i / nx, y = y0 + (y1 - y0) * j / ny;
+      const fold = 0.0025 * Math.sin(x * 70 + Math.sin(y * 9) * 1.6) * (0.4 + 0.6 * nadeHash(i, 2, 9));
+      P.push(x, y, chestZ(x, y) + fold); U.push(x * 5, y * 5);
+      const k = 1 - 0.32 * Math.min(1, Math.abs(x) / 0.25) ** 2 - 0.08 * nadeHash(i, j, 4);
+      C.push(k, k, k);
+    }
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 2, d = a + nx + 1;
+      I.push(a, c, d, a, b, c);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    g.setIndex(I);
+    g.computeVertexNormals();
+    parts.push(g.toNonIndexed());
+  }
+  // patte de boutonnage
+  parts.push(chestPatch(-0.017, 0.019, -0.05, -0.5, 0.0032, 4, 24, SH, SEAM));
+  // poches, plis creux et rabats (droite, puis gauche en miroir)
+  for (const s of [1, -1]) {
+    const Pk = CHEST.pocket, F = CHEST.flap;
+    const X = (x) => (s > 0 ? x : -x);
+    const xa = Math.min(X(Pk.x0), X(Pk.x1)), xb = Math.max(X(Pk.x0), X(Pk.x1));
+    parts.push(chestPatch(xa, xb, Pk.y0, Pk.y1, 0.0028, 12, 14, W, SEAM));
+    const xm = (xa + xb) / 2;
+    parts.push(chestPatch(xm - 0.011, xm + 0.011, Pk.y0 - 0.004, Pk.y1 + 0.003, 0.0042, 2, 12, SH, SEAM));
+    const fa = Math.min(X(F.x0), X(F.x1)), fb = Math.max(X(F.x0), X(F.x1));
+    parts.push(chestPatch(fa, fb, F.y0, F.y1, 0.0058, 12, 5, SH, SEAM));
+  }
+
+  const all = parts.map((g) => { if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2)); return g; });
+  let count = 0;
+  for (const x of all) count += x.attributes.position.count;
+  const P = new Float32Array(count * 3), N = new Float32Array(count * 3), Cc = new Float32Array(count * 3), U = new Float32Array(count * 2);
+  let o = 0;
+  for (const x of all) { const n = x.attributes.position.count; P.set(x.attributes.position.array, o * 3); N.set(x.attributes.normal.array, o * 3); Cc.set(x.attributes.color.array, o * 3); U.set(x.attributes.uv.array, o * 2); o += n; }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(Cc, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+  CHEST_GEO.cloth = share(out);
+
+  // boutons : patte (5) et rabats (1 chacun)
+  const btn = [];
+  const bgeo = new THREE.CylinderGeometry(0.0072, 0.0076, 0.0028, 16);
+  bgeo.rotateX(Math.PI / 2);
+  const place = (x, y, o) => {
+    const n = chestN(x, y), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), n);
+    return new THREE.Matrix4().compose(chestAt(x, y, o), q, new THREE.Vector3(1, 1, 1));
+  };
+  for (const y of [-0.095, -0.17, -0.25, -0.34, -0.43]) btn.push({ geo: bgeo, matrix: place(0.001, y, 0.0062) });
+  for (const s of [1, -1]) btn.push({ geo: bgeo, matrix: place(s * 0.105, -0.176, 0.0085) });
+  CHEST_GEO.buttons = share(mergeGeometries(btn));
+  return CHEST_GEO;
+}
+/* Place d'une grenade accrochée (repère du corps) : couchée contre la pente de la poitrine, fusée
+   vers le haut de la pente (un peu de travers), cuillère contre la poche sous le rabat ; la couture
+   du rabat arrive au haut de l'écart entre cuillère et corps (93 mm de haut). */
+function chestSlotPose(i, outP, outQ) {
+  const [x, tilt] = CHEST.slots[i], ys = CHEST.seam;
+  // repère : y le long de la pente (vers le haut), z vers l'intérieur du corps, tourné de tilt
+  const n = chestN(x, ys - 0.03, _chestV);
+  const zg = _chestZ.copy(n).negate();
+  const up = _chestY.set(0, 1, 0).addScaledVector(zg, -zg.y).normalize().applyAxisAngle(zg, tilt);
+  const xg = _chestX.crossVectors(up, zg).normalize();
+  _chestM.makeBasis(xg, up, zg);
+  outQ.setFromRotationMatrix(_chestM);
+  // point de la poche sous la couture, puis centre de la grenade : 48,5 mm plus bas le long de la
+  // grenade, 33,4 mm devant (dos de la cuillère contre la poche)
+  chestAt(x, ys, 0.0028, outP);
+  outP.addScaledVector(up, -0.0485).addScaledVector(zg, -0.0334);
+  return outP;
+}
+const _chestY = new THREE.Vector3(), _chestV = new THREE.Vector3(), _chestZ = new THREE.Vector3(), _chestX = new THREE.Vector3(), _chestM = new THREE.Matrix4();
+/* Torse : veste, boutons et quatre grenades accrochées (montrées selon le nombre restant). */
+function buildChest() {
+  const G = chestGeometries(), M = chestMats();
+  const root = new THREE.Group();
+  root.add(new THREE.Mesh(G.cloth, M.cloth), new THREE.Mesh(G.buttons, M.button));
+  const nades = CHEST.slots.map((_, i) => {
+    const n = buildNade('mid');
+    chestSlotPose(i, n.position, n.quaternion);
+    root.add(n);
+    return n;
+  });
+  root.userData.nades = nades;
+  root.visible = false;
+  return root;
+}
+
 /* ================================================================= 06 EFFETS ==
    Particules (sang, étincelles, terre), impacts, débris, traçantes,
    explosions et projectiles (roquettes, plasma).
@@ -15512,13 +16143,124 @@ function updateProjectiles(dt) {
   }
 }
 
-function throwGrenade(ox, oy, oz, dx, dy, dz, pvx, pvz) {
-  const m = new THREE.Mesh(GEO.sph, MAT.gunMetal2);
-  m.scale.set(0.045, 0.06, 0.045);
-  m.position.set(ox, oy, oz);
-  scene.add(m);
-  FX.grenades.push({ m, x: ox, y: oy, z: oz, vx: dx * 13 + pvx * 0.5, vy: dy * 13 + 3.2, vz: dz * 13 + pvz * 0.5, fuse: 2.3, light: 0 });
+/* Grenade lancée : corps et fusée (la cuillère est partie au lâcher), elle tourne sur elle-même en
+   l'air (un lancer par-dessus l'épaule la fait basculer vers l'avant), rebondit, roule et finit
+   couchée sur le flanc. */
+const NADE_THROWN = { geo: null };
+function buildNadeThrown() {
+  const G = nadeGeometries(), M = nadeMats();
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(G.body.lo, M.body), new THREE.Mesh(G.fuze, M.fuze));
+  return g;
 }
+function throwGrenade(ox, oy, oz, dx, dy, dz, pvx, pvz, q = null, speed = 13, up = 3.2) {
+  const m = buildNadeThrown();
+  m.position.set(ox, oy, oz);
+  if (q) m.quaternion.copy(q);
+  scene.add(m);
+  // rotation : autour de l'axe à droite du lanceur (bascule vers l'avant), un peu de vrille
+  cameraBasis();
+  const r = _right.clone(), spin = speed > 2 ? rand(9, 13) : rand(1, 3);
+  FX.grenades.push({ m, x: ox, y: oy, z: oz, vx: dx * speed + pvx * 0.5, vy: dy * speed + up, vz: dz * speed + pvz * 0.5, fuse: NADE_FUSE, light: 0,
+    w: r.multiplyScalar(-spin).add(new THREE.Vector3(rand(-1.5, 1.5), rand(-2, 2), rand(-1.5, 1.5))) });
+}
+const _ngQ = new THREE.Quaternion(), _ngA = new THREE.Vector3(), _ngU = new THREE.Vector3(0, 1, 0), _ngY = new THREE.Vector3();
+/* Grenade au sol, presque arrêtée : elle se couche sur le flanc (axe horizontal). */
+function nadeSettle(m, dt, k) {
+  _ngY.set(0, 1, 0).applyQuaternion(m.quaternion);
+  const side = _ngA.copy(_ngY).setY(0);
+  if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+  side.normalize();
+  _ngQ.setFromUnitVectors(_ngY, side).multiply(m.quaternion);
+  m.quaternion.slerp(_ngQ, Math.min(1, dt * k));
+}
+/* Cuillère et goupille tombées au sol (monde) ; goupille encore au doigt de la main gauche (vue). */
+const NadeBits = {
+  list: [], max: 20, held: null, geo: null,
+  init() {
+    const G = nadeGeometries(), M = nadeMats();
+    // cuillère recentrée sur son milieu (elle tourne autour) ; goupille et anneau à plat
+    if (!this.geo) {
+      const lever = G.lever.clone();
+      lever.computeBoundingBox();
+      const c = lever.boundingBox.getCenter(new THREE.Vector3());
+      lever.translate(-c.x, -c.y, -c.z);
+      this.geo = { lever: share(lever), leverC: c };
+    }
+    const g = this.pinGroup();
+    g.visible = false;
+    Arms.root.add(g);
+    this.held = g;
+  },
+  pinGroup() {
+    const G = nadeGeometries(), M = nadeMats();
+    const g = new THREE.Group(), pin = new THREE.Mesh(G.pinStraight, M.steel), ring = new THREE.Mesh(G.ring, M.steel);
+    nadeRingInPin(Math.PI / 2, _nM2);
+    _nM2.decompose(ring.position, ring.quaternion, _nv3);
+    g.add(pin, ring);
+    return g;
+  },
+  /* Goupille au doigt (repère de l'anneau dans la vue), ou null pour la cacher. */
+  heldPin(ring) {
+    if (!this.held) return;
+    if (!ring) { this.held.visible = false; return; }
+    nadeRingInPin(Math.PI / 2, _nM2);
+    _nM3.compose(ring.p, ring.q, _nS).multiply(_nM2.invert());
+    _nM3.decompose(this.held.position, this.held.quaternion, _nv3);
+    this.held.visible = true;
+  },
+  /* type : 'lever' (pose de la grenade) ou 'pin' (pose de la goupille : repère de l'anneau donné). */
+  spawn(type, pos, q, vx, vy, vz, w) {
+    if (!this.geo) return;
+    let m;
+    if (type === 'lever') {
+      m = new THREE.Mesh(this.geo.lever, nadeMats().lever);
+      m.quaternion.copy(q);
+      m.position.copy(this.geo.leverC).applyQuaternion(q).add(pos);
+    } else {
+      m = this.pinGroup();
+      // q : repère de l'anneau ; la goupille s'en déduit
+      nadeRingInPin(Math.PI / 2, _nM2);
+      _nM3.compose(pos, q, _nS).multiply(_nM2.invert());
+      _nM3.decompose(m.position, m.quaternion, _nv3);
+    }
+    scene.add(m);
+    this.list.push({ m, type, v: new THREE.Vector3(vx, vy, vz), w: new THREE.Vector3(...w), life: 45, rest: false, tink: 0 });
+    while (this.list.length > this.max) { const o = this.list.shift(); scene.remove(o.m); }
+  },
+  update(dt) {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const b = this.list[i], m = b.m;
+      b.life -= dt;
+      if (b.life <= 0) { scene.remove(m); this.list.splice(i, 1); continue; }
+      if (b.life < 1) m.scale.setScalar(Math.max(0.01, b.life));
+      if (b.rest) continue;
+      b.v.y -= 9.8 * dt;
+      b.v.multiplyScalar(1 - 0.4 * dt);
+      let nx = m.position.x + b.v.x * dt, nz = m.position.z + b.v.z * dt;
+      if (debrisHit(nx, m.position.y, m.position.z, m.position.x, m.position.z)) { b.v.x *= -0.35; nx = m.position.x; }
+      if (debrisHit(m.position.x, m.position.y, nz, m.position.x, m.position.z)) { b.v.z *= -0.35; nz = m.position.z; }
+      m.position.x = nx; m.position.z = nz; m.position.y += b.v.y * dt;
+      const wl = b.w.length();
+      if (wl > 1e-4) { _ngQ.setFromAxisAngle(_ngA.copy(b.w).divideScalar(wl), wl * dt); m.quaternion.premultiply(_ngQ); }
+      const fy = (NL > 1 ? floorBelow(m.position.x, m.position.z, m.position.y + 0.3) : 0) + (b.type === 'lever' ? 0.004 : 0.003);
+      if (m.position.y < fy) {
+        m.position.y = fy;
+        if (b.v.y < -1.2 && b.tink < 3) { b.tink++; Sound.nade('tink', { x: m.position.x, y: m.position.y, z: m.position.z }, Math.min(1, -b.v.y / 5)); }
+        b.v.y = Math.abs(b.v.y) * 0.28; b.v.x *= 0.55; b.v.z *= 0.55; b.w.multiplyScalar(0.45);
+        if (Math.hypot(b.v.x, b.v.y, b.v.z) < 0.35) {
+          // couchée à plat : l'axe mince vers le haut (cuillère : z ; goupille et anneau : y)
+          _ngY.set(0, b.type === 'lever' ? 0 : 1, b.type === 'lever' ? 1 : 0).applyQuaternion(m.quaternion);
+          const up = _ngY.y >= 0 ? _ngU : _ngA.set(0, -1, 0);
+          _ngQ.setFromUnitVectors(_ngY, up);
+          m.quaternion.premultiply(_ngQ);
+          b.rest = true;
+        }
+      }
+    }
+  },
+  clear() { for (const b of this.list) scene.remove(b.m); this.list.length = 0; if (this.held) this.held.visible = false; },
+};
 function updateGrenades(dt) {
   for (let i = FX.grenades.length - 1; i >= 0; i--) {
     const g = FX.grenades[i];
@@ -15531,6 +16273,7 @@ function updateGrenades(dt) {
     }
     g.vy -= 14 * dt;
     const sp = Math.hypot(g.vx, g.vy, g.vz);
+    let onFloor = false;
     if (sp > 0.01) {
       const step = sp * dt;
       raycast(g.x, g.y, g.z, g.vx / sp, g.vy / sp, g.vz / sp, step + 0.05);
@@ -15539,13 +16282,21 @@ function updateGrenades(dt) {
         const dot = g.vx * RAY.nx + g.vy * RAY.ny + g.vz * RAY.nz;
         g.vx -= 2 * dot * RAY.nx; g.vy -= 2 * dot * RAY.ny; g.vz -= 2 * dot * RAY.nz;
         g.vx *= 0.45; g.vy *= 0.35; g.vz *= 0.45;
+        g.w.multiplyScalar(0.5);
         if (sp > 2) Sound.grenadeBounce({ x: g.x, y: g.y, z: g.z });
       } else { g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt; }
     }
     const gf = NL > 1 ? floorBelow(g.x, g.z, g.y + 0.3) : 0;
-    if (g.y < gf + 0.05) { g.y = gf + 0.05; g.vy = Math.abs(g.vy) * 0.3; g.vx *= 0.7; g.vz *= 0.7; }
+    if (g.y < gf + 0.031) {
+      g.y = gf + 0.031; g.vy = Math.abs(g.vy) * 0.3; g.vx *= 0.7; g.vz *= 0.7; onFloor = true;
+      // elle roule sur ses plots : rotation liée à la vitesse au sol, puis elle se couche
+      _ngA.set(g.vz, 0, -g.vx).multiplyScalar(1 / 0.029);
+      g.w.lerp(_ngA, 0.5);
+    }
     g.m.position.set(g.x, g.y, g.z);
-    g.m.rotation.x += dt * 8; g.m.rotation.z += dt * 5;
+    const wl = g.w.length();
+    if (wl > 1e-4) { _ngQ.setFromAxisAngle(_ngA.copy(g.w).divideScalar(wl), wl * dt); g.m.quaternion.premultiply(_ngQ); }
+    if (onFloor && Math.hypot(g.vx, g.vz) < 1.2) nadeSettle(g.m, dt, 8);
     g.light -= dt;
     if (g.light <= 0) { g.light = 0.5; FX.sparks.emit(g.x, g.y + 0.06, g.z, 0, 0.2, 0, 0.15, 1, 0.2, 0.1); }
   }
@@ -15557,6 +16308,7 @@ function updateFX(dt) {
   updateBottles(dt);
   updateDogFX(dt);
   updateGlass(dt);
+  NadeBits.update(dt);
   for (const d of FX.debris) {
     if (d.life <= 0) continue;
     d.life -= dt;
@@ -15627,6 +16379,7 @@ function clearFX() {
   for (const L of FX.limbs) { L.life = 0; L.group.visible = false; }
   for (const p of FX.sprites) { p.life = 0; p.s.visible = false; }
   clearGlass();
+  NadeBits.clear();
   if (FX.dogBolts) for (const b of FX.dogBolts) { b.life = 0; b.g.visible = false; }
 }
 
@@ -15860,7 +16613,7 @@ const Arms = {
   slots: [null, null], cur: 0,
   state: 'idle', t: 0, dur: 0, nextFire: 0, autoReloadAt: -1, pending: -1,
   bloom: 0, kick: 0, kickRot: 0, swayX: 0, swayY: 0, sprintK: 0, cycleT: 0,
-  knifeDone: false, throwDone: false, drinkId: null, ev: 0, headTilt: 0, capV: null, capW: [0, 0, 0], capT: 0,
+  knifeDone: false, throwDone: false, drinkId: null, ev: 0, headTilt: 0, capV: null, capW: [0, 0, 0], capT: 0, nd: null,
   root: null, holder: null, gun: null, models: {}, flash: null, flashT: 0,
 };
 const _dir = new THREE.Vector3(), _mw = new THREE.Vector3(), _tmp = new THREE.Vector3(), _tmp2 = new THREE.Vector3();
@@ -16086,9 +16839,9 @@ function buildViewmodel() {
   Arms.cap = new THREE.Mesh(bottleGeometries().cap, MAT.bottleCap);
   Arms.cap.visible = false;
   Arms.capV = new THREE.Vector3();
-  // grenade
-  Arms.nade = new THREE.Mesh(GEO.sph, MAT.gunMetal2); Arms.nade.scale.set(0.04, 0.055, 0.04); Arms.nade.visible = false;
-  Arms.root.add(Arms.knife, Arms.bottle, Arms.cap, Arms.nade);
+  Arms.root.add(Arms.knife, Arms.bottle, Arms.cap);
+  // grenade Mk 2 en main et torse (lancer animé)
+  buildNadeView();
   Arms.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare, color: 0xffd9a0, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   Arms.flash.visible = false;
   vmScene.add(Arms.flash);
@@ -16645,6 +17398,599 @@ function heldTarget(gun, h, outP, outQ) {
   outP.copy(h.p).applyMatrix4(gun.matrixWorld);
   outQ.copy(_vmGQ).multiply(h.q);
 }
+
+/* Prises de la grenade (calculées une fois, repère de la grenade) :
+   · main droite : prise réglementaire (manuel FM 23-30) — paume sur le flanc droit, doigts
+     enroulés devant, pouce en travers de la cuillère (entre ses deux premières phalanges), anneau
+     du côté opposé à la paume, libre pour l'autre main ;
+   · main gauche : index passé dans l'anneau, replié en crochet (repère de l'anneau). */
+const NADE_HOLD = {
+  // main droite : centre tenu, direction des doigts, du pouce, distance du poignet à l'axe
+  R: { c: [0, -0.004, 0], f: [0.05, -0.12, -1], t: [0.3, 1, 0.6], along: 0.056, r: 0.029, pose: 'nade', thumbAt: [-0.006, 0.02, 0.03] },
+};
+HAND_POSES.nade = { f: [[0.55, 0.85, 0.5], [0.6, 0.9, 0.52], [0.62, 0.9, 0.52], [0.66, 0.88, 0.5]], s: [-0.05, 0, 0.04, 0.1], t: [0.65, 0.25, 0.3, 0.2] };
+// index en crochet dans l'anneau, les autres doigts repliés sans serrer
+HAND_POSES.ringHook = { f: [[0.35, 1.45, 0.75], [1.3, 1.5, 0.85], [1.35, 1.5, 0.85], [1.4, 1.45, 0.8]], s: [0, 0.02, -0.01, -0.03], t: [0.35, 0.5, 0.45, 0.35] };
+// index tendu qui entre dans l'anneau
+HAND_POSES.ringPoint = { f: [[0.12, 0.25, 0.15], [1.25, 1.45, 0.82], [1.3, 1.45, 0.82], [1.35, 1.4, 0.78]], s: [0, 0.02, -0.01, -0.03], t: [0.35, 0.45, 0.4, 0.3] };
+// pince pouce-index (enfoncer la goupille)
+HAND_POSES.pinPush = { f: [[0.6, 0.75, 0.35], [1.1, 1.35, 0.75], [1.15, 1.38, 0.75], [1.2, 1.32, 0.7]], s: [0, 0, -0.02, -0.04], t: [1.0, 0.4, 0.3, 0.25] };
+let _nadeHoldR = null;
+function nadeGripR() {
+  if (_nadeHoldR) return _nadeHoldR;
+  const H = NADE_HOLD.R, V = (a) => new THREE.Vector3(...a);
+  const nade = buildNade('hi');
+  nade.updateMatrixWorld(true);
+  const T = new Float32Array(objTris(nade, []));
+  const h = handWrap(V(H.c), V(H.f), V(H.t), false, H.r, H.along, H.pose);
+  const fit = fitHold(T, h, false, { thumbAt: V(H.thumbAt) });
+  _nadeHoldR = { p: fit.p, q: fit.q, pose: fit.pose, fit: { gap: fit.gap, miss: fit.miss, push: fit.push, palm: fit.palm } };
+  return _nadeHoldR;
+}
+/* Main gauche dans l'anneau : pose du poignet dans le repère de l'anneau (centre, plan (x, y), œil
+   en +x). L'index replié passe dans l'anneau près du bord opposé à l'œil ; la traction se fait vers
+   −x (en s'éloignant de la goupille). Calculé depuis les os de la main posée. */
+let _nadeHoldL = null;
+function nadeGripL(poseName = 'ringHook') {
+  if (_nadeHoldL && _nadeHoldL[poseName]) return _nadeHoldL[poseName];
+  _nadeHoldL = _nadeHoldL || {};
+  const hand = _fitHands.L || (_fitHands.L = buildHand(true));
+  hand.wrist.position.set(0, 0, 0); hand.wrist.quaternion.identity();
+  setHandPose(hand, HAND_POSES[poseName]);
+  hand.wrist.updateMatrixWorld(true);
+  const [b1, b2] = hand.fingers[0], F = HAND.fingers[0];
+  const pip = b2.getWorldPosition(new THREE.Vector3());
+  const d1 = new THREE.Vector3(0, 0, -1).transformDirection(b1.matrixWorld);          // phalange de base
+  const d2 = new THREE.Vector3(0, 0, -1).transformDirection(b2.matrixWorld);          // phalange du milieu
+  const palmar = new THREE.Vector3(0, -1, 0).transformDirection(b1.matrixWorld);      // côté pulpe de la base
+  // plan de l'anneau : perpendiculaire à la phalange du milieu ; direction de l'œil : le long de la
+  // phalange de base (vers le bout du doigt tendu), dans ce plan
+  const n = d2.clone().negate().normalize();
+  const u = d1.clone().addScaledVector(n, -d1.dot(n)).normalize();
+  // le fil de l'anneau appuie dans le pli de l'index (côté pulpe, à l'articulation du milieu)
+  const contact = pip.clone().addScaledVector(palmar, F.r[1] * 0.55).addScaledVector(d2, F.r[1] * 0.9);
+  const center = contact.clone().addScaledVector(u, NADE_RING.R * NADE_MM - NADE_RING.r * NADE_MM * 0.5);
+  // repère de l'anneau dans celui du poignet : x = u (vers l'œil), z = n, y = z × x
+  const ey = new THREE.Vector3().crossVectors(n, u);
+  const Mr = new THREE.Matrix4().makeBasis(u, ey, n).setPosition(center);
+  // poignet dans le repère de l'anneau
+  const Mw = Mr.clone().invert();
+  const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  Mw.decompose(p, q, sc);
+  return (_nadeHoldL[poseName] = { p, q, pose: HAND_POSES[poseName] });
+}
+
+/* ------------------------------------------- Lancer de grenade (jeu 1.9.0) ---
+   Demande d'Anthony (8 octobre 2026) : voir clairement le joueur prendre la grenade sur son torse,
+   la dégoupiller et la lancer ; s'il annule, il la reprend bien en main, remet la goupille et la
+   raccroche sur son torse ; le plus réaliste possible. Prise et gestes d'après le manuel américain
+   FM 23-30 : grenade droite dans la main qui lance, cuillère sous le pouce, anneau tiré par l'index
+   de l'autre main en tournant ; la cuillère reste serrée tant que la grenade est en main (la mèche
+   ne brûle qu'une fois la cuillère partie, au lâcher).
+   · G : l'arme descend, la tête se baisse (le torse apparaît), la main droite saisit la grenade
+     accrochée à la poche, la décroche en la tirant vers sa fusée, l'amène devant la poitrine ; la
+     main gauche passe l'index dans l'anneau, tourne et tire : la goupille sort ; le bras s'arme.
+   · G tenue : la grenade reste prête, bras armé, goupille au doigt de la main gauche ; G relâchée
+     (ou déjà relâchée) : lancer par-dessus l'épaule, la cuillère saute, la goupille tombe au sol.
+   · R avant le lâcher : annulation. Goupille sortie : la main droite ramène la grenade devant (pouce
+     toujours sur la cuillère), la main gauche aligne la goupille sur les trous et l'enfonce, défait
+     la torsion et lâche l'anneau ; puis la main droite raccroche la grenade à sa poche, tête baissée.
+   Temps en secondes depuis le début de chaque phase (tirer : draw ; lancer : throw ; annuler :
+   cancel). Repères : vue (x à droite, y en haut, z vers l'arrière) ; torse : celui du corps, tourné
+   dans la vue par l'inclinaison de la tête (chestSlotPose). */
+const NADE_T = {
+  draw: { gunDown: 0.2, dip: [0.03, 0.27, 0.47, 0.74], reach: [0.05, 0.26], grab: 0.33, unhook: 0.44, present: 0.68,
+    lIn: [0.46, 0.66], hook: [0.66, 0.76], twist: [0.76, 0.84], pull: [0.84, 0.97], cock: [0.95, 1.16] },
+  throw: { back: 0.07, release: 0.135, drop: 0.2, follow: 0.42, gunUp: [0.32, 0.6] },
+  // annulation : remettre la goupille (si elle est sortie), puis raccrocher ; light : l'index était
+  // dans l'anneau mais la goupille n'avait pas bougé
+  repin: { bring: 0.3, insert: [0.3, 0.52], untwist: [0.52, 0.6], let: [0.6, 0.74], out: 0.92, next: 0.7 },
+  light: { bring: 0, insert: [0, 0], untwist: [0, 0.1], let: [0.08, 0.22], out: 0.42, next: 0.22 },
+  hook: { pre: 0.32, dip: [0.0, 0.26, 0.5, 0.76], seat: 0.44, open: 0.5, back: 0.72, gunUp: [0.46, 0.76], end: 0.78 },
+};
+const NADE_DIP = -0.7;                 // tête baissée : regard à 40° sous l'horizontale au plus bas
+const NADE_FUSE = 2.3;                 // s, du lâcher (cuillère partie) à l'explosion (règle du jeu)
+// poses de la grenade dans la vue : position, angles (YXZ : x penche la fusée vers le joueur)
+const _np = (p, e) => ({ p: new THREE.Vector3(...p), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0], e[1], e[2], 'YXZ')) });
+const NADE_KEYS = {
+  present: _np([0.045, -0.082, -0.275], [0.05, -0.42, 0.12]),     // devant la poitrine, anneau vers la main gauche
+  cock: _np([0.172, -0.008, -0.225], [0.6, -0.5, -0.3]),          // bras armé, grenade près de l'oreille droite
+  back: _np([0.23, 0.03, -0.1], [0.85, -0.55, -0.35]),         // élan
+  release: _np([0.1, -0.035, -0.56], [-0.55, -0.25, 0.05]),       // lâcher, bras tendu devant
+  repin: _np([0.04, -0.08, -0.275], [0.04, -0.4, 0.12]),        // annulation : devant, pour la goupille
+};
+// main gauche : départ sous la vue, bras tendu vers la cible (anneau au doigt), après le lâcher
+const _nh = (p, f, t) => ({ p: new THREE.Vector3(...p), q: handBasis(new THREE.Vector3(...f), new THREE.Vector3(...t), true) });
+const NADE_LH = {
+  low: _nh([-0.2, -0.46, -0.24], [0.35, 0.8, -0.45], [0.2, 0.3, -0.9]),
+  aim: _nh([-0.095, -0.105, -0.5], [0.15, 0.1, -1], [0.1, 1, 0.1]),
+  drop: _nh([-0.16, -0.48, -0.36], [0.1, -0.3, -1], [0.1, 1, 0]),
+};
+const _nv1 = new THREE.Vector3(), _nv2 = new THREE.Vector3(), _nv3 = new THREE.Vector3(), _nq1 = new THREE.Quaternion(), _nq2 = new THREE.Quaternion();
+const _nM1 = new THREE.Matrix4(), _nM2 = new THREE.Matrix4(), _nM3 = new THREE.Matrix4(), _nS = new THREE.Vector3(1, 1, 1);
+const _nX = new THREE.Vector3(1, 0, 0), _nZ = new THREE.Vector3(0, 0, 1);
+const nsst = (a, b, t) => { const x = clamp((t - a) / Math.max(1e-6, b - a), 0, 1); return x * x * (3 - 2 * x); };
+const nlin = (a, b, t) => clamp((t - a) / Math.max(1e-6, b - a), 0, 1);
+const npose = () => ({ p: new THREE.Vector3(), q: new THREE.Quaternion() });
+function nposeCopy(o, a) { o.p.copy(a.p); o.q.copy(a.q); return o; }
+function nposeLerp(o, a, b, s) { o.p.lerpVectors(a.p, b.p, s); o.q.copy(a.q).slerp(b.q, s); return o; }
+/* Composition : pose b exprimée dans le repère de a. */
+function nposeMul(o, a, b) { o.p.copy(b.p).applyQuaternion(a.q).add(a.p); o.q.copy(a.q).multiply(b.q); return o; }
+/* Courbe de Bézier quadratique (a → b, en passant près de c). */
+function nbez(o, a, c, b, s) { const u = 1 - s; o.x = u * u * a.x + 2 * u * s * c.x + s * s * b.x; o.y = u * u * a.y + 2 * u * s * c.y + s * s * b.y; o.z = u * u * a.z + 2 * u * s * c.z + s * s * b.z; return o; }
+
+const Nade = {
+  hand: null, chest: null, pitch: 0, tilt: 0,
+  shR: null, shL: null, poleL: null,
+};
+/* Objets de la vue : grenade en main (détail fin) et torse ; appelés depuis buildViewmodel. */
+function buildNadeView() {
+  Nade.hand = buildNade('hi');
+  Nade.hand.visible = false;
+  Nade.chest = buildChest();
+  Arms.root.add(Nade.hand, Nade.chest);
+  Nade.shR = Arms.armR.shoulder.clone(); Nade.shL = Arms.armL.shoulder.clone(); Nade.poleL = Arms.armL.pole.clone();
+  NadeBits.init();
+  // prises calculées au chargement (20 à 50 ms) : pas d'à-coup à la première grenade
+  nadeGripR(); nadeGripL('ringHook');
+}
+function nadeReset() {
+  if (!Nade.hand) return;
+  Arms.nd = null;
+  Nade.hand.visible = false; Nade.chest.visible = false;
+  Arms.armR.shoulder.copy(Nade.shR); Arms.armL.shoulder.copy(Nade.shL); Arms.armL.pole.copy(Nade.poleL);
+  NadeBits.heldPin(null);
+}
+/* G : début du geste (une grenade au moins, mains libres). */
+function startThrow() {
+  if (G.grenades <= 0 || !['idle', 'reload'].includes(Arms.state) || player.down || !Nade.hand) return;
+  Arms.state = 'nade'; Arms.t = 0; Arms.dur = 0;
+  Arms.autoReloadAt = -1;
+  const slot = Math.min(CHEST.slots.length, G.grenades) - 1;
+  Arms.nd = { phase: 'draw', t: 0, slot, held: true, ev: 0, s: 0, roll: 0, swing: NADE_RING.rest, pinFree: false, released: false,
+    cap: null, inHand: false, pinOut: false, lastG: npose(), lastR: npose(), lastL: npose(), lastRing: npose(), lastPoseL: null, tilt: 0 };
+  Sound.nade('draw');
+}
+/* Torse → vue : rotation par l'inclinaison réelle de la caméra (souris et tête baissée). */
+function nadeBodyQ(out) { return out.setFromAxisAngle(_nX, -Nade.pitch); }
+/* Grenade accrochée (case i) dans la vue ; décalage (le long de la grenade, vers l'extérieur). */
+function nadeChestPose(o, i, slide = 0, outw = 0) {
+  chestSlotPose(i, o.p, o.q);
+  if (slide || outw) o.p.add(_nv3.set(0, slide, -outw).applyQuaternion(o.q));
+  nadeBodyQ(_nq1);
+  o.p.applyQuaternion(_nq1); o.q.premultiply(_nq1);
+  return o;
+}
+/* Repère de l'anneau d'une grenade posée en g (goupille : course s, torsion roll ; anneau : bascule swing). */
+function nadeRingPose(o, g, s, roll, swing) {
+  nadePinPose(s, roll, _nM1);
+  nadeRingInPin(swing, _nM2);
+  _nM3.compose(g.p, g.q, _nS).multiply(_nM1).multiply(_nM2);
+  _nM3.decompose(o.p, o.q, _nv3);
+  return o;
+}
+/* Main gauche posée sur l'anneau (index dedans). */
+function nadeHandOnRing(o, ring, poseName = 'ringHook') {
+  const h = nadeGripL(poseName);
+  o.p.copy(h.p).applyQuaternion(ring.q).add(ring.p); o.q.copy(ring.q).multiply(h.q);
+  return o;
+}
+/* Anneau tenu par la main gauche (inverse de la précédente). */
+function nadeRingFromHand(o, hand, poseName = 'ringHook') {
+  const h = nadeGripL(poseName);
+  _nq2.copy(h.q).invert();
+  o.q.copy(hand.q).multiply(_nq2);
+  o.p.copy(h.p).applyQuaternion(o.q).negate().add(hand.p);
+  return o;
+}
+/* Grenade dans la main droite : poignet = grenade ∘ prise. */
+function nadeHandOnNade(o, g) {
+  const h = nadeGripR();
+  o.p.copy(h.p).applyQuaternion(g.q).add(g.p); o.q.copy(g.q).multiply(h.q);
+  return o;
+}
+const _ndG = npose(), _ndA = npose(), _ndB = npose(), _ndC = npose(), _ndR = npose(), _ndL = npose(), _ndRing = npose(), _ndT = npose();
+/* Pose de la grenade pendant le tirer (temps t). */
+function nadeDrawG(o, t, nd) {
+  const T = NADE_T.draw;
+  if (t < T.unhook) {
+    const s = nsst(T.grab, T.unhook, t);
+    return nadeChestPose(o, nd.slot, 0.042 * s, 0.014 * Math.sin(s * Math.PI * 0.5));
+  }
+  if (t < T.cock[0]) {
+    // décrochée, puis amenée devant la poitrine en remontant (courbe), en se redressant
+    nadeChestPose(_ndA, nd.slot, 0.042, 0.014);
+    const s = nsst(T.unhook, T.present, t);
+    _nv1.lerpVectors(_ndA.p, NADE_KEYS.present.p, 0.5).add(_nv2.set(0.02, 0.05, 0.02));
+    nbez(o.p, _ndA.p, _nv1, NADE_KEYS.present.p, s);
+    o.q.copy(_ndA.q).slerp(NADE_KEYS.present.q, s);
+    return o;
+  }
+  // bras qui s'arme
+  const s = nsst(T.cock[0], T.cock[1], t);
+  _nv1.lerpVectors(NADE_KEYS.present.p, NADE_KEYS.cock.p, 0.5).add(_nv2.set(0.035, 0.03, 0.03));
+  nbez(o.p, NADE_KEYS.present.p, _nv1, NADE_KEYS.cock.p, s);
+  o.q.copy(NADE_KEYS.present.q).slerp(NADE_KEYS.cock.q, s);
+  return o;
+}
+/* Goupille et anneau pendant le tirer : torsion, course, bascule de l'anneau. */
+function nadeDrawPin(t, nd) {
+  const T = NADE_T.draw;
+  nd.swing = NADE_RING.rest + (Math.PI / 2 - NADE_RING.rest) * nsst(T.hook[0] + 0.03, T.hook[1], t);
+  nd.roll = 0.6 * nsst(T.twist[0], T.twist[1], t);
+  // la goupille résiste un peu (branches redressées dans les trous), puis glisse
+  const k = nlin(T.pull[0], T.pull[1], t);
+  nd.s = (NADE_OUT + 0.014) * (k < 0.35 ? 0.25 * nsst(0, 0.35, k) : 0.25 + 0.75 * nsst(0.35, 1, k));
+  nd.pinOut = nd.s > 0.0005;
+  nd.pinFree = nd.s >= NADE_OUT;
+}
+/* Tenue (G maintenue) : grenade prête, petit balancement. */
+function nadeHoldG(o, t) {
+  nposeCopy(o, NADE_KEYS.cock);
+  o.p.x += 0.003 * Math.sin(t * 1.9); o.p.y += 0.004 * Math.sin(t * 2.6 + 1);
+  return o;
+}
+/* Lancer : élan puis bras qui fouette ; grenade lâchée à release. */
+function nadeThrowG(o, t, nd) {
+  const T = NADE_T.throw, start = nd.cap ? nd.cap.G : NADE_KEYS.cock;
+  if (t < T.back) return nposeLerp(o, start, NADE_KEYS.back, nsst(0, T.back, t));
+  const s = nlin(T.back, T.release, t), e = s * s * (1.6 - 0.6 * s);          // accélère
+  _nv1.set(0.2, 0.09, -0.34);
+  nbez(o.p, NADE_KEYS.back.p, _nv1, NADE_KEYS.release.p, e);
+  o.q.copy(NADE_KEYS.back.q).slerp(NADE_KEYS.release.q, e);
+  return o;
+}
+/* Inclinaison de la tête vers la cible : regard abaissé jusqu'à NADE_DIP (jamais relevé), selon k. */
+function nadeTiltFor(k) {
+  const look = player.pitch + player.recoil + player.punch;
+  return k * Math.min(0, Math.max(-1.0, NADE_DIP - look));
+}
+/* Avance du geste (updateArms) : touches, phases, événements. */
+function nadeUpdate(dt) {
+  const nd = Arms.nd;
+  if (!nd) { Arms.state = 'idle'; return; }
+  nd.t += dt;
+  if (!key('KeyG')) nd.held = false;
+  // à terre : sans goupille, la grenade tombe aux pieds (cuillère lâchée) ; sinon elle est rangée
+  if (player.down && !nd.released) {
+    if (nd.inHand && nd.pinOut) nadeDropLive();
+    nadeReset(); Arms.state = 'idle'; return;
+  }
+  const once = (bit) => { if (nd.ev & bit) return false; nd.ev |= bit; return true; };
+  if (nd.phase === 'draw') {
+    const T = NADE_T.draw, t = nd.t;
+    if (t >= T.grab && once(1)) { nd.inHand = true; Sound.nade('grab'); }
+    if (t >= T.unhook - 0.06 && once(2)) Sound.nade('unhook');
+    if (t >= T.twist[0] && once(4)) Sound.nade('twist');
+    if (t >= T.pull[0] + 0.07 && once(8)) Sound.nade('pull');
+    if (pressed('KeyR')) { nadeCancel(); return; }
+    if (t >= T.cock[1]) {
+      nd.phase = nd.held ? 'hold' : 'throw'; nd.t = 0; nd.cap = null; nd.ev = 0;
+      if (nd.phase === 'throw') Sound.nade('whoosh');
+    }
+  } else if (nd.phase === 'hold') {
+    if (pressed('KeyR')) { nadeCancel(); return; }
+    if (!nd.held) { nd.cap = { G: nposeCopy(npose(), nd.lastG) }; nd.phase = 'throw'; nd.t = 0; nd.ev = 0; Sound.nade('whoosh'); }
+  } else if (nd.phase === 'throw') {
+    const T = NADE_T.throw, t = nd.t;
+    if (t >= T.release && once(1)) nadeRelease();
+    if (t >= T.drop && once(2)) nadeDropPin();
+    if (t >= T.gunUp[1]) { nadeReset(); Arms.state = 'idle'; }
+  } else if (nd.phase === 'cancel') {
+    const t = nd.t, C = nd.cancel;
+    if (C.repin && C.P === NADE_T.repin) {
+      const P = C.P;
+      if (t >= P.insert[0] && once(1)) Sound.nade('insert');
+      if (t >= P.insert[1] - 0.03 && once(2)) Sound.nade('seat');
+    }
+    const H = NADE_T.hook, th = t - C.r0;
+    if (th >= H.pre - 0.1 && once(4)) Sound.nade('hookBack');
+    if (th >= H.seat && once(8)) { nd.inHand = false; }
+    if (th >= H.end) { nadeReset(); Arms.state = 'idle'; }
+  }
+}
+/* R : annulation (avant le lâcher). */
+function nadeCancel() {
+  const nd = Arms.nd;
+  if (!nd || nd.released || nd.phase === 'cancel') return;
+  // l'index est-il dans l'anneau (anneau relevé, torsion, goupille qui bouge) ?
+  const engaged = nd.s > 0.0005 || nd.roll > 0.01 || nd.swing > NADE_RING.rest + 0.05 || nd.pinFree;
+  const P = nd.s > 0.0005 || nd.pinFree ? NADE_T.repin : NADE_T.light;
+  const from = { G: nposeCopy(npose(), nd.lastG), R: nposeCopy(npose(), nd.lastR), L: nposeCopy(npose(), nd.lastL), lVis: nd.lVis,
+    s: nd.s, roll: nd.roll, swing: nd.swing, pinFree: nd.pinFree };
+  if (!nd.inHand) nd.cancel = { early: true, repin: false, r0: 0, from };
+  else nd.cancel = { early: false, repin: engaged, P: engaged ? P : null, r0: engaged ? P.next : 0, from,
+    hookStart: engaged && P === NADE_T.repin ? NADE_KEYS.repin : from.G };
+  nd.phase = 'cancel'; nd.t = 0; nd.ev = 0;
+  if (nd.cancel.early) nd.ev = 15;
+  Sound.nade('cancel');
+}
+/* Monde : origine et sens du lancer depuis la main (corrigés si un mur est plus près). */
+function nadeWorld(p, out) {
+  out.copy(p).applyMatrix4(camera.matrixWorld);
+  return out;
+}
+function nadeRelease() {
+  const nd = Arms.nd;
+  nd.released = true; nd.inHand = false;
+  G.grenades = Math.max(0, G.grenades - 1);
+  cameraBasis();
+  const cp = camera.position, o = nadeWorld(nd.lastG.p, _nv1);
+  // un mur entre l'œil et la main : la grenade part juste devant lui
+  const dx = o.x - cp.x, dy = o.y - cp.y, dz = o.z - cp.z, d = Math.hypot(dx, dy, dz) || 1;
+  raycast(cp.x, cp.y, cp.z, dx / d, dy / d, dz / d, d + 0.1);
+  if (RAY.hit && RAY.t < d + 0.1) { const k = Math.max(0, RAY.t - 0.12) / d; o.set(cp.x + dx * k, cp.y + dy * k, cp.z + dz * k); }
+  _nq1.copy(camera.quaternion).multiply(nd.lastG.q);
+  throwGrenade(o.x, o.y, o.z, _fwd.x, _fwd.y + 0.12, _fwd.z, player.vel.x, player.vel.z, _nq1);
+  // la cuillère saute : le ressort du percuteur la chasse vers l'arrière de la grenade
+  const g = FX.grenades[FX.grenades.length - 1];
+  _nv2.set(0, 0.3, 1).normalize().applyQuaternion(_nq1);
+  NadeBits.spawn('lever', o, _nq1, g.vx * 0.35 + _nv2.x * 2.2, g.vy * 0.3 + _nv2.y * 2.2 + 0.3, g.vz * 0.35 + _nv2.z * 2.2, [rand(-18, 18), rand(-30, 30), rand(-18, 18)]);
+  Sound.nade('spoon', { x: o.x, y: o.y, z: o.z });
+  // petite bouffée de l'amorce (la fusée M10A3 s'allume en claquant)
+  spawnPuff(o.x, o.y + 0.04, o.z, 0.09, 0.5, 0x9a958a, 0.28, 0.25);
+  HUD.weapon();
+}
+/* La main gauche lâche la goupille et son anneau : ils tombent au sol. */
+function nadeDropPin() {
+  const nd = Arms.nd;
+  if (!nd || nd.pinDropped) return;
+  nd.pinDropped = true;
+  const o = nadeWorld(nd.lastRing.p, _nv1);
+  _nq1.copy(camera.quaternion).multiply(nd.lastRing.q);
+  NadeBits.spawn('pin', o, _nq1, player.vel.x * 0.6 + rand(-0.3, 0.3), -0.4, player.vel.z * 0.6 + rand(-0.3, 0.3), [rand(-8, 8), rand(-8, 8), rand(-8, 8)]);
+}
+/* À terre avec une grenade dégoupillée : elle tombe aux pieds, la cuillère saute. */
+function nadeDropLive() {
+  const nd = Arms.nd;
+  const o = nadeWorld(nd.lastG.p, _nv1);
+  _nq1.copy(camera.quaternion).multiply(nd.lastG.q);
+  G.grenades = Math.max(0, G.grenades - 1);
+  throwGrenade(o.x, o.y, o.z, 0, -0.4, 0, player.vel.x * 0.4, player.vel.z * 0.4, _nq1, 0);
+  NadeBits.spawn('lever', o, _nq1, rand(-1, 1), 1.2, rand(-1, 1), [rand(-15, 15), rand(-20, 20), rand(-15, 15)]);
+  if (nd.pinFree) nadeDropPin();
+  Sound.nade('spoon', { x: o.x, y: o.y, z: o.z });
+  HUD.weapon();
+}
+/* Inclinaison de l'arme vers le bas (0 : en main, 1 : sous la vue). */
+function nadeGunDown(nd) {
+  if (!nd) return 0;
+  if (nd.phase === 'draw') return nsst(0, NADE_T.draw.gunDown, nd.t);
+  if (nd.phase === 'hold') return 1;
+  if (nd.phase === 'throw') return 1 - nsst(NADE_T.throw.gunUp[0], NADE_T.throw.gunUp[1], nd.t);
+  if (nd.phase === 'cancel') {
+    if (nd.cancel.early) return 1 - nsst(0.12, 0.38, nd.t);
+    const H = NADE_T.hook, th = nd.t - nd.cancel.r0;
+    return 1 - nsst(H.gunUp[0], H.gunUp[1], th);
+  }
+  return 0;
+}
+/* Pose de la vue pendant le geste (updateViewmodel) : grenade, torse, mains, tête, épaules.
+   gun : cibles des mains sur l'arme (ou null) ; rend { rP, rQ, rPose, rPose2, rK, lP, lQ, lPose, lPose2, lK }. */
+function nadePose(dt, gunR, gunL) {
+  const nd = Arms.nd, T = NADE_T, out = { rP: null, rQ: null, rPose: null, rPose2: null, rK: 0, lP: null, lQ: null, lPose: null, lPose2: null, lK: 0 };
+  Nade.pitch = camera.rotation.x;
+  const t = nd.t, gripR = nadeGripR();
+  let gVis = false, tiltK = 0, ringFree = false;
+  const G0 = _ndG;
+  // ---- grenade, goupille, mains
+  if (nd.phase === 'draw') {
+    const D = T.draw;
+    nadeDrawG(G0, t, nd);
+    nadeDrawPin(t, nd);
+    gVis = t >= D.grab;
+    tiltK = nsst(D.dip[0], D.dip[1], t) * (1 - nsst(D.dip[2], D.dip[3], t));
+    // main droite : quitte l'arme, s'ouvre, saisit la grenade sur la poche
+    if (t < D.grab) {
+      nadeChestPose(_ndA, nd.slot);
+      nadeHandOnNade(_ndB, _ndA);
+      // approche : de côté et un peu au-dessus de la grenade
+      _ndB.p.add(_nv1.set(0.035, 0.03, 0.02).multiplyScalar(1 - nsst(D.reach[1], D.grab, t)));
+      const s = nsst(D.reach[0], D.reach[1] + 0.04, t);
+      if (gunR) { _ndR.p.lerpVectors(gunR.p, _ndB.p, s); _ndR.q.copy(gunR.q).slerp(_ndB.q, s); } else nposeCopy(_ndR, _ndB);
+      out.rPose = gunR ? gunR.pose : HAND_POSES.relax; out.rPose2 = HAND_POSES.open; out.rK = nsst(D.reach[0], D.reach[1], t);
+      if (t > D.reach[1]) { out.rPose = HAND_POSES.open; out.rPose2 = gripR.pose; out.rK = nsst(D.reach[1] + 0.02, D.grab, t); }
+    } else {
+      nadeHandOnNade(_ndR, G0);
+      out.rPose = gripR.pose;
+    }
+    out.rP = _ndR.p; out.rQ = _ndR.q;
+    // main gauche : sur l'arme qui descend, puis elle vient de sous la vue jusqu'à l'anneau
+    nadeRingPose(_ndRing, G0, nd.s, nd.roll, nd.swing);
+    if (t < D.lIn[0]) {
+      if (gunL && t < D.gunDown) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; }
+    } else if (t < D.pull[1]) {
+      // cible : main sur l'anneau relevé (bascule π/2), reculée le long du doigt tant qu'elle approche
+      nadeRingPose(_ndA, G0, nd.s, nd.roll, Math.PI / 2);
+      nadeHandOnRing(_ndB, _ndA, 'ringHook');
+      const back = 1 - nsst(D.lIn[1] - 0.04, D.hook[1], t);
+      _nv1.set(0, 0, 1).applyQuaternion(_ndA.q);                      // normale de l'anneau (le long du doigt)
+      _ndB.p.addScaledVector(_nv1, -0.03 * back).add(_nv2.set(-0.01, 0.012, 0).multiplyScalar(back));
+      const s = nsst(D.lIn[0], D.lIn[1], t);
+      nposeLerp(_ndL, NADE_LH.low, _ndB, s);
+      out.lP = _ndL.p; out.lQ = _ndL.q;
+      out.lPose = HAND_POSES.relax; out.lPose2 = HAND_POSES.ringPoint; out.lK = s;
+      if (t >= D.lIn[1] - 0.04) { out.lPose = HAND_POSES.ringPoint; out.lPose2 = HAND_POSES.ringHook; out.lK = nsst(D.hook[0], D.hook[1], t); }
+      if (t >= D.hook[1]) { out.lPose = HAND_POSES.ringHook; out.lPose2 = null; out.lK = 0; }
+      // l'anneau suit le doigt une fois accroché
+      if (t >= D.hook[1]) { nadeRingPose(_ndRing, G0, nd.s, nd.roll, Math.PI / 2); nadeHandOnRing(_ndL, _ndRing); out.lP = _ndL.p; out.lQ = _ndL.q; }
+    } else {
+      // goupille sortie : la main gauche part en avant, l'anneau au doigt
+      nadeRingPose(_ndA, nadeDrawGAt(_ndC, D.pull[1], nd), NADE_OUT + 0.014, 0.6, Math.PI / 2);
+      nadeHandOnRing(_ndB, _ndA);
+      const s = nsst(D.pull[1], D.cock[1], t);
+      _nv1.lerpVectors(_ndB.p, NADE_LH.aim.p, 0.5).add(_nv2.set(-0.03, 0.03, 0));
+      nbez(_ndL.p, _ndB.p, _nv1, NADE_LH.aim.p, s); _ndL.q.copy(_ndB.q).slerp(NADE_LH.aim.q, s);
+      out.lP = _ndL.p; out.lQ = _ndL.q; out.lPose = HAND_POSES.ringHook;
+      nadeRingFromHand(_ndRing, _ndL);
+      ringFree = true;
+    }
+  } else if (nd.phase === 'hold') {
+    nadeHoldG(G0, t);
+    gVis = true;
+    nadeHandOnNade(_ndR, G0); out.rP = _ndR.p; out.rQ = _ndR.q; out.rPose = gripR.pose;
+    nposeCopy(_ndL, NADE_LH.aim); _ndL.p.y += 0.003 * Math.sin(t * 2.2);
+    out.lP = _ndL.p; out.lQ = _ndL.q; out.lPose = HAND_POSES.ringHook;
+    nadeRingFromHand(_ndRing, _ndL); ringFree = true;
+  } else if (nd.phase === 'throw') {
+    const W = T.throw;
+    nadeThrowG(G0, Math.min(t, W.release), nd);
+    gVis = t < W.release;
+    nadeHandOnNade(_ndR, G0);
+    out.rPose = gripR.pose;
+    if (t >= W.release) {
+      // suite du geste : la main ouverte continue vers le bas et sort de la vue
+      const s = nsst(W.release, W.follow, t);
+      _nv1.set(0.03, -0.2, -0.62);
+      _nv2.set(-0.04, -0.62, -0.36);
+      nbez(_ndA.p, _ndR.p, _nv1, _nv2, s);
+      _nq1.setFromEuler(new THREE.Euler(-0.9 * s, 0.3 * s, 0.4 * s, 'YXZ'));
+      _ndR.q.multiply(_nq1); _ndR.p.copy(_ndA.p);
+      out.rPose = gripR.pose; out.rPose2 = HAND_POSES.open; out.rK = nsst(W.release, W.release + 0.06, t);
+    }
+    out.rP = _ndR.p; out.rQ = _ndR.q;
+    // main gauche : reste tendue, lâche la goupille, descend
+    const s = nsst(W.drop - 0.05, W.follow, t);
+    nposeLerp(_ndL, NADE_LH.aim, NADE_LH.drop, s);
+    out.lP = _ndL.p; out.lQ = _ndL.q; out.lPose = HAND_POSES.ringHook; out.lPose2 = HAND_POSES.open; out.lK = nsst(W.drop - 0.02, W.drop + 0.06, t);
+    if (t >= W.follow) out.lP = null;
+    nadeRingFromHand(_ndRing, _ndL); ringFree = !nd.pinDropped;
+    if (t >= W.gunUp[0] + 0.05) { out.rP = null; out.lP = null; }
+    if (t >= W.gunUp[0] + 0.05 && gunR) { out.rP = gunR.p; out.rQ = gunR.q; out.rPose = gunR.pose; if (gunL) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; } }
+    // un petit coup de tête vers l'avant au lâcher
+    tiltK = 0;
+    nd.tilt = -0.05 * Math.exp(-(((t - W.release) / 0.07) ** 2));
+  } else if (nd.phase === 'cancel') {
+    const C = nd.cancel;
+    if (C.early) {
+      // pas encore saisie : la main droite retourne à l'arme qui remonte, la tête se relève
+      const s = nsst(0, 0.3, t);
+      if (gunR) { out.rP = _ndR.p.lerpVectors(C.from.R.p, gunR.p, s); out.rQ = _ndR.q.copy(C.from.R.q).slerp(gunR.q, s); out.rPose = gunR.pose; }
+      tiltK = (1 - nsst(0, 0.3, t)) * (nd.lastTiltK || 0);
+      if (gunL && t > 0.25) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; }
+    } else {
+      const H = T.hook, F = C.from, P = C.P, th = t - C.r0;
+      // grenade : ramenée devant pour la goupille (si besoin), puis raccrochée à sa poche
+      if (C.repin && th < 0) {
+        if (P === T.repin) nposeLerp(G0, F.G, NADE_KEYS.repin, nsst(0, P.bring, t)); else nposeCopy(G0, F.G);
+      } else {
+        const start = C.hookStart;
+        nadeChestPose(_ndA, nd.slot, 0.042, 0.014);
+        if (th < H.pre) {
+          const k = nsst(0, H.pre, th);
+          _nv1.lerpVectors(start.p, _ndA.p, 0.5).add(_nv2.set(0.02, 0.05, 0.02));
+          nbez(G0.p, start.p, _nv1, _ndA.p, k); G0.q.copy(start.q).slerp(_ndA.q, k);
+        } else {
+          const k = nsst(H.pre, H.seat, th);
+          nadeChestPose(G0, nd.slot, 0.042 * (1 - k), 0.014 * Math.cos(k * Math.PI * 0.5));
+        }
+      }
+      // goupille : alignée sur les trous, enfoncée (un petit tâtonnement), torsion défaite, anneau lâché
+      if (C.repin) {
+        const sEntry = F.s > 0.0005 ? Math.max(F.s, NADE_OUT + 0.006) : 0;
+        nd.s = t < P.insert[0] ? sEntry : sEntry * (1 - nsst(P.insert[0], P.insert[1], t));
+        const wig = sEntry && t > P.insert[0] + 0.04 && t < P.insert[0] + 0.12 ? 0.06 * Math.sin((t - P.insert[0]) * 60) : 0;
+        nd.roll = F.roll * (1 - nsst(P.untwist[0], P.untwist[1], t)) + wig;
+        nd.swing = Math.PI / 2 - (Math.PI / 2 - NADE_RING.rest) * nsst(P.let[0] + 0.02, P.let[1] + 0.06, t);
+      } else { nd.s = 0; nd.roll = 0; nd.swing = NADE_RING.rest; }
+      nd.pinOut = nd.s > 0.0005; nd.pinFree = nd.s >= NADE_OUT;
+      nadeRingPose(_ndRing, G0, nd.s, nd.roll, nd.swing);
+      // main gauche
+      if (C.repin && t < P.out) {
+        nadeRingPose(_ndA, G0, nd.s, nd.roll, Math.PI / 2);
+        nadeHandOnRing(_ndB, _ndA);
+        if (t < P.bring) {
+          nadeRingPose(_ndC, G0, Math.max(F.s, NADE_OUT + 0.006), F.roll, Math.PI / 2); nadeHandOnRing(_ndT, _ndC);
+          nposeLerp(_ndL, F.L, _ndT, nsst(0, P.bring, t));
+        } else if (t < P.let[0]) nposeCopy(_ndL, _ndB);
+        else {
+          // le doigt sort de l'anneau (le long de sa normale), puis la main repart sous la vue
+          const start = C.hookStart;
+          nadeRingPose(_ndC, start, 0, 0, Math.PI / 2); nadeHandOnRing(_ndT, _ndC);
+          _nv1.set(0, 0, 1).applyQuaternion(_ndC.q);
+          _ndT.p.addScaledVector(_nv1, -0.03 * nsst(P.let[0], P.let[0] + 0.08, t));
+          nposeLerp(_ndL, _ndT, NADE_LH.low, nsst(P.let[0] + 0.06, P.out, t));
+        }
+        out.lP = _ndL.p; out.lQ = _ndL.q;
+        out.lPose = HAND_POSES.ringHook; out.lPose2 = HAND_POSES.relax; out.lK = nsst(P.let[0], P.let[0] + 0.1, t);
+        // goupille sortie : l'anneau reste au doigt jusqu'à ce que la goupille soit présentée aux trous
+        if (F.pinFree && t < P.bring) { nadeRingFromHand(_ndRing, _ndL); ringFree = true; }
+      } else if (!C.repin && F.lVis && t < 0.3) {
+        nposeLerp(_ndL, F.L, NADE_LH.low, nsst(0, 0.28, t));
+        out.lP = _ndL.p; out.lQ = _ndL.q; out.lPose = HAND_POSES.relax;
+      }
+      // main droite : tient la grenade, la lâche une fois raccrochée et retourne à l'arme
+      tiltK = th < 0 ? 0 : nsst(H.dip[0], H.dip[1], th) * (1 - nsst(H.dip[2], H.dip[3], th));
+      nadeHandOnNade(_ndR, G0);
+      out.rPose = gripR.pose;
+      if (th >= H.seat) { out.rPose2 = HAND_POSES.open; out.rK = nsst(H.seat, H.open + 0.04, th); }
+      if (th >= H.open) {
+        const k = nsst(H.open, H.back, th);
+        _ndR.p.add(_nv1.set(0.03, 0.035, 0.02).multiplyScalar(nsst(H.open, H.open + 0.08, th)));
+        if (gunR) { _ndR.p.lerp(gunR.p, k); _ndR.q.slerp(gunR.q, k); }
+        if (k > 0.6 && gunR) { out.rPose = HAND_POSES.open; out.rPose2 = gunR.pose; out.rK = nsst(0.6, 1, k); }
+      }
+      out.rP = _ndR.p; out.rQ = _ndR.q;
+      if (gunL && th > H.gunUp[0] + 0.15) { out.lP = gunL.p; out.lQ = gunL.q; out.lPose = gunL.pose; }
+      gVis = nd.inHand;
+    }
+  }
+  // ---- grenade en main : pièces (goupille, anneau ; branches droites tant qu'elle est sortie)
+  const H = Nade.hand;
+  H.visible = gVis;
+  if (gVis) {
+    H.position.copy(G0.p); H.quaternion.copy(G0.q);
+    const P = H.userData.parts;
+    if (ringFree) {
+      // goupille libre : elle suit l'anneau tenu par la main gauche
+      P.pin.visible = !nd.pinDropped;
+      H.updateMatrixWorld(true);
+      nadeRingInPin(Math.PI / 2, _nM2);                               // anneau dans la goupille
+      _nM3.compose(_ndRing.p, _ndRing.q, _nS).multiply(_nM2.invert());   // goupille dans la vue
+      _nM1.copy(H.matrixWorld).invert().multiply(_nM3);
+      _nM1.decompose(P.pin.position, P.pin.quaternion, _nv3);
+      nadeRingInPin(Math.PI / 2, _nM2); _nM2.decompose(P.ring.position, P.ring.quaternion, _nv3);
+      P.pinMesh.geometry = nadeGeometries().pinStraight;
+    } else {
+      P.pin.visible = true;
+      nadeSetPin(H, nd.s, nd.roll, nd.swing);
+    }
+  }
+  // goupille et anneau sans la grenade (lancée) : un petit groupe dans la main gauche
+  NadeBits.heldPin(ringFree && !gVis && !nd.pinDropped ? _ndRing : null);
+  nposeCopy(nd.lastG, G0); nposeCopy(nd.lastRing, _ndRing);
+  if (out.rP) { nd.lastR.p.copy(out.rP); nd.lastR.q.copy(out.rQ); }
+  if (out.lP) { nd.lastL.p.copy(out.lP); nd.lastL.q.copy(out.lQ); nd.lastPoseL = out.lPose; }
+  nd.lVis = !!out.lP;
+  // ---- tête, torse, épaules
+  if (nd.phase !== 'throw') nd.tilt = nadeTiltFor(tiltK);
+  nd.lastTiltK = tiltK;
+  const C = Nade.chest;
+  C.visible = nd.phase !== 'throw' || t < 0.05;
+  if (C.visible) {
+    C.quaternion.setFromAxisAngle(_nX, -Nade.pitch);
+    C.userData.nades.forEach((n, i) => { n.visible = i < G.grenades && !(i === nd.slot && nd.inHand); });
+  }
+  // épaules : elles suivent le torse quand la tête se baisse ; la droite recule pour armer, avance au lancer
+  const tilt = Arms.headTilt;
+  _nq1.setFromAxisAngle(_nX, -tilt);
+  Arms.armR.shoulder.copy(Nade.shR).applyQuaternion(_nq1);
+  Arms.armL.shoulder.copy(Nade.shL).applyQuaternion(_nq1);
+  let cockK = 0, fwdK = 0;
+  if (nd.phase === 'draw') cockK = nsst(T.draw.cock[0], T.draw.cock[1], t);
+  else if (nd.phase === 'hold') cockK = 1;
+  else if (nd.phase === 'throw') { cockK = 1 - nsst(T.throw.back, T.throw.release, t); fwdK = nsst(T.throw.back, T.throw.release, t) * (1 - nsst(T.throw.release + 0.05, T.throw.follow, t)); }
+  Arms.armR.shoulder.z += 0.035 * cockK - 0.07 * fwdK;
+  Arms.armR.shoulder.y += 0.025 * cockK;
+  Arms.armL.shoulder.z -= 0.03 * (nd.phase === 'hold' ? 1 : nd.phase === 'draw' ? nsst(T.draw.cock[0], T.draw.cock[1], t) : nd.phase === 'throw' ? 1 - fwdK : 0);
+  // coudes : vers le bas pour la poche, haut et dehors pour armer
+  Arms.armR.pole.fromArray(ARM_POLE_R).lerp(_nv1.set(0.9, -0.55, 0.15), nd.phase === 'cancel' || (nd.phase === 'draw' && t < T.draw.present) ? 1 : 0)
+    .lerp(_nv2.set(0.95, -0.45, 0.2), cockK);
+  Arms.armL.pole.set(-0.6, -0.8, 0.1);
+  return out;
+}
+/* Pose de la grenade au temps t du tirer (pour les clés calculées). */
+function nadeDrawGAt(o, t, nd) { return nadeDrawG(o, t, nd); }
 
 
 /* ---------------------------------------------- Rechargements (jeu 1.9.0) ---
@@ -17382,6 +18728,7 @@ function resetArms() {
   Arms.slots = [null, null]; Arms.cur = 0;
   Arms.state = 'idle'; Arms.t = 0; Arms.dur = 0; Arms.nextFire = 0; Arms.autoReloadAt = -1;
   Arms.ev = 0; Arms.headTilt = 0; Arms.drinkId = null;
+  nadeReset();
   if (Arms.bottle) { Arms.bottle.visible = false; Arms.cap.visible = false; }
   Arms.bloom = Arms.kick = Arms.kickRot = 0; Arms.cycleT = 0; Arms.cyc = null; Arms.rl = null; Arms.blow = 0;
   giveWeapon(CUR.map ? CUR.map.rules.startWeapon : 'm1911');
@@ -17428,10 +18775,6 @@ function requestSwap(target) {
 function startKnife() {
   if (!['idle', 'reload', 'swapIn'].includes(Arms.state) || player.down) return;
   Arms.state = 'knife'; Arms.t = 0; Arms.dur = 0.5; Arms.knifeDone = false;
-}
-function startThrow() {
-  if (G.grenades <= 0 || !['idle', 'reload'].includes(Arms.state) || player.down) return;
-  Arms.state = 'throw'; Arms.t = 0; Arms.dur = 0.6; Arms.throwDone = false;
 }
 /* Boisson d'atout (temps en secondes depuis l'achat) : l'arme descend, la main droite apporte la
    bouteille et fait sauter la capsule du pouce, porte le goulot à la bouche (la main tourne) et le
@@ -17761,17 +19104,7 @@ function updateArms(dt) {
       if (!Arms.knifeDone && Arms.t >= 0.13) { Arms.knifeDone = true; knifeStrike(); }
       if (Arms.t >= Arms.dur) Arms.state = 'idle';
       break;
-    case 'throw':
-      if (!Arms.throwDone && Arms.t >= 0.26) {
-        Arms.throwDone = true;
-        G.grenades--;
-        cameraBasis();
-        const p = camera.position;
-        throwGrenade(p.x + _fwd.x * 0.5, p.y + _fwd.y * 0.5 - 0.1, p.z + _fwd.z * 0.5, _fwd.x, _fwd.y + 0.12, _fwd.z, player.vel.x, player.vel.z);
-        HUD.weapon();
-      }
-      if (Arms.t >= Arms.dur) { Arms.state = 'swapIn'; Arms.t = 0; Arms.dur = 0.22; }
-      break;
+    case 'nade': nadeUpdate(dt); break;
     case 'drink': {
       const t = Arms.t, E = DRINK_EV;
       const once = (bit) => { if (Arms.ev & bit) return false; Arms.ev |= bit; return true; };
@@ -17833,7 +19166,7 @@ function updateViewmodel(dt) {
     y -= 0.5 * down; rx -= 0.9 * down;
   }
   else if (st === 'knife') { const c = Math.sin(k * Math.PI); x += 0.08 * c; y -= 0.13 * c; rz -= 0.3 * c; }
-  else if (st === 'throw') { const c = Math.sin(k * Math.PI); y -= 0.2 * c; rx -= 0.4 * c; }
+  else if (st === 'nade') { const q = nadeGunDown(Arms.nd); y -= 0.34 * q; rx -= 0.95 * q; }
   if (player.down) { y -= 0.04; rz += 0.15; }
   // clip en cours : rechargement, ou réarmement après un tir (culasse, pompe)
   const clip = gun && st === 'reload' && Arms.rl ? Arms.rl : gun && st === 'idle' && Arms.cyc ? Arms.cyc : null;
@@ -17861,7 +19194,6 @@ function updateViewmodel(dt) {
   let rP = null, rQ = null, rPose = null, lP = null, lQ = null, lPose = null;
   Arms.knife.visible = st === 'knife';
   Arms.bottle.visible = false;
-  Arms.nade.visible = st === 'throw' && !Arms.throwDone;
   let rPose2 = null, rK = 0, lPose2 = null, lK = 0;
   if (gun) {
     rP = _handR; rQ = _vmQR; heldTarget(gun, hold.R, rP, rQ); rPose = hold.R.pose; _vmHR.copy(rP);
@@ -17929,11 +19261,14 @@ function updateViewmodel(dt) {
     Arms.knife.rotation.set(-0.2, lerp(0.9, -0.6, q), lerp(0.5, -0.4, q));
     Arms.knife.updateMatrixWorld(true);
     lP = _handL.copy(KNIFE_HOLD.p).applyMatrix4(Arms.knife.matrixWorld); lQ = _vmQL.copy(Arms.knife.quaternion).multiply(KNIFE_HOLD.q); lPose = HAND_POSES.fist;
-  } else if (st === 'throw') {
-    const q = smooth(k);
-    Arms.nade.position.set(lerp(-0.18, -0.06, q), lerp(-0.3, 0.02, q), lerp(-0.25, -0.5, q));
-    lP = _handL.set(Arms.nade.position.x - 0.03, Arms.nade.position.y - 0.05, Arms.nade.position.z + 0.06);
-    lQ = handBasis(_v2.set(0.25, 0.75, -0.6), _vmV3.set(0.4, 0.2, -0.6), true, _vmQL); lPose = HAND_POSES.ball;
+  } else if (st === 'nade' && Arms.nd) {
+    // grenade : mains, grenade, torse, tête (cibles des mains sur l'arme, pour les quitter et y revenir)
+    const gR = rP && gun ? { p: rP.clone(), q: rQ.clone(), pose: rPose } : null;
+    const gL = lP && gun ? { p: lP.clone(), q: lQ.clone(), pose: lPose } : null;
+    const o = nadePose(dt, gR, gL);
+    rP = o.rP; rQ = o.rQ; rPose = o.rPose; rPose2 = o.rPose2; rK = o.rK;
+    lP = o.lP; lQ = o.lQ; lPose = o.lPose; lPose2 = o.lPose2; lK = o.lK;
+    if (Arms.nd) Arms.headTilt = Arms.nd.tilt;
   }
   AR.root.visible = !!rP;
   if (rP) { solveArm(AR, rP, rQ); setHandPose(AR.hand, rPose, rPose2, rK); }
