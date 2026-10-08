@@ -191,6 +191,7 @@ async function openGame() {
 
     // 4. partie simulée (150 s) : les zombies de chaque fenêtre et de chaque apparition arrivent
     const soak = await game.evaluate(() => {
+      __zs.dogs(false);                 // manches de chiens à part (dogs.e2e.js) : ici, les zombies des fenêtres
       G.roundState = 'pre'; G.roundT = 0;
       placePlayer(20.5, 22.5, 0);
       const origin = new Map(), reached = new Map(), spawned = new Map();

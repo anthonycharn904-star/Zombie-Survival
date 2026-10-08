@@ -82,6 +82,13 @@ body {
   0%, 20%, 40%, 60% { color: var(--paper); }
   10%, 30%, 50%, 70%, 100% { color: var(--blood); }
 }
+/* manche de chiens : le compteur passe à l'ambre des yeux du Molosse */
+#round.dogs { color: #ffb000; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.65)) drop-shadow(0 0 16px rgba(255, 176, 0, 0.45)); }
+#round.dogs.pulse { animation-name: roundpulse-dogs; }
+@keyframes roundpulse-dogs {
+  0%, 20%, 40%, 60% { color: var(--paper); }
+  10%, 30%, 50%, 70%, 100% { color: #ffb000; }
+}
 #perks { display: flex; gap: 8px; }
 .perk {
   width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
@@ -191,6 +198,7 @@ body {
 #banner.warn #banner-title { color: var(--blood-hi); }
 #banner.power #banner-title { color: #ffd76a; text-shadow: 0 0 18px rgba(255, 215, 106, 0.5), 0 3px 0 rgba(0, 0, 0, 0.6); }
 #banner.perk #banner-title { color: var(--perk-glow, var(--brass)); text-shadow: 0 0 18px var(--perk-glow, transparent), 0 3px 0 rgba(0, 0, 0, 0.6); }
+#banner.dogs #banner-title { color: #ffb000; text-shadow: 0 0 18px rgba(255, 176, 0, 0.5), 0 3px 0 rgba(0, 0, 0, 0.6); }
 @keyframes banner {
   0% { opacity: 0; transform: translate(-50%, 10px) scale(1.04); }
   10% { opacity: 1; transform: translate(-50%, 0); }
@@ -1517,6 +1525,66 @@ const PICKUPS = {
   syringe: { name: 'Seringue', heal: 0.0025, life: 30 },
   mag: { name: 'Chargeur', life: 30 },
 };
+
+/* ------------------------------------------------- Manches de chiens (Molosse) --
+   Demande d'Anthony (8 octobre 2026) : une ou deux manches spéciales par tranche de dix manches (1 à 10,
+   11 à 20…), tirées au hasard, jamais aux manches 1 et 2, au moins trois manches d'écart (d'une tranche à
+   l'autre aussi). Rien que des chiens : 6 à la première manche de chiens, 2 de plus à chaque nouvelle
+   (24 au plus) ; leurs PV suivent la manche (la moitié d'un zombie de la même manche, fiche : PV ×0,5).
+   Ils tombent du ciel dans un éclair, dans les pièces ouvertes seulement, par meutes de 4 à 6 (fiche :
+   « chasse en meute de 4 à 6 ») ; ils explosent à leur mort (2 m autour d'eux, moins fort en
+   s'éloignant) ; le dernier de la manche lâche des munitions max. */
+const DOGS = {
+  first: 6, step: 2, max: 24,                       // chiens par manche de chiens : 6, puis +2 à chaque fois
+  pack: [4, 6], alive: 6,                           // meutes de 4 à 6, jamais plus de 6 en même temps
+  firstDelay: 3.2, spawnGap: [0.3, 0.75], packGap: [2.2, 3.5],   // secondes
+  spawnDist: [6, 16],                               // éclair : à 6 à 16 cases de marche du joueur
+  speed: [4.2, 5.1],                                // m/s : deux fois le trot d'un zombie (fiche : vitesse ×2)
+  // bond (fiche : « se ramasse sur lui-même puis bondit sur 5 m ») : distances de départ, portée, ramassé
+  // (grognement), durée en l'air, hauteur, repos entre deux bonds, chance de bondir, rayon de la touche
+  bound: { min: 2.8, max: 6.2, range: 5, windup: 0.55, dur: 0.5, apex: 0.55, cool: [2.5, 4.2], chance: 0.55, hitR: 0.75 },
+  bite: { reach: 1.35, cycle: 0.75, at: 0.3 },      // morsure : portée (m), cadence (s), instant du coup
+  blast: { r: 2, dmg: 30 },                         // explosion à la mort : 30 au contact, plus rien à 2 m
+  plan: { gap: 3, from: 3, block: 10 },             // tirage : écart minimal, première manche permise, tranche
+};
+const DOG_TYPE = {
+  id: 'molosse', num: '03', name: 'Le Molosse', cls: 'Meute', tag: 'Manche spéciale', model: 'molosse', facts: 'dog', dog: true,
+  desc: 'Un chien de garde décharné, côtes à l’air. Il n’arrive jamais seul : une ou deux manches spéciales toutes les dix manches.',
+  mult: { hp: 0.5, speed: 2, damage: 0.7 },          // fiche N°03 (par rapport au zombie standard)
+  headMult: 2, ability: 'Bond',
+};
+/* Fiches de l'écran « Modèles » et compteurs d'éliminations : les zombies, puis Le Molosse. Il n'est pas
+   un type de pièce : cartes et Mod Tools ne connaissent que ZOMBIE_TYPES. */
+const SPECIMEN_TYPES = [...ZOMBIE_TYPES, DOG_TYPE];
+/* Chiens de la n-ième manche de chiens (0 : la première) ; leurs PV à la manche r. */
+const dogsForRound = (n) => Math.min(DOGS.max, DOGS.first + DOGS.step * Math.max(0, n));
+const dogHpForRound = (r) => Math.round(zombieHpForRound(r) * DOG_TYPE.mult.hp);
+/* Manches de chiens d'une tranche de dix (b : 0 pour les manches 1 à 10) : une ou deux au hasard, jamais
+   avant la manche 3, au moins 3 manches après la précédente (last) et entre elles ; from : première manche
+   permise (partie reprise d'une sauvegarde d'avant les chiens). */
+function planDogBlock(b, last, from = 1) {
+  const P = DOGS.plan, lo = Math.max(b * P.block + 1, P.from, last + P.gap, from), hi = (b + 1) * P.block;
+  const cand = [];
+  for (let r = lo; r <= hi; r++) cand.push(r);
+  if (!cand.length) return [];
+  const pairs = [];
+  for (const a of cand) for (const c of cand) if (c - a >= P.gap) pairs.push([a, c]);
+  return pairs.length && Math.random() < 0.5 ? pick(pairs) : [pick(cand)];
+}
+/* Plan des manches de chiens tenu jusqu'à la tranche de la manche r. */
+function ensureDogPlan(r) {
+  const D = G.dogs, b = Math.floor((Math.max(1, r) - 1) / DOGS.plan.block);
+  while (D.block < b) {
+    D.block++;
+    for (const x of planDogBlock(D.block, D.last, D.from || 1)) { D.plan.push(x); D.last = x; }
+  }
+}
+function isDogRound(r) {
+  if (!G.dogs || G.dogs.off) return false;
+  ensureDogPlan(r);
+  return G.dogs.plan.includes(r);
+}
+const freshDogs = (from = 1) => ({ plan: [], n: 0, block: -1, last: -99, from, off: false });
 
 /* -------------------------------------------------------------- Cartes ---
    Une carte est un objet de données (fichier .json dans les Mod Tools).
@@ -3144,6 +3212,174 @@ const Sound = (() => {
     tone('sine', 140, 60, t, 0.08, 0.55, o, 0.002);
   }
 
+  /* --------------------------------------------------- Le Molosse (sons) ---
+     Tout est synthétisé : voix de gorge (dent de scie modulée très vite pour le grondement, filtres de
+     formants pour la gueule), souffle, claquements, foudre, explosion mouillée. */
+  // voix de chien : dent de scie de f0 à f1 (Hz), roulement (modulation d'amplitude en Hz), formants
+  function dogVoice(t, dur, f0, f1, peak, dst, o = {}) {
+    const src = ctx.createOscillator();
+    src.type = 'sawtooth';
+    src.frequency.setValueAtTime(f0, t);
+    if (o.mid) src.frequency.linearRampToValueAtTime(o.mid, t + dur * 0.35);
+    src.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    if (o.vib) {
+      const v = ctx.createOscillator(), vg = ctx.createGain();
+      v.frequency.value = o.vib; vg.gain.value = f0 * (o.vibA || 0.03);
+      v.connect(vg); vg.connect(src.frequency); v.start(t); v.stop(t + dur + 0.05);
+    }
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(peak, t + (o.att || 0.02));
+    if (o.hold) env.gain.setValueAtTime(peak * 0.85, t + dur * o.hold);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    // roulement de gorge : l'amplitude bat très vite (le « rrr » du grognement)
+    let head = env;
+    if (o.rough) {
+      const am = ctx.createGain(); am.gain.value = 0.55;
+      const lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.type = 'square'; lfo.frequency.value = o.rough * rand(0.9, 1.1); lg.gain.value = 0.45;
+      lfo.connect(lg); lg.connect(am.gain); lfo.start(t); lfo.stop(t + dur + 0.05);
+      am.connect(env); head = am;
+    }
+    for (const [f, q, g] of o.formants || [[520, 4, 1], [1150, 5, 0.6], [2500, 7, 0.25]]) {
+      const bp = filt('bandpass', f, q), fg = ctx.createGain(); fg.gain.value = g;
+      src.connect(bp); bp.connect(fg); fg.connect(head);
+    }
+    // souffle mêlé à la voix
+    const ns = noiseSrc(t, dur), nf = filt('bandpass', o.breathF || 1400, 0.9), ng = ctx.createGain();
+    ng.gain.value = o.breath === undefined ? 0.35 : o.breath;
+    ns.connect(nf); nf.connect(ng); ng.connect(head);
+    env.connect(dst);
+    src.start(t); src.stop(t + dur + 0.05);
+  }
+  /* Grognement (il se ramasse avant le bond : c'est l'annonce). */
+  function dogGrowl(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.62, 6); if (!o) return;
+    const t = ctx.currentTime, dur = rand(0.55, 0.7), f = rand(78, 96);
+    dogVoice(t, dur, f, f * 1.18, 0.9, o, { rough: 26, att: 0.06, hold: 0.7, formants: [[380, 3, 1], [820, 4, 0.7], [1900, 6, 0.25]], breath: 0.5, breathF: 700 });
+  }
+  /* Grondement court en courant. */
+  function dogSnarl(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 5); if (!o) return;
+    const t = ctx.currentTime, dur = rand(0.35, 0.5), f = rand(110, 150);
+    dogVoice(t, dur, f, f * 0.8, 1.0, o, { rough: rand(30, 40), att: 0.015, hold: 0.55, formants: [[600, 2.5, 1.5], [1400, 4, 0.9], [2800, 6, 0.4]], breath: 0.7 });
+  }
+  /* Aboiement sec (au départ du bond, en chasse). */
+  function dogBark(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.72, 7); if (!o) return;
+    const t = ctx.currentTime, n = Math.random() < 0.35 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const s = t + i * rand(0.2, 0.26), f = rand(330, 440);
+      dogVoice(s, 0.2, f, f * 0.55, 1.0, o, { mid: f * 1.15, rough: 55, att: 0.006, formants: [[750, 3, 1], [1600, 4, 0.7], [3000, 6, 0.3]], breath: 0.45, breathF: 1800 });
+      noiseHit(s, 0.05, 0.5, 'bandpass', 1100, 500, 1, o, 0.002);
+    }
+  }
+  /* Claquement des mâchoires (morsure dans le vide). */
+  function dogSnap(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.5, 5); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.03, 0.9, 'highpass', 2600, null, 0.8, o, 0.001);
+    noiseHit(t + 0.004, 0.06, 0.7, 'bandpass', 1700, 900, 3, o, 0.001);
+    tone('sine', 240, 110, t, 0.05, 0.4, o, 0.001);
+  }
+  /* Morsure qui porte : claquement, chair qui se déchire, grondement de gorge. */
+  function dogBite(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.7, 5); if (!o) return;
+    const t = ctx.currentTime;
+    dogSnap(pos);
+    noiseHit(t + 0.02, 0.24, 0.85, 'bandpass', 900, 300, 1.2, o, 0.004);
+    noiseHit(t + 0.05, 0.16, 0.5, 'lowpass', 600, 120, 0.8, o, 0.01);
+    dogVoice(t + 0.03, 0.3, 120, 95, 0.6, o, { rough: 34, formants: [[500, 3, 1], [1100, 5, 0.5]], breath: 0.6 });
+  }
+  /* Jappement de douleur (touché). */
+  function dogYelp(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.62, 6); if (!o) return;
+    const t = ctx.currentTime, f = rand(900, 1150);
+    dogVoice(t, 0.2, f, f * 0.55, 0.8, o, { mid: f * 1.08, vib: 17, vibA: 0.04, att: 0.008, formants: [[1200, 4, 1], [2600, 6, 0.5], [600, 3, 0.4]], breath: 0.25, breathF: 2400 });
+  }
+  /* Hurlement (au loin : début de manche). */
+  function dogHowl(pos, vol = 0.5, bus = null, delay = 0) {
+    if (!ctx) return;
+    const o = out(pos, vol, 12, bus); if (!o) return;
+    const t = ctx.currentTime + delay, f = rand(380, 460), dur = rand(1.5, 2.1);
+    dogVoice(t, dur, f * 0.85, f * 0.82, 0.7, o, { mid: f * 1.25, vib: 5.5, vibA: 0.02, att: 0.25, hold: 0.75, formants: [[700, 5, 1], [1200, 6, 0.55], [2600, 8, 0.15]], breath: 0.15, breathF: 1000 });
+  }
+  /* Arrivée dans un éclair : craquement, tonnerre qui roule, bourdonnement électrique, grognement. */
+  function dogSpawn(pos) {
+    if (!ctx) return;
+    const o = out(pos, 0.95, 10); if (!o) return;
+    const t = ctx.currentTime;
+    noiseHit(t, 0.07, 1.0, 'highpass', 1800, null, 0.7, o, 0.001);
+    noiseHit(t + 0.01, 0.3, 0.9, 'bandpass', 2800, 380, 0.9, o, 0.002);
+    noiseHit(t + 0.05, 1.6, 0.8, 'lowpass', 420, 60, 0.7, o, 0.04, [0.3, 0.6]);
+    tone('sine', 70, 32, t + 0.02, 0.9, 0.7, o, 0.01);
+    // bourdonnement : deux dents de scie graves hachées à 50 Hz
+    const z = ctx.createGain(); z.gain.value = 0.5;
+    const hum = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+    hum.type = 'sawtooth'; hum.frequency.setValueAtTime(110, t); hum.frequency.exponentialRampToValueAtTime(70, t + 0.7);
+    lfo.type = 'square'; lfo.frequency.value = 50; lg.gain.value = 0.5;
+    lfo.connect(lg); lg.connect(z.gain);
+    const bp = filt('bandpass', 520, 2), env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t); env.gain.exponentialRampToValueAtTime(0.35, t + 0.02); env.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+    hum.connect(bp); bp.connect(z); z.connect(env); env.connect(o);
+    hum.start(t); lfo.start(t); hum.stop(t + 0.8); lfo.stop(t + 0.8);
+    for (let i = 0; i < 5; i++) noiseHit(t + 0.08 + Math.random() * 0.5, 0.03, 0.4, 'highpass', 4500, null, 0.6, o, 0.001);
+    const g = out(pos, 0.5, 6);
+    if (g) dogVoice(t + 0.35, 0.45, 96, 120, 0.8, g, { rough: 30, att: 0.04, formants: [[420, 3, 1], [900, 4, 0.6], [2000, 6, 0.2]], breath: 0.5, breathF: 800 });
+  }
+  /* Il éclate : souffle sourd, déchirure mouillée, flammes, crépitements, un jappement coupé net. */
+  function dogExplode(pos) {
+    if (!ctx) return;
+    const o = out(pos, 1.0, 8); if (!o) return;
+    const t = ctx.currentTime;
+    tone('sine', 95, 30, t, 0.55, 1.0, o, 0.003);
+    noiseHit(t, 0.9, 1.0, 'lowpass', 2200, 140, 0.8, o, 0.002, [0.09, 0.4]);
+    noiseHit(t + 0.01, 0.28, 0.9, 'bandpass', 650, 200, 0.8, o, 0.003);
+    noiseHit(t + 0.03, 0.6, 0.45, 'bandpass', 900, 260, 1.1, o, 0.05);
+    for (let i = 0; i < 7; i++) noiseHit(t + 0.1 + Math.random() * 0.55, 0.025, 0.35, 'highpass', 3500, null, 0.7, o, 0.001);
+    dogVoice(t - 0.005, 0.07, 1050, 800, 0.6, o, { att: 0.004, formants: [[1200, 4, 1], [2600, 6, 0.4]], breath: 0.2 });
+  }
+  /* Galop : trois coups sourds des pattes (une foulée) ; v : proximité (0 à 1). */
+  function dogPaws(pos, v = 1) {
+    if (!ctx) return;
+    const o = out(pos, 0.18 * v, 3); if (!o) return;
+    const t = ctx.currentTime;
+    for (const dt of [0, 0.05, 0.13]) {
+      const s = t + dt + Math.random() * 0.01;
+      noiseHit(s, 0.07, 0.9, 'lowpass', 650, 120, 0.7, o, 0.002);
+      tone('sine', 90, 45, s, 0.07, 0.35, o, 0.002);
+    }
+  }
+  /* Annonce de la manche de chiens : tonnerre lointain, hurlements, nappe sombre et cloche grave. */
+  function dogRound() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.9, 4, musicBus);
+    noiseHit(t, 2.6, 0.7, 'lowpass', 300, 50, 0.7, o, 0.4, [1.0, 0.8]);
+    const pad = (f, det) => {
+      const s = ctx.createOscillator(); s.type = 'sawtooth'; s.frequency.value = f; s.detune.value = det;
+      const lp = filt('lowpass', 300, 1), g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 1.6);
+      g.gain.setValueAtTime(0.15, t + 3.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 5.8);
+      s.connect(lp); lp.connect(g); g.connect(o); s.start(t); s.stop(t + 5.9);
+    };
+    pad(49, -10); pad(49, 9); pad(51.9, 0);                    // sol grave et sa seconde mineure : ça grince
+    bell(t + 0.3, 98, 0.32, o, 3.6); bell(t + 0.3, 103.8, 0.18, o, 3.2);
+    bell(t + 2.2, 73.4, 0.3, o, 3.8);
+    dogHowl(null, 0.45, musicBus, 0.6); dogHowl(null, 0.38, musicBus, 1.5);
+  }
+  /* Fin de la manche de chiens : la nappe se dissipe, cloches qui remontent. */
+  function dogRoundEnd() {
+    if (!ctx) return;
+    const t = ctx.currentTime, o = out(null, 0.85, 4, musicBus);
+    [[0, 98], [0.35, 146.83], [0.7, 196], [1.1, 233.08]].forEach(([dt, f]) => bell(t + dt, f, 0.26, o, 2.6));
+    noiseHit(t, 1.8, 0.35, 'lowpass', 260, 60, 0.7, o, 0.3);
+  }
   return {
     init, ready, suspend, setVolumes, setMuffle, setListener, startAmbient, setHum,
     gun, empty, reload, mech, bolt, pump, swap, knife, hitmark, headshot, grenadeBounce,
@@ -3151,6 +3387,7 @@ const Sound = (() => {
     buy, deny, keypad, door, perkCap, gulp, bottleWhoosh, glassBreak, glassTinkle, perkJingle, powerOn, explosion, roundStart, roundEnd, gameOver,
     boxSpin, boxLaugh, boxGone, powerupSpawn, powerupGrab, nuke, down, ui, creak, say, rankStamp, rankUp, prestige,
     syringe, magPickup,
+    dogGrowl, dogSnarl, dogBark, dogSnap, dogBite, dogYelp, dogHowl, dogSpawn, dogExplode, dogPaws, dogRound, dogRoundEnd,
     glasToll, glasFall, glasImpact, glasRaise, glasOffer, glasChime, glasLost, glasPing, glasMinuit, glasMidnight, glasHum,
     elixir, elixirClang, elixirKnock, elixirFelt, elixirBellows, elixirTick, elixirDrip, elixirShot,
   };
@@ -3510,6 +3747,31 @@ function genZombieCloth() {
     for (let k = 0; k < 6; k++) g.lineTo(x + rand(-14, 14), y + rand(-14, 14));
     g.fill();
   }
+  return toTex(c);
+}
+
+/* Pelage clairsemé du Molosse : poils courts couchés vers l'arrière (le long de v), plaques pelées
+   plus claires, croûtes ; clair en moyenne (les couleurs de la fiche sont dans les sommets). */
+function genDogFur() {
+  const w = 256, h = 256;
+  const c = makeCanvas(w, h), g = c.getContext('2d');
+  const n = valueNoise(w, h, [[5, 5, 1], [16, 16, 0.5], [48, 48, 0.25]], 2.0);
+  paintPixels(g, w, h, (x, y, col) => {
+    const k = 0.86 + 0.14 * n[y * w + x];
+    col[0] = 228 * k; col[1] = 222 * k; col[2] = 214 * k;
+  });
+  // plaques pelées (gale) : peau rose-gris, poils rares
+  for (let i = 0; i < 5; i++) blot(g, w, h, rand(0, w), rand(0, h), rand(10, 22), "rgba(255,228,216,0.32)");
+  // poils : traits courts le long de v (vers l'arrière du chien), sombres et clairs
+  g.lineCap = 'round';
+  for (let i = 0; i < 2600; i++) {
+    const x = rand(0, w), y = rand(0, h), len = rand(4, 11), a = Math.PI / 2 + rand(-0.35, 0.35);
+    g.strokeStyle = Math.random() < 0.62 ? `rgba(40,30,24,${rand(0.25, 0.5)})` : `rgba(255,246,232,${rand(0.15, 0.35)})`;
+    g.lineWidth = rand(0.8, 1.6);
+    wrapDraw(w, h, x, y, len, (cx, cy) => { g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len); g.stroke(); });
+  }
+  // croûtes et sang séché
+  for (let i = 0; i < 6; i++) blot(g, w, h, rand(0, w), rand(0, h), rand(4, 9), 'rgba(70,10,8,0.6)');
   return toTex(c);
 }
 
@@ -4779,6 +5041,7 @@ function buildTextures() {
   TEX.cloth = toTex(genMetal([200, 200, 200], 128, 128));
   TEX.zskin = genZombieSkin();
   TEX.zcloth = genZombieCloth();
+  TEX.dfur = genDogFur();
   TEX.bottleLabel = {};
   for (const id in PERKS) TEX.bottleLabel[id] = toTex(genBottleLabel(PERKS[id]), { clamp: true });
   for (const k in TEX) {
@@ -6337,10 +6600,15 @@ function buildMaterials() {
   MAT.zEyes = new THREE.MeshBasicMaterial({ color: 0xffcf3f, fog: false });
   MAT.zHelmet = std({ color: 0xffffff, roughness: 0.58, metalness: 0.4, vertexColors: true, emissive: 0x0e100e, side: THREE.DoubleSide });
   MAT.zLantern = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, fog: false });   // vitre de la lanterne (émissive)
+  // Le Molosse : pelage clairsemé (texture), chair et os mouillés, yeux ambre qui brillent dans le noir
+  MAT.dFur = std({ map: TEX.dfur, vertexColors: true, roughness: 0.92, emissive: 0x1c1410, emissiveIntensity: 1 });
+  MAT.dFlesh = std({ vertexColors: true, roughness: 0.42, metalness: 0.04, emissive: 0x1e0707, emissiveIntensity: 1 });
+  MAT.dEyes = new THREE.MeshBasicMaterial({ color: 0xffb000, fog: false });
   // bonus
   MAT.powerup = std({ color: 0x9dff7a, emissive: 0x2fdc40, emissiveIntensity: 0.9, roughness: 0.4, metalness: 0.2 });
   MAT.powerupDark = std({ color: 0x14361a, emissive: 0x0a3010, emissiveIntensity: 0.6, roughness: 0.6 });
   MAT.gib = std({ color: 0x5a1612, roughness: 0.55 });
+  MAT.dBone = std({ color: 0xd8ccb0, roughness: 0.6 });                  // éclats d'os (Molosse qui éclate)
   for (const k in MAT) linearize(share(MAT[k]));
   for (const k in GEO) share(GEO[k]);
 }
@@ -13670,6 +13938,473 @@ function variantGeometries(model) {
   return G;
 }
 
+/* ------------------------------------------------------- Le Molosse (rendu) --
+   Fiche d'Anthony (8 octobre 2026), N°03 « Le Molosse » : chien de garde décharné, 0,85 m au
+   garrot, 1,37 m du museau au bout de la queue ; côtes à l'air sur le flanc gauche, plaie à vif sur
+   la cuisse gauche, joue arrachée, collier de cuir à pointes et sa chaîne, poils hérissés sur le
+   cou, vertèbres saillantes, queue au bout d'os, grosses pattes griffues, yeux ambre.
+   Squelette à part (makeDogRig) : racine → corps → rein (mid : charnière du dos à la taille) →
+   avant (chest : poitrine, cou → tête → mâchoire, épaules → avant-bras → paturons) et arrière
+   (pelvis : croupe, queue, hanches → jarrets → canons) ; le dos se plie à la taille.
+   Repères des zombies : x vers la gauche du chien, y vers le haut, z vers l'avant (la tête) ; os des
+   pattes le long de -y, rotation x positive = pointe vers l'arrière. Pièces rigides par os, couleurs
+   de la fiche dans les sommets. */
+const DRIG = {
+  mid: [0, 0.745, -0.13], chest: [0, 0, 0], pelvis: [0, 0, 0],
+  neck: [0, 0.03, 0.43], head: [0, -0.03, 0.13], jaw: [0, -0.08, 0.09], tail: [0, 0.06, -0.3],
+  sh: [0.092, -0.135, 0.39], hip: [0.1, -0.1, -0.19],
+  f: [0.2, 0.26, 0.12], h: [0.25, 0.27, 0.16],     // bras, avant-bras, paturon · cuisse, jarret, canon
+  neckRX: 0.35, headRX: -0.08,                       // cou penché, tête basse (au repos)
+  rest: { f: [0.2, -0.25, -0.3], h: [-0.45, 1.0, -0.6] },
+  pawF: 0.045, pawH: 0.04,                           // bout de l'os du pied au-dessus du sol (coussinets)
+};
+let DGEO = null;
+/* Fusion comme mergeGeometries, en gardant les couleurs des sommets d'une pièce (multipliées par sa couleur). */
+function dMerge(list) {
+  let count = 0;
+  const parts = list.map(({ geo, matrix, color }) => {
+    const g = geo.index ? geo.toNonIndexed() : geo.clone();
+    g.applyMatrix4(matrix);
+    count += g.attributes.position.count;
+    return { g, color };
+  });
+  const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3), uv = new Float32Array(count * 2), col = new Float32Array(count * 3);
+  let o = 0;
+  for (const { g, color } of parts) {
+    const n = g.attributes.position.count, vc = g.attributes.color, c = color || [1, 1, 1];
+    pos.set(g.attributes.position.array, o * 3);
+    nor.set(g.attributes.normal.array, o * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+    for (let k = 0; k < n; k++) {
+      const p = (o + k) * 3;
+      if (vc) { col[p] = vc.getX(k) * c[0]; col[p + 1] = vc.getY(k) * c[1]; col[p + 2] = vc.getZ(k) * c[2]; } else col.set(c, p);
+    }
+    o += n;
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return out;
+}
+/* Volume en anneaux le long de z (tronc, cou, tête, mâchoire). Coupe : demi-ellipse haute (de mid à
+   top), demi-ellipse basse (de mid à bot), demi-largeur hw au niveau mid ; pinch resserre le bas
+   (bréchet), ridge marque l'arête du dos, x décale l'anneau. Bouts arrondis (cap0 derrière, cap1
+   devant). col(a, i, h) : couleur (a : angle depuis le dessus, i : anneau, h : 0 en bas, 1 en haut). */
+function dLoft(rings, M, col, cap0 = 0.025, cap1 = 0.025, uvs = 0.2) {
+  const pos = [], uv = [], cl = [], idx = [], R = rings.length;
+  const ring = (r, k, dz) => {
+    const ym = r.mid !== undefined ? r.mid : (r.top + r.bot) / 2;
+    const top = ym + (r.top - ym) * k, bot = ym + (r.bot - ym) * k;
+    return { ...r, top, bot, mid: ym, hw: r.hw * k, z: r.z + dz, ridge: (r.ridge || 0) * k };
+  };
+  // bouts arrondis : anneaux qui rétrécissent, puis un sommet au centre
+  const all = [];
+  if (cap0 > 0) for (const [k, f] of [[0.35, 0.92], [0.72, 0.55]]) all.push({ r: ring(rings[0], k, -cap0 * f), i: 0 });
+  rings.forEach((r, i) => all.push({ r, i }));
+  if (cap1 > 0) for (const [k, f] of [[0.72, 0.55], [0.35, 0.92]]) all.push({ r: ring(rings[R - 1], k, cap1 * f), i: R - 1 });
+  let vacc = 0;
+  all.forEach(({ r, i }, n) => {
+    if (n) { const q = all[n - 1].r; vacc += Math.hypot(r.z - q.z, (r.top + r.bot - q.top - q.bot) / 2); }
+    const ym = r.mid !== undefined ? r.mid : (r.top + r.bot) / 2;
+    for (let j = 0; j <= M; j++) {
+      const a = (j / M) * TAU, c = Math.cos(a), s = Math.sin(a);
+      const y = (c >= 0 ? ym + (r.top - ym) * c : ym + (ym - r.bot) * c) + (r.ridge || 0) * Math.pow(Math.max(0, c), 16);
+      const x = (r.x || 0) + r.hw * s * (1 - (r.pinch || 0) * Math.pow(Math.max(0, -c), 1.5));
+      pos.push(x, y, r.z);
+      uv.push((j / M) * 2, vacc / uvs);
+      cl.push(...col(a, i, clamp((y - r.bot) / Math.max(1e-4, r.top - r.bot), 0, 1)));
+    }
+  });
+  const N = all.length, W = M + 1;
+  for (let i = 0; i < N - 1; i++) for (let j = 0; j < M; j++) {
+    const a = i * W + j, b = a + W;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const center = (r, dz, i) => {
+    const ym = r.mid !== undefined ? r.mid : (r.top + r.bot) / 2;
+    pos.push(r.x || 0, ym, r.z + dz); uv.push(1, 0); cl.push(...col(Math.PI / 2, i, 0.5));
+    return pos.length / 3 - 1;
+  };
+  if (cap0 > 0) { const c0 = center(rings[0], -cap0, 0); for (let j = 0; j < M; j++) idx.push(j, j + 1, c0); }
+  if (cap1 > 0) {
+    const c1 = center(rings[R - 1], cap1, R - 1), b = (N - 1) * W;
+    for (let j = 0; j < M; j++) idx.push(b + j, c1, b + j + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // couture (premier et dernier sommet de chaque anneau) : même normale des deux côtés
+  const nr = g.attributes.normal;
+  for (let i = 0; i < N; i++) {
+    const a = i * W, b = a + M;
+    const x = nr.getX(a) + nr.getX(b), y = nr.getY(a) + nr.getY(b), z = nr.getZ(a) + nr.getZ(b), l = Math.hypot(x, y, z) || 1;
+    nr.setXYZ(a, x / l, y / l, z / l); nr.setXYZ(b, x / l, y / l, z / l);
+  }
+  return g;
+}
+/* Tube effilé le long d'une courbe (pattes, queue, côtes) : pts (Vector3), rayons aux points, M côtés ;
+   sz : aplatissement de la coupe (profondeur avant-arrière ÷ largeur), bouts fermés. */
+function dTube(pts, radii, M = 8, sz = 1, steps = 0, col = null) {
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.5);
+  const S = steps || Math.max(4, (pts.length - 1) * 4);
+  const pos = [], uv = [], cl = [], idx = [];
+  const rAt = (u) => {
+    const f = u * (radii.length - 1), i = Math.min(radii.length - 2, Math.floor(f)), t = f - i;
+    return lerp(radii[i], radii[i + 1], smooth(t));
+  };
+  const up = new THREE.Vector3(0, 0, 1), tmp = new THREE.Vector3(), nA = new THREE.Vector3(), bA = new THREE.Vector3();
+  for (let i = 0; i <= S; i++) {
+    const u = i / S, p = curve.getPointAt(u), T = curve.getTangentAt(u);
+    // repère stable : la largeur suit x (gauche-droite du chien) quand c'est possible
+    nA.set(1, 0, 0);
+    if (Math.abs(T.x) > 0.9) nA.copy(up);
+    bA.crossVectors(T, nA).normalize();
+    nA.crossVectors(bA, T).normalize();
+    const r = rAt(u);
+    for (let j = 0; j <= M; j++) {
+      const a = (j / M) * TAU;
+      tmp.copy(nA).multiplyScalar(Math.cos(a) * r).addScaledVector(bA, Math.sin(a) * r * sz);
+      pos.push(p.x + tmp.x, p.y + tmp.y, p.z + tmp.z);
+      uv.push((j / M) * 1.5, u * 2);
+      cl.push(...(col ? col(u, a) : [1, 1, 1]));
+    }
+  }
+  const W = M + 1;
+  for (let i = 0; i < S; i++) for (let j = 0; j < M; j++) { const a = i * W + j, b = a + W; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+  // bouts : un sommet au centre
+  for (const [i, sgn] of [[0, -1], [S, 1]]) {
+    const p = curve.getPointAt(i / S), T = curve.getTangentAt(i / S), r = rAt(i / S);
+    pos.push(p.x + T.x * r * 0.5 * sgn, p.y + T.y * r * 0.5 * sgn, p.z + T.z * r * 0.5 * sgn); uv.push(0, 0);
+    cl.push(...(col ? col(i / S, 0) : [1, 1, 1]));
+    const c = pos.length / 3 - 1, b = i * W;
+    for (let j = 0; j < M; j++) { if (sgn < 0) idx.push(b + j + 1, b + j, c); else idx.push(b + j, b + j + 1, c); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+/* Interpolation lisse d'un tableau [[z, valeur], …] (Catmull-Rom, z croissants). */
+function dCurve(keys) {
+  return (z) => {
+    const n = keys.length;
+    if (z <= keys[0][0]) return keys[0][1];
+    if (z >= keys[n - 1][0]) return keys[n - 1][1];
+    let i = 0;
+    while (i < n - 2 && z > keys[i + 1][0]) i++;
+    const z0 = keys[i][0], z1 = keys[i + 1][0], t = (z - z0) / (z1 - z0);
+    const p0 = keys[Math.max(0, i - 1)][1], p1 = keys[i][1], p2 = keys[i + 1][1], p3 = keys[Math.min(n - 1, i + 2)][1];
+    const t2 = t * t, t3 = t2 * t;
+    return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+  };
+}
+/* Géométries du Molosse (jeu et écran « Modèles »). */
+function dogGeometries() {
+  if (DGEO) return DGEO;
+  const k = zKit(), { C, V, box, cyl, ell } = k;
+  const I = new THREE.Matrix4();
+  const P = (geo, color = null) => ({ geo, matrix: I, color });
+  const mix = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+  // palette de la fiche (#43332A, #76604F, #8E2A2F, #E3D6B8, #FFB000) et couleurs du dessin
+  const K = {
+    fur: C(0x43332a, 1.12), furL: C(0x76604f, 1.0), furD: C(0x2e241e, 1.1), mange: C(0x76675f, 1.0),
+    flesh: C(0x8e2a2f, 1.15), fleshD: C(0x5a1418, 1.15), cavity: C(0x2e0b0d, 1.1), bone: C(0xe3d6b8, 1.0), teeth: C(0xece2c6, 1.0),
+    gum: C(0xb8475a, 0.85), nose: C(0x120c0a, 1.0), mouth: C(0x1c0708, 1.0), leather: C(0x4a2a1c, 1.25), spike: C(0xb5aa96, 1.0),
+    chain: C(0x9a8f7a, 1.0), claw: C(0x1a1210, 1.0), blood: C(0x8a1018, 1.1), bloodL: C(0xa3141e, 1.1), tongue: C(0x9a3546, 1.1),
+  };
+  const furCol = (a, i, h) => {
+    const belly = smooth(clamp((0.42 - h) / 0.38, 0, 1));
+    return mix(K.fur, K.furL, belly * 0.55);
+  };
+  /* ---- tronc : coupes relevées sur le profil de la fiche (z, dessus, dessous, demi-largeur) */
+  const TR = [
+    [0.40, 0.70, 0.56, 0.075], [0.35, 0.775, 0.49, 0.112], [0.29, 0.815, 0.43, 0.135], [0.21, 0.835, 0.405, 0.15],
+    [0.12, 0.835, 0.41, 0.155], [0.03, 0.825, 0.44, 0.145], [-0.05, 0.815, 0.47, 0.122], [-0.13, 0.81, 0.497, 0.106],
+    [-0.21, 0.82, 0.52, 0.116], [-0.29, 0.835, 0.545, 0.126], [-0.36, 0.822, 0.572, 0.118], [-0.41, 0.795, 0.592, 0.1], [-0.45, 0.755, 0.62, 0.072],
+  ].reverse();
+  const tTop = dCurve(TR.map((r) => [r[0], r[1]])), tBot = dCurve(TR.map((r) => [r[0], r[2]])), tHw = dCurve(TR.map((r) => [r[0], r[3]]));
+  // bréchet étroit sous la poitrine, ventre rentré, dos osseux
+  const tPinch = dCurve([[-0.5, 0.15], [-0.2, 0.18], [0.0, 0.38], [0.15, 0.5], [0.4, 0.3]]);
+  const tMid = dCurve([[-0.5, 0.5], [-0.15, 0.55], [0.05, 0.64], [0.25, 0.62], [0.4, 0.5]]);
+  const trunkRing = (z) => {
+    const top = tTop(z), bot = tBot(z);
+    return { z, top, bot, hw: tHw(z), mid: bot + (top - bot) * tMid(z), pinch: tPinch(z), ridge: 0.006 };
+  };
+  // ks(z) : coupe réduite là où la pièce passe sous l'autre (les deux moitiés se croisent à la taille)
+  const trunk = (z0, z1, o, c0, c1, ks = () => 1) => {
+    const rings = [];
+    const n = Math.max(3, Math.round((z1 - z0) / 0.025));
+    for (let i = 0; i <= n; i++) {
+      const r = trunkRing(lerp(z0, z1, i / n)), k = ks(r.z);
+      rings.push({ ...r, top: r.mid + (r.top - r.mid) * k, bot: r.mid + (r.bot - r.mid) * k, hw: r.hw * k });
+    }
+    const g = dLoft(rings, 22, furCol, c0, c1);
+    g.translate(-o[0], -o[1], -o[2]);
+    return g;
+  };
+  const midW = DRIG.mid, chestW = [0, midW[1] + DRIG.chest[1], midW[2] + DRIG.chest[2]], pelW = [0, midW[1] + DRIG.pelvis[1], midW[2] + DRIG.pelvis[2]];
+  const WAIST = midW[2];
+  const inFront = (z) => 1 - 0.07 * smooth(clamp((WAIST + 0.02 - z) / 0.07, 0, 1));   // l'avant rentre derrière la taille
+  const inBack = (z) => 1 - 0.07 * smooth(clamp((z - WAIST + 0.02) / 0.07, 0, 1));    // l'arrière rentre devant
+  // point de la surface du tronc (repère de la racine) : côté (x > 0 : gauche), hauteur relative h, sortie out
+  const flank = (side, z, h, out = 0) => {
+    const r = trunkRing(z), y = lerp(r.bot, r.top, h), ym = r.mid;
+    const c = y >= ym ? (y - ym) / (r.top - ym) : -(ym - y) / (ym - r.bot);
+    const s = Math.sqrt(Math.max(0, 1 - c * c));
+    const x = r.hw * s * (1 - r.pinch * Math.pow(Math.max(0, -c), 1.5));
+    const ny = Math.atan2(c, s);
+    return { x: side * (x + out * Math.cos(ny)), y: y + out * Math.sin(ny), z, tilt: ny };
+  };
+  const loc = (o) => (x, y, z) => [x - o[0], y - o[1], z - o[2]];
+  const toChest = loc(chestW), toPel = loc(pelW);
+  // plaque (taches de gale, sang) posée sur le flanc
+  const patch = (out, side, z, h, a, b, color, conv, rz = 0) => {
+    const p = flank(side, z, h, 0.002), q = conv(p.x, p.y, p.z);
+    out.push(ell(0.012, a, b, q[0], q[1], q[2], color, 0, 0, side * p.tilt + rz));
+  };
+
+  /* poitrine : tronc avant, côtes à l'air (flanc gauche), poils hérissés du garrot */
+  const chestFur = [P(trunk(WAIST - 0.08, 0.42, chestW, 0.02, 0.03, inFront))];
+  patch(chestFur, -1, 0.1, 0.62, 0.036, 0.05, K.mange, toChest, 0.2);
+  patch(chestFur, -1, 0.21, 0.36, 0.024, 0.034, K.mange, toChest, -0.3);
+  patch(chestFur, 1, 0.3, 0.42, 0.02, 0.028, K.mange, toChest);
+  for (const [z, h, l, lean] of [[0.31, 0.98, 0.075, 0.95], [0.27, 0.99, 0.085, 1.0], [0.23, 1.0, 0.07, 1.05], [0.19, 0.99, 0.06, 1.1], [0.15, 0.98, 0.045, 1.15]]) {
+    for (const sx of [-0.022, 0.022]) {
+      const p = trunkRing(z), q = toChest(sx + (z * 37 % 1 - 0.5) * 0.02, p.top - 0.012, z);
+      const a = V(q[0], q[1], q[2]), b = V(q[0] + sx * 0.6, q[1] + Math.cos(lean) * l, q[2] - Math.sin(lean) * l);
+      chestFur.push({ geo: dTube([a, b], [0.016, 0.002], 4, 0.7, 2), matrix: I, color: K.furD });
+    }
+  }
+  const chestF = [];
+  {
+    // cavité sombre, bord de chair, cinq côtes en os qui épousent le flanc
+    const zc = 0.03, hc = 0.47;
+    const c = flank(1, zc, hc, -0.018), q = toChest(c.x, c.y, c.z);
+    chestF.push(ell(0.03, 0.118, 0.152, q[0], q[1], q[2], K.flesh, 0, 0, c.tilt));
+    chestF.push(ell(0.03, 0.1, 0.132, q[0] + 0.004, q[1], q[2], K.cavity, 0, 0, c.tilt));
+    for (let i = 0; i < 5; i++) {
+      const z = 0.13 - i * 0.05, pts = [];
+      for (const [h, dz] of [[0.72, 0.012], [0.6, 0.004], [0.47, 0], [0.34, -0.006], [0.24, -0.014]]) {
+        const p = flank(1, z + dz, h, 0.008 + 0.012 * Math.sin(((h - 0.2) / 0.55) * Math.PI)), r = toChest(p.x, p.y, p.z);
+        pts.push(V(r[0], r[1], r[2]));
+      }
+      chestF.push({ geo: dTube(pts, [0.008, 0.012, 0.012, 0.011, 0.007], 6, 1, 10), matrix: I, color: K.bone });
+    }
+    // striures de chair autour de la cavité
+    for (const [z, h, rz] of [[0.17, 0.52, 0.5], [-0.11, 0.55, -0.4], [-0.1, 0.38, 0.3]]) {
+      const p = flank(1, z, h, 0.006), r = toChest(p.x, p.y, p.z);
+      chestF.push(box(0.006, 0.05, 0.008, r[0], r[1], r[2], K.fleshD, 0, 0, rz));
+    }
+  }
+  patch(chestFur, -1, -0.04, 0.45, 0.03, 0.042, K.mange, toChest, 0.3);
+  // vertèbres saillantes : deux sur l'avant, deux sur l'arrière
+  for (const z of [-0.07, -0.112]) { const r = trunkRing(z), q = toChest(0, r.top - 0.004, z); chestF.push(ell(0.024, 0.019, 0.022, q[0], q[1], q[2], K.bone, 0, 0, 0, 10, 7)); }
+  const pelF = [];
+  for (const z of [-0.155, -0.198]) { const r = trunkRing(z), q = toPel(0, r.top - 0.004, z); pelF.push(ell(0.024, 0.019, 0.022, q[0], q[1], q[2], K.bone, 0, 0, 0, 10, 7)); }
+  /* croupe : hanches, arrière du tronc */
+  const pelFur = [P(trunk(-0.46, WAIST + 0.08, pelW, 0.03, 0.02, inBack))];
+  patch(pelFur, 1, -0.18, 0.3, 0.022, 0.032, K.mange, toPel);
+  patch(pelFur, -1, -0.33, 0.62, 0.034, 0.046, K.mange, toPel, -0.2);
+  patch(pelFur, -1, -0.24, 0.4, 0.02, 0.028, K.mange, toPel);
+  patch(pelFur, 1, -0.4, 0.7, 0.018, 0.026, K.mange, toPel);
+
+  /* ---- cou (repère de l'os du cou, axe z le long du cou, penché de neckRX) : épais, poils hérissés,
+     collier de cuir à pointes, anneau et chaîne */
+  const neckRings = [
+    { z: -0.12, top: 0.075, bot: -0.3, hw: 0.13, mid: -0.06 }, { z: -0.04, top: 0.065, bot: -0.31, hw: 0.124, mid: -0.075 },
+    { z: 0.04, top: 0.05, bot: -0.3, hw: 0.116, mid: -0.085 }, { z: 0.11, top: 0.035, bot: -0.27, hw: 0.108, mid: -0.085 },
+    { z: 0.17, top: 0.02, bot: -0.22, hw: 0.098, mid: -0.08 },
+  ];
+  const neckFur = [P(dLoft(neckRings, 20, furCol, 0.02, 0.03))];
+  for (let i = 0; i < 7; i++) {
+    const z = 0.13 - i * 0.034, top = lerp(0.03, 0.068, i / 6), l = 0.06 + 0.035 * Math.sin((i / 6) * Math.PI);
+    for (const sx of i % 2 ? [-0.02, 0.02] : [0]) {
+      const a = V(sx, top - 0.01, z), b = V(sx * 1.8, top - 0.01 + l * 0.72, z - l * 0.7);
+      neckFur.push({ geo: dTube([a, b], [0.017, 0.002], 4, 0.7, 2), matrix: I, color: K.furD });
+    }
+  }
+  { const p = V(-0.112, -0.13, 0.02); neckFur.push(ell(0.012, 0.032, 0.042, p.x, p.y, p.z, K.mange, 0, 0.1, 0.25)); }
+  const collarZ = 0.085, collarRX = 0.24, cy = -0.11, cxr = 0.121, cyr = 0.172;
+  const neckF = [k.tor(1, 0.13, 0, cy, collarZ, K.leather, collarRX, 0, 0, cxr, cyr, 0.36, 26)];
+  // boucle sur le côté gauche
+  neckF.push(box(0.012, 0.05, 0.05, cxr + 0.002, cy + 0.02, collarZ + 0.006, K.leather, collarRX, 0, 0.15));
+  const neckM = [];
+  const collarPt = (a, out) => {
+    const m = new THREE.Matrix4().makeRotationX(collarRX);
+    const p = V(Math.sin(a) * (cxr + out), Math.cos(a) * (cyr + out), 0).applyMatrix4(m);
+    return V(p.x, p.y + cy, p.z + collarZ);
+  };
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * 0.42 + (i / 8) * Math.PI * 1.16;   // pointes sur le bas et les côtés
+    const p = collarPt(a, 0.012), q = collarPt(a, 0.062);
+    neckM.push({ geo: dTube([p, q], [0.014, 0.0015], 6, 1, 2), matrix: I, color: K.spike });
+  }
+  neckM.push(box(0.016, 0.03, 0.006, cxr + 0.008, cy + 0.02, collarZ + 0.006, K.chain, collarRX, 0, 0.15));
+  {
+    // anneau sous la gorge et trois maillons qui pendent (vers le bas du monde : (0, -cos, sin) dans le cou)
+    const base = collarPt(Math.PI, 0.008), dn = V(0, -Math.cos(DRIG.neckRX), Math.sin(DRIG.neckRX));
+    const ringC = base.clone().addScaledVector(dn, 0.028);
+    neckM.push(k.tor(0.026, 0.0055, ringC.x, ringC.y, ringC.z, K.chain, 0, Math.PI / 2, 0, 1, 1, 1, 16));
+    for (let i = 0; i < 4; i++) {
+      const c = ringC.clone().addScaledVector(dn, 0.046 + i * 0.033);
+      neckM.push(k.tor(0.015, 0.0045, c.x, c.y, c.z, K.chain, 0, i % 2 ? 0 : Math.PI / 2, 0, 1, 1.5, 1, 10));
+    }
+  }
+
+  /* ---- tête (repère de l'os de la tête : axe z vers la truffe) */
+  const headRings = [
+    { z: -0.07, top: 0.035, bot: -0.07, hw: 0.06 }, { z: -0.03, top: 0.075, bot: -0.105, hw: 0.095, mid: -0.012 },
+    { z: 0.03, top: 0.096, bot: -0.122, hw: 0.112, mid: -0.014 }, { z: 0.09, top: 0.1, bot: -0.116, hw: 0.112, mid: -0.014 },
+    { z: 0.145, top: 0.09, bot: -0.098, hw: 0.1, mid: -0.01 }, { z: 0.195, top: 0.064, bot: -0.082, hw: 0.083, mid: -0.014 },
+    { z: 0.25, top: 0.05, bot: -0.075, hw: 0.07, mid: -0.016 }, { z: 0.31, top: 0.04, bot: -0.07, hw: 0.063, mid: -0.018 },
+    { z: 0.37, top: 0.03, bot: -0.066, hw: 0.057, mid: -0.018 }, { z: 0.41, top: 0.016, bot: -0.058, hw: 0.049, mid: -0.018 },
+  ];
+  // dessous du museau : l'intérieur de la bouche (sombre), visible quand la gueule s'ouvre
+  const headCol = (a, i, h) => (headRings[i].z > 0.15 && h < 0.13 ? K.mouth : furCol(a, i, h + 0.25));
+  const headFur = [P(dLoft(headRings, 20, headCol, 0.02, 0.022))], headF = [];
+  // arcades sourcilières froncées, oreilles dressées (dehors : poil), cicatrice
+  for (const s of [-1, 1]) {
+    headFur.push(ell(0.05, 0.014, 0.026, s * 0.064, 0.066, 0.166, K.furD, 0.2, s * 0.5, s * 0.35));
+    // oreille : pyramide à trois pans, face plate (le creux) vers l'avant et l'extérieur
+    const earM = mtx(s * 0.07, 0.118, -0.035, -0.25, s * 0.6, -s * 0.25);
+    const ear = new THREE.CylinderGeometry(0.0, 0.05, 0.17, 3, 1);
+    headFur.push({ geo: ear, matrix: earM.clone().multiply(mtx(0, 0, 0, 0, Math.PI, 0, 1, 1, 0.5)), color: K.fur });
+    headF.push({ geo: ear, matrix: earM.clone().multiply(mtx(0, -0.02, 0.0125, 0, Math.PI, 0, 0.58, 0.66, 0.18)), color: K.cavity });
+  }
+  for (const s of [-1, 1]) {
+    // orbite, babines roses (gencives) et dents du haut
+    headF.push(ell(0.021, 0.015, 0.014, s * 0.076, 0.03, 0.166, K.nose, 0, s * 0.55, 0));
+    // babines roses (gencives) le long de la lèvre, sans faire le tour du museau
+    const gum = [];
+    for (const z of [0.18, 0.24, 0.3, 0.355]) {
+      const r = headRings.find((q) => q.z >= z) || headRings[headRings.length - 1];
+      gum.push(V(s * r.hw * 0.78, r.bot + 0.008, z));
+    }
+    headF.push({ geo: dTube(gum, [0.004, 0.006, 0.006, 0.0045], 6, 1.5, 12), matrix: I, color: K.gum });
+    // prémolaires (triangles), canine, incisives
+    for (const [z, l, w] of [[0.215, 0.03, 0.016], [0.255, 0.036, 0.017], [0.295, 0.031, 0.016], [0.33, 0.028, 0.015]]) {
+      const r = headRings.find((q) => q.z >= z), x = s * r.hw * 0.8;
+      headF.push({ geo: new THREE.CylinderGeometry(0.0, w, l, 4, 1), matrix: mtx(x, r.bot + 0.004 - l / 2, z, Math.PI, Math.PI / 4, 0, 0.55, 1, 1), color: K.teeth });
+    }
+    headF.push({ geo: new THREE.CylinderGeometry(0.0, 0.012, 0.048, 6, 1), matrix: mtx(s * 0.045, -0.088, 0.365, Math.PI - 0.12, 0, s * 0.08), color: K.teeth });
+    for (const x of [0.01, 0.026]) headF.push({ geo: new THREE.CylinderGeometry(0.0, 0.0065, 0.018, 4, 1), matrix: mtx(s * x, -0.068, 0.403 - x * 0.35, Math.PI, Math.PI / 4, 0, 0.6, 1, 1), color: K.teeth });
+  }
+  headF.push(ell(0.038, 0.028, 0.028, 0, 0.008, 0.43, K.nose));                       // truffe
+  // joue gauche arrachée : chair à vif, deux bandes claires (dents, os)
+  headF.push(ell(0.012, 0.034, 0.05, 0.094, -0.062, 0.135, K.flesh, 0, 0.42, 0.18));
+  headF.push(ell(0.011, 0.026, 0.04, 0.097, -0.062, 0.136, K.fleshD, 0, 0.42, 0.18));
+  for (const dy of [-0.071, -0.053]) headF.push(box(0.005, 0.006, 0.044, 0.104, dy, 0.138, K.bone, 0.08, 0.42, 0.18));
+  const eyes = [];
+  for (const s of [-1, 1]) eyes.push(ell(0.016, 0.0105, 0.011, s * 0.08, 0.031, 0.17, null, 0.1, s * 0.6, s * 0.15, 10, 6));
+
+  /* ---- mâchoire (repère de la charnière : axe z vers le menton) */
+  const jawRings = [
+    { z: -0.045, top: 0.012, bot: -0.04, hw: 0.074 }, { z: 0.02, top: 0.012, bot: -0.056, hw: 0.08, mid: -0.008 },
+    { z: 0.1, top: 0.01, bot: -0.056, hw: 0.068, mid: -0.008 }, { z: 0.18, top: 0.008, bot: -0.052, hw: 0.058, mid: -0.008 },
+    { z: 0.255, top: 0.006, bot: -0.046, hw: 0.05, mid: -0.006 }, { z: 0.305, top: 0.002, bot: -0.036, hw: 0.041, mid: -0.006 },
+  ];
+  const jawCol = (a, i, h) => (h > 0.8 && jawRings[i].z > 0.05 ? K.mouth : furCol(a, i, h + 0.1));
+  const jawFur = [P(dLoft(jawRings, 16, jawCol, 0.015, 0.018))];
+  const jawF = [ell(0.032, 0.008, 0.11, 0, 0.004, 0.17, K.tongue, -0.05)];        // langue
+  for (const s of [-1, 1]) {
+    const gum = [];
+    for (const z of [0.06, 0.13, 0.2, 0.26, 0.3]) {
+      const r = jawRings.find((q) => q.z >= z) || jawRings[jawRings.length - 1];
+      gum.push(V(s * r.hw * 0.8, 0.006, z));
+    }
+    jawF.push({ geo: dTube(gum, [0.0045, 0.006, 0.006, 0.0055, 0.0045], 6, 1.3, 12), matrix: I, color: K.gum });
+    for (const [z, l, w] of [[0.12, 0.021, 0.012], [0.165, 0.026, 0.013], [0.21, 0.023, 0.012], [0.245, 0.02, 0.011]]) {
+      const r = jawRings.find((q) => q.z >= z), x = s * r.hw * 0.8;
+      jawF.push({ geo: new THREE.CylinderGeometry(0.0, w, l, 4, 1), matrix: mtx(x, 0.012 + l / 2, z, 0, Math.PI / 4, 0, 0.55, 1, 1), color: K.teeth });
+    }
+    jawF.push({ geo: new THREE.CylinderGeometry(0.0, 0.01, 0.036, 6, 1), matrix: mtx(s * 0.03, 0.028, 0.278, 0.15, 0, -s * 0.06), color: K.teeth });
+    for (const x of [0.008, 0.02]) jawF.push({ geo: new THREE.CylinderGeometry(0.0, 0.0055, 0.014, 4, 1), matrix: mtx(s * x, 0.013, 0.3 - x * 0.3, 0, Math.PI / 4, 0, 0.6, 1, 1), color: K.teeth });
+  }
+  // bave sanglante qui pend de la lèvre
+  jawF.push(cyl(0.004, 0.0025, 0.05, 0.026, -0.05, 0.25, K.blood), cyl(0.0035, 0.002, 0.08, -0.02, -0.062, 0.2, K.bloodL));
+  jawF.push(ell(0.006, 0.009, 0.006, -0.02, -0.104, 0.2, K.bloodL));
+
+  /* ---- queue (repère de sa racine) : courte, recourbée, bout d'os */
+  const tailPts = [V(0, -0.01, 0.03), V(0, 0.04, -0.04), V(0, 0.036, -0.1), V(0, -0.008, -0.15), V(0, -0.058, -0.17)];
+  const tailFur = [{ geo: dTube(tailPts, [0.036, 0.031, 0.025, 0.019, 0.015], 8, 1, 16), matrix: I, color: K.fur }];
+  const tailF = [ell(0.017, 0.02, 0.017, 0, -0.075, -0.174, K.bone), cyl(0.008, 0.008, 0.02, 0, -0.064, -0.172, K.bone)];
+
+  /* ---- pattes (repère de chaque os, os le long de -y) */
+  const [F1, F2, F3] = DRIG.f, [H1, H2, H3] = DRIG.h;
+  const legCol = (u) => mix(K.fur, K.furD, 0.25 * u);
+  const arm = [{ geo: dTube([V(-0.01, 0.05, 0.005), V(0, 0.0, 0.012), V(0, -0.09, 0.008), V(0, -F1, -0.004)], [0.05, 0.066, 0.06, 0.045], 14, 1.3, 14, legCol), matrix: I }];
+  arm.push(ell(0.034, 0.038, 0.036, 0, -F1 + 0.005, -0.032, K.fur));                    // pointe du coude
+  const fore = [{ geo: dTube([V(0, 0.02, 0), V(0, -0.1, 0.004), V(0, -F2, 0.002)], [0.047, 0.04, 0.031], 10, 1.1, 10, legCol), matrix: I }];
+  // pied : posé à plat au repos (l'os est penché de la somme des angles de repos)
+  const paw = (L, restAbs, s) => {
+    const m = new THREE.Matrix4().makeTranslation(0, -L, 0).multiply(new THREE.Matrix4().makeRotationX(-restAbs));
+    const parts = [
+      ell(0.046 * s, 0.032 * s, 0.058 * s, 0, -0.008 * s, 0.022 * s, K.fur),
+      ell(0.04 * s, 0.014 * s, 0.05 * s, 0, -0.03 * s, 0.02 * s, K.furD),
+    ];
+    for (const [x, z] of [[-0.031, 0.06], [-0.011, 0.073], [0.011, 0.073], [0.031, 0.06]]) {
+      parts.push(ell(0.0155 * s, 0.017 * s, 0.022 * s, x * s, -0.018 * s, z * s, K.fur));
+      parts.push({ geo: new THREE.CylinderGeometry(0.0005, 0.0062 * s, 0.026 * s, 5, 1), matrix: mtx(x * s * 1.08, -0.026 * s, (z + 0.026) * s, 1.95, 0, 0), color: K.claw });
+    }
+    return parts.map((p) => ({ geo: p.geo, matrix: m.clone().multiply(p.matrix), color: p.color }));
+  };
+  const restF = DRIG.rest.f, restH = DRIG.rest.h;
+  const pawF = [{ geo: dTube([V(0, 0.015, 0), V(0, -F3, 0.004)], [0.032, 0.029], 10, 1.15, 4, legCol), matrix: I }, ...paw(F3, restF[0] + restF[1] + restF[2], DRIG.pawF / 0.04)];
+  const thigh = [{ geo: dTube([V(0, 0.08, -0.035), V(0, 0.02, -0.02), V(0, -0.1, 0.01), V(0, -H1, 0.004)], [0.058, 0.082, 0.066, 0.042], 16, 1.6, 14, legCol), matrix: I }];
+  const shin = [{ geo: dTube([V(0, 0.02, 0.0), V(0, -0.1, -0.012), V(0, -H2, -0.004)], [0.05, 0.04, 0.029], 10, 1.3, 10, legCol), matrix: I }];
+  shin.push(box(0.016, 0.16, 0.022, 0, -H2 + 0.085, -0.032, K.fur, -0.12));             // tendon d'Achille
+  shin.push(ell(0.022, 0.026, 0.024, 0, -H2 + 0.004, -0.02, K.fur));                     // pointe du jarret
+  const pawH = [{ geo: dTube([V(0, 0.012, -0.004), V(0, -H3, 0.004)], [0.03, 0.028], 10, 1.15, 4, legCol), matrix: I }, ...paw(H3, restH[0] + restH[1] + restH[2], DRIG.pawH / 0.04)];
+  // cuisse gauche : plaie à vif (haut de la cuisse, comme sur la fiche) et ses stries
+  const wound = [ell(0.024, 0.115, 0.088, 0.052, -0.025, 0.0, K.flesh, 0.2, 0, 0.1), ell(0.022, 0.098, 0.074, 0.056, -0.025, 0.0, K.flesh, 0.2, 0, 0.1)];
+  for (const [dz, rz] of [[-0.04, 0.3], [-0.012, 0.18], [0.016, 0.08], [0.042, 0.0]]) wound.push(box(0.005, 0.1, 0.005, 0.071, -0.025, dz, K.fleshD, 0.2 + rz * 0.5, 0, 0.1));
+
+  DGEO = {
+    dChest: dMerge(chestFur), dChestF: dMerge(chestF), dPelvis: dMerge(pelFur), dPelvisF: dMerge(pelF),
+    dNeck: dMerge(neckFur), dNeckF: dMerge(neckF), dCollar: dMerge(neckM),
+    dHead: dMerge(headFur), dHeadF: dMerge(headF), dEyes: mergeGeometries(eyes), dJaw: dMerge(jawFur), dJawF: dMerge(jawF),
+    dTail: dMerge(tailFur), dTailF: dMerge(tailF),
+    dArm: dMerge(arm), dFore: dMerge(fore), dPawF: dMerge(pawF), dThigh: dMerge(thigh), dWound: dMerge(wound), dShin: dMerge(shin), dPawH: dMerge(pawH),
+  };
+  // yeux (écran « Modèles », lueur des yeux en partie) : centre de chaque œil dans le repère de la tête
+  DGEO.eyePos = [V(0.083, 0.031, 0.172), V(-0.083, 0.031, 0.172)];
+  DGEO.mouthPos = V(0, -0.075, 0.37);
+  return DGEO;
+}
+/* Squelette du Molosse (positions de repos de DRIG). */
+function makeDogRig() {
+  const o = () => new THREE.Object3D();
+  const r = { root: o(), body: o(), mid: o(), chest: o(), pelvis: o(), neck: o(), head: o(), jaw: o(), tail: o() };
+  r.root.add(r.body);
+  r.body.add(r.mid); r.mid.position.fromArray(DRIG.mid);
+  r.mid.add(r.chest, r.pelvis); r.chest.position.fromArray(DRIG.chest); r.pelvis.position.fromArray(DRIG.pelvis);
+  r.chest.add(r.neck); r.neck.position.fromArray(DRIG.neck); r.neck.rotation.x = DRIG.neckRX;
+  r.neck.add(r.head); r.head.position.fromArray(DRIG.head); r.head.rotation.x = DRIG.headRX;
+  r.head.add(r.jaw); r.jaw.position.fromArray(DRIG.jaw);
+  r.pelvis.add(r.tail); r.tail.position.fromArray(DRIG.tail);
+  for (const s of ['L', 'R']) {
+    const sx = s === 'L' ? 1 : -1;
+    for (const [leg, parent, at, L, rest] of [['f', r.chest, DRIG.sh, DRIG.f, DRIG.rest.f], ['h', r.pelvis, DRIG.hip, DRIG.h, DRIG.rest.h]]) {
+      const b1 = o(), b2 = o(), b3 = o();
+      parent.add(b1); b1.position.set(sx * at[0], at[1], at[2]);
+      b1.add(b2); b2.position.y = -L[0];
+      b2.add(b3); b3.position.y = -L[1];
+      b1.rotation.x = rest[0]; b2.rotation.x = rest[1]; b3.rotation.x = rest[2];
+      r[`${leg}1${s}`] = b1; r[`${leg}2${s}`] = b2; r[`${leg}3${s}`] = b3;
+    }
+  }
+  return r;
+}
+
 /* Pièces de chaque modèle : géométrie, os suivi, matière, teinte d'instance. bone : un os (hips,
    neck, shL, shR, elL, elR, hipL, hipR, knL, knR) ou une paire gauche-droite (sh, el, hip, kn).
    head : cachée quand la tête a sauté · helmet : le casque · legs : cachée quand le zombie rampe
@@ -13731,9 +14466,36 @@ const ZPARTS = {
     { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
     { geo: 'armStump', bone: 'sh', mat: 'zSkin', tint: 'skin', stump: 'arm' },
   ],
+  // Le Molosse (manches spéciales) : son squelette (makeDogRig), pelage, chair et os, yeux, collier
+  molosse: [
+    { geo: 'dChest', bone: 'chest', mat: 'dFur', tint: 'skin' },
+    { geo: 'dChestF', bone: 'chest', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dPelvis', bone: 'pelvis', mat: 'dFur', tint: 'skin' },
+    { geo: 'dPelvisF', bone: 'pelvis', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dNeck', bone: 'neck', mat: 'dFur', tint: 'skin' },
+    { geo: 'dNeckF', bone: 'neck', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dCollar', bone: 'neck', mat: 'zHelmet', tint: 'white' },
+    { geo: 'dHead', bone: 'head', mat: 'dFur', tint: 'skin' },
+    { geo: 'dHeadF', bone: 'head', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dEyes', bone: 'head', mat: 'dEyes', tint: 'white' },
+    { geo: 'dJaw', bone: 'jaw', mat: 'dFur', tint: 'skin' },
+    { geo: 'dJawF', bone: 'jaw', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dTail', bone: 'tail', mat: 'dFur', tint: 'skin' },
+    { geo: 'dTailF', bone: 'tail', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dArm', bone: 'f1', mat: 'dFur', tint: 'skin' },
+    { geo: 'dFore', bone: 'f2', mat: 'dFur', tint: 'skin' },
+    { geo: 'dPawF', bone: 'f3', mat: 'dFur', tint: 'skin' },
+    { geo: 'dThigh', bone: 'h1', mat: 'dFur', tint: 'skin' },
+    { geo: 'dWound', bone: 'h1L', mat: 'dFlesh', tint: 'white' },
+    { geo: 'dShin', bone: 'h2', mat: 'dFur', tint: 'skin' },
+    { geo: 'dPawH', bone: 'h3', mat: 'dFur', tint: 'skin' },
+  ],
 };
-const ZBONES = { sh: ['shL', 'shR'], el: ['elL', 'elR'], hip: ['hipL', 'hipR'], kn: ['knL', 'knR'] };
-const zGeoSet = (model) => (model === 'fantassin' ? zombieGeometries() : variantGeometries(model));
+const ZBONES = {
+  sh: ['shL', 'shR'], el: ['elL', 'elR'], hip: ['hipL', 'hipR'], kn: ['knL', 'knR'],
+  f1: ['f1L', 'f1R'], f2: ['f2L', 'f2R'], f3: ['f3L', 'f3R'], h1: ['h1L', 'h1R'], h2: ['h2L', 'h2R'], h3: ['h3L', 'h3R'],
+};
+const zGeoSet = (model) => (model === 'fantassin' ? zombieGeometries() : model === 'molosse' ? dogGeometries() : variantGeometries(model));
 const zModelOf = (z) => z.model || (z.type && z.type.model) || 'fantassin';
 /* Jeu d'instances R pour n zombies : un appel de dessin par pièce et par modèle, couleur et
    matrice par instance (la horde du jeu : ZR, tous les modèles ; l'écran « Modèles » : un seul). */
@@ -13854,6 +14616,7 @@ const SPECIMEN_MODELS = {
   lacere: { anims: SPEC_ANIMS, legs: true, make: () => makeSpecimen('lacere') },
   savant: { anims: SPEC_ANIMS, make: () => makeSpecimen('savant') },
   sentinelle: { anims: SPEC_ANIMS, make: () => makeSpecimen('sentinelle') },
+  molosse: { anims: ['idle', 'gallop', 'bound', 'bite', 'spawn', 'death'], dog: true, make: () => makeDogSpecimen() },
 };
 // démarches montrées pour chaque animation (« Autre apparence » passe à la suivante)
 const SPEC_GAITS = { walk: ['fantassin', 'titubant', 'bras', 'boiteux'], jog: ['coureur', 'griffu'], run: ['sprinteur'], frenzy: ['super', 'frenetique'] };
@@ -14056,6 +14819,188 @@ function makeSpecimen(model) {
   };
 }
 
+/* Le Molosse dans l'écran « Modèles » : mêmes pièces et même animation qu'en partie. Animations : Repos,
+   Galop (sur place, le sol défile), Bond (ramassé et grognement, bond, réception), Morsure, Apparition
+   (dans un éclair), Mort (il éclate, puis retombe du ciel). L'éclair et l'explosion ont leurs effets
+   propres, dessinés dans la scène de l'aperçu. Les sons de chaque animation jouent pendant ses deux
+   premiers tours. */
+function makeDogSpecimen() {
+  const R = {};
+  const root = zombieInstances(R, 1, ['molosse']);
+  for (const m of R.parts) m.castShadow = true;
+  const look = () => ({ skin: pick(DOG_TINTS), cloth: 0xffffff, eyes: 0xffffff, helmet: false, helmetColor: 0 });
+  const z = {
+    id: 7, slot: 0, R, model: 'molosse', type: DOG_TYPE, dog: true, rig: makeDogRig(), look: look(), helmetOn: false, alive: true, spec: true,
+    pos: new THREE.Vector3(), yaw: 0, gy: 0, dstate: 'idle', st: 0, moving: 0, flinch: 0, flinchSide: 1, aim: 0, turn: 0, leap: 0,
+    stunDur: 1.4, stunSide: 1, gib: 0, headless: false, vx: 0, vz: 0,
+  };
+  paintZombieSlot(0, z.look, R, 'molosse');
+  // effets de l'aperçu : éclair, lueur, flash, boule de feu, fumée, morceaux qui retombent
+  const fx = new THREE.Group();
+  root.add(fx);
+  const add = (m) => { fx.add(m); return m; };
+  const boltMat = new THREE.MeshBasicMaterial({ color: 0xdcefff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+  const segs = [];
+  for (let i = 0; i < 12; i++) segs.push(add(new THREE.Mesh(GEO.box, boltMat)));
+  const sprite = (tex, color) => add(new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  const glow = sprite(TEX.glow, 0x8fc0ff), fire = sprite(TEX.flare, 0xffa040), fire2 = sprite(TEX.flare, 0xff6a20);
+  const smoke = [];
+  for (let i = 0; i < 3; i++) {
+    const s = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.smoke, transparent: true, depthWrite: false })));
+    setLin(s.material.color, 0x3a2622);
+    smoke.push(s);
+  }
+  const chunks = [];
+  for (let i = 0; i < 9; i++) {
+    const m = add(new THREE.Mesh(GEO.box, i < 3 ? MAT.dBone : MAT.gib));
+    m.castShadow = true;
+    chunks.push({ m, v: new THREE.Vector3(), w: new THREE.Vector3() });
+  }
+  const light = add(new THREE.PointLight(0xa8ccff, 0, 7, 2));
+  const eyeGlow = [sprite(TEX.glow, 0xffa21a), sprite(TEX.glow, 0xffa21a)];
+  for (const e of eyeGlow) { e.scale.setScalar(0.085); e.material.opacity = 0.75; }
+  const hideFx = () => { for (const m of fx.children) if (!eyeGlow.includes(m)) m.visible = false; light.intensity = 0; };
+  hideFx();
+  const S = { anim: null, loop: -1, phase: -1, sounds: 0, boom: -1, bolt: -1, t: 0 };
+  const loud = () => S.sounds < 2;
+  const strike = () => {
+    // éclair du plafond (3 m) au sol, devant la toise
+    let px = rand(-0.4, 0.4), pz = rand(-0.4, 0.4), py = 3.0;
+    segs.forEach((m, i) => {
+      const k = (i + 1) / segs.length, nx = lerp(px, 0, 0.3 + 0.7 * k) + rand(-0.18, 0.18) * (1 - k), nz = lerp(pz, 0, 0.3 + 0.7 * k) + rand(-0.18, 0.18) * (1 - k), ny = 3 * (1 - k);
+      const dx = nx - px, dy = ny - py, dzz = nz - pz, L = Math.hypot(dx, dy, dzz);
+      m.position.set((px + nx) / 2, (py + ny) / 2, (pz + nz) / 2);
+      m.quaternion.setFromUnitVectors(_dUp, _dV.set(dx / L, dy / L, dzz / L));
+      m.scale.set(0.035, L, 0.035);
+      m.visible = true;
+      px = nx; py = ny; pz = nz;
+    });
+    glow.position.set(0, 1.1, 0); glow.scale.set(1.4, 3, 1); glow.visible = true;
+    light.color.setHex(0xa8ccff); light.position.set(0, 1.2, 0.3); light.intensity = 9;
+    S.bolt = 0;
+    if (loud()) Sound.dogSpawn(null);
+  };
+  const boom = () => {
+    _dX.set(0, -0.1, 0.12).applyMatrix4(z.rig.chest.matrixWorld);
+    const c = root.worldToLocal(_dX.clone());
+    fire.position.copy(c); fire2.position.copy(c);
+    fire.visible = fire2.visible = true;
+    smoke.forEach((s, i) => { s.position.set(c.x + rand(-0.2, 0.2), c.y + rand(0, 0.2), c.z + rand(-0.2, 0.2)); s.visible = true; s.userData.v = rand(0.3, 0.6); s.userData.r = rand(-0.4, 0.4); });
+    for (const ch of chunks) {
+      ch.m.position.copy(c);
+      ch.m.scale.set(rand(0.05, 0.11), rand(0.04, 0.09), rand(0.05, 0.11));
+      ch.v.set(rand(-2.4, 2.4), rand(2, 4.6), rand(-2.4, 2.4)); ch.w.set(rand(-8, 8), rand(-8, 8), rand(-8, 8));
+      ch.m.visible = true;
+    }
+    light.color.setHex(0xff8a3a); light.position.copy(c).add(_dV.set(0, 0.3, 0)); light.intensity = 7;
+    S.boom = 0;
+    if (loud()) Sound.dogExplode(null);
+  };
+  const stepFx = (dt) => {
+    if (S.bolt >= 0) {
+      S.bolt += dt;
+      const k = Math.max(0, 1 - S.bolt / 0.42);
+      boltMat.opacity = (Math.random() < 0.7 ? 1 : 0.2) * Math.min(1, k * 1.8);
+      glow.material.opacity = 0.6 * k;
+      if (k <= 0) { for (const m of segs) m.visible = false; glow.visible = false; S.bolt = -1; }
+    }
+    if (S.boom >= 0) {
+      S.boom += dt;
+      const k = S.boom;
+      fire.scale.setScalar(0.6 + k * 4); fire.material.opacity = Math.max(0, 1 - k / 0.35);
+      fire2.scale.setScalar(0.4 + k * 2.5); fire2.material.opacity = Math.max(0, 0.9 - k / 0.5);
+      for (const s of smoke) { s.position.y += s.userData.v * dt; s.scale.setScalar(0.7 + k * 1.1); s.material.opacity = Math.max(0, 0.6 * (1 - k / 1.8)); s.material.rotation += s.userData.r * dt; }
+      for (const ch of chunks) {
+        if (!ch.m.visible) continue;
+        ch.v.y -= 12 * dt;
+        ch.m.position.addScaledVector(ch.v, dt);
+        ch.m.rotation.x += ch.w.x * dt; ch.m.rotation.y += ch.w.y * dt; ch.m.rotation.z += ch.w.z * dt;
+        if (ch.m.position.y < 0.03) { ch.m.position.y = 0.03; ch.v.y = Math.abs(ch.v.y) * 0.25; ch.v.x *= 0.5; ch.v.z *= 0.5; ch.w.multiplyScalar(0.4); }
+        if (k > 1.6) ch.m.scale.multiplyScalar(Math.max(0, 1 - dt * 3));
+      }
+      if (k > 2.2) { fire.visible = fire2.visible = false; for (const s of smoke) s.visible = false; for (const ch of chunks) ch.m.visible = false; S.boom = -1; }
+    }
+    if (light.intensity > 0) light.intensity *= Math.pow(0.004, dt);
+  };
+  const state = (s, t) => { if (z.dstate !== s) { z.dstate = s; z.st = 0; } z.st = t; };
+  let hidden = false;
+  return {
+    root,
+    restyle() { z.look = look(); paintZombieSlot(0, z.look, R, 'molosse'); },
+    center: () => {
+      _specC.setFromMatrixPosition(z.rig.chest.matrixWorld);
+      _specC.y = 0.95 + (_specC.y - DRIG.mid[1]);     // comme le bassin d'un zombie debout (cadrage de l'aperçu)
+      return _specC;
+    },
+    view: [0.56, 0.72],                                // hauteur visée de loin, puis au plus près (la tête)
+    shot() {
+      if (hidden) return false;
+      z.flinch = 0.65; z.flinchSide = Math.random() < 0.5 ? 1 : -1;
+      return true;
+    },
+    pose(anim, t, dt, yaw) {
+      // autre animation, ou la même reprise au début : tout repart de zéro
+      if (S.anim !== anim || t < S.t) { S.anim = anim; S.loop = -1; S.sounds = 0; S.phase = -1; hideFx(); hidden = false; z.dan = null; z.pos.set(0, 0, 0); z.flinch = 0; }
+      S.t = t;
+      z.yaw = yaw; z.moving = 0; z.aim = 0; z.leap = 0;
+      const loopOf = (len) => { const L = Math.floor(t / len); if (L !== S.loop) { if (S.loop >= 0) S.sounds++; S.loop = L; S.phase = -1; } return t - L * len; };
+      const once = (ph, fn) => { if (S.phase < ph) { S.phase = ph; fn(); } };
+      const fwd = (d) => z.pos.set(Math.sin(yaw) * d, z.pos.y, Math.cos(yaw) * d);
+      switch (anim) {
+        case 'gallop':
+          state('chase', z.st + dt); z.moving = 4.6; z.pos.set(0, 0, 0);
+          break;
+        case 'bound': {
+          // 3 s : debout, ramassé (grognement), bond de 2,6 m, réception, repos ; il revient à son point de départ
+          const p = loopOf(3.0), B = DOGS.bound, L = 2.6, x0 = -1.3;
+          z.pos.y = 0;
+          if (p < 0.45) { state('idle', z.st + dt); fwd(x0); z.aim = 0; }
+          else if (p < 0.45 + B.windup) { once(1, () => { if (loud()) Sound.dogGrowl(null); }); state('windup', p - 0.45); fwd(x0); }
+          else if (p < 0.45 + B.windup + B.dur) {
+            once(2, () => { if (loud()) Sound.dogBark(null); });
+            const k = (p - 0.45 - B.windup) / B.dur;
+            state('bound', p - 0.45 - B.windup); z.leap = k; z.moving = L / B.dur;
+            fwd(x0 + L * k); z.pos.y = 4 * B.apex * k * (1 - k);
+          } else if (p < 0.45 + B.windup + B.dur + 0.38) { once(3, () => { if (loud()) Sound.dogPaws(null, 1); }); state('land', p - 0.45 - B.windup - B.dur); fwd(x0 + L); }
+          else { state('idle', z.st + dt); fwd(x0 + L); }
+          break;
+        }
+        case 'bite': {
+          const p = loopOf(0.75);
+          state('bite', p);
+          once(1, () => { if (loud()) Sound.dogBite(null); });
+          break;
+        }
+        case 'spawn': {
+          const p = loopOf(3.2);
+          once(1, strike);
+          if (p < 1.1) state('spawn', p); else state('idle', z.st + dt);
+          break;
+        }
+        case 'death': {
+          // il court, éclate (1,4 s), disparaît, puis retombe du ciel dans un éclair (3,3 s)
+          const p = loopOf(4.6);
+          if (p < 1.4) { hidden = false; state('chase', z.st + dt); z.moving = 4.6; z.pos.set(0, 0, 0); }
+          else if (p < 3.3) { once(1, () => { boom(); hidden = true; }); }
+          else { once(2, () => { hidden = false; z.dan = null; strike(); }); state(p < 4.4 ? 'spawn' : 'idle', p - 3.3); }
+          break;
+        }
+        default:
+          state('idle', z.st + dt);
+          z.aim = Math.sin(t * 0.7) * 0.7;
+          break;
+      }
+      z.flinch = damp(z.flinch, 0, 6, dt);
+      animateDog(z, dt);
+      if (hidden) hideZombieSlot(0, R);
+      flushZombieMatrices(R);
+      // yeux qui brillent (comme en partie)
+      const eyes = dogGeometries().eyePos;
+      eyeGlow.forEach((e, i) => { e.visible = !hidden; if (!hidden) e.position.copy(root.worldToLocal(_dE.copy(eyes[i]).applyMatrix4(z.rig.head.matrixWorld))); });
+      stepFx(dt);
+    },
+  };
+}
 /* ================================================================= 06 EFFETS ==
    Particules (sang, étincelles, terre), impacts, débris, traçantes,
    explosions et projectiles (roquettes, plasma).
@@ -14174,6 +15119,7 @@ function buildFX() {
   FX.boomLight = new THREE.PointLight(0xff8a3a, 0, 16, 2);
   group.add(FX.muzzleLight, FX.boomLight);
   group.add(buildGlass());
+  group.add(buildDogFX());
   return group;
 }
 
@@ -14609,6 +15555,7 @@ function updateFX(dt) {
   FX.blood.update(dt); FX.sparks.update(dt); FX.dirt.update(dt);
   FX.embers.update(dt); FX.motes.update(dt); FX.splash.update(dt);
   updateBottles(dt);
+  updateDogFX(dt);
   updateGlass(dt);
   for (const d of FX.debris) {
     if (d.life <= 0) continue;
@@ -14680,6 +15627,7 @@ function clearFX() {
   for (const L of FX.limbs) { L.life = 0; L.group.visible = false; }
   for (const p of FX.sprites) { p.life = 0; p.s.visible = false; }
   clearGlass();
+  if (FX.dogBolts) for (const b of FX.dogBolts) { b.life = 0; b.g.visible = false; }
 }
 
 /* ================================================================ 07 JOUEUR ==
@@ -16780,7 +17728,7 @@ function knifeStrike() {
     player.pos.y = player.gy;
   }
   const dx = best.pos.x - player.pos.x, dz = best.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
-  bloodBurst(best.pos.x - dx / d * 0.3, best.gy + 1.3, best.pos.z - dz / d * 0.3, -dx / d, -dz / d, 8, 0.8);
+  bloodBurst(best.pos.x - dx / d * 0.3, best.gy + (best.dog ? 0.6 : 1.3), best.pos.z - dz / d * 0.3, -dx / d, -dz / d, 8, 0.8);
   const killed = damageZombie(best, 150, { kind: 'knife', dx: dx / d, dz: dz / d, force: 1.2 });
   HUD.hitmarker(killed);
 }
@@ -17065,6 +18013,7 @@ function zombieHead(z, out) { return out.set(0, ZRIG.head, 0.02).applyMatrix4(z.
    bras (depuis le jeu 1.9.0 : un bras tendu hors du corps se touche, et un tir au bras peut
    l'arracher). */
 function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
+  if (z.dog) return rayHitDog(z, ox, oy, oz, dx, dy, dz, extra);
   let best = -1;
   _hitHead = false; _hitLeg = false; _hitArm = 0;
   if (!z.headless) {
@@ -17220,7 +18169,7 @@ function zoneZombieType(zi) {
 /* Jambes déchiquetées (Lacéré touché aux jambes) : il tombe et continue en rampant, plus lentement.
    Pas pendant qu'il sort de terre ou enjambe une fenêtre. */
 function startCrawl(z, dx = 0, dz = 0) {
-  if (z.crawl || !z.alive || z.state === 'rise' || z.state === 'climb') return false;
+  if (z.dog || z.crawl || !z.alive || z.state === 'rise' || z.state === 'climb') return false;
   z.crawl = true; z.crawlT = 0; z.crawlPh = 0;
   z.crawlSpeed = clamp(z.speed * 0.45, 0.4, 0.85);
   z.stagger = Math.max(z.stagger, 0.6);
@@ -17251,6 +18200,7 @@ function recycleZombie(z) {
 }
 function clearZombies() {
   while (Zombies.list.length) removeZombie(Zombies.list[0]);
+  updateDogEyes();
   flushZombieMatrices();
 }
 function aliveCount() {
@@ -17270,6 +18220,7 @@ function damageZombie(z, amount, info) {
   }
   if (amount >= z.maxHp * 0.35) z.stagger = Math.max(z.stagger, 0.25);
   if (z.hp <= 0) { killZombie(z, info); return true; }
+  if (z.dog) { dogHurt(z, amount, info); if (info.kind !== 'nuke') addPoints(RULES.pointsHit); return false; }
   // réaction au coup : la tête, le buste, le bras ou le genou encaissent (ressorts de la pose)
   const hit = zHitLocal(z, info), front = Math.sin(z.yaw) * (info.dx || 0) + Math.cos(z.yaw) * (info.dz || 0) <= 0;
   zHitReact(z, hit.part, hit.side, front, clamp(0.3 + (amount / z.maxHp) * 1.6 + (info.force || 0) * 0.3, 0.25, 1.5));
@@ -17277,6 +18228,7 @@ function damageZombie(z, amount, info) {
   return false;
 }
 function killZombie(z, info) {
+  if (z.dog) { killDog(z, info); return; }
   const st = z.state;
   z.alive = false;
   z.state = 'dead';
@@ -17349,10 +18301,12 @@ function updateZombies(dt) {
     if (z) updateZombie(z, dt);
   }
   updateLanterns(G.time);
+  updateDogEyes();
   flushZombieMatrices();
 }
 
 function updateZombie(z, dt) {
+  if (z.dog) { updateDog(z, dt); return; }
   z.t += dt;
   if (!z.alive) { updateCorpse(z, dt); return; }
   if (z.nukeT > 0) {
@@ -17520,11 +18474,486 @@ function updateCorpse(z, dt) {
   if (!zCorpseStep(z, dt)) removeZombie(z);
 }
 
+/* ============================================================ Le Molosse (partie) ==
+   Manches de chiens : meutes qui tombent du ciel dans un éclair (pièces ouvertes seulement), course,
+   bond annoncé par un grognement (la proie visée est celle du départ : un pas de côté et il rate),
+   morsures, explosion à la mort, munitions max sur le dernier. Les chiens vivent dans Zombies.list
+   (z.dog) et prennent les emplacements de rendu des zombies (ZR, modèle « molosse »).
+   États (z.dstate) : spawn (dans l'éclair), chase, windup (ramassé, grognement), bound (en l'air),
+   land (réception), bite (morsures), stun (renversé par l'onde du Glas). */
+const DOG_TINTS = [0xffffff, 0xf3ede7, 0xfff3ea, 0xe9e3dd];
+const dAng = (a, b) => wrapAngle(a - b);
+function dogsAlive() { let n = 0; for (const z of Zombies.list) if (z.dog && z.alive) n++; return n; }
+function setDog(z, s) { z.dstate = s; z.st = 0; if (s === 'bite') { z.biteN = -1; z.biteHit = true; } }
+
+/* ------------------------------------------------------------ Apparition --- */
+/* Case d'apparition : sol praticable d'une pièce ouverte, à 6 à 16 cases de marche du joueur, de la place
+   tout autour, loin des autres chiens ; à défaut (petite pièce), une case à plus de 4 cases, puis à plus
+   de 2 cases du joueur. */
+function pickDogSpawn() {
+  const P = DOGS.spawnDist, best = [], ok = [], last = [];
+  for (let k = 0, n = GN * NL; k < n; k++) {
+    if (!walkNode(k) || stairAt[k] >= 0) continue;
+    const zi = zoneOf[k];
+    if (zi < 0 || !G.activeZones.has(zi)) continue;
+    const d = flow[k];
+    if (!(d < 1e8) || d < 2) continue;
+    let open = 0;
+    for (let q = 0; q < 4; q++) if (passD(k, q) >= 0) open++;
+    if (open < 3) continue;
+    const x = nodeCX(k), zz = nodeCZ(k);
+    let near = false;
+    for (const o of Zombies.list) if (o.dog && o.alive && Math.hypot(o.pos.x - x, o.pos.z - zz) < 1.6) { near = true; break; }
+    if (near) continue;
+    if (open === 4 && d >= P[0] && d <= P[1]) best.push(k);
+    else if (open === 4 && d >= 4) ok.push(k);
+    else last.push(k);
+  }
+  const mid = (P[0] + P[1]) / 2;
+  const k = best.length ? weightedPick(best, (j) => 1 / (1 + Math.abs(flow[j] - mid) / 4))
+    : ok.length ? weightedPick(ok, (j) => 1 / (1 + flow[j] / 5))
+    : last.length ? weightedPick(last, (j) => flow[j]) : null;
+  return k === null ? -1 : k;
+}
+function spawnDog(k, hp) {
+  if (k < 0) return null;
+  if (!ZR.free.length) {
+    const corpse = Zombies.list.find((zz) => !zz.alive);
+    if (!corpse) return null;
+    removeZombie(corpse);
+  }
+  const slot = ZR.free.pop();
+  const look = { skin: pick(DOG_TINTS), cloth: 0xffffff, eyes: 0xffffff, helmet: false, helmetColor: 0x000000 };
+  paintZombieSlot(slot, look, ZR, 'molosse');
+  const x = nodeCX(k) + rand(-0.2, 0.2), zz = nodeCZ(k) + rand(-0.2, 0.2);
+  const z = {
+    id: ++Zombies.seq, slot, type: DOG_TYPE, model: 'molosse', dog: true, rig: makeDogRig(), look, helmetOn: false, alive: true, outside: false,
+    state: 'chase', dstate: 'spawn', st: 0, t: 0, hp, maxHp: hp, pos: new THREE.Vector3(x, 0, zz), k, gy: surfY(k, x, zz), yaw: 0,
+    vx: 0, vz: 0, moving: 0, speedType: 'run', speed: rand(DOGS.speed[0], DOGS.speed[1]), win: null, gib: 0, headless: false, crawl: false,
+    stagger: 0, flinch: 0, flinchSide: 1, knockX: 0, knockZ: 0, knockT: 0, knockDur: 0, knockDir: 1, knockK: 0, knockShift: false, reelT: 0,
+    called: null, nukeT: 0, deathKind: null, losT: 0, los: false, stuckT: 2.5, stuck: 0, lastX: x, lastZ: zz, farT: 0,
+    flank: Math.random() < 0.5 ? 1 : -1, leapCd: rand(1.0, 2.2), leap: 0, leapFrom: null, leapTo: null, leapL: 0, leapHit: false,
+    biteN: -1, biteHit: true, barkT: rand(0.5, 1.6), yelpT: 0, droolT: 0, pawU: 1, aim: 0, turn: 0, stunDur: 1, stunSide: 1,
+  };
+  z.pos.y = z.gy;
+  z.yaw = Math.atan2(player.pos.x - x, player.pos.z - zz);
+  dogLightning(x, z.gy, zz);
+  Sound.dogSpawn(z.pos);
+  Zombies.list.push(z);
+  animateDog(z, 0);
+  return z;
+}
+/* Chien bloqué ou perdu loin du joueur : il disparaît et retombe dans un éclair plus près. */
+function dogRelocate(z) {
+  const k = pickDogSpawn();
+  if (k < 0) { z.stuck = 0; z.farT = 0; return; }
+  spawnPuff(z.pos.x, z.gy + 0.5, z.pos.z, 1.0, 0.25, 0xbfdcff, 0.8, 0.2, true, TEX.flare);
+  const x = nodeCX(k), zz = nodeCZ(k);
+  z.pos.set(x, 0, zz); z.k = k; z.gy = surfY(k, x, zz); z.pos.y = z.gy;
+  z.vx = z.vz = 0; z.knockX = z.knockZ = 0; z.stuck = 0; z.farT = 0; z.lastX = x; z.lastZ = zz;
+  z.yaw = Math.atan2(player.pos.x - x, player.pos.z - zz);
+  dogLightning(x, z.gy, zz);
+  Sound.dogSpawn(z.pos);
+  setDog(z, 'spawn');
+}
+
+/* --------------------------------------------------------- Effets visuels --- */
+/* Lueur ambre des yeux (points additifs, visibles dans le noir), bave, éclairs d'apparition. */
+function buildDogFX() {
+  const g = new THREE.Group(), n = ZR.N * 2;
+  FX.dogEyePos = new Float32Array(n * 3);
+  const eg = new THREE.BufferGeometry();
+  eg.setAttribute('position', new THREE.BufferAttribute(FX.dogEyePos, 3));
+  eg.setDrawRange(0, 0);
+  FX.dogEyes = new THREE.Points(eg, new THREE.PointsMaterial({ color: 0xffa21a, size: 0.12, map: TEX.glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  FX.dogEyes.frustumCulled = false;
+  FX.drool = new PointPool(160, new THREE.PointsMaterial({ color: 0x8e2e2a, size: 0.032, map: TEX.glow, alphaTest: 0.35 }), 9.8, false);
+  FX.dogBolts = [];
+  for (let i = 0; i < 4; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xdcefff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    const b = { g: new THREE.Group(), segs: [], life: 0, max: 0.42, mat };
+    for (let s = 0; s < 14; s++) { const m = new THREE.Mesh(GEO.box, mat); b.segs.push(m); b.g.add(m); }
+    b.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x8fc0ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    b.g.add(b.glow);
+    b.g.visible = false;
+    FX.dogBolts.push(b);
+    g.add(b.g);
+  }
+  g.add(FX.dogEyes, FX.drool.points);
+  return g;
+}
+const _dUp = new THREE.Vector3(0, 1, 0), _dV = new THREE.Vector3(), _dE = new THREE.Vector3();
+/* Éclair d'apparition en (x, y, z) : zigzag du plafond au sol, flash bleuté, étincelles, brûlure, fumée. */
+function dogLightning(x, y, z, size = 1) {
+  if (!FX.dogBolts) return;
+  const b = FX.dogBolts.find((e) => e.life <= 0) || FX.dogBolts.reduce((a, e) => (e.life < a.life ? e : a));
+  const top = y + Math.min(WALL_H - 0.15, 3.3);
+  let px = x + rand(-0.6, 0.6), pz = z + rand(-0.6, 0.6), py = top;
+  const n = b.segs.length;
+  for (let i = 0; i < n; i++) {
+    const k = (i + 1) / n;
+    const nx = lerp(px, x, 0.3 + 0.7 * k) + rand(-0.22, 0.22) * (1 - k), nz = lerp(pz, z, 0.3 + 0.7 * k) + rand(-0.22, 0.22) * (1 - k), ny = lerp(top, y, k);
+    const m = b.segs[i], dx = nx - px, dy = ny - py, dz = nz - pz, L = Math.hypot(dx, dy, dz) || 1e-3;
+    m.position.set((px + nx) / 2, (py + ny) / 2, (pz + nz) / 2);
+    m.quaternion.setFromUnitVectors(_dUp, _dV.set(dx / L, dy / L, dz / L));
+    m.scale.set(0.04 * size, L, 0.04 * size);
+    px = nx; py = ny; pz = nz;
+  }
+  b.glow.position.set(x, y + 1.1, z);
+  b.glow.scale.set(1.5 * size, 3.2 * size, 1);
+  b.life = b.max; b.g.visible = true;
+  const fl = y + 1.2;
+  FX.boomLight.position.set(x, fl, z);
+  FX.boomLight.decay = lightBandDecay(fl, levelAtY(y + 0.1));
+  FX.boomLight.color.setHex(0xa8ccff);
+  FX.boomLight.intensity = 7 * size; FX.boomT = 0.3;
+  for (let i = 0; i < 26 * size; i++) {
+    const a = rand(0, TAU), s = rand(1.5, 5);
+    FX.sparks.emit(x, y + 0.1, z, Math.cos(a) * s, rand(1, 4), Math.sin(a) * s, rand(0.2, 0.55), 0.7, 0.85, 1);
+  }
+  spawnPuff(x, y + 0.5, z, 1.5 * size, 0.3, 0xbfdcff, 0.9, 0.2, true, TEX.flare);
+  spawnPuff(x, y + 0.3, z, 1.2 * size, 1.4, 0x2a2a30, 0.55, 0.5);
+  addDecal('scorch', x, y + 0.002, z, 0, 1, 0, rand(0.9, 1.3) * size);
+  const d = Math.hypot(player.pos.x - x, player.pos.z - z);
+  FX.shake = Math.min(1, FX.shake + Math.max(0, 1 - d / 12) * 0.35 * size);
+}
+function updateDogFX(dt) {
+  if (!FX.dogBolts) return;
+  FX.drool.update(dt);
+  for (const b of FX.dogBolts) {
+    if (b.life <= 0) continue;
+    b.life -= dt;
+    if (b.life <= 0) { b.g.visible = false; continue; }
+    const k = b.life / b.max;
+    b.mat.opacity = (Math.random() < 0.7 ? 1 : 0.2) * Math.min(1, k * 1.8);
+    b.glow.material.opacity = 0.6 * k;
+  }
+}
+/* Yeux des chiens vivants (après leur pose). */
+function updateDogEyes() {
+  if (!FX.dogEyes) return;
+  let n = 0;
+  const eyes = dogGeometries().eyePos, arr = FX.dogEyePos;
+  for (const z of Zombies.list) {
+    if (!z.dog || !z.alive || z.removed) continue;
+    for (const e of eyes) {
+      _dE.copy(e).applyMatrix4(z.rig.head.matrixWorld);
+      arr[n * 3] = _dE.x; arr[n * 3 + 1] = _dE.y; arr[n * 3 + 2] = _dE.z;
+      n++;
+    }
+  }
+  FX.dogEyes.geometry.setDrawRange(0, n);
+  FX.dogEyes.geometry.attributes.position.needsUpdate = true;
+}
+
+/* -------------------------------------------------------------- Conduite --- */
+function updateDog(z, dt) {
+  z.t += dt; z.st += dt;
+  if (!z.alive) { removeZombie(z); return; }
+  if (z.nukeT > 0) {
+    z.nukeT -= dt;
+    if (z.nukeT <= 0) { killZombie(z, { kind: 'nuke', dx: rand(-1, 1), dz: rand(-1, 1) }); return; }
+  }
+  z.flinch = damp(z.flinch, 0, 8, dt);
+  if (z.stagger > 0) z.stagger -= dt;
+  if (z.reelT > 0) z.reelT -= dt;
+  if (z.leapCd > 0) z.leapCd -= dt;
+  if (z.yelpT > 0) z.yelpT -= dt;
+  const dx = player.pos.x - z.pos.x, dz = player.pos.z - z.pos.z, d = Math.hypot(dx, dz) || 1e-3;
+  const same = Math.abs(player.gy - z.gy) < 1;
+  // renversé par l'onde du Glas : il roule sur le flanc, puis se relève
+  if (z.knockT > 0 && z.dstate !== 'stun' && z.dstate !== 'spawn') {
+    z.stunDur = Math.max(0.9, z.knockT + 0.3); z.stunSide = Math.random() < 0.5 ? 1 : -1;
+    setDog(z, 'stun');
+    if (z.yelpT <= 0) { z.yelpT = 0.4; Sound.dogYelp(z.pos); }
+  }
+  if (z.knockT > 0) z.knockT = Math.max(0, z.knockT - dt);
+  const yaw0 = z.yaw;
+  switch (z.dstate) {
+    case 'spawn':
+      dogSlow(z, dt, 8);
+      z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 4 * dt);
+      if (z.st >= 1.1) setDog(z, 'chase');
+      break;
+    case 'chase': dogChase(z, dt, dx, dz, d, same); break;
+    case 'windup': dogWindup(z, dt, dx, dz, d, same); break;
+    case 'bound': dogBound(z, dt, same); break;
+    case 'land':
+      dogSlow(z, dt, 7);
+      if (z.st >= 0.38) setDog(z, 'chase');
+      break;
+    case 'bite': dogBite(z, dt, dx, dz, d, same); break;
+    case 'stun':
+      dogSlow(z, dt, 3.5);
+      if (z.st >= z.stunDur) setDog(z, 'chase');
+      break;
+    default: setDog(z, 'chase');
+  }
+  if (!z.alive || z.removed) return;
+  z.turn = dAng(z.yaw, yaw0) / Math.max(dt, 1e-4);
+  const looks = z.dstate === 'chase' || z.dstate === 'bite' || z.dstate === 'windup' || z.dstate === 'spawn';
+  z.aim = looks ? clamp(dAng(Math.atan2(dx, dz), z.yaw), -1.2, 1.2) : 0;
+  dogNoise(z, dt, d);
+  animateDog(z, dt);
+  dogDrool(z, dt, d);
+}
+/* Il ralentit (ramassé, réception, renversé) ; poussé par les coups. */
+function dogSlow(z, dt, k) {
+  z.vx = damp(z.vx, 0, k, dt); z.vz = damp(z.vz, 0, k, dt);
+  z.pos.x += (z.vx + z.knockX) * dt; z.pos.z += (z.vz + z.knockZ) * dt;
+  z.knockX = damp(z.knockX, 0, 4, dt); z.knockZ = damp(z.knockZ, 0, 4, dt);
+  settleBody(z, 0.3);
+  z.pos.y = z.gy;
+  z.moving = Math.hypot(z.vx, z.vz);
+}
+const _dfd = { x: 0, z: 0 };
+function dogChase(z, dt, dx, dz, d, same) {
+  z.losT -= dt;
+  if (z.losT <= 0) {
+    z.losT = rand(0.15, 0.3);
+    z.los = d < 16 && same && (NL === 1 || (player.k >= 0 && z.k >= 0 && levelOfNode(player.k) === levelOfNode(z.k) && stairAt[player.k] < 0))
+      && losClear(z.k, z.pos.x, z.pos.z, player.pos.x, player.pos.z, 0.3);
+  }
+  let mx, mz;
+  if (z.los) {
+    mx = dx / d; mz = dz / d;
+    // en vue et encore loin : la meute s'écarte un peu de la ligne droite (elle arrive en éventail)
+    if (d > 3.5) { const s = z.flank * 0.32 * clamp((d - 3.5) / 4, 0, 1); const ox = mx; mx += -mz * s; mz += ox * s; const l = Math.hypot(mx, mz); mx /= l; mz /= l; }
+  } else if (flowDir(z.k, z.pos.x, z.pos.z, _dfd)) { mx = _dfd.x; mz = _dfd.z; }
+  else { mx = dx / d; mz = dz / d; }
+  let sx = 0, sz = 0;
+  for (const o of Zombies.list) {
+    if (o === z || !o.alive || o.outside || Math.abs(o.gy - z.gy) > 1) continue;
+    const ox = z.pos.x - o.pos.x, oz = z.pos.z - o.pos.z, od2 = ox * ox + oz * oz, R = o.dog ? 0.9 : 0.7;
+    if (od2 < R * R && od2 > 1e-6) { const od = Math.sqrt(od2); sx += (ox / od) * (R - od); sz += (oz / od) * (R - od); }
+  }
+  let sp = z.speed * (z.stagger > 0 ? 0.35 : 1) * (z.reelT > 0 ? 0.55 : 1);
+  if (player.down && d < 2.6) sp = 0;                      // le joueur à terre : il rôde à distance
+  const tvx = mx * sp + sx * 5, tvz = mz * sp + sz * 5;
+  z.vx = damp(z.vx, tvx, 5.5, dt); z.vz = damp(z.vz, tvz, 5.5, dt);
+  z.pos.x += (z.vx + z.knockX) * dt; z.pos.z += (z.vz + z.knockZ) * dt;
+  z.knockX = damp(z.knockX, 0, 6, dt); z.knockZ = damp(z.knockZ, 0, 6, dt);
+  const pdx = z.pos.x - player.pos.x, pdz = z.pos.z - player.pos.z, pd = Math.hypot(pdx, pdz), min = 0.75;
+  if (same && pd < min && pd > 1e-4) { z.pos.x = player.pos.x + (pdx / pd) * min; z.pos.z = player.pos.z + (pdz / pd) * min; }
+  settleBody(z, 0.3);
+  z.pos.y = z.gy;
+  z.moving = Math.hypot(z.vx, z.vz);
+  z.yaw = turnTo(z.yaw, z.moving > 0.5 ? Math.atan2(z.vx, z.vz) : Math.atan2(dx, dz), 9 * dt);
+  if (player.down) return;
+  // au contact : morsures
+  if (d < DOGS.bite.reach && same) { setDog(z, 'bite'); Sound.dogSnarl(z.pos); return; }
+  // en vue, à bonne distance, sur le même sol : il se ramasse (grognement) avant de bondir
+  const B = DOGS.bound;
+  if (z.los && z.leapCd <= 0 && d >= B.min && d <= B.max && z.stagger <= 0 && Math.abs(dAng(Math.atan2(dx, dz), z.yaw)) < 0.8) {
+    if (Math.random() < B.chance) { setDog(z, 'windup'); Sound.dogGrowl(z.pos); return; }
+    z.leapCd = rand(0.6, 1.2);
+  }
+  // bloqué, ou perdu loin du joueur sans le voir : il retombe plus près dans un éclair
+  z.farT = flowAt(z.k) > 40 && !z.los ? z.farT + dt : 0;
+  z.stuckT -= dt;
+  if (z.stuckT <= 0) {
+    z.stuckT = 2.5;
+    const moved = Math.hypot(z.pos.x - z.lastX, z.pos.z - z.lastZ);
+    z.stuck = moved < 0.5 && d > 4 ? z.stuck + 1 : 0;
+    z.lastX = z.pos.x; z.lastZ = z.pos.z;
+  }
+  if (z.farT > 8 || z.stuck >= 2) dogRelocate(z);
+}
+function dogWindup(z, dt, dx, dz, d, same) {
+  dogSlow(z, dt, 12);
+  z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 7 * dt);
+  const B = DOGS.bound;
+  if (z.st < B.windup) return;
+  // départ : il bondit vers l'endroit où vous vous tenez à cet instant (un pas de côté et il vous rate)
+  const L = clamp(d + 0.35, B.min, B.range + 0.35), ux = dx / d, uz = dz / d;
+  const tx = z.pos.x + ux * L, tz = z.pos.z + uz * L;
+  if (!same || player.down || !losClear(z.k, z.pos.x, z.pos.z, tx, tz, 0.28)) { z.leapCd = rand(0.8, 1.5); setDog(z, 'chase'); return; }
+  z.yaw = Math.atan2(ux, uz);
+  z.leapFrom = { x: z.pos.x, z: z.pos.z, y: z.gy }; z.leapTo = { x: tx, z: tz }; z.leapL = L; z.leapHit = false;
+  setDog(z, 'bound');
+  Sound.dogBark(z.pos);
+}
+function dogBound(z, dt, same) {
+  const B = DOGS.bound, k = clamp(z.st / B.dur, 0, 1), f = z.leapFrom, t = z.leapTo;
+  z.leap = k;
+  z.pos.x = lerp(f.x, t.x, k); z.pos.z = lerp(f.z, t.z, k);
+  settleBody(z, 0.3);
+  z.pos.y = z.gy + 4 * B.apex * k * (1 - k);
+  z.moving = z.leapL / B.dur;
+  // la gueule passe sur vous : morsure en vol, il retombe à vos pieds
+  if (!z.leapHit && k > 0.2 && same && !player.down) {
+    const hx = z.pos.x + Math.sin(z.yaw) * 0.72, hz = z.pos.z + Math.cos(z.yaw) * 0.72;
+    if (Math.hypot(player.pos.x - hx, player.pos.z - hz) < B.hitR && z.pos.y - player.gy < 1.4) {
+      z.leapHit = true;
+      playerDamage(RULES.zombieHit * DOG_TYPE.mult.damage);
+      player.punch = Math.min(0.2, player.punch + 0.08);
+      Sound.dogBite(z.pos);
+      z.pos.y = z.gy; z.vx = z.vz = 0;
+      z.leapCd = rand(B.cool[0], B.cool[1]);
+      setDog(z, 'land');
+      return;
+    }
+  }
+  if (k >= 1) {
+    z.pos.y = z.gy;
+    z.vx = Math.sin(z.yaw) * 2.2; z.vz = Math.cos(z.yaw) * 2.2;
+    z.leapCd = rand(B.cool[0], B.cool[1]);
+    setDog(z, 'land');
+    Sound.dogPaws(z.pos, 1);
+  }
+}
+function dogBite(z, dt, dx, dz, d, same) {
+  const Bt = DOGS.bite;
+  z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 12 * dt);
+  // il se tient à un pas de vous
+  const want = d > 1.05 ? 1.8 : d < 0.8 ? -1.2 : 0;
+  z.vx = damp(z.vx, (dx / d) * want, 10, dt); z.vz = damp(z.vz, (dz / d) * want, 10, dt);
+  z.pos.x += (z.vx + z.knockX) * dt; z.pos.z += (z.vz + z.knockZ) * dt;
+  z.knockX = damp(z.knockX, 0, 6, dt); z.knockZ = damp(z.knockZ, 0, 6, dt);
+  settleBody(z, 0.3);
+  z.pos.y = z.gy;
+  z.moving = Math.hypot(z.vx, z.vz);
+  const n = Math.floor(z.st / Bt.cycle), c = z.st - n * Bt.cycle;
+  if (n !== z.biteN) {
+    z.biteN = n; z.biteHit = false;
+    if (n > 0 && (d > Bt.reach + 0.45 || !same || player.down)) { setDog(z, 'chase'); return; }
+  }
+  if (!z.biteHit && c >= Bt.at) {
+    z.biteHit = true;
+    if (d < Bt.reach + 0.1 && same && !player.down) { playerDamage(RULES.zombieHit * DOG_TYPE.mult.damage); Sound.dogBite(z.pos); }
+    else Sound.dogSnap(z.pos);
+  }
+}
+/* Grondements et aboiements (de temps en temps), coups sourds des pattes au galop (chiens proches). */
+function dogNoise(z, dt, d) {
+  z.barkT -= dt;
+  if (z.barkT <= 0) {
+    z.barkT = rand(1.3, 3.2);
+    if (d < 18 && (z.dstate === 'chase' || z.dstate === 'bite')) { if (Math.random() < 0.35) Sound.dogBark(z.pos); else Sound.dogSnarl(z.pos); }
+  }
+  if (z.dstate === 'chase' && z.moving > 2.5 && d < 10 && z.dan) {
+    if (z.dan.u < z.pawU) Sound.dogPaws(z.pos, clamp(1 - d / 10, 0.2, 1));
+    z.pawU = z.dan.u;
+  }
+}
+/* Bave sanglante qui tombe de la gueule (chiens assez proches pour qu'on la voie). */
+function dogDrool(z, dt, d) {
+  if (!FX.drool || d > 14 || z.dstate === 'spawn') return;
+  z.droolT -= dt;
+  if (z.droolT > 0) return;
+  z.droolT = rand(0.07, 0.2);
+  _dE.copy(dogGeometries().mouthPos).applyMatrix4(z.rig.head.matrixWorld);
+  FX.drool.emit(_dE.x, _dE.y, _dE.z, z.vx * 0.6 + rand(-0.3, 0.3), rand(-0.6, 0.2), z.vz * 0.6 + rand(-0.3, 0.3), rand(0.5, 0.9));
+}
+
+/* -------------------------------------------------------------- Tirs, mort --- */
+/* Rayon contre chien : capsule de la tête (crâne → truffe), du cou, du tronc (poitrine → croupe) et des
+   pattes. _hitHead : la tête (dégâts ×2) ; jamais « jambe » ni « bras » (pas de reptation, rien d'arraché). */
+const _dA = new THREE.Vector3(), _dB = new THREE.Vector3();
+const DOG_HIT = [
+  ['head', 'head', [0, 0.005, -0.01], 'head', [0, -0.025, 0.37], 0.115],
+  ['body', 'neck', [0, -0.09, -0.04], 'neck', [0, -0.08, 0.14], 0.14],
+  ['body', 'chest', [0, -0.13, 0.36], 'pelvis', [0, -0.07, -0.27], 0.185],
+  ['body', 'f1L', [0, 0, 0], 'f3L', [0, -0.12, 0], 0.05], ['body', 'f1R', [0, 0, 0], 'f3R', [0, -0.12, 0], 0.05],
+  ['body', 'h1L', [0, -0.05, 0], 'h3L', [0, -0.16, 0], 0.06], ['body', 'h1R', [0, -0.05, 0], 'h3R', [0, -0.16, 0], 0.06],
+];
+function rayHitDog(z, ox, oy, oz, dx, dy, dz, extra) {
+  _hitHead = false; _hitLeg = false; _hitArm = 0;
+  let best = -1, head = false;
+  for (const [part, ba, a, bb, b, r] of DOG_HIT) {
+    _dA.fromArray(a).applyMatrix4(z.rig[ba].matrixWorld);
+    _dB.fromArray(b).applyMatrix4(z.rig[bb].matrixWorld);
+    const t = raySegment(ox, oy, oz, dx, dy, dz, _dA, _dB, r + extra);
+    if (t >= 0 && (best < 0 || t < best)) { best = t; head = part === 'head'; }
+  }
+  _hitHead = head;
+  return best;
+}
+/* Touché sans mourir : sursaut du côté du coup, jappement, recul (plus léger qu'un zombie). */
+function dogHurt(z, amount, info) {
+  z.flinch = Math.min(0.7, z.flinch + 0.22 + (amount / z.maxHp) * 0.6);
+  z.flinchSide = Math.cos(z.yaw) * (info.dx || 0) - Math.sin(z.yaw) * (info.dz || 0) >= 0 ? -1 : 1;
+  if (info.force && !z.outside) { z.knockX += (info.dx || 0) * info.force * 0.5; z.knockZ += (info.dz || 0) * info.force * 0.5; }
+  if (z.yelpT <= 0) { z.yelpT = 0.35; Sound.dogYelp(z.pos); }
+  // un gros coup pendant qu'il se ramasse : le bond est manqué
+  if (z.dstate === 'windup' && amount >= z.maxHp * 0.3) { z.leapCd = rand(0.8, 1.5); setDog(z, 'chase'); }
+}
+/* Mort : il éclate (fiche : « le chien doit exploser quand le joueur le tue »). Points et relevés comme
+   un zombie ; le souffle blesse le joueur à moins de 2 m (pas la Bombe) ; le dernier chien de la manche
+   lâche des munitions max (onZombieKilled). Le chien disparaît tout de suite ; il quitte la liste à sa
+   prochaine mise à jour (pas pendant qu'une autre boucle la parcourt). */
+function killDog(z, info) {
+  z.alive = false; z.state = 'dead'; z.dstate = 'dead'; z.t = 0; z.deathKind = info.kind;
+  let pts = RULES.pointsKill;
+  if (info.kind === 'knife') pts = RULES.pointsKnife;
+  else if (info.kind === 'nuke') pts = 0;
+  else if (info.head) pts = RULES.pointsHead;
+  if (pts) addPoints(pts);
+  G.stats.kills++;
+  Life.kill(info, z.type);
+  Rank.kill(info);
+  if (info.head && info.kind === 'bullet') { G.stats.headshots++; Sound.headshot(); }
+  dogExplode(z, info);
+  onZombieKilled(z, info);
+  hideZombieSlot(z.slot);
+}
+const _dX = new THREE.Vector3();
+function dogExplode(z, info) {
+  _dX.set(0, -0.1, 0.12).applyMatrix4(z.rig.chest.matrixWorld);
+  const x = _dX.x, y = _dX.y, zz = _dX.z, dx = info.dx || 0, dz = info.dz || 0;
+  Sound.dogExplode(_dX);
+  FX.boomLight.position.set(x, y + 0.3, zz);
+  FX.boomLight.decay = lightBandDecay(y + 0.3, levelAtY(z.gy + 0.1));
+  FX.boomLight.color.setHex(0xff8a3a);
+  FX.boomLight.intensity = 4.5; FX.boomT = 0.3;
+  for (let i = 0; i < 3; i++) spawnPuff(x + rand(-0.2, 0.2), y + rand(-0.1, 0.2), zz + rand(-0.2, 0.2), rand(0.9, 1.3), rand(0.2, 0.32), 0xffa040, 0.9, 0.4, true, TEX.flare);
+  for (let i = 0; i < 3; i++) spawnPuff(x + rand(-0.3, 0.3), y + rand(0, 0.3), zz + rand(-0.3, 0.3), rand(0.8, 1.2), rand(1.1, 1.8), 0x3a2622, 0.6, 0.6);
+  for (let i = 0; i < 22; i++) {
+    const a = rand(0, TAU), s = rand(1.5, 4.5);
+    FX.embers.emit(x, y, zz, Math.cos(a) * s, rand(1, 4.5), Math.sin(a) * s, rand(0.4, 0.9), 1, rand(0.35, 0.6), 0.08);
+  }
+  bloodBurst(x, y, zz, dx, dz, 18, 1.6);
+  bloodBurst(x, y, zz, -dx, -dz, 10, 1.2);
+  for (let i = 0; i < 6; i++) spawnDebris(i < 2 ? MAT.dBone : MAT.gib, rand(0.05, 0.12), rand(0.04, 0.1), rand(0.05, 0.12), x, y, zz, dx * rand(1, 3) + rand(-2.5, 2.5), rand(2, 5), dz * rand(1, 3) + rand(-2.5, 2.5), 3);
+  addDecal('scorch', x, z.gy + 0.002, zz, 0, 1, 0, rand(0.8, 1.1));
+  addDecal('blood', x + dx * 0.4, z.gy + 0.003, zz + dz * 0.4, 0, 1, 0, rand(1.0, 1.4));
+  // souffle : jusqu'à 30 au contact, plus rien à 2 m ; pas à travers un mur ni d'un étage à l'autre
+  const B = DOGS.blast, pd = Math.hypot(player.pos.x - x, player.pos.z - zz), dy = Math.abs(player.gy + 0.9 - y);
+  FX.shake = Math.min(1.1, FX.shake + Math.max(0, 1 - pd / 7) * 0.5);
+  if (info.kind !== 'nuke' && pd < B.r && dy < 1.3 && !player.down && sightClear(x, y, zz, player.pos.x, player.gy + 1.0, player.pos.z)) {
+    player.damage(B.dmg * (1 - pd / B.r), true);
+  }
+}
+
+/* --------------------------------------------------------------- Manches --- */
+function dogRoundStart() {
+  G.dogPack = { left: 0, t: DOGS.firstDelay };
+  Sound.dogRound();
+  HUD.banner('La meute', 'Manche spéciale', 'dogs');
+}
+/* Meutes : 4 à 6 chiens, un toutes les 0,3 à 0,75 s, 6 en vie au plus ; la meute suivante quand la
+   précédente est presque tombée (un seul chien debout) et au moins 2 à 3,5 s plus tard. */
+function updateDogSpawns(dt) {
+  const P = G.dogPack;
+  if (!P || G.spawned >= G.total) return;
+  P.t -= dt;
+  if (P.t > 0) return;
+  if (P.left <= 0) {
+    if (dogsAlive() > 1) { P.t = 0.4; return; }
+    P.left = Math.min(randInt(DOGS.pack[0], DOGS.pack[1]), G.total - G.spawned);
+  }
+  if (dogsAlive() >= DOGS.alive) { P.t = 0.3; return; }
+  if (!spawnDog(pickDogSpawn(), G.zombieHp)) { P.t = 0.5; return; }
+  G.spawned++; P.left--;
+  P.t = P.left > 0 ? rand(DOGS.spawnGap[0], DOGS.spawnGap[1]) : rand(DOGS.packGap[0], DOGS.packGap[1]);
+}
+
 /* ------------------------------------------- Rampants, trébuchements, bras arrachés --
    (jeu 1.9.0) Tir dans les jambes : le Lacéré s'effondre et rampe ; les autres trébuchent (le
    genou cède), et un sprinteur peut tomber face contre terre, puis se relève. Bras arraché par un
    tir ou une explosion : il vole, le moignon saigne, le zombie frappe de l'autre bras (ou mord). */
 function zLegHit(z, dx, dz, hx, hz, def) {
+  if (z.dog) return false;
   if ((z.type || BASE_TYPE).crawler) return startCrawl(z, dx, dz);
   if (!z.alive || z.crawl || z.state === 'rise' || z.state === 'climb' || z.knockT > 0) return false;
   z.stumbleT = 0.55;
@@ -17536,6 +18965,7 @@ function zLegHit(z, dx, dz, hx, hz, def) {
 }
 /* Sprinteur qui trébuche : il tombe face contre terre (1,3 à 1,7 s), glisse sur son élan, se relève. */
 function zTrip(z) {
+  if (z.dog) return;
   z.knockT = z.knockDur = rand(1.3, 1.7);
   z.knockDir = -1; z.knockKind = 'trip'; z.knockThud = false;
   z.stagger = Math.max(z.stagger, z.knockDur);
@@ -17548,7 +18978,7 @@ const ARM_GIB = { shotgun: 0.16, rifle: 0.4, ar: 0.2, lmg: 0.26, smg: 0.08, pist
 function armGibChance(def, s) { return (ARM_GIB[def.kind] || 0) + (s && (s.tier || 0) >= 2 ? 0.1 : 0); }
 const _ga = new THREE.Vector3();
 function gibArm(z, side, dx = 0, dz = 0) {
-  if (z.gib & side) return false;
+  if (z.dog || (z.gib & side)) return false;
   _ga.setFromMatrixPosition(z.rig[side === 1 ? 'shL' : 'shR'].matrixWorld);
   spawnLimb(z, side, dx, dz);
   z.gib |= side;
@@ -18247,6 +19677,7 @@ function zFootMin(z) {
   return m;
 }
 function animateZombie(z, dt) {
+  if (z.dog) { animateDog(z, dt); return; }
   const a = z.an || zAnimInit(z), P = a.P, r = z.rig;
   a.clock += dt;
   if (z.rd) { zRagdollWrite(z); return; }
@@ -18326,6 +19757,282 @@ function zLegIK(pelvis, hip, kn, side, x, y, z, w, hx, hz, kx) {
   kn.rotation.x = Math.max(0, lerp(kx, k, w));
   hip.updateMatrixWorld(true);
   return true;
+}
+
+/* ------------------------------------------------ Le Molosse (animation) --
+   Pose procédurale (jeu et écran « Modèles ») : allure (repos, trot, galop rotatoire), pieds posés
+   au sol par cinématique inverse (deux os, plus le pied tenu à un angle), dos qui se plie à la
+   taille, tête basse tournée vers la proie, mâchoire qui halète ou claque, queue. La fiche demande
+   un « galop saccadé tête basse » : pattes lancées d'un coup, petits à-coups de la tête et du corps.
+   Actions par-dessus : apparition, ramassé avant le bond (« posture ramassée »), bond, réception,
+   morsure, renversé (Le Glas), sursaut quand il est touché.
+   z.dstate : 'spawn' | 'idle' | 'chase' | 'windup' | 'bound' | 'land' | 'bite' | 'stun' ; z.st : temps
+   dans l'état ; z.moving : vitesse (m/s) ; z.turn : vitesse de rotation (rad/s) ; z.aim : écart d'angle vers la proie. */
+const DOG_GAITS = {
+  // T : durée d'une foulée (s) · duty : part de la foulée où le pied est au sol · off : déphasage de chaque
+  // patte [avG, avD, arG, arD] (la patte se pose quand la foulée en est à 1 - off) · lift : hauteur du
+  // pied en l'air (avant, arrière). Galop rotatoire du chien : arrière gauche (0), arrière droite (0,08),
+  // avant droite (0,42), avant gauche (0,5), puis suspension, pattes ramassées sous le corps.
+  trot: { T: 0.56, duty: 0.58, off: [0.5, 0, 0, 0.5], lift: [0.075, 0.06] },
+  gallop: { T: 0.34, duty: 0.3, off: [0.5, 0.58, 0, 0.92], lift: [0.15, 0.11] },
+};
+const DLEGS = [
+  { k: 'fL', front: true, s: 1, b: ['f1L', 'f2L', 'f3L'], par: 'chest' },
+  { k: 'fR', front: true, s: -1, b: ['f1R', 'f2R', 'f3R'], par: 'chest' },
+  { k: 'hL', front: false, s: 1, b: ['h1L', 'h2L', 'h3L'], par: 'pelvis' },
+  { k: 'hR', front: false, s: -1, b: ['h1R', 'h2R', 'h3R'], par: 'pelvis' },
+];
+let DFOOT = null;   // pieds au repos (repère de la racine) : x, z, angle absolu du pied
+function dogFeet() {
+  if (DFOOT) return DFOOT;
+  const r = makeDogRig();
+  r.root.updateMatrixWorld(true);
+  DFOOT = DLEGS.map((L) => {
+    const b3 = r[L.b[2]], len = (L.front ? DRIG.f : DRIG.h)[2], p = new THREE.Vector3(0, -len, 0).applyMatrix4(b3.matrixWorld);
+    const rest = L.front ? DRIG.rest.f : DRIG.rest.h;
+    return { x: p.x * 0.9, z: p.z, a: rest[0] + rest[1] + rest[2], h: L.front ? DRIG.pawF : DRIG.pawH };
+  });
+  return DFOOT;
+}
+/* Clés de la pose (ajoutées à la pose de repos) : corps (b…), dos (flex : plié à la taille, positif =
+   dos rond), cou (n…), tête (h…), mâchoire, queue (t…). */
+const DPK = ['bx', 'by', 'bz', 'bRX', 'bRY', 'bRZ', 'flex', 'nRX', 'nRY', 'nRZ', 'hRX', 'hRY', 'hRZ', 'jaw', 'tRX', 'tRY'];
+function dPose() { const p = {}; for (const k of DPK) p[k] = 0; return p; }
+function dPoseMix(o, b, w) { if (w <= 0) return o; for (const k of DPK) o[k] += (b[k] - o[k]) * Math.min(1, w); return o; }
+function dogAnimInit(z) {
+  z.dan = {
+    clock: rand(0, 10), u: rand(0, 1), gw: z.dstate === 'chase' ? 1 : 0, mw: 0, P: dPose(), A: dPose(),
+    legs: DLEGS.map(() => ({ free: 0, a: 0, ext: 0.9, pa: 0 })),   // pattes libres (en l'air, renversé) : angle, extension, pied
+    tw: { t: 0, next: rand(0.2, 0.6), ch: 0, a: 0 }, jaw: 0, roll: 0, look: 0, lookP: 0, shake: 0, seed: rand(0, 100),
+  };
+  return z.dan;
+}
+const _dIM = new THREE.Matrix4(), _dRM = new THREE.Matrix4(), _dF = new THREE.Vector3(), _dC = new THREE.Vector3(), _dC2 = new THREE.Vector3();
+/* Une patte : pied (repère de la racine) en x, y, z, angle absolu du pied a (0 : à plat comme au repos ;
+   l'os du pied pointe vers l'arrière quand il grandit) ; free (0 à 1) : part de la pose libre
+   (angle de la patte depuis l'épaule ou la hanche, extension, angle du pied par rapport au tronc). */
+function dogLeg(r, L, x, y, z, a, free, fa, fext, fpa) {
+  const par = r[L.par], lens = L.front ? DRIG.f : DRIG.h, at = L.front ? DRIG.sh : DRIG.hip;
+  const [L1, L2, L3] = lens, Px = L.s * at[0], Py = at[1], Pz = at[2];
+  // pied au sol → repère du tronc (avant ou arrière)
+  _dIM.copy(par.matrixWorld).invert().multiply(_dRM);
+  _dF.set(x, y, z).applyMatrix4(_dIM);
+  // inclinaison du tronc (pour garder l'angle du pied par rapport au sol)
+  const pitch = r.body.rotation.x + r.mid.rotation.x + par.rotation.x;
+  let fx = _dF.x, fy = _dF.y, fz = _dF.z, pa = a - pitch;
+  if (free > 0) {
+    const reach = (L1 + L2 + L3) * fext;
+    fx = lerp(fx, Px, free); fy = lerp(fy, Py - Math.cos(fa) * reach, free); fz = lerp(fz, Pz - Math.sin(fa) * reach, free);
+    pa = lerp(pa, fpa, free);
+  }
+  // poignet (jarret) : le pied remonte de sa longueur selon son angle
+  const wx = fx, wy = fy + Math.cos(pa) * L3, wz = fz + Math.sin(pa) * L3;
+  let dx = wx - Px, dy = wy - Py, dz = wz - Pz;
+  // patte trop courte : l'épaule (l'omoplate) ou la hanche glisse vers le pied, de quelques centimètres
+  const over = Math.hypot(dy, dz) - (L1 + L2 - 0.004);
+  const b1 = r[L.b[0]], b2 = r[L.b[1]], b3 = r[L.b[2]];
+  if (over > 0) {
+    const n = Math.hypot(dy, dz), m = Math.min(over, L.front ? 0.055 : 0.03) / n;
+    b1.position.set(Px, Py + dy * m, Pz + dz * m);
+    dy -= dy * m; dz -= dz * m;
+  } else b1.position.set(Px, Py, Pz);
+  const dS = Math.hypot(dy, dz), d = clamp(dS, Math.abs(L1 - L2) + 0.02, L1 + L2 - 0.002);
+  const al = Math.atan2(-dz, -dy);
+  const be = Math.acos(clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1));
+  const bend = Math.PI - Math.acos(clamp((L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2), -1, 1));
+  const t1 = L.front ? al + be : al - be, t2 = L.front ? -bend : bend;
+  b1.rotation.set(t1, 0, clamp(Math.atan2(dx, Math.max(0.05, dS)), -0.45, 0.45));
+  b2.rotation.set(t2, 0, 0);
+  b3.rotation.set(pa - t1 - t2, 0, 0);
+}
+/* Trajectoire d'un pied (allure g, déphasage ph de 0 à 1 depuis la pose, longueur d'appui D) :
+   position (x, y, z) et angle du pied, dans le repère de la racine. */
+function dogFootPath(L, i, ph, g, D, out) {
+  const F = dogFeet()[i], duty = g.duty, lift = g.lift[L.front ? 0 : 1];
+  out.x = F.x;
+  if (ph < duty) {
+    const s = ph / duty;
+    out.z = F.z + D * (0.5 - s);
+    out.y = F.h - 0.012 * Math.sin(s * Math.PI);
+    // le pied se pose à plat, puis roule sur les doigts : en fin d'appui, il s'aligne sur la patte tendue
+    // vers l'arrière (le talon se lève)
+    out.a = F.a + (L.front ? lerp(0.05, 0.78, smooth(s)) : lerp(-0.06, 0.46, smooth(s)));
+  } else {
+    // en l'air : départ sec, la patte revient vite puis se tend vers l'avant (saccadé)
+    const s = (ph - duty) / (1 - duty), e = smooth(clamp(s * 1.15, 0, 1));
+    out.z = F.z - D * 0.5 + D * e + Math.sin(s * Math.PI) * D * 0.06;
+    out.y = F.h + lift * Math.pow(Math.sin(Math.PI * Math.min(1, s * 1.08)), 0.75);
+    // le pied se replie sous le poignet (avant) ou pend (arrière), puis s'ouvre avant de toucher
+    out.a = F.a + (L.front ? (s < 0.35 ? lerp(0.78, 1.6, smooth(s / 0.35)) : lerp(1.6, 0.05, smooth((s - 0.35) / 0.65)))
+      : (s < 0.4 ? lerp(0.46, 0.95, smooth(s / 0.4)) : lerp(0.95, -0.06, smooth((s - 0.4) / 0.6))));
+  }
+  return out;
+}
+const _dFP = { x: 0, y: 0, z: 0, a: 0 };
+function animateDog(z, dt) {
+  const a = z.dan || dogAnimInit(z), r = z.rig, P = a.P;
+  a.clock += dt;
+  const st = z.dstate, T = z.st || 0, spd = z.moving || 0;
+  // ---- allure : trot jusqu'à 2,4 m/s, galop au-delà ; la foulée suit la vitesse (pieds immobiles au sol)
+  const moving = st === 'chase' || st === 'idle';
+  const wantG = spd > 2.4 ? 1 : 0;
+  a.gw = damp(a.gw, wantG, 7, dt);
+  a.mw = damp(a.mw, moving && spd > 0.25 ? 1 : 0, 9, dt);
+  const gT = lerp(DOG_GAITS.trot.T, DOG_GAITS.gallop.T, a.gw);
+  a.u = (a.u + dt / gT * (0.35 + 0.65 * a.mw)) % 1;
+  const g = {
+    duty: lerp(DOG_GAITS.trot.duty, DOG_GAITS.gallop.duty, a.gw),
+    lift: [lerp(DOG_GAITS.trot.lift[0], DOG_GAITS.gallop.lift[0], a.gw) * a.mw, lerp(DOG_GAITS.trot.lift[1], DOG_GAITS.gallop.lift[1], a.gw) * a.mw],
+  };
+  const D = spd * gT * g.duty;
+  const u = a.u, w2 = TAU * u;
+  // ---- couche de base : repos ou allure
+  for (const k of DPK) P[k] = 0;
+  const br = Math.sin(a.clock * 2.6);                                          // souffle
+  P.by = 0.005 * br; P.flex = 0.02 * br;
+  P.jaw = 0.18 + 0.07 * Math.sin(a.clock * 7.5) ;                                // halète
+  P.tRX = -0.15 + 0.05 * Math.sin(a.clock * 1.3); P.tRY = 0.18 * Math.sin(a.clock * 2.1) * (1 - a.mw);
+  P.nRX = 0.06; P.hRX = 0.02;
+  if (a.mw > 0.01) {
+    const m = a.mw, G = a.gw;
+    // galop : le dos se ramasse en l'air (pattes sous le corps) et se tend quand les pattes avant se posent
+    const gal = { by: 0.024 * Math.cos(TAU * (u - 0.9)), bRX: 0.07 * Math.sin(TAU * (u - 0.2)), flex: 0.16 * Math.cos(TAU * (u - 0.92)) };
+    const tro = { by: 0.012 * Math.cos(2 * w2), bRX: 0.015 * Math.sin(2 * w2), flex: 0.0 };
+    P.by += m * lerp(tro.by, gal.by, G);
+    P.bRX += m * lerp(tro.bRX, gal.bRX, G);
+    P.flex += m * lerp(tro.flex, gal.flex, G);
+    P.bRZ += m * 0.02 * Math.sin(w2) * (1 - G);
+    // tête basse qui garde le cap (elle compense le tangage), mâchoire ouverte au rythme de la foulée
+    P.nRX += m * (0.16 + 0.1 * G) - P.bRX * 0.7;
+    P.hRX += m * (-0.1 - 0.04 * Math.sin(w2 + 1));
+    P.jaw = lerp(P.jaw, 0.3 + 0.1 * Math.sin(w2 + 0.6), m);
+    P.tRX = lerp(P.tRX, 0.25 + 0.12 * Math.sin(w2 - 0.8) * G, m);
+    P.tRY = lerp(P.tRY, 0.08 * Math.sin(w2), m);
+  }
+  // ---- à-coups (« saccadé ») : la tête, le cou ou le corps sursaute, puis revient vite
+  const tw = a.tw;
+  tw.next -= dt;
+  if (tw.next <= 0) { tw.next = rand(0.25, 0.9); tw.t = 0; tw.ch = randInt(0, 3); tw.a = rand(0.1, 0.24) * (Math.random() < 0.5 ? -1 : 1); }
+  tw.t += dt;
+  const twk = tw.t < 0.04 ? tw.t / 0.04 : Math.exp(-(tw.t - 0.04) * 14);
+  if (z.alive !== false) {
+    if (tw.ch === 0) P.hRY += tw.a * twk;
+    else if (tw.ch === 1) P.nRX += Math.abs(tw.a) * 0.6 * twk;
+    else if (tw.ch === 2) P.hRZ += tw.a * 0.8 * twk;
+    else P.bRZ += tw.a * 0.25 * twk;
+    P.hRX += Math.sin(a.clock * 41 + a.seed) * 0.012;
+  }
+  // ---- regard : la tête suit la proie (z.aim : écart d'angle vers elle)
+  a.look = damp(a.look, clamp(z.aim || 0, -1.1, 1.1), 8, dt);
+  P.nRY += a.look * 0.5; P.hRY += a.look * 0.35;
+  // ---- virage : le corps s'incline vers l'intérieur
+  a.roll = damp(a.roll, clamp(-(z.turn || 0) * spd * 0.035, -0.22, 0.22), 6, dt);
+  P.bRZ += a.roll; P.nRZ -= a.roll * 0.5;
+  // ---- actions
+  const A = a.A;
+  let legFree = 0, lw = 1;          // pattes libres (bond, renversé) ; lw : poids des pieds au sol
+  for (const k of DPK) A[k] = P[k];
+  const legs = a.legs;
+  for (const l of legs) { l.free = 0; }
+  switch (st) {
+    case 'spawn': {
+      // il apparaît ramassé au ras du sol, s'ébroue, grogne, puis se dresse (1,1 s)
+      const k = clamp(T / 1.1, 0, 1), up = smooth(clamp((T - 0.45) / 0.55, 0, 1)), sh = T < 0.7 ? Math.sin(T * 44) * (1 - T / 0.7) : 0;
+      A.by = lerp(-0.17, 0, up); A.flex = lerp(0.22, 0, up); A.bRX = lerp(0.12, 0, up);
+      A.bRZ = sh * 0.16; A.nRX = lerp(0.45, 0.1, up) + sh * 0.2; A.hRY = sh * 0.35; A.jaw = 0.25 + 0.35 * Math.sin(Math.PI * clamp((T - 0.3) / 0.6, 0, 1));
+      A.tRX = lerp(-0.5, -0.1, k);
+      break;
+    }
+    case 'windup': {
+      // « se ramasse sur lui-même » : arrière-train bas, dos rond, tête basse tendue, babines retroussées, tremble
+      const k = smooth(clamp(T / 0.3, 0, 1)), tr = Math.sin(a.clock * 63) * 0.012 * k;
+      A.by = -0.1 * k + tr; A.bz = -0.05 * k; A.bRX = -0.1 * k; A.flex = 0.2 * k;
+      A.nRX = 0.3 * k + 0.08; A.hRX = -0.25 * k; A.jaw = 0.38 + 0.08 * Math.sin(a.clock * 30) * k;
+      A.tRX = -0.55 * k; A.bRZ = tr * 2;
+      break;
+    }
+    case 'bound': {
+      // bond (z.leap : 0 → 1) : il s'étire (pattes avant tendues vers la proie, arrière qui poussent puis se
+      // replient), gueule grande ouverte ; le corps pique du nez à la fin
+      const k = clamp(z.leap || 0, 0, 1);
+      A.bRX = lerp(-0.38, 0.3, smooth(k)); A.flex = lerp(-0.12, -0.24, Math.sin(Math.PI * k)); A.by = 0;
+      A.nRX = 0.05 - 0.15 * Math.sin(Math.PI * k); A.hRX = -0.15; A.jaw = 0.25 + 0.4 * smooth(clamp(k * 1.8, 0, 1));
+      A.tRX = 0.45; A.tRY = 0;
+      legFree = 1;
+      legs[0].a = legs[1].a = lerp(-0.7, -1.05, k); legs[0].ext = legs[1].ext = 0.97; legs[0].pa = legs[1].pa = lerp(-0.2, -0.5, k);
+      legs[1].a += 0.12;
+      legs[2].a = legs[3].a = lerp(0.95, 0.15, smooth(k)); legs[2].ext = legs[3].ext = lerp(0.98, 0.72, k); legs[2].pa = legs[3].pa = lerp(1.0, 0.3, k);
+      legs[3].a -= 0.1;
+      break;
+    }
+    case 'land': {
+      // réception : les pattes avant encaissent, le corps plonge puis se reprend
+      const k = clamp(T / 0.38, 0, 1), dip = Math.sin(Math.PI * k);
+      A.by = -0.09 * dip; A.bRX = 0.22 * (1 - k); A.flex = 0.12 * dip; A.nRX = 0.25 * dip + 0.1; A.jaw = 0.3; A.tRX = 0.2 * (1 - k);
+      break;
+    }
+    case 'bite': {
+      // morsure (0,75 s) : il se tend vers vous, gueule grande ouverte, claque à 0,3 s, secoue la tête, recule
+      const c = (T % 0.75) / 0.75, open = smooth(clamp(c / 0.32, 0, 1)) * (c < 0.4 ? 1 : 0), shake = c > 0.4 && c < 0.7 ? Math.sin((c - 0.4) * 70) * (0.7 - c) * 3.3 : 0;
+      const lunge = Math.sin(Math.PI * clamp(c / 0.55, 0, 1));
+      A.bz = 0.13 * lunge; A.by = -0.03 * lunge; A.bRX = -0.08 * lunge; A.flex = -0.06 * lunge;
+      A.nRX = 0.02 - 0.32 * lunge; A.hRX = -0.12 * lunge; A.hRY = shake * 0.3; A.hRZ = shake * 0.2; A.bRZ = shake * 0.05;
+      A.jaw = c < 0.3 ? 0.18 + 0.62 * open : c < 0.36 ? lerp(0.8, 0.02, (c - 0.3) / 0.06) : 0.05 + 0.15 * smooth(clamp((c - 0.6) / 0.4, 0, 1));
+      A.tRX = 0.05 + 0.1 * Math.sin(c * TAU);
+      break;
+    }
+    case 'stun': {
+      // renversé (onde du Glas) : il roule sur le flanc, pédale, puis se relève
+      const dur = z.stunDur || 1.4, k = clamp(T / dur, 0, 1), down = smooth(clamp(k / 0.18, 0, 1)) * (1 - smooth(clamp((k - 0.72) / 0.28, 0, 1)));
+      const sd = z.stunSide || 1;
+      A.bRZ = sd * 1.42 * down; A.by = -0.43 * down; A.flex = 0.15 * down; A.nRX = 0.1 + 0.25 * down; A.nRZ = -sd * 0.3 * down; A.jaw = 0.35 + 0.2 * Math.sin(T * 9);
+      A.tRX = -0.3 * down;
+      legFree = down;
+      for (let i = 0; i < 4; i++) {
+        const l = legs[i], pd = Math.sin(T * 9 + i * 1.7);
+        l.a = (DLEGS[i].front ? -0.35 : 0.3) + 0.45 * pd; l.ext = 0.78 + 0.08 * pd; l.pa = (DLEGS[i].front ? 0.8 : 0.4) + 0.2 * pd;
+      }
+      break;
+    }
+    default: break;
+  }
+  // ---- sursaut quand il est touché (z.flinch, z.flinchSide)
+  if (z.flinch) {
+    const f = z.flinch, sd = z.flinchSide || 1;
+    A.bz -= f * 0.09; A.bRZ += f * 0.22 * sd; A.nRX -= f * 0.45; A.hRY += f * 0.3 * sd; A.jaw += f * 0.5; A.by -= f * 0.03;
+  }
+  // ---- mort (Models : il éclate) : rien ; en partie, le chien disparaît dans l'explosion
+  for (const k of DPK) P[k] = A[k];
+  // ---- application : corps, dos, cou, tête, mâchoire, queue
+  r.root.position.copy(z.pos);
+  r.root.rotation.set(0, z.yaw || 0, 0);
+  // le corps tourne autour du milieu du tronc (pas autour du point au sol sous le chien)
+  r.body.rotation.set(P.bRX, P.bRY, P.bRZ);
+  _dC.set(0, 0.6, -0.05);
+  _dC2.copy(_dC).applyEuler(r.body.rotation);
+  r.body.position.set(P.bx + _dC.x - _dC2.x, P.by + _dC.y - _dC2.y, P.bz + _dC.z - _dC2.z);
+  r.mid.rotation.set(0, 0, 0);
+  r.chest.rotation.set(P.flex * 0.55, 0, 0);
+  r.pelvis.rotation.set(-P.flex * 0.45, 0, 0);
+  r.neck.rotation.set(DRIG.neckRX + P.nRX, P.nRY, P.nRZ);
+  r.head.rotation.set(DRIG.headRX + P.hRX, P.hRY, P.hRZ);
+  r.jaw.rotation.set(clamp(P.jaw, 0, 0.85), 0, 0);
+  r.tail.rotation.set(P.tRX, P.tRY, 0);
+  r.root.updateMatrixWorld(true);
+  _dRM.copy(r.root.matrixWorld);
+  // ---- pattes : pieds au sol (allure) ou pose libre
+  for (let i = 0; i < 4; i++) {
+    const L = DLEGS[i], l = legs[i];
+    const ph = (u + DOG_GAITS.trot.off[i] * (1 - a.gw) + DOG_GAITS.gallop.off[i] * a.gw) % 1;
+    dogFootPath(L, i, ph, g, D, _dFP);
+    let fy = _dFP.y;
+    if (st === 'bite' && L.front) _dFP.z += 0.05 * Math.sin(Math.PI * clamp(((T % 0.75) / 0.75) / 0.55, 0, 1));
+    if (st === 'windup' && !L.front) _dFP.z += 0.06 * smooth(clamp(T / 0.3, 0, 1));
+    const free = Math.max(legFree, l.free);
+    dogLeg(r, L, _dFP.x, fy, _dFP.z, _dFP.a, free, l.a, l.ext, l.pa);
+  }
+  r.root.updateMatrixWorld(true);
+  writeZombieMatrices(z);
 }
 
 /* ------------------------------------------------------------------ Mort ---
@@ -19696,7 +21403,7 @@ function glasKnockdown(x, z, r, dur, li) {
 /* Appel des morts : les zombies à moins de 30 m courent vers la cloche jusqu'à la relève. */
 function glasCall(amp) {
   for (const zb of Zombies.list) {
-    if (!zb.alive || zb.called) continue;
+    if (!zb.alive || zb.called || zb.dog) continue;            // les chiens courent déjà
     if (Math.hypot(zb.pos.x - amp.cx, zb.pos.z - amp.cz) > GLAS.call) continue;
     if (NL > 1 && Math.abs(zb.gy - amp.E) > 2.5) continue;
     zb.called = { speed: zb.speed, type: zb.speedType };
@@ -20246,7 +21953,7 @@ const Life = {
       if (Number.isFinite(raw.bestRound) && raw.bestRound > 0) d.bestRound = raw.bestRound;
       if (typeof raw.since === 'string') d.since = raw.since;
       if (raw.types && typeof raw.types === 'object') {
-        for (const t of ZOMBIE_TYPES) if (t !== BASE_TYPE && Number.isFinite(raw.types[t.id]) && raw.types[t.id] >= 0) d.types[t.id] = raw.types[t.id];
+        for (const t of SPECIMEN_TYPES) if (t !== BASE_TYPE && Number.isFinite(raw.types[t.id]) && raw.types[t.id] >= 0) d.types[t.id] = raw.types[t.id];
       }
       if (raw.maps && typeof raw.maps === 'object') {
         for (const id of Object.keys(raw.maps)) {
@@ -20408,15 +22115,16 @@ function addPoints(n, raw = false) {
 function startRound(n) {
   G.round = n;
   G.roundState = 'active';
-  G.total = zombiesForRound(n);
+  G.dogRound = isDogRound(n);
+  G.total = G.dogRound ? dogsForRound(G.dogs.n) : zombiesForRound(n);
   G.spawned = 0; G.killed = 0;
-  G.zombieHp = zombieHpForRound(n);
+  G.zombieHp = G.dogRound ? dogHpForRound(n) : zombieHpForRound(n);
   G.spawnDelay = Math.max(0.35, 2 * Math.pow(0.95, n - 1));
   G.spawnT = n === 1 ? 1.2 : 2.5;
   G.repairPts = 0;
   Powerups.drops = 0;
   if (n > 1) G.grenades = Math.min(RULES.maxGrenades, G.grenades + 2);
-  Sound.roundStart();
+  if (G.dogRound) dogRoundStart(); else Sound.roundStart();
   HUD.round(true);
   HUD.weapon();
 }
@@ -20424,11 +22132,13 @@ function endRound() {
   Life.add('rounds');
   G.roundState = 'intermission';
   G.roundT = 9;
-  Sound.roundEnd();
+  if (G.dogRound) { G.dogs.n++; G.dogRound = false; Sound.dogRoundEnd(); } else Sound.roundEnd();
   HUD.round(true);
 }
 function onZombieKilled(z, info) {
-  if (info.kind !== 'nuke') maybeDropPowerup(z.pos.x, z.pos.z, z.gy);
+  // chiens : rien au hasard, mais le dernier de la manche lâche des munitions max
+  if (z.dog) { if (G.roundState === 'active' && G.dogRound && G.killed + 1 >= G.total) spawnPowerup('ammo', z.pos.x, z.pos.z, z.gy); }
+  else if (info.kind !== 'nuke') maybeDropPowerup(z.pos.x, z.pos.z, z.gy);
   glasOnKill(z, info);
   if (G.roundState !== 'active') return;
   G.killed++;
@@ -20440,6 +22150,7 @@ function updateRounds(dt) {
     if (G.roundT <= 0) startRound(G.round + 1);
     return;
   }
+  if (G.dogRound) { updateDogSpawns(dt); return; }
   if (G.spawned < G.total) {
     G.spawnT -= dt;
     if (G.spawnT <= 0 && aliveCount() < RULES.maxAlive) {
@@ -20467,6 +22178,7 @@ function newGame(save) {
   G.timers.insta = 0; G.timers.double = 0;
   G.cheat = false;
   G.glasTolls = 0; G.glasMidnight = false;
+  G.dogs = freshDogs(); G.dogRound = false; G.dogPack = null;
   G.stats = freshStats();
   resetArms();
   Zombies.flowT = 0;
@@ -20484,6 +22196,8 @@ function serializeGame() {
     perks: [...player.perks], souffleUses: player.souffleUses, power: G.power,
     doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box ? Features.box.cur : -1,
     stats: Object.assign({}, G.stats), cheat: G.cheat, rank: G.rankStart,
+    // manches de chiens : celles déjà tirées (la manche en cours comprise) et le nombre de manches de chiens finies
+    dogs: G.dogs ? { plan: G.dogs.plan.filter((r) => r >= G.round), n: G.dogs.n, block: G.dogs.block, last: G.dogs.last } : null,
   };
 }
 function restoreSave(s) {
@@ -20525,6 +22239,9 @@ function restoreSave(s) {
     player.souffleUses = s.souffleUses || 0;
     if (Features.box && s.box >= 0 && s.box < Features.box.locs.length) placeBox(s.box);
     G.round = s.round - 1;
+    // manches de chiens : plan repris ; sauvegarde d'avant les chiens : tirage à partir de la manche reprise
+    const dg = s.dogs;
+    G.dogs = dg && Array.isArray(dg.plan) ? { plan: dg.plan.filter((r) => Number.isInteger(r) && r >= DOGS.plan.from), n: clamp(dg.n | 0, 0, 999), block: Number.isInteger(dg.block) ? dg.block : -1, last: Number.isFinite(dg.last) ? dg.last : -99, from: 1, off: false } : freshDogs(s.round);
     G.stats = Object.assign(freshStats(), s.stats || {});
     if (s.cheat) { hideDigipass(); G.cheat = true; }
   } catch (e) { /* sauvegarde illisible : partie neuve */ }
@@ -20552,7 +22269,8 @@ const HUD = {
     if (n <= 0) el.innerHTML = '';
     else if (n <= 5) el.innerHTML = tallySVG(n);
     else el.innerHTML = `<span class="num">${n}</span>`;
-    el.setAttribute('aria-label', `Manche ${n}`);
+    el.classList.toggle('dogs', !!G.dogRound);
+    el.setAttribute('aria-label', G.dogRound ? `Manche ${n}, manche spéciale` : `Manche ${n}`);
     if (pulse) { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); }
   },
   perks() {
@@ -20912,8 +22630,8 @@ function bindUI() {
   $('md-tabs').addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
-    const i = ZOMBIE_TYPES.findIndex((t) => t.id === Models.sel);
-    const next = ZOMBIE_TYPES[clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, ZOMBIE_TYPES.length - 1)];
+    const i = SPECIMEN_TYPES.findIndex((t) => t.id === Models.sel);
+    const next = SPECIMEN_TYPES[clamp(i + (e.key === 'ArrowRight' ? 1 : -1), 0, SPECIMEN_TYPES.length - 1)];
     if (next.id !== Models.sel) { Sound.ui(); selectSpecimen(next.id); }
     const tab = [...$('md-tabs').children].find((b) => b.dataset.id === next.id);
     if (tab) tab.focus();
@@ -21310,7 +23028,7 @@ function openStats() {
 /* Fiches des types de zombies (ZOMBIE_TYPES) : le modèle animé, photographié devant
    une toise, et ses caractéristiques tirées des règles du jeu. L'aperçu a son propre
    rendu 3D (petit canevas), dessiné seulement quand l'écran est ouvert. */
-const MODEL_ANIMS = { idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', frenzy: 'Sprint nerveux', crawl: 'Rampe', attack: 'Attaque', tear: 'Barricade', climb: 'Fenêtre', rise: 'Sortie de terre', stumble: 'Trébuche', death: 'Mort' };
+const MODEL_ANIMS = { gallop: 'Galop', bound: 'Bond', bite: 'Morsure', spawn: 'Apparition', idle: 'Repos', walk: 'Marche', jog: 'Trot', run: 'Sprint', frenzy: 'Sprint nerveux', crawl: 'Rampe', attack: 'Attaque', tear: 'Barricade', climb: 'Fenêtre', rise: 'Sortie de terre', stumble: 'Trébuche', death: 'Mort' };
 const MODEL_VIEW = { yaw: -0.5, distMin: 1.9, distMax: 3.8 };
 const Models = {
   open: false, sel: null, anim: 'idle', at: 0, yaw: MODEL_VIEW.yaw, dist: MODEL_VIEW.distMax, idleT: 0, drag: null,
@@ -21353,6 +23071,30 @@ const SPECIMEN_FACTS = {
         ['Coup', `${fmtNum(hit, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / hit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / hit)} avec ${PERKS.cuirasse.name}`],
         ['Barricades', `1 planche / ${fmtNum(tearBase(1), 1)} s`, '', `De plus en plus vite : ${fmtNum(tearBase(1000), 1)} s dès la manche ${fast}`],
         ['Cartes', type.maps ? maps.join(', ') || '–' : 'toutes', '', type.maps ? '' : maps.join(' · ')],
+        ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
+      ],
+    };
+  },
+  /* Le Molosse (fiche N°03) : jauges et cartes de la fiche, chiffres tirés des règles des manches de chiens. */
+  dog(type) {
+    const m = type.mult, bite = RULES.zombieHit * m.damage, B = DOGS.bound, hp = (r) => fmtNum(dogHpForRound(r), 0);
+    return {
+      bars: [['PV', m.hp], ['Vitesse', m.speed], ['Dégâts', m.damage]],
+      ref: `Trait clair = zombie standard (×1) : ${fmtNum(zombieHpForRound(1), 0)} PV à la manche 1, trot de ${fmtNum(SPEEDS.jog[0])} à ${fmtNum(SPEEDS.jog[1])} m/s, ${fmtNum(RULES.zombieHit, 0)} dégâts par coup.`,
+      cards: [
+        [`Capacité · ${type.ability}`, `Chasse en meute de ${DOGS.pack[0]} à ${DOGS.pack[1]}. Se ramasse sur lui-même puis bondit sur ${fmtNum(B.range, 0)}\u00a0m.`],
+        ['Faiblesse', 'Son bond est annoncé par un grognement\u00a0: un pas de côté et il te rate.'],
+      ],
+      details: [
+        ['Manches', '1 ou 2 par tranche de 10', '', `Tirées au hasard, jamais aux manches 1 et 2, au moins ${DOGS.plan.gap} manches d’écart · rien que des chiens`],
+        ['Meute', `${DOGS.first}, puis +${DOGS.step} à chaque fois`, '', `${DOGS.first} chiens à la première manche de chiens, ${DOGS.step} de plus aux suivantes (${DOGS.max} au plus) · par vagues de ${DOGS.pack[0]} à ${DOGS.pack[1]}, ${DOGS.alive} en même temps au plus`],
+        ['Points de vie', `${hp(5)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 5, 10 et 20\u00a0: la moitié d’un zombie de la même manche'],
+        ['Vitesse', `${fmtNum(DOGS.speed[0])} à ${fmtNum(DOGS.speed[1])} m/s`, '', 'Deux fois le trot d’un zombie · vous\u00a0: 4,6 m/s, 6,7 en sprint'],
+        ['Morsure', `${fmtNum(bite, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / bite)} morsures vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / bite)} avec ${PERKS.cuirasse.name} · une morsure toutes les ${fmtNum(DOGS.bite.cycle)} s`],
+        ['Bond', `${fmtNum(B.range, 0)} m`, '', `Il se ramasse ${fmtNum(B.windup)} s en grognant, puis vise l’endroit où vous étiez à cet instant`],
+        ['Explosion', `${fmtNum(DOGS.blast.r, 0)} m`, '', `À sa mort\u00a0: ${DOGS.blast.dmg} dégâts au contact, de moins en moins jusqu’à ${fmtNum(DOGS.blast.r, 0)} m (rien avec la Bombe)`],
+        ['Apparition', 'Dans un éclair', '', `À ${DOGS.spawnDist[0]} à ${DOGS.spawnDist[1]} cases de marche de vous, dans les pièces ouvertes seulement`],
+        ['Récompense', 'Munitions max', '', 'Lâchées par le dernier chien de la manche'],
         ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
       ],
     };
@@ -21514,7 +23256,7 @@ function zoomModel(step) {
 function openModels() {
   const tabs = $('md-tabs');
   tabs.textContent = '';
-  ZOMBIE_TYPES.forEach((type, i) => {
+  SPECIMEN_TYPES.forEach((type, i) => {
     const b = el('button', 'md-tab');
     b.type = 'button';
     b.dataset.id = type.id;
@@ -21528,12 +23270,12 @@ function openModels() {
   Models.yaw = MODEL_VIEW.yaw;
   Models.dist = MODEL_VIEW.distMax;
   Models.idleT = 0;
-  selectSpecimen(ZOMBIE_TYPES.some((t) => t.id === Models.sel) ? Models.sel : ZOMBIE_TYPES[0].id);
+  selectSpecimen(SPECIMEN_TYPES.some((t) => t.id === Models.sel) ? Models.sel : SPECIMEN_TYPES[0].id);
   showScreen('models');
 }
 function selectSpecimen(id) {
-  const i = Math.max(0, ZOMBIE_TYPES.findIndex((t) => t.id === id));
-  const type = ZOMBIE_TYPES[i];
+  const i = Math.max(0, SPECIMEN_TYPES.findIndex((t) => t.id === id));
+  const type = SPECIMEN_TYPES[i];
   const model = SPECIMEN_MODELS[type.model] || SPECIMEN_MODELS.fantassin;
   Models.sel = type.id;
   for (const b of $('md-tabs').children) {
@@ -21546,7 +23288,7 @@ function selectSpecimen(id) {
   sheet.textContent = '';
   sheet.append(el('span', 'stamp', `Spécimen ${specimenNum(type).toLowerCase()}`));
   const tag = el('p', 'md-tagline');
-  for (const part of [specimenNum(type), type.cls, type.from ? `Dès la manche ${type.from}` : null].filter(Boolean)) tag.append(el('span', '', part));
+  for (const part of [specimenNum(type), type.cls, type.tag || (type.from ? `Dès la manche ${type.from}` : null)].filter(Boolean)) tag.append(el('span', '', part));
   sheet.append(tag, el('p', 'md-name', type.name));
   const kills = el('p', 'md-kills', 'Éliminés par vous\u00a0: ');
   kills.append(el('b', '', fmtNum(specimenKills(type), 0)));
@@ -21610,14 +23352,23 @@ function selectSpecimen(id) {
     });
     box.append(shot);
   }
-  const arm = el('button', 'md-chip alt', 'Tir au bras');
-  arm.type = 'button';
-  arm.dataset.action = 'arm';
-  arm.addEventListener('click', () => {
-    Sound.init();
-    if (Models.spec && Models.spec.armShot && Models.spec.armShot()) { Sound.gib(null); Sound.zombie(null, 'death'); }
-  });
-  box.append(arm);
+  if (!model.dog) {
+    const arm = el('button', 'md-chip alt', 'Tir au bras');
+    arm.type = 'button';
+    arm.dataset.action = 'arm';
+    arm.addEventListener('click', () => {
+      Sound.init();
+      if (Models.spec && Models.spec.armShot && Models.spec.armShot()) { Sound.gib(null); Sound.zombie(null, 'death'); }
+    });
+    box.append(arm);
+  } else {
+    // Le Molosse : il encaisse, jappe et sursaute (rien ne s'arrache)
+    const shot = el('button', 'md-chip alt', 'Tir dans le flanc');
+    shot.type = 'button';
+    shot.dataset.action = 'shot';
+    shot.addEventListener('click', () => { Sound.init(); if (Models.spec && Models.spec.shot && Models.spec.shot()) Sound.dogYelp(null); });
+    box.append(shot);
+  }
   if (model.legs) {
     const shot = el('button', 'md-chip alt', 'Tir dans les jambes');
     shot.type = 'button';
@@ -21636,6 +23387,8 @@ function setModelAnim(k) {
   for (const b of $('md-anims').children) if (b.dataset.anim) b.setAttribute('aria-pressed', b.dataset.anim === k ? 'true' : 'false');
   // le cri qui va avec (le son démarre au premier geste du joueur)
   Sound.init();
+  // Le Molosse : ses animations jouent leurs sons (grognement, éclair, morsure, explosion)
+  if (Models.sel === DOG_TYPE.id) { if (k === 'gallop') Sound.dogSnarl(null); else Sound.ui(); return; }
   if (k === 'attack' || k === 'frenzy') Sound.zombie(null, 'attack');
   else if (k === 'death') Sound.zombie(null, 'death');
   else if (k === 'rise') Sound.rise(null);
@@ -21680,7 +23433,7 @@ function renderModels(dt) {
   M.fx = damp(M.fx || 0, sc ? clamp(sc.x, -1.1, 1.1) : 0, 3, dt);
   M.fz = damp(M.fz || 0, sc ? clamp(sc.z, -0.6, 1.0) : 0, 3, dt);
   M.fy = damp(M.fy || 0, sc ? clamp(sc.y - 0.95, -0.55, 0.75) * 0.8 : 0, 3, dt);
-  const ty = lerp(0.93, 1.5, smooth(clamp(k, 0, 1))) + M.fy, back = M.fy > 0 ? M.fy * 0.9 : 0;
+  const V = M.spec.view || [0.93, 1.5], ty = lerp(V[0], V[1], smooth(clamp(k, 0, 1))) + M.fy, back = M.fy > 0 ? M.fy * 0.9 : 0;
   M.camera.position.set(M.fx, ty + 0.14, M.dist + M.fz + back);
   M.camera.lookAt(M.fx, ty, M.fz);
   M.renderer.render(M.scene, M.camera);
@@ -22468,6 +24221,13 @@ window.__zs = {
   power() { if (!G.power) activatePower(); },
   openAll() { for (const id in World.doors) if (!World.doors[id].opened) openDoor(World.doors[id]); },
   round(n) { clearZombies(); G.round = n - 1; G.roundState = 'pre'; G.roundT = 0.1; },
+  /* dogs(n) : la manche n sera une manche de chiens (et elle commence) ; dogs(false) : plus de chiens. */
+  dogs(n = G.round + 1) {
+    if (n === false) { G.dogs.off = true; return; }
+    G.dogs.off = false; ensureDogPlan(n);
+    if (!G.dogs.plan.includes(n)) G.dogs.plan.push(n);
+    this.round(n);
+  },
   god(on = true) { G.god = on; },
   drop(type) { spawnPowerup(type, player.pos.x - Math.sin(player.yaw) * 2, player.pos.z - Math.cos(player.yaw) * 2, player.gy); },
   start() { startGame(null); },

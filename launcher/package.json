@@ -14,7 +14,7 @@
     "modtools": "node scripts/prepare-game.js && electron . --modtools",
     "configure": "node scripts/configure.js",
     "test": "node --test",
-    "test:e2e": "node scripts/prepare-game.js && node e2e/modtools.e2e.js && node e2e/game-menu.e2e.js && node e2e/publish-online.e2e.js && node e2e/stairs.e2e.js && node e2e/rank.e2e.js && node e2e/perk-drink.e2e.js && node e2e/outskirts.e2e.js && node e2e/zone-zombies.e2e.js && node e2e/glas.e2e.js && node e2e/elixirs.e2e.js && node e2e/zombie-anims.e2e.js && node e2e/weapons.e2e.js",
+    "test:e2e": "node scripts/prepare-game.js && node e2e/modtools.e2e.js && node e2e/game-menu.e2e.js && node e2e/publish-online.e2e.js && node e2e/stairs.e2e.js && node e2e/rank.e2e.js && node e2e/perk-drink.e2e.js && node e2e/outskirts.e2e.js && node e2e/zone-zombies.e2e.js && node e2e/glas.e2e.js && node e2e/elixirs.e2e.js && node e2e/zombie-anims.e2e.js && node e2e/weapons.e2e.js && node e2e/dogs.e2e.js",
     "dist:win": "node scripts/prepare-game.js && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {

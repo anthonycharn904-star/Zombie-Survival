@@ -155,7 +155,7 @@ async function openGame() {
     await game.waitForFunction(() => !document.getElementById('models').hidden);
     await new Promise((r) => setTimeout(r, 800));
     const md = await game.evaluate(() => ({
-      tabs: document.querySelectorAll('#md-tabs .md-tab').length, types: ZOMBIE_TYPES.length,
+      tabs: document.querySelectorAll('#md-tabs .md-tab').length, types: SPECIMEN_TYPES.length,
       name: document.querySelector('#md-sheet .md-name').textContent,
       kills: document.querySelector('#md-sheet .md-kills b').textContent,
       tag: document.querySelector('#md-sheet .md-tagline').textContent,
