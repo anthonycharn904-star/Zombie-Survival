@@ -41,7 +41,7 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(ZS.version === v && GAME_VERSION === '1.9.0', `jeu ${v}`, ZS.version);
+      ok(ZS.version === v && GAME_VERSION === '2.0.0', `jeu ${v}`, ZS.version);
       const r = makeRig();
       ok(r.pelvis && r.hips.parent === r.pelvis && r.hipL.parent === r.pelvis && r.hipR.parent === r.pelvis && r.pelvis.parent === r.body,
         'squelette : bassin qui porte le buste et les jambes (le buste se penche sans elles)');

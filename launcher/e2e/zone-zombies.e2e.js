@@ -219,7 +219,7 @@ const PUBLISHED_B7 = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures',
     await game.click('#btn-models');
     await game.waitForFunction(() => !document.getElementById('models').hidden);
     const tabs = await game.evaluate(() => [...document.querySelectorAll('#md-tabs .md-tab')].map((b) => b.textContent));
-    report({ ok: tabs.join('|') === 'N°00Le Fantassin|N°00-ALe Lacéré|N°00-CLe Savant|N°00-DLa Sentinelle|N°03Le Molosse', label: 'écran Modèles : cinq onglets (N°00, 00-A, 00-C, 00-D, puis N°03 Le Molosse)', extra: tabs });
+    report({ ok: tabs.join('|') === 'N°00Le Fantassin|N°00-ALe Lacéré|N°00-CLe Savant|N°00-DLa Sentinelle|N°03Le Molosse|N°K-01L’Archéologue|N°K-02L’Ouvrier|N°K-03Le Villageois|N°K-04Le Rôdeur des sables|N°K-05Le Gardien à tête de chacal|N°K-06Le Pilote', label: 'écran Modèles : onglets N°00, 00-A, 00-C, 00-D, N°03 Le Molosse, puis Khamsin (K-01 à K-06, jeu 2.0.0)', extra: tabs });
     for (const [id, name, must] of [
       ['lacere', 'Le Lacéré', ['Tête nue, veste ouverte sur les côtes', 'Jambes déchiquetées', 'Salle des machines']],
       ['savant', 'Le Savant', ['Blouse claire jusqu’aux genoux', 'seringue', '0,25', 'Infirmerie']],

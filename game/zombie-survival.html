@@ -741,10 +741,12 @@ body {
       </dl>
       <h3>Consignes</h3>
       <ul class="orders">
-        <li>Reclouez les planches des fenêtres : 10 points par planche.</li>
+        <li id="tip-planks">Reclouez les planches des fenêtres : 10 points par planche.</li>
         <li>Les armes dessinées à la craie s'achètent au mur, munitions comprises.</li>
         <li id="tip-box">La boîte mystère donne une arme au hasard pour 950 points.</li>
         <li id="tip-power">Rétablissez le courant dans la salle des machines pour les atouts et Le Glas, la cloche qui reforge les armes.</li>
+        <li id="tip-veh" hidden>Véhicules : F pour monter ou descendre, C pour la vue, L pour les phares. Au volant, on ne tire pas.</li>
+        <li id="tip-storm" hidden>Toutes les quatre manches, une tempête de sable : abritez-vous sous un toit.</li>
       </ul>
     </aside>
   </div>
@@ -1041,7 +1043,7 @@ const key = (c) => !!Input.keys[c];
 const pressed = (c) => !!Input.down[c];
 
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
-const GAME_VERSION = '1.9.0';
+const GAME_VERSION = '2.0.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 2;
 
@@ -23884,6 +23886,7 @@ function activatePower() {
   Life.add('power');
   if (Features.power) { Features.power.anim = 0; setLin(Features.power.lampMat.color, 0x40ff60); }
   Sound.powerOn();
+  if (OW.on) Sound.setHum(false);                     // Khamsin : pas de bourdonnement électrique dans tout le désert
   setPoweredLights();
   Features.perkMachines.forEach((m, i) => {
     if (!PERKS[m.id].power || !m.active) return;
@@ -23891,7 +23894,7 @@ function activatePower() {
   });
   const a = Features.amp;
   if (a) schedule(1.2, () => glasWake(false));
-  HUD.banner('Courant rétabli', a ? 'Atouts disponibles · Le Glas s’éveille' : 'Atouts disponibles', 'power');
+  HUD.banner('Courant rétabli', a && a.altar ? 'Atouts disponibles · camion blindé · batterie de l’avion en charge' : a ? 'Atouts disponibles · Le Glas s’éveille' : 'Atouts disponibles', 'power');
   Sound.say('Courant rétabli');
 }
 /* Courant déjà rétabli au début de la partie (règle de la carte), sans annonce. */
@@ -25330,6 +25333,7 @@ function refreshMenu() {
     $('tip-power').textContent = b7 ? 'Rétablissez le courant dans la salle des machines pour les atouts et Le Glas, la cloche qui reforge les armes.'
       : map.rules.powerOn ? `Le courant est déjà rétabli : ${map.amp ? 'les atouts et Le Glas sont' : 'les atouts sont'} disponibles.`
       : `Rétablissez le courant pour ${map.amp ? 'les atouts et Le Glas' : 'les atouts'}.`;
+    khMenuTips(map);                                    // Khamsin : consignes du désert (les autres cartes : textes du jeu)
   }
   refreshMenuRank();
   const resume = $('btn-resume-save');
@@ -27192,6 +27196,7 @@ const KHAMSIN = {
   id: 'khamsin', open: true, format: 1, name: 'Khamsin',
   description: 'Désert égyptien. Douze kilomètres carrés entre la mer de sable et le Nil, sept lieux reliés par la route du Km 47. Le faisceau de la Grande Pyramide guide les survivants.',
   eyebrow: 'Rapport d’incident · Khamsin · route du Km 47',
+  lead: 'Survivez dans le désert le plus longtemps possible, ou réunissez les trois pièces de l’avion, abattez le Gardien du sanctuaire et décollez de l’aérodrome.',
   rules: { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null },
   spawn: { pos: KH.spawn.pos.slice(), yaw: KH.spawn.yaw, lv: 0 },
   ambiance: { sky: '#e6ad74', fog: '#e6ad74', fogDensity: 0.00058, hemiSky: '#9aa9c2', hemiGround: '#c8915c', hemi: 0.8, exposure: 1.0, moon: false, trees: 0, pipes: false, wallHeight: 3.5 },
@@ -27916,7 +27921,7 @@ function vehEnter(V) {
   player.sprinting = false; player.ads = 0; player.crouch = 0; player.y = 0; player.vy = 0; player.grounded = true;
   player.yaw = V.yaw; player.pitch = 0;
   vehSeat(V);
-  HUD.hint('Z/S accélérer, freiner · Q/D tourner · Espace frein · C vue · F descendre', 5);
+  HUD.hint('Z/S accélérer, freiner · Q/D tourner · Espace frein · C vue · L phares · F descendre', 5);
   vehSoundStart(V);
 }
 /* Le joueur suit le siège du conducteur. */
@@ -29177,7 +29182,7 @@ function owBreaker(group, b, i) {
       B.lever.rotation.x = -1.1 * (B.held / 4);
       if (B.held >= 4) {
         B.done = true; owBreakerLook(B);
-        Sound.powerOn();
+        Sound.powerOn(); Sound.setHum(false);          // pas de bourdonnement électrique dans tout le désert
         const n = KHF.breakers.filter((q) => q.done).length;
         if (n >= 3) activatePower();
         else HUD.banner(`Disjoncteur ${['I', 'II', 'III'][i]}`, `${n}/3 enclenchés · il en reste ${3 - n}`, 'power');
@@ -29476,7 +29481,7 @@ const RODEUR_TYPE = {
 /* Fiches de l'écran « Modèles » et compteurs d'éliminations, après celles de Bunker 7. Les Desséchés
    ne sont pas dans ZOMBIE_TYPES : les cartes et les Mod Tools ne les proposent pas (leurs règles,
    PV et allures, sont celles de Khamsin). */
-SPECIMEN_TYPES.push(...KH_TYPES, KH_PILOTE_TYPE, RODEUR_TYPE);
+SPECIMEN_TYPES.push(...KH_TYPES, RODEUR_TYPE);       // puis le Gardien (K-05) et le pilote (K-06) : voir le Gardien
 
 /* Points de vie et allures des Desséchés (planche). */
 const khHp = (r) => Math.round(r <= 10 ? 150 + 100 * (r - 1) : 1050 * Math.pow(1.1, r - 10));
@@ -30702,7 +30707,7 @@ function khSanctuaryUpdate(dt) {
   const D = KHSAN.door;
   if (D) {
     const open = OW.doors[D.i].open;
-    if (G.power && !open && !D.opening) { D.opening = true; D.t = 0; Sound.powerOn(); HUD.banner('Le sanctuaire s’ouvre', 'La porte du kiosque s’enfonce dans le sol · plateau des pyramides', 'power'); }
+    if (G.power && !open && !D.opening) { D.opening = true; D.t = 0; Sound.powerOn(); Sound.setHum(false); HUD.banner('Le sanctuaire s’ouvre', 'La porte du kiosque s’enfonce dans le sol · plateau des pyramides', 'power'); }
     if (D.opening) {
       D.t += dt;
       const k = clamp(D.t / 2.6, 0, 1);
@@ -30779,7 +30784,7 @@ const GARDIEN_TYPE = {
   desc: 'Le gardien du sanctuaire sous la Grande Pyramide. Le sceau brisé l’a réveillé ; la tempête est son souffle.',
   mult: { hp: 1, speed: 1, damage: 1.5 }, headMult: 1.5, ability: 'Tourbillon',
 };
-SPECIMEN_TYPES.push(GARDIEN_TYPE);
+SPECIMEN_TYPES.push(GARDIEN_TYPE, KH_PILOTE_TYPE);   // onglets dans l'ordre des numéros : K-05, K-06
 
 /* ---- Matières : corps de basalte fendu (fissures turquoise en émission), or, faïence, lin */
 function khGardienMats() {
@@ -32166,6 +32171,26 @@ function khRideSound(on) {
   o.start(); n.start();
   out.gain.setTargetAtTime(0.5, ctx.currentTime, 0.3);
   KHT.snd = { ctx, out, o, n };
+}
+
+/* ------------------------------------------------------------------ Menu --
+   Dossier du menu pour Khamsin : pas de planches à reclouer, une boîte qui voyage d'un lieu à
+   l'autre, le courant de la centrale du Nil, les véhicules et les tempêtes. Les autres cartes
+   retrouvent les textes du jeu (refreshMenu écrit tip-power ; tip-box est remis ici). */
+const KH_TIPS = {
+  box: () => `La boîte mystère (${RULES.boxCost} points) voyage de lieu en lieu\u00a0; la mini-carte la marque en bleu.`,
+  power: 'Trois disjoncteurs à la centrale du Nil\u00a0: le courant alimente les atouts, ouvre le sanctuaire et charge la batterie de l’avion.',
+  boxBase: () => `La boîte mystère donne une arme au hasard pour ${RULES.boxCost} points.`,
+};
+function khMenuTips(map) {
+  const kh = !!(map && map.open);
+  for (const id of ['tip-veh', 'tip-storm']) $(id).hidden = !kh;
+  $('tip-planks').hidden = kh;
+  if (!kh) { $('tip-box').textContent = KH_TIPS.boxBase(); return; }
+  $('tip-box').hidden = false;
+  $('tip-box').textContent = KH_TIPS.box();
+  $('tip-power').hidden = false;
+  $('tip-power').textContent = KH_TIPS.power;
 }
 
 /* ====================================================== fin du monde ouvert == */

@@ -42,7 +42,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '1.9.0', 'version du jeu inchangée : 1.9.0', GAME_VERSION);
+      ok(GAME_VERSION === '2.0.0', 'version du jeu : 2.0.0', GAME_VERSION);
       ok(typeof creerCouteauMelee === 'function' && window.creerCouteauMelee === undefined, 'module du couteau dans le script du jeu, sans variable globale');
       ok(Couteau && Couteau.sceneVue && Couteau.sceneVue !== vmScene && Couteau.rig.parent && !Couteau.rig.visible, 'bras au couteau dans sa propre vue, caché au repos');
       ok(Arms.knife === undefined && typeof knifeStrike === 'undefined' && typeof KNIFE_HOLD === 'undefined' && !('knife' in Sound), 'ancien couteau retiré (modèle, coup, prise, son)');

@@ -44,7 +44,7 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(ZS.version === v && GAME_VERSION === '1.9.0', `jeu ${v}`, ZS.version);
+      ok(ZS.version === v && GAME_VERSION === '2.0.0', `jeu ${v}`, ZS.version);
       const REAL = { m1911: 0.216, kar98k: 1.11, g43: 1.13, mp40: 0.833, thompson: 0.851, trench: 1.0, dbarrel: 1.1, stg44: 0.94, bar: 1.214, ppsh: 0.843, type100: 0.89, fg42: 0.975, mg42: 1.22, panzer: 1.64 };
       const ids = Object.keys(WEAPONS);
       ok(ids.length === 16 && ids.every((id) => GUN_MODELS[id] && RELOADS[id]), '16 armes : un modèle et un rechargement chacune', ids);

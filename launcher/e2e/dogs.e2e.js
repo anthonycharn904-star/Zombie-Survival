@@ -42,7 +42,7 @@ const USER = path.join(TMP, 'joueur');
       ok(ZOMBIE_TYPES.map((t) => t.id).join(' ') === 'fantassin lacere savant sentinelle' && !ZOMBIE_TYPE_BY_ID.molosse,
         'les types de pièce (cartes, Mod Tools) restent les quatre zombies : le chien n’en fait pas partie');
       const d = DOG_TYPE;
-      ok(SPECIMEN_TYPES.length === 5 && SPECIMEN_TYPES[4] === d && d.num === '03' && d.name === 'Le Molosse' && d.cls === 'Meute' && d.tag === 'Manche spéciale'
+      ok(SPECIMEN_TYPES.length === 11 && SPECIMEN_TYPES[4] === d && d.num === '03' && d.name === 'Le Molosse' && d.cls === 'Meute' && d.tag === 'Manche spéciale'
         && d.mult.hp === 0.5 && d.mult.speed === 2 && d.mult.damage === 0.7, 'fiche N°03 : Meute, manche spéciale, PV ×0,5, vitesse ×2, dégâts ×0,7', d);
       // tirage sur 3 000 parties de 100 manches
       const bad = [], perBlock = { 0: 0, 1: 0, 2: 0, 3: 0 }, seenIn1 = new Set();
@@ -310,7 +310,7 @@ const USER = path.join(TMP, 'joueur');
       bars: [...document.querySelectorAll('#md-sheet .md-bar b')].map((b) => b.textContent),
       probe: __zs.modelProbe(), meshes: Models.spec.root.children.filter((m) => m.isInstancedMesh && m.count === m.userData.mul).length, parts: ZPARTS.molosse.length,
     }));
-    report({ ok: md.tabs.length === 5 && md.tabs[4] === 'N°03Le Molosse', label: 'écran Modèles : cinquième onglet « N°03 Le Molosse »', extra: md.tabs });
+    report({ ok: md.tabs.length === 11 && md.tabs[4] === 'N°03Le Molosse', label: 'écran Modèles : cinquième onglet « N°03 Le Molosse » (puis les six fiches de Khamsin, jeu 2.0.0)', extra: md.tabs });
     report({ ok: md.name === 'Le Molosse' && /N°03.*Meute.*Manche spéciale/.test(md.tag) && md.bars.join(' ') === '×0,5 ×2,0 ×0,7'
       && ['Chasse en meute de 4 à 6', 'bondit sur 5 m', 'un pas de côté et il te rate', '1 ou 2 par tranche de 10', 'Munitions max', 'pièces ouvertes'].every((t) => md.text.includes(t)),
       label: 'fiche du Molosse : en-tête, jauges, capacité et faiblesse de la planche, règles des manches de chiens', extra: { name: md.name, tag: md.tag, bars: md.bars } });
