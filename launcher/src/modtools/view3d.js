@@ -60,7 +60,7 @@
     o.traverse((c) => {
       if (c.userData && c.userData.keep) return;
       if (c.geometry && !c.userData.sharedGeo) c.geometry.dispose();
-      const mats = Array.isArray(c.material) ? c.material : c.material ? [c.material] : [];
+      const mats = c.userData.keepMat ? [] : Array.isArray(c.material) ? c.material : c.material ? [c.material] : [];
       for (const m of mats) { if (m.map && m.map !== BULB_TEX) m.map.dispose(); m.dispose(); }
     });
   }
@@ -88,9 +88,11 @@
     applyCamera();
     MT.emit('camera3d');
   };
+  const OWV = () => (S.map && S.map.open && MT.ow && MT.ow.v3 ? MT.ow.v3 : null);
   V.overview = () => {
     const m = S.map;
     if (!m) return;
+    if (OWV()) { OWV().overview(); return; }
     const span = Math.max(m.w, m.h), E = MT.levelY();
     V.cam.position.set(m.w / 2, E + Math.max(10, span * 0.62), m.h + span * 0.18);
     V.lookAtPoint(m.w / 2, E, m.h * 0.48);
@@ -98,6 +100,7 @@
   V.topView = () => {
     const m = S.map;
     if (!m) return;
+    if (OWV()) { OWV().topView(); return; }
     const span = Math.max(m.w, m.h * V.cam.aspect);
     V.cam.position.set(m.w / 2, MT.levelY() + Math.max(12, span * 0.95), m.h / 2 + 0.01);
     V.yaw = 0; V.pitch = -Math.PI / 2 + 0.001;
@@ -112,6 +115,7 @@
     MT.emit('camera3d');
   };
   V.walkView = () => {
+    if (OWV()) { OWV().walkView(); return; }
     const sp = S.map.spawn;
     if (MT.lvOf(sp) !== S.level && MT.hasLevel(MT.lvOf(sp))) MT.setLevel(MT.lvOf(sp));
     V.cam.position.set(sp.pos[0], MT.levelY(MT.lvOf(sp)) + 1.65, sp.pos[1]);
@@ -142,6 +146,10 @@
     return false;
   }
   function raycast(e) {
+    if (OWV()) {
+      const p = OWV().pick(e);
+      return p ? { point: new THREE.Vector3(p.wx, p.wy, p.wz), distance: p.dist } : null;
+    }
     setRay(e);
     const targets = [V.helpers];
     if (ZS.World.root) targets.push(ZS.World.root);
@@ -160,6 +168,7 @@
   }
   /* Point visé (voir tools.js pour le format). */
   V.pick = (e) => {
+    if (OWV()) return OWV().pick(e);
     const h = raycast(e);
     if (!h) return planePick(e, MT.levelY());
     const p = h.point;
@@ -250,7 +259,7 @@
     e.preventDefault();
     const h = raycast(e);
     const dist = h ? h.distance : 12;
-    const step = clamp(dist * 0.16, 0.25, 30) * Math.sign(-e.deltaY) * (V.keys.ShiftLeft ? 2.5 : 1);
+    const step = clamp(dist * 0.16, 0.25, OWV() ? 400 : 30) * Math.sign(-e.deltaY) * (V.keys.ShiftLeft ? 2.5 : 1);
     if (step > 0 && h && dist - step < 0.4) return;
     setRay(e);
     V.cam.position.addScaledVector(ray.ray.direction, step);
@@ -297,7 +306,7 @@
     if (k.KeyE || k.Space) fy += 1;
     if (k.KeyQ) fy -= 1;
     if (!fx && !fy && !fz) return;
-    const sp = V.speed * (k.ShiftLeft || k.ShiftRight ? 3 : 1) * dt;
+    const sp = (OWV() ? OWV().speed : V.speed) * (k.ShiftLeft || k.ShiftRight ? 3 : 1) * dt;
     const f = forward(tmpV), right = tmpV2.set(Math.cos(V.yaw), 0, -Math.sin(V.yaw));
     V.cam.position.addScaledVector(f, fz * sp).addScaledVector(right, fx * sp);
     V.cam.position.y += fy * sp;
@@ -313,6 +322,7 @@
   }
   function onChange(kind, detail) {
     if (!S.map) return;
+    if (OWV()) { OWV().onChange(kind, detail); return; }
     if (kind === 'prop-move') { applyPropTransforms(detail && detail.list); V.selDirty = true; return; }
     if (kind === 'light-live') { applyLightLive(detail); V.selDirty = true; V.helpersDirty = true; return; }
     if (kind === 'ambiance') { ZS.applyAmbiance(S.map.ambiance); applyOverrides(); return; }
@@ -324,6 +334,8 @@
   }
   function rebuild() {
     if (!S.map) return;
+    if (OWV()) { OWV().rebuild(); return; }
+    if (V.owLoaded) { V.owLoaded = false; V.cam.near = 0.05; V.cam.far = 700; V.cam.updateProjectionMatrix(); }
     const t0 = performance.now();
     if (V.worldDirty) {
       ZS.buildWorld(S.map, { editor: true });
@@ -346,7 +358,7 @@
   /* Coupe : les niveaux au-dessus du niveau affiché sont cachés (on le voit d'en haut). */
   function applyCutaway() {
     const root = ZS.World.root;
-    if (!root || !S.map) return;
+    if (!root || !S.map || S.map.open) return;
     const cut = S.level;
     root.traverse((o) => { if (o.userData && o.userData.lv !== undefined) o.visible = o.userData.lv <= cut; });
   }
@@ -392,7 +404,7 @@
   /* Réglages d'affichage propres à l'éditeur (brouillard, lumière d'appoint). */
   function applyOverrides() {
     const m = S.map;
-    if (!m) return;
+    if (!m || m.open) return;
     // sans le brouillard de la carte : un voile léger garde la profondeur au loin
     ZS.scene.fog.density = V.fog ? m.ambiance.fogDensity : Math.min(0.012, m.ambiance.fogDensity);
     if (ZS.HEMI) ZS.HEMI.intensity = V.editLight ? Math.max(m.ambiance.hemi, 1.05) : m.ambiance.hemi;
@@ -401,6 +413,7 @@
     V[k] = v;
     if (k === 'power') {
       if (v) ZS.powerOnQuiet();
+      else if (OWV()) { V.owElDirty = true; schedule(0); }
       else { ZS.resetLights(); for (const pm of ZS.Features.perkMachines) ZS.lightMachine(pm, !ZS.PERKS[pm.id].power); V.worldDirty = true; schedule(0); }
     }
     if (k === 'labels') V.helpersDirty = true;
@@ -418,6 +431,7 @@
       disposeTree(c);
     }
     if (!m) return;
+    if (OWV()) { V.helpers.add(OWV().helpers()); return; }
     const G0 = geo();
     const group = new THREE.Group();
     group.name = 'marqueurs';
@@ -476,6 +490,7 @@
   function selectionBoxes() {
     const s = S.sel, m = S.map, out = [];
     if (!s || !m) return out;
+    if (OWV()) return OWV().selectionBoxes();
     const H = MT.wallHeight();
     let E = MT.levelY();
     const el = { light: m.lights, perk: m.perks, riser: m.risers, box: m.boxes, wallbuy: m.wallbuys, sign: m.signs, door: m.doors, stair: m.stairs || [] }[s.kind];
@@ -526,6 +541,7 @@
   }
   function rebuildCells() {
     if (V.cells) { V.helpers.remove(V.cells); disposeTree(V.cells); V.cells = null; }
+    if (OWV()) { const g = OWV().elementGhost(); if (g) { V.cells = g; V.helpers.add(g); } return; }
     const pv = MT.preview;
     if (!pv.cells || !pv.cells.length || pv.cells.length > 3000 || !S.map) return;
     const pos = [];
@@ -558,7 +574,7 @@
       }
     }
     if (V.ghost && gh) {
-      V.ghost.position.set(gh.x, MT.levelY() + (gh.y || 0), gh.z);
+      V.ghost.position.set(gh.x, OWV() ? OWV().propGhostY(gh) : MT.levelY() + (gh.y || 0), gh.z);
       V.ghost.rotation.set(0, gh.r || 0, 0);
       V.ghost.scale.setScalar(gh.s || 1);
     }
@@ -590,12 +606,16 @@
       if (h) V.focusOn(h.point.x, h.point.y, h.point.z, Math.min(8, h.distance));
     });
     MT.on('change', onChange);
-    MT.on('map', () => { V.worldDirty = true; V.rebuildAt = 0; rebuild(); V.overview(); });
+    MT.on('map', () => { if (OWV()) { OWV().onMap(); return; } V.worldDirty = true; V.rebuildAt = 0; rebuild(); V.overview(); });
     MT.on('selection', () => { V.selDirty = true; });
     MT.on('preview', () => { V.cellsDirty = true; });
     MT.on('tool', () => { V.cellsDirty = true; });
-    MT.on('focus', (f) => { if (f && Number.isFinite(f.x)) V.focusOn(f.x + 0.5, f.y !== undefined ? f.y : MT.levelY() + 0.5, f.z + 0.5, 9); });
-    MT.on('look-at', (f) => { V.focusOn(f.x, MT.levelY() + 0.4, f.z, 10); });
+    MT.on('focus', (f) => {
+      if (!f || !Number.isFinite(f.x)) return;
+      if (OWV()) OWV().focus(f.x, f.z, f.dist || 26, f.y !== undefined ? f.y : null);
+      else V.focusOn(f.x + 0.5, f.y !== undefined ? f.y : MT.levelY() + 0.5, f.z + 0.5, 9);
+    });
+    MT.on('look-at', (f) => { if (OWV()) OWV().focus(f.x, f.z, 30); else V.focusOn(f.x, MT.levelY() + 0.4, f.z, 10); });
     // changement de niveau : la caméra monte ou descend d'autant, la coupe suit
     let lastLevel = 0;
     MT.on('level', (lv) => {
@@ -620,6 +640,7 @@
     if (!V.active) return;
     V.t += dt;
     if (V.rebuildAt && performance.now() >= V.rebuildAt) { V.rebuildAt = 0; rebuild(); }
+    if (OWV() && ZS.ow.on) ZS.ow.frame(dt, V.cam);
     processHover();
     moveCamera(dt);
     if (V.helpersDirty) rebuildHelpers();
@@ -629,6 +650,8 @@
     if (V.animate) ZS.updateLights(dt, V.t);
     applyOverrides();
   };
+  /* Pour les cartes ouvertes (ow-view.js). */
+  V.int = { setRay, ray, applyCamera, forward, textSprite, disposeTree, schedule };
   V.setActive = (on) => {
     V.active = on;
     V.helpers.visible = on;

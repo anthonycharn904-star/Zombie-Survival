@@ -365,12 +365,27 @@
   });
 
   /* ------------------------------------------------------- structure --- */
+  /* Boutons des outils : ceux de la carte ouverte (grille ou monde ouvert). */
+  const toolButtons = () => MT.tools.available().map((t) => h('button', {
+    type: 'button', class: 'mt-tool', dataset: { tool: t.id }, title: `${t.name} (${t.label})`,
+    onclick: () => MT.setTool(t.id),
+  }, icon(t.id), h('span', { class: 'mt-tool-key' }, t.label)));
+  let toolsKey = '';
+  UI.refreshTools = () => {
+    const nav = $('mt-tools');
+    const key = MT.tools.available().map((t) => t.id).join(',');
+    document.body.classList.toggle('mt-open', MT.isOpen());
+    if (!nav || key === toolsKey) return;
+    toolsKey = key;
+    nav.textContent = '';
+    nav.append(...toolButtons());
+    if (!MT.tools.available().some((t) => t.id === S.tool)) MT.setTool('select');
+    refreshToolbar();
+  };
   UI.build = () => {
     document.body.classList.add('mt-on');
-    const toolBtns = MT.tools.available().map((t) => h('button', {
-      type: 'button', class: 'mt-tool', dataset: { tool: t.id }, title: `${t.name} (${t.label})`,
-      onclick: () => MT.setTool(t.id),
-    }, icon(t.id), h('span', { class: 'mt-tool-key' }, t.label)));
+    const toolBtns = toolButtons();
+    toolsKey = MT.tools.available().map((t) => t.id).join(',');
     const root = h('div', { id: 'mt', class: 'mt' },
       h('header', { class: 'mt-top' },
         h('div', { class: 'mt-brand' }, h('b', null, 'Mod Tools'), h('small', null, 'Zombie Survival')),
@@ -397,8 +412,8 @@
           h('div', { class: 'mt-pane-bar' },
             h('span', { class: 'mt-pane-title' }, 'Plan'),
             h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Recentrer (toute la carte)', onclick: () => MT.plan.fit() }, icon('fit')),
-            toggleBtn('grid', 'Grille', () => MT.plan.showGrid, (v) => { MT.plan.showGrid = v; MT.plan.need = true; }),
-            toggleBtn('zones', 'Pièces colorées et noms', () => MT.plan.showZones, (v) => { MT.plan.showZones = v; MT.plan.baseRev++; MT.plan.need = true; }),
+            grid(toggleBtn('grid', 'Grille', () => MT.plan.showGrid, (v) => { MT.plan.showGrid = v; MT.plan.need = true; })),
+            toggleBtn('zones', 'Pièces colorées et noms (carte ouverte : noms des lieux)', () => MT.plan.showZones, (v) => { MT.plan.showZones = v; MT.plan.baseRev++; MT.plan.need = true; }),
             toggleBtn('props', 'Objets', () => MT.plan.showProps, (v) => { MT.plan.showProps = v; MT.plan.need = true; }))),
         h('div', { class: 'mt-split', id: 'mt-split', title: 'Glisser pour changer la taille des vues' }),
         h('section', { class: 'mt-pane mt-3d', id: 'mt-3d-pane' },
@@ -408,11 +423,11 @@
             h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Vue de dessus (H)', onclick: () => MT.v3.topView() }, icon('top')),
             h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'À hauteur d’homme, au départ', onclick: () => MT.v3.walkView() }, icon('walk')),
             toggleBtn('sun', 'Lumière d’appoint (éclaire la carte pour travailler)', () => MT.v3.editLight, (v) => MT.v3.setOption('editLight', v)),
-            toggleBtn('fog', 'Brouillard de la carte', () => MT.v3.fog, (v) => MT.v3.setOption('fog', v)),
+            grid(toggleBtn('fog', 'Brouillard de la carte', () => MT.v3.fog, (v) => MT.v3.setOption('fog', v))),
             toggleBtn('power', 'Aperçu : courant rétabli', () => MT.v3.power, (v) => MT.v3.setOption('power', v)),
-            toggleBtn('bulb', 'Scintillement des lumières', () => MT.v3.animate, (v) => { MT.v3.setOption('animate', v); if (!v) MT.v3.forceRebuild(); }),
-            toggleBtn('tag', 'Noms des pièces', () => MT.v3.labels, (v) => MT.v3.setOption('labels', v))),
-          h('div', { class: 'mt-3d-help' }, 'Clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · molette : zoom · clic milieu : glisser'))),
+            grid(toggleBtn('bulb', 'Scintillement des lumières', () => MT.v3.animate, (v) => { MT.v3.setOption('animate', v); if (!v) MT.v3.forceRebuild(); })),
+            toggleBtn('tag', 'Noms des pièces (carte ouverte : des lieux et des emplacements)', () => MT.v3.labels, (v) => MT.v3.setOption('labels', v))),
+          h('div', { class: 'mt-3d-help' }, 'Clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · Maj : vite · molette : zoom · clic milieu : glisser'))),
       h('aside', { class: 'mt-side' },
         h('div', { class: 'mt-tabs', role: 'tablist' },
           ...[['tool', 'Outil'], ['sel', 'Sélection'], ['map', 'Carte'], ['issues', 'Problèmes']].map(([id, l]) => h('button', { type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => UI.setTab(id) }, l))),
@@ -443,7 +458,7 @@
     MT.on('change', (kind, d) => { refreshTop(); schedulePanel(kind, d); scheduleValidate(); });
     MT.on('history', refreshTop);
     MT.on('saved', refreshTop);
-    MT.on('map', () => { refreshTop(); renderPanel(); validateNow(); });
+    MT.on('map', () => { UI.refreshTools(); refreshTop(); renderPanel(); validateNow(); });
     MT.on('issues', refreshIssues);
     MT.on('cursor', refreshCursor);
     MT.on('library', () => { if (UI.tab === 'tool' && S.tool === 'paint') renderPanel(); });
@@ -452,6 +467,8 @@
     UI.setTab('tool');
     UI.setView(UI.view);
   };
+  /* Bouton des seules cartes en grille (caché sur une carte ouverte). */
+  function grid(el) { el.classList.add('grid-only'); return el; }
   function toggleBtn(ic, title, get, set) {
     const b = h('button', { type: 'button', class: `mt-icon-btn sm toggle ${get() ? 'on' : ''}`, title, 'aria-pressed': get() ? 'true' : 'false' }, icon(ic));
     b.addEventListener('click', () => { const v = !get(); set(v); b.classList.toggle('on', v); b.setAttribute('aria-pressed', v ? 'true' : 'false'); });
@@ -509,7 +526,7 @@
     const box = $('mt-levels');
     if (!box) return;
     box.textContent = '';
-    box.hidden = !S.map || !MT.multiOk();
+    box.hidden = !S.map || !MT.multiOk() || MT.isOpen();
     if (box.hidden) return;
     const lvs = MT.levels(), i = lvs.indexOf(S.level);
     const sel = h('select', { class: 'f-select mt-level-sel', title: 'Niveau affiché (Ctrl+↑ / Ctrl+↓)' }, lvs.slice().reverse().map((lv) => h('option', { value: lv, selected: lv === S.level }, MT.levelName(lv))));
@@ -542,7 +559,7 @@
     $('mt-redo').title = S.redo.length ? `Rétablir : ${S.redo[S.redo.length - 1].label} (Ctrl+Y)` : 'Rien à rétablir';
     const m = S.map;
     const nl = MT.levels().length;
-    $('st-map').textContent = `${m.w} × ${m.h}${nl > 1 ? ` · ${nl} niveaux` : ''} · ${m.props.length} objet${m.props.length > 1 ? 's' : ''} · ${m.lights.length} lumière${m.lights.length > 1 ? 's' : ''}`;
+    $('st-map').textContent = m.open ? MT.ow.summary(m) : `${m.w} × ${m.h}${nl > 1 ? ` · ${nl} niveaux` : ''} · ${m.props.length} objet${m.props.length > 1 ? 's' : ''} · ${m.lights.length} lumière${m.lights.length > 1 ? 's' : ''}`;
     MT.api.setTitle(`${dirty ? '● ' : ''}${m.name} — Mod Tools · Zombie Survival`);
   }
   function refreshToolbar() {
@@ -552,10 +569,15 @@
     document.body.classList.add(`tool-${S.tool}`);
   }
   function refreshHint() {
-    const t = MT.tools.list.find((x) => x.id === S.tool);
+    const t = MT.tools.info();
     $('st-hint').textContent = t ? t.hint : '';
   }
   function refreshCursor(p) {
+    if (S.map && S.map.open) {
+      const c = MT.ow.ui.cursor(p);
+      $('st-cell').textContent = c ? c.cell : '—'; $('st-tile').textContent = c ? c.tile : ''; $('st-zone').textContent = c ? c.zone : '';
+      return;
+    }
     if (!p || !S.map || !MT.inb(p.x, p.z)) { $('st-cell').textContent = '—'; $('st-tile').textContent = ''; $('st-zone').textContent = ''; return; }
     $('st-cell').textContent = `${MT.levels().length > 1 ? `${MT.levelName(S.level)} · ` : ''}x ${p.x} · z ${p.z}${p.view === '3d' ? ` · h ${p.wy.toFixed(2)} m` : ''}`;
     let t = MT.tools.tileName(MT.tileAt(p.x, p.z));
@@ -600,8 +622,9 @@
 
   /* ------------------------------------------------------ panneau outil -- */
   function toolPanel() {
-    const t = MT.tools.list.find((x) => x.id === S.tool);
+    const t = MT.tools.info() || MT.tools.available()[0];
     const head = h('div', { class: 'p-head' }, icon(S.tool), h('div', null, h('h2', null, t.name), h('p', null, t.hint)));
+    if (MT.isOpen()) return [head, ...MT.ow.ui.toolPanel()];
     switch (S.tool) {
       case 'build': return [head, ...buildPanel()];
       case 'paint': return [head, ...paintPanel()];
@@ -809,6 +832,7 @@
 
   /* -------------------------------------------------- panneau sélection -- */
   function focusSel() {
+    if (MT.isOpen()) { MT.ow.ui.focusSel(); return; }
     const s = S.sel, m = S.map;
     if (!s) return;
     let p = null;
@@ -833,6 +857,7 @@
   const delBtn = () => h('button', { type: 'button', class: 'mt-icon-btn sm danger', title: 'Supprimer (Suppr)', onclick: () => MT.deleteSelection() }, icon('trash'));
   const dupBtn = () => h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Dupliquer (Ctrl+D)', onclick: () => MT.duplicateSelection() }, icon('copy'));
   function inspector() {
+    if (MT.isOpen()) return MT.ow.ui.inspector();
     const s = S.sel, m = S.map;
     if (!s) {
       return [h('div', { class: 'p-empty' },
@@ -1032,6 +1057,7 @@
 
   /* ------------------------------------------------------ panneau carte -- */
   function mapPanel() {
+    if (MT.isOpen()) return MT.ow.ui.mapPanel();
     const m = S.map;
     const a = m.ambiance, r = m.rules;
     const amb = (label, fn) => commit(label, 'ambiance', (mm) => fn(mm.ambiance));
@@ -1106,6 +1132,10 @@
       }),
     })));
   }
+
+  /* Pour les cartes ouvertes (ow-ui.js) : panneaux des objets, armes de la boîte, modifications. */
+  UI.panels = { propsPanel, propInspector, propsMulti, boxWeapons };
+  UI.edit = { live, commit };
 
   /* --------------------------------------------------------- étages --- */
   function levelsSection() {
@@ -1220,7 +1250,7 @@
     clearTimeout(valTimer);
     if (!S.map) return;
     try {
-      const v = ZS.validateMap(S.map);
+      const v = S.map.open ? MT.ow.validate(S.map) : ZS.validateMap(S.map);
       S.issues = { errors: v.errors, warnings: v.warnings };
     } catch (e) { console.error(e); S.issues = { errors: [{ msg: `Carte illisible : ${e.message}`, at: null }], warnings: [] }; }
     MT.emit('issues');
@@ -1260,7 +1290,7 @@
       buttons: [{ label: 'Annuler' }, { label: 'Enregistrer', kind: 'primary', onClick: async () => {
         const id = slug(idI.value);
         if (!id) { MT.toast('Identifiant invalide.', 'error'); return false; }
-        if (id !== S.id && (S.known.some((k) => k.id === id) || ZS.MAPS.byId[id])) {
+        if (id !== S.id && (S.known.some((k) => k.id === id) || MT.gameMaps().byId[id])) {
           const ok = await UI.confirm(`Une carte « ${id} » existe déjà. La remplacer ?`, { ok: 'Remplacer', danger: true });
           if (!ok) return false;
         }
@@ -1446,7 +1476,7 @@
     if (e.key === 'F1') { e.preventDefault(); UI.help(); return; }
     if (t) return;
     if (e.repeat && !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'BracketLeft', 'BracketRight'].includes(e.code)) return;
-    const tool = MT.tools.list.find((x) => x.key === e.code);
+    const tool = MT.tools.available().find((x) => x.key === e.code);
     if (tool && !e.altKey) { e.preventDefault(); MT.setTool(tool.id); return; }
     switch (e.code) {
       case 'Escape':
@@ -1477,7 +1507,8 @@
         const d = /^Digit([1-9])$/.exec(e.code);
         if (d) {
           const n = parseInt(d[1], 10) - 1;
-          if (S.tool === 'build' && ZS.TILES[n]) { S.opts.build.tile = ZS.TILES[n].ch; MT.emit('tool-opts'); }
+          if (MT.isOpen()) { if (S.tool === 'elements' && MT.ow.KIND_KEYS[n]) { S.opts.ow.kind = MT.ow.KIND_KEYS[n]; MT.emit('tool-opts'); MT.emit('preview'); } }
+          else if (S.tool === 'build' && ZS.TILES[n]) { S.opts.build.tile = ZS.TILES[n].ch; MT.emit('tool-opts'); }
           else if (S.tool === 'elements' && KIND_ORDER[n]) { S.opts.elements.kind = KIND_ORDER[n]; MT.emit('tool-opts'); MT.emit('preview'); }
         }
       }
@@ -1504,6 +1535,7 @@
       ['3D', 'clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · Maj : vite · molette : avancer vers le curseur · clic milieu : glisser · Alt+glisser : tourner autour · F : montrer la sélection · H : vue de dessus'],
       ['Construire', '1 à 9 : type de case · [ et ] : taille du pinceau · clic droit : effacer · Alt+clic : pipette'],
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
+      ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
     ];
     UI.modal({
       title: 'Aide des Mod Tools', wide: true,

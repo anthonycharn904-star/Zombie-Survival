@@ -42,11 +42,24 @@ test('atelier : identifiants et contenus refusés', () => {
     for (const bad of ['../x', 'A', 'a b', '', 'x'.repeat(41), '..', 'con/x']) assert.throws(() => ws.saveMap(bad, mapText('x', 'x')), /Identifiant/, bad);
     assert.throws(() => ws.saveMap('ok', '{pas du json'), /illisible/);
     assert.throws(() => ws.saveMap('ok', '{"name":"sans grille"}'), /grille/);
+    assert.throws(() => ws.saveMap('ok', '{"name":"ouverte sans base","open":true}'), /grille/);
+    assert.throws(() => ws.saveMap('ok', '{"name":"base invalide","open":true,"base":"../x"}'), /grille/);
     assert.throws(() => ws.readMap('absente'), /introuvable/);
     assert.throws(() => ws.saveTexture('pas_u', '{}'), /Identifiant/);
     assert.throws(() => ws.saveTexture('u_ok', JSON.stringify({ data: 'data:text/html;base64,AAAA' })), /Image invalide/);
     assert.throws(() => ws.setPublishSet({ maps: [] }), /au moins une carte/);
     assert.equal(fs.existsSync(path.join(dir, 'maps')), false, 'rien écrit');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('atelier : carte ouverte (Khamsin modifiée dans les Mod Tools)', () => {
+  const dir = tmpDir('zs-ws-');
+  try {
+    const ws = new Workspace(dir);
+    const open = JSON.stringify({ id: 'khamsin', format: 1, open: true, base: 'khamsin', name: 'Khamsin', updated: '2026-10-09T08:00:00.000Z', wallbuys: [], props: [] }, null, 1);
+    ws.saveMap('khamsin', open);
+    assert.deepEqual(ws.listMaps().map((m) => [m.id, m.name]), [['khamsin', 'Khamsin']]);
+    assert.equal(ws.readMap('khamsin'), open);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -86,19 +99,28 @@ test('publication : cartes de l’atelier, du jeu installé et intégrées', () 
     fs.writeFileSync(path.join(inst, 'maps', 'index.json'), JSON.stringify({ maps: ['bunker7', 'usine'] }));
     fs.writeFileSync(path.join(inst, 'maps', 'usine.json'), mapText('usine', 'Usine (jeu)'));
     let plan = ws.publishPlan(inst);
-    assert.deepEqual(plan.index, ['bunker7', 'usine']);
-    assert.deepEqual(plan.files.map((f) => [f.id, f.from]), [['bunker7', 'intégrée'], ['usine', 'jeu installé']]);
+    // liste d'avant Khamsin : elle prend la deuxième place, comme dans le jeu 2.0.0
+    assert.deepEqual(plan.index, ['bunker7', 'khamsin', 'usine']);
+    assert.deepEqual(plan.files.map((f) => [f.id, f.from, f.name]), [['bunker7', 'intégrée', 'Bunker 7'], ['khamsin', 'intégrée', 'Khamsin'], ['usine', 'jeu installé', 'Usine (jeu)']]);
+    // liste du jeu installé écrite par un launcher qui connaît Khamsin : suivie telle quelle
+    fs.writeFileSync(path.join(inst, 'maps', 'index.json'), JSON.stringify({ maps: ['usine', 'bunker7'], editor: 3 }));
+    assert.deepEqual(ws.publishPlan(inst).index, ['usine', 'bunker7']);
+    // liste de l'atelier écrite par un ancien launcher (sans editor) : Khamsin ajoutée
+    fs.writeFileSync(path.join(dir, 'publish.json'), JSON.stringify({ maps: ['usine'] }));
+    assert.deepEqual(ws.publishPlan(inst).index, ['usine', 'khamsin']);
     // la version de l'atelier remplace celle du jeu ; une carte inconnue est signalée
     ws.saveMap('usine', mapText('usine', 'Usine (atelier)'));
     ws.saveMap('cave', mapText('cave', 'Cave'));
     ws.setPublishSet({ maps: ['cave', 'usine', 'bunker7', 'fantome'] });
+    assert.equal(ws.getPublishSet().editor, 3);
     plan = ws.publishPlan(inst);
+    // liste des Mod Tools 1.3 : l'auteur a pu retirer Khamsin du menu
     assert.deepEqual(plan.index, ['cave', 'usine', 'bunker7']);
     assert.deepEqual(plan.missing, ['fantome']);
     assert.equal(plan.files.find((f) => f.id === 'usine').name, 'Usine (atelier)');
     // aucune liste ni jeu installé : la carte intégrée
     const ws2 = new Workspace(tmpDir('zs-ws2-'));
-    assert.deepEqual(ws2.publishPlan(null).index, ['bunker7']);
+    assert.deepEqual(ws2.publishPlan(null).index, ['bunker7', 'khamsin']);
     fs.rmSync(ws2.dir, { recursive: true, force: true });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -119,7 +141,7 @@ test('paquet du jeu : dossier maps/ remplacé par les cartes publiées', () => {
     const names = out.files.map((f) => f.name).sort();
     assert.ok(names.includes('maps/cave.json'));
     assert.ok(!names.includes('maps/vieille.json'));
-    assert.deepEqual(JSON.parse(out.files.find((f) => f.name === 'maps/index.json').data), { maps: ['cave', 'bunker7'], files: ['cave'] });
+    assert.deepEqual(JSON.parse(out.files.find((f) => f.name === 'maps/index.json').data), { maps: ['cave', 'bunker7'], files: ['cave'], editor: 3 });
     assert.equal(gamepack.readGameVersion(out.files.find((f) => f.name === 'index.html').data.toString('utf8')), '1.1.1');
     assert.equal(JSON.parse(out.files.find((f) => f.name === 'game.json').data).version, '1.1.1');
     // sans option maps : le dossier du jeu est repris tel quel

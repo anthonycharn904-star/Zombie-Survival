@@ -4,6 +4,7 @@
      <userData>/modtools/textures/<id>.json    images importées (u_…)
      <userData>/modtools/models/<id>.json      modèles 3D importés (.glb, u_…)
      <userData>/modtools/publish.json          cartes publiées avec le jeu, dans l'ordre du menu
+                                               (editor : 3 depuis le launcher 1.3.0, qui connaît Khamsin)
      <userData>/modtools/recovery/<id>.json    copies de secours (modifications non enregistrées)
      <userData>/modtools/versions/<id>/…       5 dernières versions de chaque carte
      <userData>/modtools/corbeille/…           cartes supprimées */
@@ -16,8 +17,21 @@ const MAX_MAP_BYTES = 40 * 1024 * 1024;
 const MAX_TEX_BYTES = 12 * 1024 * 1024;
 const MAX_MODEL_BYTES = 24 * 1024 * 1024;
 const KEEP_VERSIONS = 5;
-/* Cartes intégrées au fichier du jeu (pas de fichier dans maps/ tant qu'on ne les modifie pas). */
-const BUILTIN_MAPS = ['bunker7'];
+/* Cartes intégrées au fichier du jeu (pas de fichier dans maps/ tant qu'on ne les modifie pas).
+   Khamsin (jeu 2.0.0) : monde ouvert ; son fichier, s'il y en a un, porte seulement ce que les
+   Mod Tools changent (éléments, objets, règles). */
+const BUILTIN_MAPS = ['bunker7', 'khamsin'];
+const BUILTIN_NAMES = { bunker7: 'Bunker 7', khamsin: 'Khamsin' };
+/* Une liste écrite avant Khamsin (launcher 1.2 ou plus ancien) ne la nomme pas : le jeu 2.0.0 la
+   met de toute façon en deuxième place. Le paquet fait de même, pour que le menu soit celui-là. */
+function withKhamsin(ids) {
+  if (ids.includes('khamsin')) return ids;
+  const out = ids.slice();
+  out.splice(Math.min(1, out.length), 0, 'khamsin');
+  return out;
+}
+/* Une carte : une grille (cartes du jeu 1.x), ou une carte ouverte (base d'un monde ouvert). */
+const isMapObject = (o) => !!o && (Array.isArray(o.grid) || (o.open === true && typeof o.base === 'string' && /^[a-z0-9_-]{1,40}$/.test(o.base)));
 
 function checkId(id, re, what) {
   if (typeof id !== 'string' || !re.test(id)) throw new Error(`Identifiant de ${what} invalide.`);
@@ -80,7 +94,7 @@ class Workspace {
     if (typeof text !== 'string' || text.length > MAX_MAP_BYTES) throw new Error('Carte trop grande (40 Mo au plus).');
     let o;
     try { o = JSON.parse(text); } catch (e) { throw new Error('Carte illisible (JSON invalide).'); }
-    if (!o || !Array.isArray(o.grid)) throw new Error('Ce n’est pas une carte (grille absente).');
+    if (!isMapObject(o)) throw new Error('Ce n’est pas une carte (grille absente, et pas une carte ouverte).');
     const f = this.mapFile(id);
     if (fs.existsSync(f)) {
       // garde les dernières versions
@@ -169,12 +183,12 @@ class Workspace {
   getPublishSet() {
     const o = readJsonFile(this.sub('publish.json'));
     if (!o || !Array.isArray(o.maps)) return null;
-    return { maps: o.maps.filter((id) => typeof id === 'string' && MAP_ID.test(id)), updated: o.updated || null };
+    return { maps: o.maps.filter((id) => typeof id === 'string' && MAP_ID.test(id)), updated: o.updated || null, editor: Number(o.editor) || 1 };
   }
   setPublishSet(v) {
     const maps = Array.isArray(v && v.maps) ? [...new Set(v.maps.filter((id) => typeof id === 'string' && MAP_ID.test(id)))].slice(0, 100) : [];
     if (!maps.length) throw new Error('Le jeu doit garder au moins une carte.');
-    writeAtomic(this.sub('publish.json'), JSON.stringify({ maps, updated: new Date().toISOString() }, null, 2));
+    writeAtomic(this.sub('publish.json'), JSON.stringify({ maps, updated: new Date().toISOString(), editor: 3 }, null, 2));
     return true;
   }
   /* Cartes à mettre dans le paquet du jeu : la liste de l'atelier (ou, à défaut, celle du
@@ -182,10 +196,13 @@ class Workspace {
      intégrées au fichier du jeu n'ont pas besoin de fichier.
      Renvoie { index: [ids], files: [{ id, name, data }], missing: [ids] }. */
   publishPlan(installedDir) {
-    let ids = (this.getPublishSet() || {}).maps;
+    const set = this.getPublishSet();
+    let ids = set ? set.maps : null;
+    if (ids && ids.length && set.editor < 3) ids = withKhamsin(ids);
     if (!ids || !ids.length) {
       const idx = installedDir ? readJsonFile(path.join(installedDir, 'maps', 'index.json')) : null;
       ids = idx && Array.isArray(idx.maps) ? idx.maps.filter((id) => typeof id === 'string' && MAP_ID.test(id)) : BUILTIN_MAPS.slice();
+      if (idx && Array.isArray(idx.maps) && !(Number(idx.editor) >= 3)) ids = withKhamsin(ids);
     }
     const index = [], files = [], missing = [];
     for (const id of ids) {
@@ -201,7 +218,7 @@ class Workspace {
         index.push(id);
       } else if (BUILTIN_MAPS.includes(id)) {
         index.push(id);
-        files.push({ id, name: id === 'bunker7' ? 'Bunker 7' : id, from: 'intégrée', data: null });
+        files.push({ id, name: BUILTIN_NAMES[id] || id, from: 'intégrée', data: null });
       } else missing.push(id);
     }
     if (!index.length) index.push(...BUILTIN_MAPS);
@@ -209,4 +226,4 @@ class Workspace {
   }
 }
 
-module.exports = { Workspace, BUILTIN_MAPS, MAP_ID, TEX_ID };
+module.exports = { Workspace, BUILTIN_MAPS, MAP_ID, TEX_ID, isMapObject };

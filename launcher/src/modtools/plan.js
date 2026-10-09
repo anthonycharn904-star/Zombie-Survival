@@ -44,16 +44,18 @@
   const evInfo = (e) => ({ button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey, view: 'plan' });
   const usesRight = () => S.tool === 'build' || S.tool === 'paint' || S.tool === 'elements' || S.tool === 'stairs';
 
+  const OWP = () => (S.map && S.map.open && MT.ow && MT.ow.plan ? MT.ow.plan : null);
   P.fit = () => {
     const m = S.map;
     if (!m) return;
+    if (OWP()) { OWP().fit(P); return; }
     P.cam.zoom = clamp(Math.min((P.w - 60) / m.w, (P.h - 60) / m.h), 3, 64);
     P.cam.x = m.w / 2; P.cam.z = m.h / 2;
     P.need = true;
   };
   P.centerOn = (x, z, flash = true) => {
     P.cam.x = x; P.cam.z = z;
-    if (P.cam.zoom < 18) P.cam.zoom = 22;
+    if (OWP()) { if (P.cam.zoom < 5) P.cam.zoom = 8; } else if (P.cam.zoom < 18) P.cam.zoom = 22;
     if (flash) P.flash = { x, z, t0: performance.now() };
     P.need = true;
   };
@@ -118,7 +120,7 @@
     const sx = e.clientX - r.left, sy = e.clientY - r.top;
     const before = P.toWorld(sx, sy);
     const k = Math.exp(-clamp(e.deltaY, -200, 200) * 0.0016);
-    P.cam.zoom = clamp(P.cam.zoom * k, 3, 140);
+    P.cam.zoom = OWP() ? clamp(P.cam.zoom * k, OWP().ZMIN, OWP().ZMAX) : clamp(P.cam.zoom * k, 3, 140);
     const after = P.toWorld(sx, sy);
     P.cam.x += before.x - after.x; P.cam.z += before.z - after.z;
     P.need = true;
@@ -306,6 +308,7 @@
 
   /* ------------------------------------------------------------ dessin -- */
   P.draw = () => {
+    if (OWP()) { OWP().draw(P); return; }
     const g = P.g, m = S.map, Z = P.cam.zoom;
     g.setTransform(P.dpr, 0, 0, P.dpr, 0, 0);
     g.fillStyle = '#090b0c';

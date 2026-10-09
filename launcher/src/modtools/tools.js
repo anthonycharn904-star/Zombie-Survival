@@ -22,8 +22,11 @@
     { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser ou sélectionner · clic droit : retirer' },
     { id: 'stairs', name: 'Escaliers', key: 'KeyK', label: 'K', hint: 'Clic sur le sol : poser (la flèche montre le sens de la montée) · R : tourner · clic droit : retirer', multi: true },
   ];
-  /* Outils proposés : les escaliers demandent un moteur à étages (jeu 1.4.0). */
-  T.available = () => T.list.filter((t) => !t.multi || MT.multiOk());
+  /* Outils proposés : les escaliers demandent un moteur à étages (jeu 1.4.0) ; une carte ouverte
+     a les siens (ow-tools.js). */
+  T.available = () => (MT.isOpen() && MT.ow && MT.ow.toolList ? MT.ow.toolList : T.list.filter((t) => !t.multi || MT.multiOk()));
+  T.info = (id = S.tool) => T.available().find((t) => t.id === id) || null;
+  const toolImpl = () => (MT.isOpen() && MT.ow && MT.ow.TOOLS ? MT.ow.TOOLS[S.tool] : TOOLS[S.tool]);
   T.drag = null;
   MT.preview = { cells: null, tone: 'paint', ghost: null, face: null, rect: null, stair: null };
 
@@ -78,6 +81,7 @@
   T.hitTest = (p) => {
     const m = S.map;
     if (!m || !p) return null;
+    if (m.open) return MT.ow.hitTest(p);
     if (p.view === '3d') {
       if (typeof p.prop === 'number' && m.props[p.prop]) return { kind: 'prop', i: p.prop };
       if (typeof p.light === 'number' && m.lights[p.light]) return { kind: 'light', i: p.light };
@@ -113,19 +117,19 @@
   };
   T.down = (p, ev) => {
     if (!S.map || !p) return false;
-    const tool = TOOLS[S.tool];
+    const tool = toolImpl();
     return tool && tool.down ? tool.down(p, ev) !== false : false;
   };
   T.move = (p, ev) => {
     if (!S.map) return;
-    const tool = TOOLS[S.tool];
+    const tool = toolImpl();
     if (T.drag && tool && tool.drag) tool.drag(p, ev);
     else if (tool && tool.hover) tool.hover(p, ev);
     MT.emit('preview');
   };
   T.up = (p, ev) => {
     if (!S.map) return;
-    const tool = TOOLS[S.tool];
+    const tool = toolImpl();
     if (T.drag && tool && tool.up) tool.up(p, ev);
     T.drag = null;
     MT.commit();
@@ -233,9 +237,29 @@
     }
   }
   /* Rotation : objets sélectionnés, objet à poser, machines. */
+  /* Objets sélectionnés : autour de leur centre (pas de l'outil Objets, Maj : 90°). */
+  T.rotateProps = (dir = 1, big = false) => {
+    const m = S.map, s = S.sel;
+    if (!m || !s || s.kind !== 'prop') return;
+    const step = rad(big ? 90 : S.opts.props.rotStep) * dir;
+    MT.edit('Tourner', () => {
+      const list = s.list.map((i) => m.props[i]);
+      const cx = list.reduce((a, p) => a + p.x, 0) / list.length, cz = list.reduce((a, p) => a + p.z, 0) / list.length;
+      const c = Math.cos(step), sn = Math.sin(step);
+      for (const p of list) {
+        if (list.length > 1) {
+          const dx = p.x - cx, dz = p.z - cz;
+          p.x = round(cx + c * dx + sn * dz); p.z = round(cz - sn * dx + c * dz);
+        }
+        p.r = round(wrapRad((p.r || 0) + step), 4);
+        if (Math.abs(p.r) < 1e-4) delete p.r;
+      }
+    }, 'prop-move', { list: s.list });
+  };
   T.rotate = (dir = 1, big = false) => {
     const m = S.map;
     if (!m) return;
+    if (m.open) { MT.ow.rotate(dir, big); return; }
     const s = S.sel;
     if (S.tool === 'props' && !(s && s.kind === 'prop' && T.drag)) {
       const step = big ? 90 : S.opts.props.rotStep;
@@ -261,20 +285,7 @@
       return;
     }
     if (s.kind === 'prop') {
-      const step = rad(big ? 90 : S.opts.props.rotStep) * dir;
-      MT.edit('Tourner', () => {
-        const list = s.list.map((i) => m.props[i]);
-        const cx = list.reduce((a, p) => a + p.x, 0) / list.length, cz = list.reduce((a, p) => a + p.z, 0) / list.length;
-        const c = Math.cos(step), sn = Math.sin(step);
-        for (const p of list) {
-          if (list.length > 1) {
-            const dx = p.x - cx, dz = p.z - cz;
-            p.x = round(cx + c * dx + sn * dz); p.z = round(cz - sn * dx + c * dz);
-          }
-          p.r = round(wrapRad((p.r || 0) + step), 4);
-          if (Math.abs(p.r) < 1e-4) delete p.r;
-        }
-      }, 'prop-move', { list: s.list });
+      T.rotateProps(dir, big);
     } else if (s.kind === 'perk' || s.kind === 'box' || s.kind === 'amp') {
       MT.edit('Tourner', () => {
         const e = s.kind === 'perk' ? m.perks[s.i] : s.kind === 'box' ? m.boxes[s.i] : m.amp;
@@ -294,6 +305,7 @@
   T.nudge = (dx, dz, fine) => {
     const s = S.sel, m = S.map;
     if (!s || !m) return;
+    if (m.open) { MT.ow.nudge(dx, dz, fine); return; }
     const step = fine ? 0.05 : S.opts.props.snap || 0.25;
     if (s.kind === 'prop') {
       MT.edit('Déplacer', () => { for (const i of s.list) { m.props[i].x = round(m.props[i].x + dx * step); m.props[i].z = round(m.props[i].z + dz * step); } }, 'prop-move', { list: s.list });
@@ -307,6 +319,7 @@
   T.raise = (dy) => {
     const s = S.sel, m = S.map;
     if (!s || !m) return;
+    if (m.open) { MT.ow.raise(dy); return; }
     if (s.kind === 'prop') {
       MT.edit('Hauteur', () => { for (const i of s.list) { const p = m.props[i]; p.y = round(clamp((p.y || 0) + dy, -5, 30)); if (!p.y) delete p.y; } }, 'prop-move', { list: s.list });
     } else if (s.kind === 'light') {

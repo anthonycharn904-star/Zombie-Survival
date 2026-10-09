@@ -19,7 +19,7 @@
       if (rec && rec.text && Date.parse(rec.at) > (Date.parse(map.updated || '') || 0)) {
         const ok = await UI.confirm(`Une copie de secours de « ${map.name} » (${fmtDate(rec.at)}) contient des modifications qui n’ont pas été enregistrées. La reprendre ?`, { ok: 'Reprendre la copie de secours', cancel: 'Ouvrir la version enregistrée', title: 'Copie de secours' });
         if (ok) {
-          MT.openMap(ZS.normalizeMap(JSON.parse(rec.text)), { id, source: 'workspace' });
+          MT.openMap(MT.parseMap(rec.text), { id, source: 'workspace' });
           S.savedRev = -1;
           MT.emit('history');
           remember(id);
@@ -33,9 +33,10 @@
     return true;
   };
   MT.openGameMap = (id) => {
-    const m = ZS.MAPS.byId[id];
+    const m = MT.gameMaps().byId[id];
     if (!m) return false;
-    MT.openMap(ZS.normalizeMap(deep(ZS.serializeMap(m))), { id, source: 'game' });
+    if (m.open && !MT.ow.ok()) { MT.toast('Cette carte ouverte demande le jeu 2.0.0 ou plus récent.', 'error'); return false; }
+    MT.openMap(MT.copyOfMap(m), { id, source: 'game' });
     remember(id);
     return true;
   };
@@ -61,7 +62,8 @@
     const nameI = h('input', { type: 'text', class: 'f-text', value: 'Nouvelle carte', maxLength: 60 });
     const wI = h('input', { type: 'number', class: 'f-num', value: 40, min: ZS.MAP_MIN, max: ZS.MAP_MAX });
     const hI = h('input', { type: 'number', class: 'f-num', value: 30, min: ZS.MAP_MIN, max: ZS.MAP_MAX });
-    const sources = [['room', 'Une pièce de départ (prête à tester)'], ['empty', 'Terrain vide'], ...[...new Set([...S.known.map((k) => k.id), ...Object.keys(ZS.MAPS.byId)])].map((id) => [`copy:${id}`, `Copie de « ${(S.known.find((k) => k.id === id) || ZS.MAPS.byId[id] || { name: id }).name} »`])];
+    const all = MT.gameMaps();
+    const sources = [['room', 'Une pièce de départ (prête à tester)'], ['empty', 'Terrain vide'], ...[...new Set([...S.known.map((k) => k.id), ...Object.keys(all.byId)])].map((id) => [`copy:${id}`, `Copie de « ${(S.known.find((k) => k.id === id) || all.byId[id] || { name: id }).name} »${all.byId[id] && all.byId[id].open ? ' (monde ouvert)' : ''}`])];
     const srcS = h('select', { class: 'f-select' }, sources.map(([v, l]) => h('option', { value: v }, l)));
     const sizeRow = h('div', null, UI.f.field('Largeur (x)', wI), UI.f.field('Hauteur (z)', hI));
     srcS.addEventListener('change', () => { sizeRow.hidden = srcS.value.startsWith('copy:'); });
@@ -76,9 +78,9 @@
         const src = srcS.value;
         if (src.startsWith('copy:')) {
           const from = src.slice(5);
-          try { map = S.known.some((k) => k.id === from) ? await MT.readWorkspaceMap(from) : ZS.normalizeMap(deep(ZS.serializeMap(ZS.MAPS.byId[from]))); } catch (e) { MT.toast(e.message, 'error'); return false; }
+          try { map = S.known.some((k) => k.id === from) ? await MT.readWorkspaceMap(from) : MT.copyOfMap(all.byId[from]); } catch (e) { MT.toast(e.message, 'error'); return false; }
           map.name = name;
-          map.thumb = null;
+          map.thumb = map.open && all.byId[map.base] ? all.byId[map.base].thumb : null;
           map.menuCam = map.menuCam || null;
         } else if (src === 'empty') {
           const grid = Array.from({ length: H }, () => ' '.repeat(W));
@@ -109,9 +111,10 @@
     const pubBox = h('div', { class: 'mm-pub' });
     const entries = () => {
       const out = new Map();
-      for (const k of S.known) out.set(k.id, { id: k.id, name: k.name || k.id, ws: true, game: !!ZS.MAPS.byId[k.id], updated: k.updated, recovery: k.recovery });
-      for (const id of Object.keys(ZS.MAPS.byId)) {
-        const m = ZS.MAPS.byId[id];
+      for (const k of S.known) out.set(k.id, { id: k.id, name: k.name || k.id, ws: true, game: !!MT.gameMaps().byId[k.id], updated: k.updated, recovery: k.recovery });
+      const all = MT.gameMaps();
+      for (const id of Object.keys(all.byId)) {
+        const m = all.byId[id];
         const e = out.get(id);
         if (e) e.game = true;
         else out.set(id, { id, name: m.name, ws: false, game: true, updated: m.updated, builtin: m.source === 'builtin' });
@@ -143,15 +146,15 @@
       const e = entries().find((x) => x.id === selected);
       if (!e) { detail.append(h('p', { class: 'p-note' }, 'Choisissez une carte à gauche.')); return; }
       let map = null;
-      try { map = e.id === S.id ? S.map : e.ws ? await MT.readWorkspaceMap(e.id) : ZS.MAPS.byId[e.id]; } catch (err) { detail.append(h('p', { class: 'p-bad' }, `Carte illisible : ${err.message}`)); }
+      try { map = e.id === S.id ? S.map : e.ws ? await MT.readWorkspaceMap(e.id) : MT.gameMaps().byId[e.id]; } catch (err) { detail.append(h('p', { class: 'p-bad' }, `Carte illisible : ${err.message}`)); }
       if (e.id !== selected) return;
       let v = null;
-      try { if (map) v = ZS.validateMap(map); } catch (err) { v = null; }
+      try { if (map) v = map.open ? (map === S.map ? S.issues : ZS.openValidate(map)) : ZS.validateMap(map); } catch (err) { v = null; }
       const inPub = S.publish.maps.includes(e.id);
       detail.append(
         h('div', { class: 'mm-thumb' }, map && map.thumb ? h('img', { src: map.thumb, alt: '' }) : h('span', null, 'Pas de vignette')),
         h('h3', null, map ? map.name : e.name),
-        h('p', { class: 'mm-sub' }, `${e.id}${map ? ` · ${map.w} × ${map.h} · ${map.props.length} objets · ${map.lights.length} lumières` : ''}`),
+        h('p', { class: 'mm-sub' }, `${e.id}${map ? (map.open ? ` · monde ouvert · ${MT.ow.summary(map)}` : ` · ${map.w} × ${map.h} · ${map.props.length} objets · ${map.lights.length} lumières`) : ''}`),
         map && map.description ? h('p', { class: 'mm-desc' }, map.description) : null,
         h('p', { class: 'mm-src' }, e.ws ? (e.game ? 'Dans votre atelier · remplace la version du jeu à la prochaine publication' : 'Dans votre atelier') : e.builtin ? 'Carte intégrée au jeu (pas encore modifiée)' : 'Carte du jeu installé (pas encore modifiée)'),
         v ? h('p', { class: v.errors.length ? 'p-bad' : 'p-ok' }, v.errors.length ? `${v.errors.length} erreur${v.errors.length > 1 ? 's' : ''} : ${v.errors[0].msg}` : `Publiable${v.warnings.length ? ` · ${v.warnings.length} conseil${v.warnings.length > 1 ? 's' : ''}` : ''}`) : null,
@@ -184,8 +187,8 @@
         h('p', { class: 'p-note' }, 'Ces cartes seront dans la prochaine version publiée, dans cet ordre. Les joueurs les reçoivent avec la mise à jour du jeu.'));
       const ol = h('ol', { class: 'mm-publist' });
       list.forEach((id, i) => {
-        const name = (S.known.find((k) => k.id === id) || ZS.MAPS.byId[id] || { name: id }).name;
-        const missing = !S.known.some((k) => k.id === id) && !ZS.MAPS.byId[id];
+        const name = (S.known.find((k) => k.id === id) || MT.gameMaps().byId[id] || { name: id }).name;
+        const missing = !S.known.some((k) => k.id === id) && !MT.gameMaps().byId[id];
         ol.append(h('li', { class: missing ? 'missing' : '' }, h('span', null, name, missing ? ' (introuvable)' : ''),
           h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Monter', disabled: i === 0, onclick: async () => { const l = list.slice(); [l[i - 1], l[i]] = [l[i], l[i - 1]]; await MT.savePublishSet(l); drawPub(); } }, UI.icon('up')),
           h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Descendre', disabled: i === list.length - 1, onclick: async () => { const l = list.slice(); [l[i + 1], l[i]] = [l[i], l[i + 1]]; await MT.savePublishSet(l); drawPub(); } }, UI.icon('down'))));
@@ -198,7 +201,7 @@
     };
     const duplicate = async (e, map) => {
       const name = `${map.name} (copie)`;
-      const copy = ZS.normalizeMap(deep(ZS.serializeMap(map)));
+      const copy = MT.copyOfMap(map);
       copy.id = MT.uniqueId(slug(name));
       copy.name = name;
       try {
@@ -212,7 +215,7 @@
     const exportMap = async (e, map) => {
       try {
         const src = e.id === S.id ? S.map : map;
-        const json = MT.mapJson(ZS.normalizeMap(deep(ZS.serializeMap(src))));
+        const json = MT.mapJson(MT.copyOfMap(src));
         const r = await MT.api.exportMap(e.id, json);
         if (r) MT.toast(`Carte exportée : ${r}`, 'ok');
       } catch (err) { MT.toast(`Export impossible : ${err.message}`, 'error'); }
@@ -222,7 +225,7 @@
       if (!ok) return;
       try {
         await MT.api.deleteMap(e.id);
-        if (S.publish.maps.includes(e.id) && !ZS.MAPS.byId[e.id]) await MT.savePublishSet(S.publish.maps.filter((x) => x !== e.id));
+        if (S.publish.maps.includes(e.id) && !MT.gameMaps().byId[e.id]) await MT.savePublishSet(S.publish.maps.filter((x) => x !== e.id));
         await MT.refreshKnown();
         if (e.id === S.id) { S.source = e.game ? 'game' : 'new'; S.savedRev = -1; MT.emit('history'); }
         drawList(); drawDetail(); drawPub();
@@ -234,10 +237,10 @@
       try { f = await MT.api.importMap(); } catch (err) { MT.toast(err.message, 'error'); return; }
       if (!f) return;
       let map;
-      try { map = ZS.normalizeMap(JSON.parse(f.text)); } catch (err) { MT.toast(`Fichier de carte illisible : ${err.message}`, 'error'); return; }
+      try { map = MT.parseMap(f.text); } catch (err) { MT.toast(`Fichier de carte illisible : ${err.message}`, 'error'); return; }
       if (!(await MT.confirmLeave())) return;
       let id = map.id && map.id !== 'sans-nom' ? map.id : slug(map.name);
-      if (S.known.some((k) => k.id === id) || ZS.MAPS.byId[id]) {
+      if (S.known.some((k) => k.id === id) || MT.gameMaps().byId[id]) {
         const r = await UI.choice(`Une carte « ${id} » existe déjà.`, [{ label: 'Annuler', value: null }, { label: 'Garder les deux', value: 'both' }, { label: 'Remplacer', value: 'replace', kind: 'danger' }], 'Importer une carte');
         if (!r) return;
         if (r === 'both') id = MT.uniqueId(id);
@@ -320,6 +323,11 @@
     if (!S.map || ZS.G.state !== 'editor') return;
     if (S.pending) MT.commit();
     MT.validateNow();
+    if (S.map.open) {
+      const t = MT.ow.testPrep(fromCam);
+      if (t) runTest(t.copy, t.at, t.errors, t.notes);
+      return;
+    }
     let copy, v;
     try {
       copy = ZS.normalizeMap(JSON.parse(JSON.stringify(MT.exportMapObject(deep(S.map)))));
@@ -349,7 +357,10 @@
       if (p[2]) copy.spawn.lv = p[2]; else delete copy.spawn.lv;
       notes.push(`Départ hors du sol : la partie commence sur le sol le plus proche (${p[2] ? `${MT.levelName(p[2])}, ` : ''}x ${p[0]} · z ${p[1]}).`);
     }
-    if (v.errors.length) UI.setTab('issues');
+    runTest(copy, at, v.errors, notes);
+  };
+  function runTest(copy, at, errors, notes) {
+    if (errors.length) UI.setTab('issues');
     MT.v3.setActive(false);
     $('mt').hidden = true;
     document.body.classList.remove('mt-on');
@@ -357,7 +368,7 @@
     ZS.setRenderEnabled(true);
     ZS.setViewport(null);
     setGameButtons(true);
-    showTestBar(v.errors, notes);
+    showTestBar(errors, notes);
     try {
       ZS.playTest(copy, { at });
     } catch (e) {
@@ -365,7 +376,7 @@
       MT.toast(`Le test a échoué : ${e.message}`, 'error');
       backToEditor();
     }
-  };
+  }
   function backToEditor() {
     hideTestBar();
     setGameButtons(false);
@@ -408,7 +419,7 @@
     try { last = localStorage.getItem(LAST); } catch (e) { last = null; }
     let ok = false;
     if (last && S.known.some((k) => k.id === last)) ok = await MT.openWorkspaceMap(last);
-    else if (last && ZS.MAPS.byId[last]) ok = MT.openGameMap(last);
+    else if (last && MT.gameMaps().byId[last]) ok = MT.openGameMap(last);
     if (!ok) {
       const first = S.known.find((k) => k.id === ZS.MAPS.list[0]) ? null : ZS.MAPS.list[0];
       if (first) ok = MT.openGameMap(first);

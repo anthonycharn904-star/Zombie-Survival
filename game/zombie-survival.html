@@ -1045,7 +1045,7 @@ const pressed = (c) => !!Input.down[c];
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
 const GAME_VERSION = '2.0.0';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
-const EDITOR_API = 2;
+const EDITOR_API = 3;                       // 3 : cartes ouvertes (jeu 2.0.0, Mod Tools du launcher 1.3.0)
 
 /* ================================================================ 01 DONNÉES ==
    Les cartes sont des données (voir « Cartes » plus bas). Bunker 7 est la
@@ -26009,6 +26009,7 @@ function owChunk(L, cx, cz, make) {
 const owIdx = (cx, cz) => ((cz & 63) << 6) | (cx & 63);
 /* Écrit une case. o : { base, top, lo, hi, ceil, roof, dir, mat, door } (absolus, en m). */
 function owSet(L, cx, cz, kind, o) {
+  if (OWLOG.on) owLogCell(L, cx, cz);
   const ch = owChunk(L, cx, cz, true);
   if (!ch) return;
   const i = owIdx(cx, cz);
@@ -26088,6 +26089,84 @@ function owRasterPyramids() {
     }
   }
 }
+
+/* ------------------------------------------------- Journal des cases --
+   Les éléments de la carte (armes au mur, atouts, boîte, jerricans, disjoncteurs, objets posés)
+   écrivent leurs cases dans la grille des solides par-dessus les lieux. Pendant qu'ils se
+   construisent, chaque case touchée garde ici son état d'avant : on peut les retirer (nouveau
+   chargement, Mod Tools) sans refaire les lieux, et retrouver le sol des lieux sous eux. */
+const OWLOG = { on: false, cells: new Map(), created: [] };
+const owLogKey = (L, cx, cz) => (L === OW.under ? 0x10000000 : 0) + cz * 4096 + cx;
+function owLogCell(L, cx, cz) {
+  if (cx < 0 || cz < 0 || cx >= 4096 || cz >= 3072) return;
+  const key = owLogKey(L, cx, cz);
+  if (OWLOG.cells.has(key)) return;
+  const ci = (cz >> 6) * L.CW + (cx >> 6), ch = L.chunks[ci];
+  if (!ch) { OWLOG.created.push({ L, ci }); OWLOG.cells.set(key, { L, cx, cz, kind: L.def, none: true }); return; }
+  const i = owIdx(cx, cz);
+  OWLOG.cells.set(key, { L, cx, cz, kind: ch.kind[i], base: ch.base[i], top: ch.top[i], lo: ch.lo[i], hi: ch.hi[i], ceil: ch.ceil[i], roof: ch.roof[i], dir: ch.dir[i], mat: ch.mat[i], door: ch.door[i] });
+}
+function owLogBegin() { OWLOG.on = true; }
+function owLogEnd() { OWLOG.on = false; }
+/* Retire tout ce qui a été écrit pendant le journal : les cases reprennent leur état d'avant. */
+function owLogUndo() {
+  OWLOG.on = false;
+  for (const c of OWLOG.cells.values()) {
+    if (c.none) continue;
+    const ch = owChunk(c.L, c.cx, c.cz);
+    if (!ch) continue;
+    const i = owIdx(c.cx, c.cz);
+    ch.kind[i] = c.kind; ch.base[i] = c.base; ch.top[i] = c.top; ch.lo[i] = c.lo; ch.hi[i] = c.hi;
+    ch.ceil[i] = c.ceil; ch.roof[i] = c.roof; ch.dir[i] = c.dir; ch.mat[i] = c.mat; ch.door[i] = c.door;
+  }
+  for (const { L, ci } of OWLOG.created) if (L.chunks[ci]) { L.chunks[ci] = null; L.n--; }
+  OWLOG.cells.clear();
+  OWLOG.created.length = 0;
+}
+/* État d'une case sans les éléments (le sol des lieux). */
+function owBaseRec(L, cx, cz) {
+  const c = OWLOG.cells.get(owLogKey(L, cx, cz));
+  if (c) return c;
+  const ch = owChunk(L, cx, cz);
+  if (!ch) return null;
+  const i = owIdx(cx, cz);
+  return { kind: ch.kind[i], base: ch.base[i], top: ch.top[i], lo: ch.lo[i], hi: ch.hi[i], ceil: ch.ceil[i], roof: ch.roof[i], dir: ch.dir[i], mat: ch.mat[i], door: ch.door[i] };
+}
+/* Sol sous un point sans les éléments (comme owGroundAt). */
+function owBaseGround(layer, x, z) {
+  const L = layer ? OW.under : OW.surf, cx = Math.floor(x), cz = Math.floor(z);
+  const c = owBaseRec(L, cx, cz);
+  if (!c || c.none) return layer ? NaN : owH(x, z);
+  const k = c.kind;
+  if (k === OWK.TERRAIN) return owH(x, z);
+  if (k === OWK.FLOOR || k === OWK.WATER) return c.base;
+  if (k === OWK.RAMP) { const d = c.dir, fx = x - cx, fz = z - cz, t = d === 0 ? fx : d === 1 ? 1 - fx : d === 2 ? fz : 1 - fz; return c.base + (c.top - c.base) * clamp(t, 0, 1); }
+  if (k === OWK.DOOR) return c.door >= 0 && OW.doors[c.door] && OW.doors[c.door].open ? c.base : c.top;
+  if (k === OWK.ROCK) return NaN;
+  if (k === OWK.VOID) return -1e9;
+  return c.top;
+}
+/* Case praticable sans les éléments (comme owWalkCell). */
+function owBaseWalk(layer, cx, cz) {
+  const L = layer ? OW.under : OW.surf;
+  const c = owBaseRec(L, cx, cz);
+  if (!c || c.none) return layer ? false : owTerrainWalk(cx + 0.5, cz + 0.5);
+  const k = c.kind;
+  if (k === OWK.TERRAIN) return layer ? false : owTerrainWalk(cx + 0.5, cz + 0.5);
+  if (k === OWK.FLOOR || k === OWK.RAMP) return true;
+  if (k === OWK.DOOR) return c.door >= 0 && OW.doors[c.door] && OW.doors[c.door].open;
+  return false;
+}
+/* Mur derrière une arme dessinée : une case pleine qui monte au moins 1,8 m au-dessus du sol y. */
+function owBaseWallAt(cx, cz, y) {
+  const c = owBaseRec(OW.surf, cx, cz);
+  if (!c || c.none) return false;
+  if (c.kind === OWK.SOLID || c.kind === OWK.DOOR || c.kind === OWK.ROCK) return c.top > y + 1.8;
+  if (c.kind === OWK.WINDOW) return c.top > y + 1.8;
+  if (c.kind === OWK.LOW) return c.top > y + 1.8;
+  return false;
+}
+const owWaterAt = (x, z) => !!OW.water[owPointIndex(x, z)];
 
 /* ------------------------------------------------- Corps, rayons, flux --
    Un corps (joueur, zombie) garde k = couche · 2²⁴ + z · 4096 + x : la case où il se tient. */
@@ -27198,7 +27277,7 @@ const KHAMSIN = {
   eyebrow: 'Rapport d’incident · Khamsin · route du Km 47',
   lead: 'Survivez dans le désert le plus longtemps possible, ou réunissez les trois pièces de l’avion, abattez le Gardien du sanctuaire et décollez de l’aérodrome.',
   rules: { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null },
-  spawn: { pos: KH.spawn.pos.slice(), yaw: KH.spawn.yaw, lv: 0 },
+  spawn: { pos: [2350, 1992], yaw: 0.47, lv: 0 },
   ambiance: { sky: '#e6ad74', fog: '#e6ad74', fogDensity: 0.00058, hemiSky: '#9aa9c2', hemiGround: '#c8915c', hemi: 0.8, exposure: 1.0, moon: false, trees: 0, pipes: false, wallHeight: 3.5 },
   boxes: [], perks: [], doors: [], wallbuys: [], lights: [], signs: [], props: [], zones: [], risers: [], power: null, amp: null, digipass: null, altar: true,
   thumb: null, menuCam: null, seed: 4747, updated: '2026-10-09',
@@ -27215,9 +27294,9 @@ function editorMaps() {
 }
 
 /* --------------------------------------------------------- Chargement -- */
-function owLoad(map) {
+function owLoad(map, opts = {}) {
   disposeWorld();
-  CUR.map = map; CUR.editor = false;
+  CUR.map = map; CUR.editor = !!opts.editor;
   // grille vide (8 × 8 cases) : le code de la grille ne voit rien ; tout passe par OW
   LV = [0]; LVY = new Float32Array([0]); LI0 = 0; WALL_H = 3.5; LVL_H = 3.8;
   allocGrid(8, 8, 1); airBands = [];
@@ -27232,11 +27311,17 @@ function owLoad(map) {
     owGenTerrain();
     OW.surf = owNewLayer(OWK.TERRAIN); OW.under = owNewLayer(OWK.ROCK); OW.doors = [];
     owRasterPyramids();
-    const sp = KH.spawn.pos, cam = [2405, 0, 2085];
-    cam[1] = owH(cam[0], cam[2]) + 2.4;
-    map.menuCam = { pos: cam, look: [2120, owH(2120, 1240) + 70, 1240], sway: [3, 1.5] };
-    void sp;
   }
+  if (!map.menuCam) {
+    const cam = [2405, 0, 2085];
+    cam[1] = owH(cam[0], cam[2]) + 2.4;
+    map.menuCam = { pos: cam, look: [2120, owH(2120, 1240) + 70, 1240], sway: [3, 1.5], auto: true };
+  }
+  // éléments de la carte précédente (ou d'avant une modification) : leurs cases sont retirées
+  owBoxRelease();
+  owLogUndo();
+  registerCustomModels(map);
+  KHS.every = map.rules && Number.isFinite(map.rules.storms) ? map.rules.storms : 4;
   const root = new THREE.Group();
   root.name = 'monde';
   owBuildTerrainChunks(root);
@@ -27247,12 +27332,11 @@ function owLoad(map) {
   owBuildPalms(root);
   owBuildPoles(root);
   owBuildPlaces(root);
-  owBuildFeatures(root);
   owBuildSanctuary(root);
   khPortalInteractables();
   owBuildQuest(root);
   owBuildTunnel(root);
-  owBuildVehicles(root);
+  owBuildElements(root, map, { perProp: !!opts.editor });
   owBuildFarRing(root);
   owBuildSandWall(root);
   World.root = root;
@@ -27261,7 +27345,7 @@ function owLoad(map) {
   owSandPool();
   camera.near = 0.1; camera.far = 4300; camera.updateProjectionMatrix();
   OW.lastLoc = null;
-  owHud(true);
+  owHud(!opts.editor);
   OWNAV.ready = false;
   Zombies.flowT = 0; Zombies.lastCell = -1;
   owShadows();
@@ -27504,6 +27588,217 @@ function owResetWorld() {
   owResetFeatures();
 }
 
+/* ------------------------------------------------------- Cartes ouvertes --
+   Format d'une carte ouverte (jeu 2.0.0 ; Mod Tools du launcher 1.3.0). Le monde (relief, routes,
+   lieux, sanctuaire, quête) vient du code de sa base (Khamsin) ; la carte porte ce que l'auteur
+   peut changer dans les Mod Tools. Sans fichier dans le paquet du jeu : la carte intégrée.
+     spawn     { pos: [x, z], yaw }                   départ du joueur
+     wallbuys  [{ w, x, y, z, nx, nz, h, cost? }]     arme à la craie sur un mur (normale vers le joueur,
+                                                       h : hauteur du dessin au-dessus du sol y)
+     perks     [{ p, x, y, z, face: [fx, fz], roomH? }] machine dos au mur, face vers le joueur
+     boxes     [{ x, y, z, face }] + boxStart         emplacements de la boîte mystère (face : côté du joueur)
+     vehicles  [{ type, x, z, yaw }]                  jeep, buggy, truck
+     fuel      [{ x, y, z }]                          jerricans (plein du véhicule le plus proche)
+     breakers  [{ x, y, z, nx, nz, name }]            disjoncteurs : tous enclenchés, le courant
+     props     [{ m, x, z, y?, r?, s?, c?, solid? }]  objets de la bibliothèque (y : au-dessus du sol)
+     rules     { startPoints, startWeapon, powerOn, boxWeapons, storms }   storms : une tempête toutes
+                                                       les N manches (0 : aucune)
+     menuCam   { pos, look, sway }                    vue du menu (absente : depuis le camp, vers le plateau)
+     thumb     vignette du menu (absente : le plan en relief)
+   y : hauteur du sol sous l'élément, recalculée par les Mod Tools quand il bouge (un sol de tombeau
+   sous la falaise, un plancher de bâtiment : le terrain seul ne suffit pas à la retrouver). */
+const OPEN_FORMAT = 1;
+const OPEN_LIMITS = { wallbuys: 80, perks: 24, boxes: 24, vehicles: 24, fuel: 24, breakers: 12, props: 4000 };
+const OPEN_KINDS = ['wallbuys', 'perks', 'boxes', 'vehicles', 'fuel', 'breakers', 'props'];
+const OPEN_RULES = { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null, storms: 4 };
+
+/* Éléments de la carte intégrée (relevés sur ses lieux : tente-réfectoire, relais, oasis, centrale,
+   tombeaux, hangars). Ordre des emplacements de la boîte : camp (départ), relais, oasis, centrale,
+   aérodrome, plateau, nécropole. */
+Object.assign(KHAMSIN, {
+  base: 'khamsin', format: OPEN_FORMAT, w: OW.W, h: OW.D,
+  rules: { ...OPEN_RULES },
+  wallbuys: [
+    { w: 'kar98k', x: 2300, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 },
+    { w: 'g43', x: 2305, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 },
+    { w: 'mp40', x: 2310, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 },
+    { w: 'trench', x: 1400.5, y: 17.028, z: 2587.92, nx: 0, nz: -1, h: 1.7 },
+    { w: 'thompson', x: 1404.5, y: 17.028, z: 2587.92, nx: 0, nz: -1, h: 1.7 },
+    { w: 'dbarrel', x: 849, y: 8.758, z: 749.1, nx: 0, nz: 1, h: 1.6 },
+    { w: 'type100', x: 853, y: 8.758, z: 749.1, nx: 0, nz: 1, h: 1.6 },
+    { w: 'stg44', x: 3521.08, y: 2.982, z: 1589, nx: 1, nz: 0, h: 1.7 },
+    { w: 'bar', x: 3521.08, y: 2.982, z: 1599.5, nx: 1, nz: 0, h: 1.7 },
+    { w: 'mg42', x: 406.92, y: 2.14, z: 2132.5, nx: -1, nz: 0, h: 1.6 },
+    { w: 'ppsh', x: 2791.08, y: 8.676, z: 376, nx: 1, nz: 0, h: 1.7 },
+    { w: 'fg42', x: 2791.08, y: 8.676, z: 384, nx: 1, nz: 0, h: 1.7 },
+  ],
+  perks: [
+    { p: 'souffle', x: 2358, y: 8.513, z: 1978, face: [-1, 0] },
+    { p: 'endurance', x: 1406.95, y: 17.028, z: 2582.8, face: [-1, 0], roomH: 3.4 },
+    { p: 'detente', x: 857.3, y: 8.758, z: 772, face: [-1, 0] },
+    { p: 'cuirasse', x: 632.05, y: 2.345, z: 2133.5, face: [1, 0], roomH: 3.2 },
+    { p: 'mainleste', x: 2860.95, y: 8.676, z: 386, face: [-1, 0], roomH: 8 },
+  ],
+  boxes: [
+    { x: 2329, y: 8.513, z: 1940.2, face: [0, 1] },
+    { x: 1384, y: 17.028, z: 2582.5, face: [0, -1] },
+    { x: 836.5, y: 8.758, z: 771, face: [1, 0] },
+    { x: 3526, y: 2.982, z: 1626.5, face: [0, -1] },
+    { x: 2846, y: 8.676, z: 389.6, face: [0, -1] },
+    { x: 2244, y: 31.219, z: 1566.5, face: [0, -1] },
+    { x: 700, y: 2.292, z: 2156, face: [0, 1] },
+  ],
+  boxStart: 0,
+  vehicles: [
+    { type: 'jeep', x: 2386, z: 2047, yaw: 2.6 },
+    { type: 'jeep', x: 2398, z: 2056, yaw: 2.6 },
+    { type: 'jeep', x: 896, z: 752, yaw: -1.5708 },
+    { type: 'buggy', x: 1417.5, z: 2589, yaw: 1.5708 },
+    { type: 'truck', x: 3502, z: 1646, yaw: 0 },
+  ],
+  fuel: [
+    { x: 1393.5, y: 17.028, z: 2577.5 },
+    { x: 3512.5, y: 2.982, z: 1638 },
+    { x: 2946, y: 8.676, z: 418 },
+  ],
+  breakers: [
+    { x: 3550.7, y: 2.982, z: 1599.8, nx: -1, nz: 0, name: 'salle des turbines' },
+    { x: 3524.9, y: 2.982, z: 1612.5, nx: 1, nz: 0, name: 'poste de commande' },
+    { x: 3557, y: 2.982, z: 1625, nx: -1, nz: 0, name: 'transformateurs' },
+  ],
+  props: [],
+  custom: { models: {} },
+  author: '', updated: KHAMSIN.updated,
+});
+const OPEN_BASES = { khamsin: KHAMSIN };
+
+/* ---- Lecture d'une carte ouverte (fichier du paquet, atelier des Mod Tools) : tout est vérifié,
+   ce qui ne va pas est retiré. La base donne le reste (ambiance, textes, vignette). */
+function openNormalize(raw) {
+  if (!raw || typeof raw !== 'object') throw new Error('Carte ouverte illisible.');
+  const B = OPEN_BASES[typeof raw.base === 'string' ? raw.base : raw.id];
+  if (!B) throw new Error(`Carte ouverte : base inconnue (${raw.base || raw.id}).`);
+  if (raw === B) return B;
+  const num = (v, a, b, d) => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, a, b) : d);
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const str = (v, n, d = '') => (typeof v === 'string' ? v.slice(0, n) : d);
+  const inX = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= OW.W;
+  const inZ = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= OW.D;
+  const y = (v) => (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 2000 ? r3(v) : null);
+  const n4 = (nx, nz) => { const a = Math.round(Math.atan2(nx || 0, nz || 0) / (Math.PI / 2)) * (Math.PI / 2); return [Math.round(Math.sin(a)), Math.round(Math.cos(a))]; };
+  const face = (f) => (Array.isArray(f) ? n4(f[0], f[1]) : [0, 1]);
+  const list = (k) => (Array.isArray(raw[k]) ? raw[k] : B[k]).slice(0, OPEN_LIMITS[k]);
+  const m = { ...B };
+  m.id = typeof raw.id === 'string' && /^[a-z0-9_-]{1,40}$/.test(raw.id) ? raw.id : B.id;
+  m.open = true; m.base = B.id; m.format = OPEN_FORMAT; m.w = OW.W; m.h = OW.D;
+  m.name = str(raw.name, 60, B.name) || B.name;
+  m.description = str(raw.description, 400, B.description);
+  m.eyebrow = str(raw.eyebrow, 80, B.eyebrow) || B.eyebrow;
+  m.lead = str(raw.lead, 300, B.lead) || B.lead;
+  m.author = str(raw.author, 60);
+  m.updated = str(raw.updated, 40);
+  const rr = raw.rules || {};
+  m.rules = {
+    startPoints: Math.round(num(rr.startPoints, 0, 1000000, OPEN_RULES.startPoints)),
+    startWeapon: WEAPONS[rr.startWeapon] ? rr.startWeapon : OPEN_RULES.startWeapon,
+    powerOn: !!rr.powerOn,
+    boxWeapons: Array.isArray(rr.boxWeapons) ? rr.boxWeapons.filter((id) => WEAPONS[id] && WEAPONS[id].box > 0) : null,
+    storms: Math.round(num(rr.storms, 0, 20, OPEN_RULES.storms)),
+  };
+  const sp = raw.spawn && Array.isArray(raw.spawn.pos) && inX(raw.spawn.pos[0]) && inZ(raw.spawn.pos[1]) ? raw.spawn : B.spawn;
+  m.spawn = { pos: [r3(sp.pos[0]), r3(sp.pos[1])], yaw: r3(num(sp.yaw, -10, 10, 0)), lv: 0 };
+  m.wallbuys = list('wallbuys').filter((w) => w && WEAPONS[w.w] && inX(w.x) && inZ(w.z)).map((w) => {
+    const [nx, nz] = n4(w.nx, w.nz), o = { w: w.w, x: r3(w.x), y: y(w.y), z: r3(w.z), nx, nz, h: r3(num(w.h, 0.6, 3, 1.6)) };
+    if (typeof w.cost === 'number' && Number.isFinite(w.cost)) o.cost = Math.round(clamp(w.cost, 0, 1000000));
+    return o;
+  });
+  m.perks = list('perks').filter((p) => p && PERKS[p.p] && ELIXIRS[p.p] && inX(p.x) && inZ(p.z)).map((p) => {
+    const o = { p: p.p, x: r3(p.x), y: y(p.y), z: r3(p.z), face: face(p.face) };
+    if (typeof p.roomH === 'number' && Number.isFinite(p.roomH)) o.roomH = r3(clamp(p.roomH, 2.2, 30));
+    return o;
+  });
+  m.boxes = list('boxes').filter((b) => b && inX(b.x) && inZ(b.z)).map((b) => ({ x: r3(b.x), y: y(b.y), z: r3(b.z), face: face(b.face) }));
+  m.boxStart = Math.round(num(raw.boxStart, 0, Math.max(0, m.boxes.length - 1), 0));
+  m.vehicles = list('vehicles').filter((v) => v && VEH_TYPES[v.type] && inX(v.x) && inZ(v.z)).map((v) => ({ type: v.type, x: r3(v.x), z: r3(v.z), yaw: Math.round(num(v.yaw, -10, 10, 0) * 10000) / 10000 }));
+  m.fuel = list('fuel').filter((f) => f && inX(f.x) && inZ(f.z)).map((f) => ({ x: r3(f.x), y: y(f.y), z: r3(f.z) }));
+  m.breakers = list('breakers').filter((b) => b && inX(b.x) && inZ(b.z)).map((b, i) => {
+    const [nx, nz] = n4(b.nx, b.nz);
+    return { x: r3(b.x), y: y(b.y), z: r3(b.z), nx, nz, name: str(b.name, 40) || `disjoncteur ${i + 1}` };
+  });
+  const cm = raw.custom && raw.custom.models && typeof raw.custom.models === 'object' ? raw.custom.models : {};
+  m.custom = { models: {} };
+  for (const id of Object.keys(cm)) if (/^u_[\w-]{1,40}$/.test(id) && cm[id] && typeof cm[id].data === 'string') m.custom.models[id] = cm[id];
+  m.props = list('props').filter((p) => p && typeof p.m === 'string' && (MODELS[p.m] || m.custom.models[p.m]) && inX(p.x) && inZ(p.z)).map((p) => {
+    const o = { m: p.m, x: r3(p.x), z: r3(p.z) };
+    if (typeof p.y === 'number' && Number.isFinite(p.y) && Math.abs(p.y) > 1e-4) o.y = r3(clamp(p.y, -20, 60));
+    if (typeof p.r === 'number' && Number.isFinite(p.r) && Math.abs(p.r) > 1e-4) o.r = Math.round(p.r * 10000) / 10000;
+    if (typeof p.s === 'number' && Number.isFinite(p.s) && Math.abs(p.s - 1) > 1e-3) o.s = r3(clamp(p.s, 0.1, 10));
+    if (typeof p.c === 'number' && Number.isFinite(p.c)) o.c = p.c & 0xffffff;
+    if (typeof p.solid === 'boolean') o.solid = p.solid;
+    return o;
+  });
+  m.thumb = typeof raw.thumb === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(raw.thumb) && raw.thumb.length < 400000 ? raw.thumb : B.thumb;
+  const mc = raw.menuCam, v3 = (a) => Array.isArray(a) && a.length === 3 && a.every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 10000);
+  m.menuCam = mc && v3(mc.pos) && v3(mc.look) ? { pos: mc.pos.map(r3), look: mc.look.map(r3), sway: Array.isArray(mc.sway) ? [num(mc.sway[0], 0, 20, 1), num(mc.sway[1], 0, 20, 1)] : [1, 0.6] } : null;
+  return m;
+}
+
+/* ---- Écriture (fichier de l'atelier, paquet du jeu) : seulement ce que la carte porte. */
+function openSerialize(m) {
+  const o = {
+    id: m.id, format: OPEN_FORMAT, open: true, base: m.base || 'khamsin', name: m.name,
+    description: m.description, eyebrow: m.eyebrow, lead: m.lead, author: m.author || '', updated: m.updated || '',
+    rules: { ...m.rules, boxWeapons: m.rules.boxWeapons ? m.rules.boxWeapons.slice() : null },
+    spawn: { pos: m.spawn.pos.slice(), yaw: m.spawn.yaw },
+  };
+  for (const k of OPEN_KINDS) o[k] = JSON.parse(JSON.stringify(m[k] || []));
+  o.boxStart = m.boxStart | 0;
+  const used = new Set(o.props.map((p) => p.m));
+  o.custom = { models: {} };
+  for (const id of Object.keys((m.custom && m.custom.models) || {})) if (used.has(id)) o.custom.models[id] = m.custom.models[id];
+  if (m.thumb && m.thumb !== (OPEN_BASES[o.base] || {}).thumb) o.thumb = m.thumb;
+  if (m.menuCam && !m.menuCam.auto) o.menuCam = { pos: m.menuCam.pos.slice(), look: m.menuCam.look.slice(), sway: (m.menuCam.sway || [1, 0.6]).slice() };
+  return o;
+}
+
+/* ---- Vérification. Sans monde chargé : la forme (catalogue du jeu) ; avec le monde de la carte
+   chargé (Mod Tools) : aussi le sol sous chaque élément. Renvoie { errors, warnings } ; at : [x, z]. */
+function openValidate(m, deep = false) {
+  const errors = [], warnings = [];
+  const E = (msg, at) => errors.push({ msg, at: at || null });
+  const W = (msg, at) => warnings.push({ msg, at: at || null });
+  if (!m.boxes.length) W('Pas d’emplacement pour la boîte mystère : elle n’apparaîtra pas.');
+  if (!m.breakers.length && !m.rules.powerOn) W('Aucun disjoncteur et pas de courant au départ : atouts, sanctuaire et batterie de l’avion resteront sans courant.');
+  if (!m.vehicles.length) W('Aucun véhicule : la carte fait 4 × 3 km.');
+  const seen = new Map();
+  for (const p of m.perks) seen.set(p.p, (seen.get(p.p) || 0) + 1);
+  for (const [id, n] of seen) if (n > 1) W(`${PERKS[id].name} : ${n} machines (une suffit).`, (m.perks.find((p) => p.p === id) || {}).x !== undefined ? [m.perks.find((p) => p.p === id).x, m.perks.find((p) => p.p === id).z] : null);
+  if (deep && OW.H) {
+    const ground = (x, z) => owBaseGround(0, x, z);
+    const walk = (x, z) => owBaseWalk(0, Math.floor(x), Math.floor(z));
+    const sp = m.spawn.pos;
+    if (!walk(sp[0], sp[1])) E('Départ : le joueur ne peut pas se tenir à cet endroit (mur, eau, pente trop forte).', sp);
+    // devant : du sol à moins de 1,6 m (la face visible d'un mur est parfois en retrait de sa case)
+    const front = (x, z, nx, nz, d0) => [d0, d0 + 0.5, d0 + 1.0].find((d) => walk(x + nx * d, z + nz * d));
+    const wallBehind = (x, z, nx, nz, y) => [0.05, 0.45].some((d) => owBaseWallAt(Math.floor(x - nx * d), Math.floor(z - nz * d), y));
+    m.wallbuys.forEach((w) => {
+      const d = front(w.x, w.z, w.nx, w.nz, 0.6);
+      if (d === undefined) E(`${WEAPONS[w.w].name} au mur : pas de sol devant le dessin.`, [w.x, w.z]);
+      else if (!wallBehind(w.x, w.z, w.nx, w.nz, ground(w.x + w.nx * d, w.z + w.nz * d))) W(`${WEAPONS[w.w].name} au mur : pas de mur derrière le dessin.`, [w.x, w.z]);
+    });
+    m.perks.forEach((p) => { const d = (ELIXIRS[p.p] || {}).d || 1; if (front(p.x, p.z, p.face[0], p.face[1], d + 0.3) === undefined) E(`${PERKS[p.p].name} : pas de sol devant la machine.`, [p.x, p.z]); });
+    m.boxes.forEach((b, i) => { if (!walk(b.x + b.face[0], b.z + b.face[1])) E(`Boîte mystère (emplacement ${i + 1}) : pas de sol devant elle.`, [b.x, b.z]); });
+    m.fuel.forEach((f) => { if (!walk(f.x + 1.2, f.z) && !walk(f.x - 1.2, f.z) && !walk(f.x, f.z + 1.2) && !walk(f.x, f.z - 1.2)) E('Jerricans : on ne peut pas s’en approcher.', [f.x, f.z]); });
+    m.breakers.forEach((b) => { if (front(b.x, b.z, b.nx, b.nz, 0.7) === undefined) E(`Disjoncteur (${b.name}) : pas de sol devant l’armoire.`, [b.x, b.z]); });
+    m.vehicles.forEach((v) => {
+      const T = VEH_TYPES[v.type];
+      if (owWaterAt(v.x, v.z)) E(`${T.name} : dans l’eau.`, [v.x, v.z]);
+      else if (!walk(v.x, v.z)) W(`${T.name} : posé sur un obstacle ou une pente trop forte.`, [v.x, v.z]);
+    });
+  }
+  return { errors, warnings };
+}
+
 /* ----------------------------------------------------------- Véhicules --
    Planche « Rouler, c'est survivre » (page 6) : 4×4 de fouilles (deux au camp, un à l'oasis,
    gratuits), buggy des sables (garage du relais Km 47, 1 500 points), camion blindé (centrale du
@@ -27531,14 +27826,8 @@ const VEH_TYPES = {
     axles: [-3.0, 1.15, 2.6],
   },
 };
-// emplacements (plan, page 2) : deux 4×4 au camp, un à l'oasis, le buggy au garage du relais, le camion à la centrale
-KH.vehicles = [
-  { type: 'jeep', x: 2386, z: 2047, yaw: 2.6 },
-  { type: 'jeep', x: 2398, z: 2056, yaw: 2.6 },
-  { type: 'jeep', x: 896, z: 752, yaw: -Math.PI / 2 },
-  { type: 'buggy', x: 1417.5, z: 2589, yaw: Math.PI / 2 },
-  { type: 'truck', x: 3502, z: 1646, yaw: 0 },
-];
+// emplacements : ceux de la carte (KHAMSIN.vehicles pour la carte intégrée, plan page 2 : deux 4×4 au
+// camp, un à l'oasis, le buggy au garage du relais, le camion à la centrale)
 const VEH = { list: [], drive: null, view: 0, lookYaw: 0, lookPitch: 0, lookT: 0, light: null, snd: null, hornT: 0, camPos: new THREE.Vector3(), camInit: false };
 const _vf = new THREE.Vector3(), _vr = new THREE.Vector3(), _vq = new THREE.Quaternion(), _ve = new THREE.Euler();
 const vehFwd = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
@@ -27765,13 +28054,13 @@ function vehLamps(V, heads, tails, extra) {
 const VEH_MODELS = { jeep: vehModelJeep, buggy: vehModelBuggy, truck: vehModelTruck };
 
 /* ---- Création, remise à zéro */
-function owBuildVehicles(root) {
+function owBuildVehicles(root, map) {
   vehMaterials();
   VEH.list = [];
   VEH.drive = null;
   const g = new THREE.Group();
   g.name = 'véhicules';
-  KH.vehicles.forEach((sp, i) => {
+  map.vehicles.forEach((sp, i) => {
     const T = VEH_TYPES[sp.type];
     const V = { id: i, type: sp.type, T, sp, x: sp.x, z: sp.z, yaw: sp.yaw, y: 0, pitch: 0, roll: 0, v: 0, steer: 0, fuel: T.fuel, rot: 0, rpm: 0,
       bought: !T.cost, lights: false, group: new THREE.Group(), body: new THREE.Group(), wheels: [], flag: null, hit: 0, bump: 0, stuckT: 0 };
@@ -27793,12 +28082,17 @@ function owBuildVehicles(root) {
     vehPose(V, 0, true);
     V.group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     g.add(V.group);
+    owTagEl(V.group, 'vehicle', i);
     VEH.list.push(V);
-    Features.interactables.push(vehInteractable(V));
+    const it = vehInteractable(V);
+    it.el = true;
+    Features.interactables.push(it);
   });
-  // projecteur des phares du véhicule conduit (une seule lumière : pas de recompilation des matières)
-  const L = new THREE.SpotLight(0xffe6c0, 0, 60, 0.5, 0.45, 1.4);
+  // projecteur des phares du véhicule conduit (une seule lumière : pas de recompilation des matières ;
+  // gardée d'une construction à l'autre)
+  const L = VEH.light || new THREE.SpotLight(0xffe6c0, 0, 60, 0.5, 0.45, 1.4);
   L.name = 'phares';
+  L.userData.keep = true;
   g.add(L, L.target);
   VEH.light = L;
   root.add(g);
@@ -28610,7 +28904,6 @@ function khPlaceA(K) {
     // panneau de planches contre la toile du fond (armes dessinées à la craie)
     K.box('kh_planks', 0x9a7650, x - 0.95, y + 0.9, 1959.06, x + 0.95, y + 2.25, 1959.16);
   }
-  P.wall = [['kar98k', 2300, 1959.17], ['g43', 2305, 1959.17], ['mp40', 2310, 1959.17]].map(([w, x, z]) => ({ w, x, y: y + 0.05, z, nx: 0, nz: 1, h: 1.58 }));
   // tentes de couchage, ouvertes à l'est
   for (const z0 of [1980, 1990, 2000]) owTent(K, 2262, z0, 2268, z0 + 5, y, 2.9, 1.2, 'e', 0xcfbf98);
   // conteneur « ABRI » (refuge), ouvert à l'ouest
@@ -28628,7 +28921,6 @@ function khPlaceA(K) {
   // auvent de la boîte mystère, groupe électrogène, caisses, fûts, sacs de sable
   for (const [x, z] of [[2325.2, 1937.2], [2332.8, 1937.2], [2325.2, 1942.8], [2332.8, 1942.8]]) K.box('kh_planks', 0x6b4a30, x - 0.06, y, z - 0.06, x + 0.06, y + 2.7, z + 0.06);
   K.box('kh_canvas', 0xb04a32, 2324.8, y + 2.7, 1936.8, 2333.2, y + 2.82, 1943.2);
-  P.box = { x: 2329, y, z: 1940.2, face: [0, 1] };
   K.box('kh_sheet', 0x5a6a48, 2286, y, 1939, 2288.6, y + 1.3, 1940.4).cyl('kh_sheet', 0x3a3631, 2287.3, y + 1.5, 1939.7, 0.08, 0.5);
   K.solid(2286, 1939, 2289, 1941, OWK.LOW, { base: y, top: y + 1.3, mat: OWM.METAL });
   owCrate(K, 2290.5, y, 1944, 1); owCrate(K, 2291.6, y, 1944.2, 0.8); owCrate(K, 2290.9, y + 1, 1944.1, 0.7);
@@ -28641,7 +28933,6 @@ function khPlaceA(K) {
   owLampPost(K, 2346, y, 1956, 4.5, 0xffd09a, false, [0, 0.7]);
   owLampPost(K, 2238, y, 1913, 4.5, 0xffd09a, false, [0, -0.7]);
   owLamp(K, 2305, y + 3.7, 1962.5, 0xffe2b0, false, 0.8);
-  P.perk = { id: 'souffle', x: 2358, y, z: 1978, face: [-1, 0] };
 }
 /* Sceau du sanctuaire : disque de pierre gravé, glyphes turquoise (le turquoise dit le surnaturel). */
 function khSeal(r) {
@@ -28680,7 +28971,6 @@ function khPlaceB(K) {
   owTent(K, 2252, 1556, 2258, 1561, yc, 2.8, 1.2, 'w', 0xd2c29c);
   owCrate(K, 2249.5, yc, 1563, 1); owBarrel(K, 2251, yc, 1564.5);
   owLampPost(K, 2246, yc, 1566, 4.2, 0xffd09a, false, [0, -0.7]);
-  P.box = { x: 2244, y: yc, z: 1566.5, face: [0, -1] };
 }
 /* Tronc de pyramide (mastaba) : base w × d, sommet rentré de inset, hauteur h. */
 function khFrustum(w, d, h, inset) {
@@ -28713,8 +29003,6 @@ function khPlaceC(K) {
   owTable(K, 1400, y, 2584.5, 1.2, 1.2); owTable(K, 1404.5, y, 2584.5, 1.2, 1.2);
   K.box('kh_planks', 0x7a5a3a, 1397, y, 2582.2, 1398.2, y + 1.05, 2586.4);                // comptoir, contre le mur ouest
   K.solid(1397, 2582.2, 1398, 2586.4, OWK.LOW, { base: y, top: y + 1.05, mat: OWM.WOOD });
-  P.wall = [['trench', 1400.5, 2587.92], ['thompson', 1404.5, 2587.92]].map(([w, x, z]) => ({ w, x, y, z, nx: 0, nz: -1, h: 1.7 }));
-  P.perk = { id: 'endurance', x: 1406.95, y, z: 2582.8, face: [-1, 0], roomH: 3.4 };
   owLamp(K, 1402, y + 3.1, 2584.5, 0xffe0b0, false, 0.8);
   // garage du buggy : grande porte à l'ouest
   owHouse(K, { x0: 1412, z0: 2584, x1: 1424, z1: 2594, y, h: 4.2, wall: 'kh_concrete', roof: 'gable', rise: 1.4, roofTex: 'kh_sheet', floorTex: 'kh_floor', doors: [['w', 2, 6, 3.6]], wins: [['n', 4, 4, 2.4, 3.4]] });
@@ -28724,14 +29012,11 @@ function khPlaceC(K) {
   owTank(K, 1419, y, 2601, 1.5, 7, true, 0xe2dccc);
   P.fuelTank = { x: 1419, y: y + 1.9, z: 2599.2 };
   // jerricans (faire le plein), borne kilométrique
-  P.fuel = { x: 1393.5, y, z: 2577.5 };
-  khJerricans(K, P.fuel.x, y, P.fuel.z);
   khMilestone(K, 1446, owH(1446, 2541), 2541, '47');
   // néons de l'heure bleue
   owLampPost(K, 1384, y, 2563, 5, 0x9fe4ff, false, [0, 0.8]);
   owLampPost(K, 1410, y, 2577, 5, 0xffd2a0, false, [0, 0.8]);
   owLampPost(K, 1428, y, 2582, 5, 0xffd2a0, false, [-0.8, 0]);
-  P.box = { x: 1384, y, z: 2582.5, face: [0, -1] };
   P.refuge = [{ x0: 1397, z0: 2581, x1: 1407, z1: 2588, name: 'café' }, { x0: 1413, z0: 2585, x1: 1423, z1: 2593, name: 'garage' }];
 }
 /* Pile de jerricans (on y fait le plein du véhicule le plus proche). */
@@ -28765,14 +29050,11 @@ function khPlaceD(K) {
   house(808, 756, 816, 766, ['e', 3, 2], 'kh_whitewash', 3.2);
   house(872, 764, 880, 772, ['w', 3, 2], 'kh_mudbrick', 3.0);
   // armes dans la maison sud-est (mur nord intérieur), citerne du puits (refuge), place
-  P.wall = [['dbarrel', 849, 749.1], ['type100', 853, 749.1]].map(([w, x, z]) => ({ w, x, y, z, nx: 0, nz: 1, h: 1.6 }));
   owHouse(K, { x0: 842, z0: 768, x1: 848, z1: 774, y, h: 2.8, wall: 'kh_whitewash', roof: 'flat', roofTex: 'kh_whitewash', floorTex: 'kh_floor', doors: [['s', 2, 2]] });
   K.geo('kh_whitewash', 0xf4ece0, new THREE.SphereGeometry(2.6, 18, 8, 0, TAU, 0, Math.PI / 2), mtx(845, y + 2.95, 771, 0, 0, 0, 1, 0.7, 1));
   K.cyl('kh_mudbrick', 0xd8c4a4, 845, y + 0.4, 778.5, 0.9, 0.8, 16);        // margelle du puits
   K.solid(844, 777.5, 846, 779.5, OWK.LOW, { base: y, top: y + 0.8, mat: OWM.STONE });
   P.refuge = [{ x0: 843, z0: 769, x1: 847, z1: 773, name: 'citerne du puits' }];
-  P.perk = { id: 'detente', x: 857.3, y, z: 772, face: [-1, 0] };
-  P.box = { x: 836.5, y, z: 771, face: [1, 0] };
   // auvents de palmes, jarres, lanternes
   K.box('kh_planks', 0x7a5a3a, 834.5, y + 2.4, 766, 838.5, y + 2.5, 776).box('kh_planks', 0x6b4a30, 834.6, y, 766.1, 834.8, y + 2.4, 766.3).box('kh_planks', 0x6b4a30, 834.6, y, 775.7, 834.8, y + 2.4, 775.9);
   for (const [x, z] of [[829, 758], [843, 758], [858, 762], [863, 776], [832, 784]]) K.cyl('kh_mudbrick', 0xb07850, x, y + 0.4, z, 0.3, 0.8, 10);
@@ -28790,7 +29072,6 @@ function khPlaceE(K) {
     K.solid(x - 2.6, 1592, x + 2.6, 1596, OWK.LOW, { base: y, top: y + 3.8, mat: OWM.METAL });
   }
   K.box('kh_sheet', 0xc8a030, 3521, y + 8.6, 1593.5, 3551, y + 9.1, 1594.5);
-  P.wall = [['stg44', 3521.08, 1589], ['bar', 3521.08, 1599.5]].map(([w, x, z]) => ({ w, x, y, z, nx: 1, nz: 0, h: 1.7 }));
   // poste de commande (disjoncteur, chargeur de la batterie)
   owHouse(K, { x0: 3524, z0: 1610, x1: 3534, z1: 1620, y, h: 3.6, wall: 'kh_concrete', roof: 'flat', roofTex: 'kh_concrete', parapet: 0.3, floorTex: 'kh_floor', doors: [['w', 4, 2]], wins: [['n', 3, 4, 1.1, 2.3], ['s', 3, 4, 1.1, 2.3]] });
   K.box('kh_sheet', 0x6c7a72, 3531.5, y, 1611.2, 3532.9, y + 2, 1618.8);           // pupitre
@@ -28817,14 +29098,10 @@ function khPlaceE(K) {
   // abri du camion blindé (toit sur poteaux)
   for (const [x, z] of [[3496.5, 1637.5], [3507.5, 1637.5], [3496.5, 1654.5], [3507.5, 1654.5]]) { K.box('kh_sheet', 0x4a4a46, x - 0.15, y, z - 0.15, x + 0.15, y + 4.6, z + 0.15); K.solid(x - 0.15, z - 0.15, x + 0.15, z + 0.15, OWK.SOLID, { base: y, top: y + 4.6, mat: OWM.METAL }); }
   K.gable('kh_sheet', 0xffffff, 3495.6, 1636.6, 3508.4, 1655.4, y + 4.6, 1.0, false);
-  P.fuel = { x: 3512.5, y, z: 1638 };
-  khJerricans(K, P.fuel.x, y, P.fuel.z);
   // éclairage au sodium (la nuit à la centrale)
   for (const [x, z, a] of [[3516, 1584, [0, -0.8]], [3516, 1606, [0.8, 0]], [3538, 1606, [0, 0.8]], [3556, 1606, [0, 0.8]], [3517, 1630, [0.8, 0]], [3500, 1660, [0, -0.8]]]) owLampPost(K, x, y, z, 6, 0xffa850, false, a);
   owLamp(K, 3536, y + 9.4, 1594, 0xfff0d0, true, 1.2); owLamp(K, 3529, y + 3.3, 1615, 0xfff0d0, true, 0.8);
-  P.breakers = [{ x: 3550.7, y, z: 1599.8, nx: -1, nz: 0, name: 'salle des turbines' }, { x: 3524.9, y, z: 1612.5, nx: 1, nz: 0, name: 'poste de commande' }, { x: 3557, y, z: 1625, nx: -1, nz: 0, name: 'transformateurs' }];
   P.battery = { x: 3527.5, y, z: 1618.7 };
-  P.box = { x: 3526, y, z: 1626.5, face: [0, -1] };
   P.refuge = [{ x0: 3525, z0: 1611, x1: 3533, z1: 1619, name: 'poste de commande' }, { x0: 3521, z0: 1587, x1: 3551, z1: 1601, name: 'salle des turbines' }];
 }
 /* Grillage : panneaux transparents (texture de mailles). */
@@ -28874,10 +29151,7 @@ function khPlaceF(K) {
     P.tombs.push({ x0, z0, x1, z1, y, big });
   }
   const T = P.tombs[2];
-  P.perk = { id: 'cuirasse', x: T.x0 + 1.05, y: T.y, z: (T.z0 + T.z1) / 2 + 1, face: [1, 0], roomH: 3.2 };
-  P.wall = [{ w: 'mg42', x: P.tombs[1].x1 - 1.08, y: P.tombs[1].y, z: (P.tombs[1].z0 + P.tombs[1].z1) / 2, nx: -1, nz: 0, h: 1.6 }];
   P.refuge = P.tombs.map((t) => ({ x0: t.x0 + 1, z0: t.z0 + 1, x1: t.x1 - 1, z1: t.z1 - 1, name: 'tombeau' }));
-  P.box = { x: P.tombs[3].x0 + 2, y: P.tombs[3].y, z: P.tombs[3].z1 + 3, face: [0, 1] };
 }
 
 /* ----------------------------------------------------- G : aérodrome */
@@ -28891,15 +29165,10 @@ function khPlaceG(K) {
   }
   owCrate(K, 2794, y, 389, 1); owCrate(K, 2795.2, y, 389.3, 1); owCrate(K, 2794.5, y + 1, 389.1, 0.8);
   owBarrel(K, 2818, y, 389); owBarrel(K, 2818.8, y, 388.2, 0x3c6a8a);
-  P.wall = [['ppsh', 2791.08, 376], ['fg42', 2791.08, 384]].map(([w, x, z]) => ({ w, x, y, z, nx: 1, nz: 0, h: 1.7 }));
-  P.perk = { id: 'mainleste', x: 2860.95, y, z: 386, face: [-1, 0], roomH: 8 };
-  P.box = { x: 2846, y, z: 389.6, face: [0, -1] };
   // tour de contrôle : fût, escalier à l'est, cabine vitrée à 12 m (vue sur toute la carte)
   khTower(K, 2880, 360, y);
   // camion-citerne (décor) et jerricans
   khTanker(K, 2952, 424, y);
-  P.fuel = { x: 2946, y, z: 418 };
-  khJerricans(K, P.fuel.x, y, P.fuel.z);
   // balisage de la piste (allumé avec le courant)
   const r = OW.roads.find((q) => q.id === 'runway'), pts = r.line.pts, cum = r.line.cum;
   for (let s = 10; s < r.line.len - 5; s += 45) {
@@ -29012,31 +29281,62 @@ function khFin(h, b, t) {
 
 /* ---------------------------------------------------- Éléments de jeu --
    Armes au mur (craie), atouts (les cinq Élixirs, répartis entre les lieux), boîte mystère (qui
-   voyage d'un lieu à l'autre), jerricans (plein du véhicule le plus proche), disjoncteurs de la
-   centrale (les trois tenus : le courant). Les mécanismes sont ceux du jeu (achat, boisson,
-   tirage) ; seuls les emplacements viennent du monde ouvert. */
+   voyage d'un lieu à l'autre), jerricans (plein du véhicule le plus proche), disjoncteurs (tous
+   tenus : le courant). Les mécanismes sont ceux du jeu (achat, boisson, tirage) ; les emplacements
+   viennent de la carte (voir « Cartes ouvertes » : la carte intégrée, ou celle des Mod Tools). */
 const KHF = { breakers: [], fuel: [] };
-function owBuildFeatures(root) {
+/* Hauteur d'un élément : celle de la carte (relevée par les Mod Tools), sinon le sol des lieux sous lui. */
+function owElemY(e) {
+  if (typeof e.y === 'number' && Number.isFinite(e.y)) return e.y;
+  const g = owBaseGround(0, e.x, e.z);
+  return Number.isFinite(g) ? g : owH(e.x, e.z);
+}
+const KH_ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+/* Objet 3D d'un élément (Mod Tools : sélection, déplacement en direct) : OW.elObjs[genre][indice]. */
+function owTagEl(o, kind, i) {
+  o.userData.el = { kind, i };
+  if (OW.elObjs) (OW.elObjs[kind] || (OW.elObjs[kind] = []))[i] = o;
+  return o;
+}
+/* Éléments de la carte (map : carte ouverte normalisée). Leurs cases sont écrites pendant le journal
+   (owLogBegin) : les Mod Tools les retirent et les reposent sans refaire les lieux. */
+function owBuildFeatures(root, map) {
   const group = new THREE.Group();
   group.name = 'éléments';
   Features.group = group;
-  const P = KH.places;
+  const n0 = Features.interactables.length;
   // armes au mur
-  for (const id of ['A', 'C', 'D', 'E', 'F', 'G']) for (const wb of P[id].wall || []) owWallbuy(group, wb);
+  map.wallbuys.forEach((wb, i) => owTagEl(owWallbuy(group, { ...wb, y: owElemY({ x: wb.x + wb.nx * 0.6, z: wb.z + wb.nz * 0.6, y: wb.y }) }), 'wallbuy', i));
   // atouts
-  for (const id of ['A', 'C', 'D', 'F', 'G']) if (P[id].perk) owPerk(group, P[id].perk);
-  // boîte mystère : au camp au départ, puis ailleurs
-  const spots = ['A', 'C', 'D', 'E', 'G', 'B', 'F'].map((id) => P[id].box).filter(Boolean);
+  map.perks.forEach((pm, i) => owTagEl(owPerk(group, { id: pm.p, x: pm.x, y: owElemY(pm), z: pm.z, face: pm.face, roomH: pm.roomH }), 'perk', i));
+  // boîte mystère : au premier emplacement au départ, puis ailleurs
+  const spots = map.boxes.map((b) => ({ ...b, y: owElemY(b) }));
   LAYOUT.boxes = spots.map((b) => ({ cells: [[b.x - 0.5, b.z - 0.5], [b.x - 0.5, b.z - 0.5]], face: b.face, lv: 0 }));
-  LAYOUT.boxStart = 0;
-  buildBox(group);
-  Features.box.locs.forEach((L, i) => { L.E = spots[i].y; L.x = spots[i].x; L.z = spots[i].z; L.ow = true; });
-  placeBox(Features.box.cur);
-  // carburant
-  KHF.fuel = ['C', 'E', 'G'].map((id) => P[id].fuel).filter(Boolean);
-  for (const f of KHF.fuel) Features.interactables.push(owFuelPoint(f));
-  // disjoncteurs de la centrale
-  KHF.breakers = P.E.breakers.map((b, i) => owBreaker(group, b, i));
+  LAYOUT.boxStart = clamp(map.boxStart | 0, 0, Math.max(0, spots.length - 1));
+  Features.box = null;
+  if (spots.length) {
+    buildBox(group);
+    Features.box.locs.forEach((L, i) => { L.E = spots[i].y; L.x = spots[i].x; L.z = spots[i].z; L.ow = true; });
+    placeBox(Features.box.cur);
+    owTagEl(Features.box.root, 'box', Features.box.cur);
+  }
+  // jerricans (une pile chacun)
+  KHF.fuel = map.fuel.map((f) => ({ ...f, y: owElemY(f) }));
+  if (KHF.fuel.length) {
+    // en partie, une seule pile de maillages ; dans les Mod Tools, une par emplacement (sélection)
+    let K = CUR.editor ? null : owKit('jerricans');
+    KHF.fuel.forEach((f, i) => {
+      if (CUR.editor) K = owKit(`jerricans ${i + 1}`);
+      khJerricans(K, f.x, f.y, f.z);
+      Features.interactables.push(owFuelPoint(f));
+      if (CUR.editor) { const g = K.build(group); g.userData.at = [f.x, f.y, f.z]; owTagEl(g, 'fuel', i); }
+    });
+    if (!CUR.editor) K.build(group);
+  }
+  // disjoncteurs (tous enclenchés : le courant)
+  KHF.breakers = map.breakers.map((b, i) => owBreaker(group, { ...b, y: owElemY(b) }, i));
+  KHF.breakers.forEach((B, i) => owTagEl(B.g, 'breaker', i));
+  for (let i = n0; i < Features.interactables.length; i++) Features.interactables[i].el = true;
   linearizeTree(group);
   root.add(group);
 }
@@ -29053,6 +29353,7 @@ function owWallbuy(group, wb) {
   mesh.position.set(wb.x + wb.nx * 0.02, wb.y + wb.h, wb.z + wb.nz * 0.02);
   mesh.lookAt(mesh.position.x + wb.nx, mesh.position.y, mesh.position.z + wb.nz);
   group.add(mesh);
+  mesh.userData.h = wb.h;
   Features.interactables.push({
     kind: 'wallbuy', x: wb.x + wb.nx * 0.75, z: wb.z + wb.nz * 0.75, y: wb.y, r: 1.35,
     prompt() {
@@ -29069,6 +29370,7 @@ function owWallbuy(group, wb) {
       if (trySpend(slot.up ? RULES.ampAmmoCost : Math.round(price / 2))) { slot.res = wstat(slot, 'res'); HUD.weapon(); }
     },
   });
+  return mesh;
 }
 
 /* ---- Atout : machine posée dos au mur (face vers l'avant), boisson comme ailleurs */
@@ -29109,8 +29411,17 @@ function owPerk(group, pm) {
       if (trySpend(PERKS[m.id].cost)) { startDrink(m.id); elixirPlay(m); Life.add('perks'); }
     },
   });
+  return built.group;
 }
-/* Boîte mystère : ses deux cases deviennent des solides bas (et retrouvent leur état quand elle part). */
+/* Boîte mystère : ses deux cases deviennent des solides bas (et retrouvent leur état quand elle part).
+   OWBOX.at : l'emplacement qui les tient ; owBoxRelease les rend avant de refaire les éléments (la
+   boîte a pu voyager pendant une partie, hors du journal des cases). */
+const OWBOX = { at: null };
+function owBoxRelease() {
+  const L = OWBOX.at;
+  OWBOX.at = null;
+  if (L && L.owSaved) { for (const c of L.owSaved) owSet(OW.surf, c.x, c.z, c.kind, c); L.owSaved = null; }
+}
 function owBoxProp(prev, L) {
   if (prev && prev.owSaved) for (const c of prev.owSaved) owSet(OW.surf, c.x, c.z, c.kind, c);
   if (prev) prev.owSaved = null;
@@ -29123,6 +29434,7 @@ function owBoxProp(prev, L) {
     L.owSaved.push(c);
     owSet(OW.surf, x, z, OWK.LOW, { base: L.E, top: L.E + 0.8, mat: OWM.WOOD });
   }
+  OWBOX.at = L;
 }
 
 /* ---- Jerricans : plein du véhicule le plus proche (deux jerricans font le plein) */
@@ -29164,7 +29476,7 @@ function owBreaker(group, b, i) {
   g.add(lever);
   const lamp = new THREE.Mesh(GEO.sph, new THREE.MeshBasicMaterial({ color: 0xff2a1a }));
   lamp.scale.setScalar(0.05); lamp.position.set(-0.25, 1.6, 0.42); g.add(lamp);
-  const plate = vehDecal([[`DISJONCTEUR ${['I', 'II', 'III'][i]}`, 0.5, 0.5, 700]], 0.7, 0.14, '#e8e0cc');
+  const plate = vehDecal([[`DISJONCTEUR ${KH_ROMAN[i] || i + 1}`, 0.5, 0.5, 700]], 0.7, 0.14, '#e8e0cc');
   plate.position.set(0, 1.62, 0.405); g.add(plate);
   group.add(g);
   owFill(OW.surf, b.x - 0.45, b.z - 0.45, b.x + 0.45, b.z + 0.45, OWK.LOW, { base: b.y, top: b.y + 1.8, mat: OWM.METAL });
@@ -29174,7 +29486,7 @@ function owBreaker(group, b, i) {
     prompt() {
       if (B.done || G.power) return null;
       const n = KHF.breakers.filter((q) => q.done).length;
-      return { text: `Maintenez F pour enclencher le disjoncteur (${b.name})`, sub: `${Math.round((B.held / 4) * 100)} % · ${n}/3 enclenchés` };
+      return { text: `Maintenez F pour enclencher le disjoncteur (${b.name})`, sub: `${Math.round((B.held / 4) * 100)} % · ${n}/${KHF.breakers.length} enclenchés` };
     },
     useHold(dt) {
       if (B.done || G.power) return;
@@ -29184,8 +29496,9 @@ function owBreaker(group, b, i) {
         B.done = true; owBreakerLook(B);
         Sound.powerOn(); Sound.setHum(false);          // pas de bourdonnement électrique dans tout le désert
         const n = KHF.breakers.filter((q) => q.done).length;
-        if (n >= 3) activatePower();
-        else HUD.banner(`Disjoncteur ${['I', 'II', 'III'][i]}`, `${n}/3 enclenchés · il en reste ${3 - n}`, 'power');
+        const N = KHF.breakers.length;
+        if (n >= N) activatePower();
+        else HUD.banner(`Disjoncteur ${KH_ROMAN[i] || i + 1}`, `${n}/${N} enclenchés · il en reste ${N - n}`, 'power');
       }
     },
   });
@@ -29194,6 +29507,338 @@ function owBreaker(group, b, i) {
 function owBreakerLook(B) {
   B.lamp.material.color.setHex(B.done || G.power ? 0x40ff60 : 0xff2a1a);
   B.lever.rotation.x = B.done || G.power ? -1.1 : 0;
+}
+
+/* ------------------------------------------------- Objets de la carte --
+   Objets de la bibliothèque posés par les Mod Tools sur une carte ouverte (caisses, fûts, barrières,
+   véhicules en ruine, arbres…). Posés sur le sol des lieux (y : décalage au-dessus) ; ceux qui sont
+   pleins arrêtent les corps et les balles (cases basses, jusqu'à leur hauteur). Dans les Mod Tools,
+   un groupe par objet (sélection, déplacement) ; en partie, tout est fusionné. */
+function owPropGround(pr) {
+  const g = owBaseGround(0, pr.x, pr.z);
+  return Number.isFinite(g) ? g : owH(pr.x, pr.z);
+}
+function owBuildProps(root, map, perProp = false) {
+  const group = new THREE.Group();
+  group.name = 'objets';
+  group.userData.props = true;
+  const batch = perProp ? null : new PropBatch();
+  map.props.forEach((pr, i) => {
+    const def = MODELS[pr.m];
+    const info = def ? modelParts(pr.m) : null;
+    if (!info) return;
+    const E = owPropGround(pr);
+    const matrix = propMatrix({ ...pr, y: E + (pr.y || 0) });
+    if (def.glb) {
+      const o = glbObject(pr.m);
+      if (o) {
+        const g = new THREE.Group();
+        g.add(o);
+        g.applyMatrix4(matrix);
+        if (perProp) { g.userData.prop = i; o.traverse((c) => { if (c.isMesh) c.userData.prop = i; }); }
+        group.add(g);
+      }
+    } else if (perProp) {
+      const g = new THREE.Group();
+      g.userData.prop = i;
+      const b = new PropBatch();
+      b.add(info.parts, new THREE.Matrix4(), pr.c);
+      b.build(g, { prop: i });
+      g.applyMatrix4(matrix);
+      group.add(g);
+    } else batch.add(info.parts, matrix, pr.c);
+    const solid = typeof pr.solid === 'boolean' ? pr.solid : def.solid;
+    if (solid && !def.decal) {
+      const top = (pr.y || 0) + info.box.max.y * (pr.s || 1);
+      if (top > 0.15) {
+        for (const [cx, cz] of propFootprint(pr, info)) {
+          const c = owBaseRec(OW.surf, cx, cz);
+          const k = c && !c.none ? c.kind : OWK.TERRAIN;
+          if (k !== OWK.TERRAIN && k !== OWK.FLOOR && k !== OWK.LOW) continue;
+          const g0 = k === OWK.TERRAIN ? owH(cx + 0.5, cz + 0.5) : k === OWK.FLOOR ? c.base : c.base;
+          const cur = owChunk(OW.surf, cx, cz), ci = owIdx(cx, cz);
+          const prevTop = cur && cur.kind[ci] === OWK.LOW ? cur.top[ci] : -Infinity;
+          owSet(OW.surf, cx, cz, OWK.LOW, { base: g0, top: Math.max(prevTop, E + top), mat: OWM.WOOD });
+        }
+      }
+    }
+  });
+  if (batch) batch.build(group);
+  linearizeTree(group);
+  root.add(group);
+  return group;
+}
+
+/* ---- Éléments de la carte : armes au mur, atouts, boîte, jerricans, disjoncteurs, objets (leurs cases
+   dans le journal), puis les véhicules. Un sous-arbre à part : les Mod Tools le refont seul. */
+function owBuildElements(root, map, opts = {}) {
+  const g = new THREE.Group();
+  g.name = 'carte';
+  OW.elemRoot = g;
+  OW.elObjs = { wallbuy: [], perk: [], box: [], fuel: [], breaker: [], vehicle: [] };
+  owLogBegin();
+  try {
+    owBuildFeatures(g, map);
+    OW.propsRoot = owBuildProps(g, map, !!opts.perProp);
+  } finally { owLogEnd(); }
+  owBuildVehicles(g, map);
+  root.add(g);
+  return g;
+}
+/* Refait les éléments d'une carte déjà chargée (Mod Tools). */
+function owRebuildElements(map, opts = {}) {
+  if (!OW.on || !World.root) return null;
+  if (VEH.drive) vehExit(true);
+  if (OW.elemRoot) {
+    if (VEH.light && VEH.light.parent) VEH.light.parent.remove(VEH.light, VEH.light.target);
+    World.root.remove(OW.elemRoot);
+    disposeObject(OW.elemRoot);
+    OW.elemRoot = null;
+  }
+  Features.interactables = Features.interactables.filter((it) => !it.el);
+  Features.perkMachines = [];
+  Features.box = null;
+  owBoxRelease();
+  owLogUndo();
+  registerCustomModels(map);
+  const g = owBuildElements(World.root, map, opts);
+  linearizeTree(g);
+  return g;
+}
+
+/* ------------------------------------------- Mod Tools : cartes ouvertes --
+   Ce que les Mod Tools du launcher (1.3.0, interface 3 du moteur) demandent au monde ouvert :
+   charger la carte sans partie, refaire ses éléments, suivre la caméra libre, viser (rayons),
+   dessiner le plan (relief, cases des bâtiments) et proposer une place à un élément (contre un mur,
+   sur le sol). Les Mod Tools ne sont pas dans le jeu des joueurs ; ceci ne sert qu'à eux. */
+const OWED = { on: false, map: null, plan: null, planKey: '', tiles: new Map(), tilesRev: 0, meshes: null, meshesRoot: null };
+
+/* Monde de la carte pour l'éditeur : pas de HUD ni de zombies, objets un par un (sélection). */
+function owEditorLoad(map) {
+  clearZombies();
+  const t0 = performance.now();
+  owLoad(map, { editor: true });
+  OWED.on = true; OWED.map = map;
+  OWED.tiles.clear(); OWED.tilesRev++;
+  OWED.meshes = null;
+  return { terrain: !!OW.H, chunks: OW.surf.n, ms: Math.round(performance.now() - t0) };
+}
+/* Refait les éléments (armes, atouts, boîte, jerricans, disjoncteurs, objets, véhicules). */
+function owEditorRebuild(map) {
+  OWED.map = map;
+  const t0 = performance.now();
+  owRebuildElements(map, { perProp: true });
+  OWED.tiles.clear(); OWED.tilesRev++;
+  return performance.now() - t0;
+}
+/* Chaque image de l'éditeur : la caméra du jeu suit celle des Mod Tools (détail du terrain, ciel,
+   lumière des lieux, lampes). */
+function owEditorFrame(dt, cam) {
+  if (!OW.on) return;
+  camera.position.copy(cam.position);
+  camera.quaternion.copy(cam.quaternion);
+  camera.updateMatrixWorld();
+  owUpdateView(dt);
+}
+/* Rayon dans le monde (terrain, bâtiments, solides) : { hit, t, x, y, z, nx, ny, nz }. */
+function owEditorRay(ox, oy, oz, dx, dy, dz, maxT = 4000) {
+  owRaycast(ox, oy, oz, dx, dy, dz, maxT);
+  const t = RAY.t;
+  return { hit: RAY.hit, t, x: ox + dx * t, y: oy + dy * t, z: oz + dz * t, nx: RAY.nx, ny: RAY.ny, nz: RAY.nz };
+}
+
+/* ---- Plan : relief (couleur du sol, ombrage), routes et pyramides, à la taille demandée. */
+function owEditorPlan(w, h) {
+  const key = `${w}x${h}`;
+  if (OWED.plan && OWED.planKey === key) return OWED.plan;
+  OWED.plan = khPlanCanvas(w, h, { relief: true, corridor: false, pins: false });
+  OWED.planKey = key;
+  return OWED.plan;
+}
+/* Morceau de 64 × 64 m du plan, une case = un pixel : le relief (couleur du sol, ombrage, eau) et,
+   par-dessus, les cases des lieux et des éléments (sols, murs, portes, fenêtres, solides bas).
+   make = false : seulement s'il est déjà prêt (le plan en demande quelques-uns par image). */
+const OWED_COL = {
+  [OWK.FLOOR]: [168, 150, 122, 255], [OWK.SOLID]: [52, 44, 38, 255], [OWK.LOW]: [118, 92, 62, 255], [OWK.WINDOW]: [214, 168, 86, 255],
+  [OWK.DOOR]: [168, 52, 40, 255], [OWK.RAMP]: [150, 132, 104, 255], [OWK.WATER]: [42, 96, 120, 255], [OWK.VOID]: [10, 10, 10, 255],
+};
+const OWED_RELIEF = new Map();          // morceau → pixels du relief (gardés : le relief ne change pas)
+function owEditorRelief(tx, tz) {
+  const k = tz * 64 + tx;
+  let d = OWED_RELIEF.get(k);
+  if (d) { OWED_RELIEF.delete(k); OWED_RELIEF.set(k, d); return d; }
+  d = new Uint8ClampedArray(4096 * 4);
+  const col = new THREE.Color();
+  for (let pz = 0; pz < 64; pz++) {
+    for (let px = 0; px < 64; px++) {
+      const x = tx * 64 + px + 0.5, z = tz * 64 + pz + 0.5, p = (pz * 64 + px) * 4;
+      if (x > OW.W || z > OW.D) { d[p] = 13; d[p + 1] = 11; d[p + 2] = 9; d[p + 3] = 255; continue; }
+      const kk = owPointIndex(x, z), bk = OW.bio[kk];
+      if (bk === OWB.RIVER || (OW.water[kk] && bk === OWB.MUD)) col.setHex(0x1f5b73);
+      else { owGroundColor(kk, x, z, col); col.convertLinearToSRGB(); }
+      const shade = clamp(1 + (owH(x + 2, z + 2) - owH(x - 2, z - 2)) * 0.16, 0.55, 1.35);
+      d[p] = col.r * 255 * shade; d[p + 1] = col.g * 255 * shade; d[p + 2] = col.b * 255 * shade; d[p + 3] = 255;
+    }
+  }
+  OWED_RELIEF.set(k, d);
+  if (OWED_RELIEF.size > 900) OWED_RELIEF.delete(OWED_RELIEF.keys().next().value);
+  return d;
+}
+function owEditorTile(tx, tz, make = true) {
+  const k = tz * 64 + tx;
+  if (OWED.tiles.has(k)) return OWED.tiles.get(k);
+  if (!make || !OW.H || tx < 0 || tz < 0 || tx * 64 >= OW.W || tz * 64 >= OW.D) return null;
+  const c = makeCanvas(64, 64);
+  const g = c.getContext('2d'), img = g.createImageData(64, 64), d = img.data;
+  d.set(owEditorRelief(tx, tz));
+  const ch = OW.surf && OW.surf.chunks[tz * OW.surf.CW + tx];
+  if (ch) {
+    for (let i = 0; i < 4096; i++) {
+      const col = OWED_COL[ch.kind[i]];
+      if (!col) continue;
+      const p = i * 4, dark = ch.kind[i] === OWK.FLOOR && ch.ceil[i] > 0 ? 0.82 : 1;   // sol couvert (toit) : plus sombre
+      d[p] = col[0] * dark; d[p + 1] = col[1] * dark; d[p + 2] = col[2] * dark; d[p + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  OWED.tiles.set(k, c);
+  if (OWED.tiles.size > 600) OWED.tiles.delete(OWED.tiles.keys().next().value);
+  return c;
+}
+
+/* ---- Surface visible d'un mur. La grille des solides arrondit les murs au mètre ; la toile d'une
+   tente, un panneau, un enduit sont parfois en avant ou en retrait de la case : un rayon horizontal
+   part du sol devant (1,4 m de haut) vers le mur et s'arrête sur la première face tournée vers lui. */
+const OWED_RC = new THREE.Raycaster();
+const OWED_WALLS = new Set(['lieux', 'sanctuaire', 'quête', 'tunnel', 'tunnel-f', 'pyramide']);
+function owEditorMeshes() {
+  if (OWED.meshes && OWED.meshesRoot === World.root) return OWED.meshes;
+  const out = [];
+  if (World.root) {
+    for (const c of World.root.children) {
+      if (!OWED_WALLS.has(c.name)) continue;
+      c.traverse((o) => { if (o.isMesh && !o.isInstancedMesh && o.geometry && o.geometry.attributes.position) out.push(o); });
+    }
+  }
+  OWED.meshes = out; OWED.meshesRoot = World.root;
+  return out;
+}
+function owEditorSurface(px, pz, nx, nz, y) {
+  OWED_RC.set(new THREE.Vector3(px + nx * 1.2, y + 1.4, pz + nz * 1.2), new THREE.Vector3(-nx, 0, -nz));
+  OWED_RC.near = 0; OWED_RC.far = 2.6;
+  const hits = OWED_RC.intersectObjects(owEditorMeshes(), false);
+  const n = new THREE.Vector3();
+  for (const h of hits) {
+    if (!h.face) continue;
+    n.copy(h.face.normal).transformDirection(h.object.matrixWorld);
+    if (n.x * nx + n.z * nz < 0.6) continue;
+    return { x: h.point.x, z: h.point.z, t: h.distance };
+  }
+  return null;
+}
+
+/* ---- Place d'un élément près du point (x, z) : contre un mur (arme, atout, disjoncteur) ou sur
+   le sol. Renvoie { ok, x, z, y, nx, nz, face, why }. opts.face : sens choisi (rotation) pour ce
+   qui se pose sans mur ; opts.rad : distance de recherche du mur. */
+function owEditorWallNear(x, z, rad = 3) {
+  let best = null, bd = Infinity;
+  const x0 = Math.floor(x - rad), x1 = Math.floor(x + rad), z0 = Math.floor(z - rad), z1 = Math.floor(z + rad);
+  for (let cz = z0; cz <= z1; cz++) {
+    for (let cx = x0; cx <= x1; cx++) {
+      for (const [nx, nz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const fx = cx + nx, fz = cz + nz;
+        if (!owBaseWalk(0, fx, fz)) continue;
+        const y = owBaseGround(0, fx + 0.5, fz + 0.5);
+        if (!owBaseWallAt(cx, cz, y)) continue;
+        // point de la face du mur le plus proche du curseur
+        const px = nx ? cx + (nx > 0 ? 1 : 0) : clamp(x, cx + 0.15, cx + 0.85);
+        const pz = nz ? cz + (nz > 0 ? 1 : 0) : clamp(z, cz + 0.15, cz + 0.85);
+        const d = Math.hypot(px - x, pz - z);
+        if (d < bd) { bd = d; best = { x: px, z: pz, nx, nz, y }; }
+      }
+    }
+  }
+  return best;
+}
+function owEditorPlace(kind, x, z, opts = {}) {
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const groundAt = (px, pz) => { const g = owBaseGround(0, px, pz); return Number.isFinite(g) ? g : owH(px, pz); };
+  const walk = (px, pz) => owBaseWalk(0, Math.floor(px), Math.floor(pz));
+  const f = opts.face || [0, 1];
+  if (x < 1 || z < 1 || x > OW.W - 1 || z > OW.D - 1) return { ok: false, why: 'Hors de la carte.' };
+  if (kind === 'wallbuy' || kind === 'perk' || kind === 'breaker') {
+    const w = owEditorWallNear(x, z, opts.rad || 3);
+    if (!w) {
+      if (kind === 'wallbuy') return { ok: false, why: 'Il faut un mur (une arme se dessine sur un mur, avec du sol devant).' };
+      // atout, disjoncteur : sans mur, posé sur le sol (face selon la rotation choisie)
+      if (!walk(x, z) || !walk(x + f[0] * 1.2, z + f[1] * 1.2)) return { ok: false, why: 'Il faut du sol libre (ou un mur avec du sol devant).' };
+      return { ok: true, x: r3(x), z: r3(z), y: r3(groundAt(x + f[0] * 0.6, z + f[1] * 0.6)), nx: f[0], nz: f[1], face: f.slice(), free: true };
+    }
+    // la face visible du mur (toile, panneau…) plutôt que le bord de la case
+    const s = owEditorSurface(w.x, w.z, w.nx, w.nz, w.y);
+    const wx = s && w.nx ? s.x : w.x, wz = s && w.nz ? s.z : w.z;
+    // arme : à 2 cm de la face visible (8 cm du bord de la case sans face trouvée)
+    const off = kind === 'wallbuy' ? (s ? 0.02 : 0.08) : kind === 'perk' ? 0.05 : 0.02;
+    const px = wx + w.nx * off, pz = wz + w.nz * off;
+    if (kind === 'wallbuy') return { ok: true, x: r3(px), z: r3(pz), y: r3(w.y), nx: w.nx, nz: w.nz };
+    return { ok: true, x: r3(px), z: r3(pz), y: r3(w.y), nx: w.nx, nz: w.nz, face: [w.nx, w.nz] };
+  }
+  if (kind === 'vehicle') {
+    if (owWaterAt(x, z)) return { ok: false, why: 'Pas dans l’eau.' };
+    const ok = owTerrainWalk(x, z) || walk(x, z);
+    return { ok, x: r3(x), z: r3(z), y: r3(groundAt(x, z)), why: ok ? '' : 'Terrain trop pentu ou obstacle.' };
+  }
+  if (kind === 'box') {
+    // deux cases (1,6 m) en travers du sens de la boîte, et du sol devant pour le joueur
+    const rx = -f[1], rz = f[0];
+    const ok = walk(x + rx * 0.5, z + rz * 0.5) && walk(x - rx * 0.5, z - rz * 0.5) && walk(x + f[0] * 1.0, z + f[1] * 1.0);
+    return { ok, x: r3(x), z: r3(z), y: r3(groundAt(x, z)), face: f.slice(), why: ok ? '' : 'Il faut deux cases de sol libre, et du sol devant la boîte.' };
+  }
+  const ok = walk(x, z);
+  return { ok, x: r3(x), z: r3(z), y: r3(groundAt(x, z)), why: ok ? '' : 'Il faut du sol libre (ni mur, ni eau, ni pente trop forte).' };
+}
+/* Routes, pistes et piste d'envol (le plan les dessine en vecteurs, à leur largeur). */
+function owEditorRoads() { return KH.roads.map((r) => ({ id: r.id, kind: r.kind, w: r.w || 6, pts: ((r.line && r.line.pts) || r.pts).map((p) => [p[0], p[1]]) })); }
+/* Sol des lieux sous un point (sans les éléments). */
+function owEditorGround(x, z) { const g = owBaseGround(0, x, z); return Number.isFinite(g) ? g : owH(x, z); }
+/* Lieux de la base (noms sur le plan, lieu le plus proche d'un point). */
+function owEditorLocs() { return KH.locs.map((L) => ({ id: L.id, name: L.name, x: L.x, z: L.z, r: L.r })); }
+function owEditorNear(x, z) { const n = khNearestLoc(x, z); return { id: n.loc.id, name: n.loc.name, d: n.d }; }
+
+/* ---- Pendant un glisser : l'objet 3D de l'élément suit (sans refaire les éléments). e : l'élément
+   tel que la carte le porte (x, z, y, normale ou face, lacet). Les cases suivent au relâcher. */
+function owEditorPose(kind, i, e) {
+  const o = OW.elObjs && OW.elObjs[kind] && OW.elObjs[kind][i];
+  if (!o) return false;
+  const yOf = (px, pz) => (typeof e.y === 'number' && Number.isFinite(e.y) ? e.y : owEditorGround(px, pz));
+  switch (kind) {
+    case 'wallbuy': {
+      const y = yOf(e.x + e.nx * 0.6, e.z + e.nz * 0.6);
+      o.position.set(e.x + e.nx * 0.02, y + (e.h || 1.6), e.z + e.nz * 0.02);
+      o.lookAt(o.position.x + e.nx, o.position.y, o.position.z + e.nz);
+      break;
+    }
+    case 'perk': o.position.set(e.x, yOf(e.x, e.z), e.z); o.rotation.y = Math.atan2(e.face[0], e.face[1]); break;
+    case 'breaker': o.position.set(e.x, yOf(e.x, e.z), e.z); o.rotation.y = Math.atan2(e.nx, e.nz); break;
+    case 'box': o.position.set(e.x - e.face[0] * 0.05, yOf(e.x, e.z), e.z - e.face[1] * 0.05); o.rotation.y = Math.atan2(e.face[0], e.face[1]); break;
+    case 'fuel': { const at = o.userData.at || [0, 0, 0]; o.position.set(e.x - at[0], yOf(e.x, e.z) - at[1], e.z - at[2]); break; }
+    case 'vehicle': { const V = VEH.list[i]; if (!V) return false; V.x = e.x; V.z = e.z; V.yaw = e.yaw || 0; vehPose(V, 0, true); break; }
+    default: return false;
+  }
+  o.updateMatrixWorld(true);
+  return true;
+}
+/* Objet posé (un groupe par objet dans les Mod Tools) : suit pendant un glisser. */
+function owEditorPoseProp(i, pr) {
+  const P = OW.propsRoot;
+  if (!P) return false;
+  const g = P.children.find((c) => c.userData.prop === i);
+  if (!g) return false;
+  g.position.set(pr.x, owPropGround(pr) + (pr.y || 0), pr.z);
+  g.rotation.set(0, pr.r || 0, 0);
+  g.scale.setScalar(pr.s || 1);
+  g.updateMatrixWorld(true);
+  return true;
 }
 
 /* ------------------------------------------------------------ Tempêtes --
@@ -31569,7 +32214,7 @@ function owBuildQuest(root) {
       kind: 'quest', x: B.x, z: B.z - 0.9, y, r: 1.5,
       prompt() {
         if (KHQ.have.battery || KHQ.placed.battery) return null;
-        if (!G.power) return { text: 'Batterie de démarrage déchargée : rétablissez le courant (trois disjoncteurs)', disabled: true };
+        if (!G.power) return { text: KHF.breakers.length ? `Batterie de démarrage déchargée : rétablissez le courant (${khBreakersWord(KHF.breakers.length)})` : 'Batterie de démarrage déchargée : pas de courant sur cette carte', disabled: true };
         if (KHQ.charge < 1) return { text: `Batterie en charge… ${Math.round(KHQ.charge * 100)} %`, disabled: true, sub: 'Pièce ② de l’avion' };
         return { text: 'Appuyez sur F pour prendre la batterie de démarrage', sub: 'Pièce ② de l’avion' };
       },
@@ -32182,6 +32827,20 @@ const KH_TIPS = {
   power: 'Trois disjoncteurs à la centrale du Nil\u00a0: le courant alimente les atouts, ouvre le sanctuaire et charge la batterie de l’avion.',
   boxBase: () => `La boîte mystère donne une arme au hasard pour ${RULES.boxCost} points.`,
 };
+const KH_NUM = ['aucun', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze'];
+/* « trois disjoncteurs » : le nombre en lettres. */
+const khBreakersWord = (n) => `${KH_NUM[n] || n} disjoncteur${n > 1 ? 's' : ''}`;
+/* Consigne du courant : celle de Khamsin tant que ses disjoncteurs n'ont pas bougé ; sinon leur
+   nombre et les lieux où ils sont (une carte des Mod Tools). */
+function khPowerTip(map) {
+  const B = map.breakers || [];
+  if (map.rules && map.rules.powerOn) return 'Courant rétabli dès le départ\u00a0: les atouts, le sanctuaire et la batterie de l’avion sont alimentés.';
+  if (!B.length) return 'Pas de disjoncteur sur cette carte\u00a0: atouts électriques, sanctuaire et batterie de l’avion restent sans courant.';
+  if (JSON.stringify(B) === JSON.stringify(KHAMSIN.breakers)) return KH_TIPS.power;
+  const where = [...new Set(B.map((b) => khNearestLoc(b.x, b.z).loc.name))].join(', ');
+  const w = khBreakersWord(B.length);
+  return `${w[0].toUpperCase()}${w.slice(1)} (${where})\u00a0: le courant alimente les atouts, ouvre le sanctuaire et charge la batterie de l’avion.`;
+}
 function khMenuTips(map) {
   const kh = !!(map && map.open);
   for (const id of ['tip-veh', 'tip-storm']) $(id).hidden = !kh;
@@ -32190,7 +32849,7 @@ function khMenuTips(map) {
   $('tip-box').hidden = false;
   $('tip-box').textContent = KH_TIPS.box();
   $('tip-power').hidden = false;
-  $('tip-power').textContent = KH_TIPS.power;
+  $('tip-power').textContent = khPowerTip(map);
 }
 
 /* ====================================================== fin du monde ouvert == */
@@ -32210,24 +32869,26 @@ async function fetchJson(url, ms = 5000) {
   } finally { clearTimeout(timer); }
 }
 function registerMap(raw, source) {
-  // carte ouverte (Khamsin) : pas de grille à normaliser ; vignette dessinée d'après son plan
-  const m = raw.open ? raw : normalizeMap(raw);
+  // carte ouverte (Khamsin) : pas de grille ; ses éléments viennent du fichier (Mod Tools) ou de la carte intégrée
+  const m = raw.open ? openNormalize(raw) : normalizeMap(raw);
   if (m === KHAMSIN) khThumb();
+  else if (m.open && !m.thumb) m.thumb = khThumb();
   m.source = source;
   MAPS.byId[m.id] = m;
   return m;
 }
 async function loadMapCatalog() {
-  let order = [];
+  let order = [], pubEditor = 0;
   for (const raw of BUILTIN_MAPS) { try { order.push(registerMap(raw, 'builtin').id); } catch (e) { console.error(e); } }
   if (location.protocol !== 'file:') {
     try {
       const index = await fetchJson('maps/index.json', 4000);
       if (index && Array.isArray(index.maps)) {
+        pubEditor = Number(index.editor) || 0;
         // files : cartes qui ont un fichier dans maps/ (les autres sont intégrées au jeu)
         const withFile = Array.isArray(index.files) ? index.files : index.maps;
         for (const id of index.maps) {
-          if (typeof id !== 'string' || !/^[a-z0-9_-]{1,40}$/.test(id) || !withFile.includes(id) || (MAPS.byId[id] && MAPS.byId[id].open)) continue;
+          if (typeof id !== 'string' || !/^[a-z0-9_-]{1,40}$/.test(id) || !withFile.includes(id)) continue;
           try { registerMap(await fetchJson(`maps/${id}.json`), 'package'); } catch (e) { console.warn(`Carte ${id} illisible : ${e.message}`); }
         }
         const listed = index.maps.filter((id) => MAPS.byId[id]);
@@ -32235,8 +32896,9 @@ async function loadMapCatalog() {
       }
     } catch (e) { /* pas de cartes publiées avec cette version */ }
   }
-  // Khamsin reste la deuxième carte, même quand la liste publiée ne la nomme pas
-  if (!order.includes(KHAMSIN.id)) order.splice(Math.min(1, order.length), 0, KHAMSIN.id);
+  // Khamsin reste la deuxième carte quand la liste publiée ne la nomme pas (liste d'un launcher
+  // d'avant Khamsin) ; une liste des Mod Tools 1.3 (editor 3) est suivie : l'auteur a pu la retirer
+  if (!order.includes(KHAMSIN.id) && pubEditor < 3) order.splice(Math.min(1, order.length), 0, KHAMSIN.id);
   // une carte qui ne peut pas se jouer n'est pas proposée (une carte ouverte n'a pas de grille à vérifier)
   MAPS.list = [...new Set(order)].filter((id) => { try { const m = MAPS.byId[id]; return m.open || !validateMap(m).errors.length; } catch (e) { return false; } });
   if (!MAPS.list.length) MAPS.list = [BUNKER7.id];
@@ -33539,7 +34201,18 @@ window.ZS = {
   version: GAME_VERSION, editorApi: EDITOR_API, ready: false,
   get scene() { return scene; }, get camera() { return camera; }, get renderer() { return renderer; },
   TEXLIB, TEX_CATS, MODELS, MODEL_CATS, WEAPONS, PERKS, ZOMBIE_TYPES, TILES, DOOR_TYPES, DOOR_VERBS, LIGHT_FIXTURES, PAL_CHARS,
-  DEFAULT_TEXTURES, DEFAULT_AMBIANCE, DEFAULT_RULES, MAP_MIN, MAP_MAX, BUNKER7, get MAPS() { return editorMaps(); }, CUR, World, Features, G, LAYOUT_REF: () => LAYOUT,
+  DEFAULT_TEXTURES, DEFAULT_AMBIANCE, DEFAULT_RULES, MAP_MIN, MAP_MAX, BUNKER7, get MAPS() { return editorMaps(); }, get MAPS_ALL() { return MAPS; }, CUR,
+  /* cartes ouvertes (interface 3) : format, vérification, monde pour l'éditeur */
+  openNormalize, openSerialize, openValidate, OPEN_LIMITS, OPEN_KINDS, OPEN_RULES, VEH_TYPES, ELIXIRS,
+  ow: {
+    load: owEditorLoad, rebuild: owEditorRebuild, frame: owEditorFrame, ray: owEditorRay, plan: owEditorPlan, tile: owEditorTile,
+    place: owEditorPlace, ground: owEditorGround, locs: owEditorLocs, near: owEditorNear, validate: (m) => openValidate(m, true),
+    get on() { return OW.on; }, get W() { return OW.W; }, get D() { return OW.D; }, get root() { return OW.elemRoot; }, get props() { return OW.propsRoot; },
+    get vehicles() { return VEH.list; }, get box() { return Features.box; },
+    pose: owEditorPose, poseProp: owEditorPoseProp, surface: owEditorSurface, get objs() { return OW.elObjs; }, roads: owEditorRoads,
+    height: (x, z) => owGroundAt(0, x, z),   // sol avec les éléments (dessus d'un objet plein)
+    get far() { return camera.far; }, get spawnY() { return OW.on && CUR.map ? owEditorGround(CUR.map.spawn.pos[0], CUR.map.spawn.pos[1]) : 0; },
+  }, World, Features, G, LAYOUT_REF: () => LAYOUT,
   normalizeMap, serializeMap, validateMap, analyzeMap, blankMap, buildWorld, disposeWorld, textureThumb, modelParts, PropBatch,
   propMatrix, levelMaterial, registerCustomTextures, colorHex, parseColor, mtx, unitGeo, famMaterial, share, linearizeTree,
   setViewCamera(cam) { viewCamera = cam; },
@@ -33593,7 +34266,7 @@ window.ZS = {
   playTest(map, opts = {}) {
     G.editorSession = true;
     viewCamera = null;
-    buildWorld(map);
+    if (map.open) owLoad(map); else buildWorld(map);
     G.mapId = map.id;
     resetFeatures();
     resetPlayer();

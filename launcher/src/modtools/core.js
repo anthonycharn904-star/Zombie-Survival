@@ -169,6 +169,22 @@
   });
   MT.isDirty = () => !!S.map && S.rev !== S.savedRev;
   MT.map = () => S.map;
+  /* Carte ouverte (monde ouvert du jeu 2.0.0, Khamsin) : relief, routes et lieux viennent du jeu ;
+     la carte porte les éléments, les objets et les règles (fichiers ow-*.js). */
+  MT.isOpen = (m = S.map) => !!(m && m.open);
+  /* Toutes les cartes du jeu installé (cartes ouvertes comprises, interface 3) */
+  MT.gameMaps = () => ZS.MAPS_ALL || ZS.MAPS;
+  /* Lecture d'une carte (texte ou objet) : grille ou carte ouverte. */
+  MT.parseMap = (src) => {
+    const raw = typeof src === 'string' ? JSON.parse(src) : src;
+    if (raw && raw.open) {
+      if (typeof ZS.openNormalize !== 'function') throw new Error('carte ouverte : il faut le jeu 2.0.0 ou plus récent');
+      return ZS.openNormalize(raw);
+    }
+    return ZS.normalizeMap(raw);
+  };
+  /* Copie indépendante d'une carte du jeu, prête à modifier. */
+  MT.copyOfMap = (m) => (m.open ? ZS.openNormalize(deep(ZS.openSerialize(m))) : ZS.normalizeMap(deep(ZS.serializeMap(m))));
 
   /* --------------------------------------------------------- historique --
      begin() garde une copie de la carte avant un geste ; touch() signale une
@@ -289,7 +305,7 @@
 
   /* Analyse (pièces, fenêtres, portes) de la carte en cours, recalculée au besoin. */
   MT.analysis = () => {
-    if (!S.map) return null;
+    if (!S.map || S.map.open) return null;
     if (S.analysisRev !== S.rev) { S.analysis = ZS.analyzeMap(S.map); S.analysisRev = S.rev; }
     return S.analysis;
   };
@@ -638,6 +654,7 @@
 
   /* Éléments présents sur une case (sélection dans le plan). */
   MT.elementsAt = (x, z) => {
+    if (S.map && S.map.open) return [];
     const m = S.map, out = [], H = MT.here;
     const same = (c) => c[0] === x && c[1] === z;
     m.lights.forEach((l, i) => { if (H(l) && Math.floor(l.pos[0]) === x && Math.floor(l.pos[2]) === z) out.push({ kind: 'light', i }); });
@@ -657,10 +674,13 @@
 
   /* ------------------------------------------------------- sélection --- */
   MT.select = (sel) => { S.sel = sel; MT.emit('selection'); };
+  const owDo = (fn, ...a) => (S.map && S.map.open && MT.ow && MT.ow[fn] ? { r: MT.ow[fn](...a) } : null);
   MT.selKind = () => (S.sel ? S.sel.kind : null);
   MT.selectedProps = () => (S.sel && S.sel.kind === 'prop' ? S.sel.list : []);
   /* Après une modification : retire de la sélection ce qui n'existe plus. */
   MT.fixSelection = () => {
+    const o = owDo('fixSelection');
+    if (o) return o.r;
     const s = S.sel, m = S.map;
     if (!s || !m) return;
     const arr = { light: m.lights, wallbuy: m.wallbuys, perk: m.perks, box: m.boxes, sign: m.signs, riser: m.risers, door: m.doors, zone: m.zones, stair: m.stairs || [] }[s.kind];
@@ -676,6 +696,8 @@
   MT.changeKindOf = (sel) => KIND_OF[sel && sel.kind] || 'all';
 
   MT.deleteSelection = () => {
+    const o = owDo('deleteSelection');
+    if (o) return o.r;
     const s = S.sel;
     if (!s || s.kind === 'spawn' || s.kind === 'cell') return false;
     const ok = MT.edit('Supprimer', (m) => {
@@ -712,6 +734,8 @@
     return ok;
   };
   MT.duplicateSelection = () => {
+    const o = owDo('duplicateSelection');
+    if (o) return o.r;
     const s = S.sel;
     if (!s) return false;
     if (s.kind === 'prop') {
@@ -1094,6 +1118,7 @@
   };
   /* Version enregistrable : images utilisées embarquées, palette nettoyée, date. */
   MT.exportMapObject = (m = S.map) => {
+    if (m.open) return MT.ow.exportObject(m);
     compactPalette(m);
     const custom = {};
     for (const id of MT.usedTextures(m)) {
@@ -1143,7 +1168,7 @@
   setInterval(() => { MT.writeRecovery(); }, 40000);
 
   MT.uniqueId = (base, extra = []) => {
-    const taken = new Set([...S.known.map((k) => k.id), ...Object.keys(ZS.MAPS.byId), ...extra]);
+    const taken = new Set([...S.known.map((k) => k.id), ...Object.keys(MT.gameMaps().byId), ...extra]);
     let id = slug(base) || 'carte';
     if (!taken.has(id)) return id;
     for (let i = 2; i < 999; i++) { const c = `${id.slice(0, 36)}-${i}`; if (!taken.has(c)) return c; }
@@ -1170,16 +1195,19 @@
     try { S.known = (await MT.api.listMaps()) || []; } catch (e) { S.known = []; MT.toast(`Liste des cartes illisible : ${e.message}`, 'error'); }
     return S.known;
   };
-  MT.readWorkspaceMap = async (id) => ZS.normalizeMap(JSON.parse(await MT.api.readMap(id)));
+  MT.readWorkspaceMap = async (id) => MT.parseMap(await MT.api.readMap(id));
   MT.loadPublishSet = async () => {
     let v = null;
     try { v = await MT.api.getPublishSet(); } catch (e) { v = null; }
-    S.publish = v && Array.isArray(v.maps) ? { maps: v.maps.filter((id) => typeof id === 'string' && /^[a-z0-9_-]{1,40}$/.test(id)) } : { maps: ZS.MAPS.list.slice(), auto: true };
+    S.publish = v && Array.isArray(v.maps) ? { maps: v.maps.filter((id) => typeof id === 'string' && /^[a-z0-9_-]{1,40}$/.test(id)) } : { maps: MT.gameMaps().list.slice(), auto: true };
+    // liste écrite avant Khamsin (launcher 1.2) : le jeu 2.0.0 la met en deuxième place, la liste aussi
+    const all = MT.gameMaps();
+    if (v && !(v.editor >= 3) && all.byId.khamsin && !S.publish.maps.includes('khamsin')) S.publish.maps.splice(Math.min(1, S.publish.maps.length), 0, 'khamsin');
     return S.publish;
   };
   MT.savePublishSet = async (maps) => {
     S.publish = { maps: [...new Set(maps)] };
-    await MT.api.setPublishSet({ maps: S.publish.maps, updated: new Date().toISOString() });
+    await MT.api.setPublishSet({ maps: S.publish.maps, updated: new Date().toISOString(), editor: 3 });
     MT.emit('publish');
   };
 })();

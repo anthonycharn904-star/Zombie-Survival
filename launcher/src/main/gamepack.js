@@ -78,8 +78,9 @@ function collectPackage({ htmlPath, folderPath, version, libsDir, notes = [], ma
       files.push({ name: `maps/${f.id}.json`, data: Buffer.isBuffer(f.data) ? f.data : Buffer.from(String(f.data), 'utf8') });
       withFile.push(f.id);
     }
-    // maps : ordre du menu ; files : cartes fournies en fichier (les autres sont intégrées au jeu)
-    files.push({ name: 'maps/index.json', data: Buffer.from(JSON.stringify({ maps: ids, files: withFile }, null, 2), 'utf8') });
+    // maps : ordre du menu ; files : cartes fournies en fichier (les autres sont intégrées au jeu) ;
+    // editor 3 : la liste vient d'un launcher qui connaît Khamsin (le jeu la suit telle quelle)
+    files.push({ name: 'maps/index.json', data: Buffer.from(JSON.stringify({ maps: ids, files: withFile, editor: 3 }, null, 2), 'utf8') });
   }
   files.push({
     name: 'game.json',

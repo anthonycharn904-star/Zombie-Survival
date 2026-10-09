@@ -7,6 +7,7 @@
    Usage : node scripts/prepare-game.js [chemin/vers/zombie-survival.html] */
 const path = require('path');
 const gamepack = require('../src/main/gamepack');
+const { BUILTIN_MAPS } = require('../src/main/workspace');
 
 const ROOT = path.join(__dirname, '..');
 const source = path.resolve(process.argv[2] || process.env.ZS_GAME_HTML || path.join(ROOT, '..', 'game', 'zombie-survival.html'));
@@ -18,8 +19,8 @@ try {
     htmlPath: source,
     libsDir,
     notes: ['Version livrée avec le launcher'],
-    // liste des cartes du menu (Bunker 7 est intégré au fichier du jeu)
-    maps: { index: ['bunker7'], files: [] },
+    // liste des cartes du menu (Bunker 7 et Khamsin sont intégrées au fichier du jeu)
+    maps: { index: BUILTIN_MAPS.slice(), files: [] },
   });
   gamepack.writeFolder(files, outDir);
   console.log(`Jeu ${version} préparé dans ${path.relative(process.cwd(), outDir) || outDir} (${files.length} fichiers, source : ${source})`);
