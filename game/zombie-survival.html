@@ -208,6 +208,11 @@ body {
 /* Khamsin (jeu 2.0.0) : mini-carte en haut à droite (nord en haut), boussole en haut au milieu */
 .ow-minimap { position: absolute; right: calc(22px + env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); width: clamp(132px, 15vw, 220px); height: auto; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55)); }
 .ow-compass { position: absolute; left: 50%; top: calc(8px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); width: min(520px, calc(100vw - 2 * clamp(132px, 15vw, 220px) - 80px)); height: auto; }
+.ow-storm { position: absolute; left: 50%; top: calc(58px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); padding: 3px 14px; font-weight: 700; font-size: 17px; letter-spacing: 0.16em; text-transform: uppercase; color: #f5e6cf; background: rgba(76, 31, 16, 0.72); box-shadow: 0 0 0 1px rgba(233, 136, 77, 0.6); text-shadow: 0 1px 0 #000; white-space: nowrap; }
+.ow-storm.alert { color: #f5c88d; }
+.ow-storm.tempete { color: #e9884d; }
+.ow-storm.khamsin { color: #ff6a4d; background: rgba(40, 10, 4, 0.82); animation: owstorm 1.2s steps(1) infinite; }
+@keyframes owstorm { 50% { box-shadow: 0 0 0 2px rgba(226, 64, 42, 0.9); } }
 .ow-drive { position: absolute; right: calc(28px + env(safe-area-inset-right, 0px)); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
 .ow-drive .nm { font-weight: 600; font-size: 16px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper); }
 .ow-drive .row { display: flex; align-items: baseline; gap: 6px; }
@@ -6659,6 +6664,8 @@ function buildMaterials() {
   MAT.powerupDark = std({ color: 0x14361a, emissive: 0x0a3010, emissiveIntensity: 0.6, roughness: 0.6 });
   MAT.gib = std({ color: 0x5a1612, roughness: 0.55 });
   MAT.dBone = std({ color: 0xd8ccb0, roughness: 0.6 });                  // éclats d'os (Molosse qui éclate)
+  MAT.khEyes = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });   // Khamsin : yeux turquoise (teinte de l'instance)
+  MAT.khBone = std({ vertexColors: true, roughness: 0.82, emissive: 0x16110b, emissiveIntensity: 1 });   // Khamsin : os secs du Rôdeur
   for (const k in MAT) linearize(share(MAT[k]));
   for (const k in GEO) share(GEO[k]);
 }
@@ -14772,9 +14779,9 @@ function makeSpecimen(model) {
   const R = {};
   const root = zombieInstances(R, 1, [model]);
   for (const m of R.parts) m.castShadow = true;
-  const type = ZOMBIE_TYPES.find((t) => t.model === model) || BASE_TYPE;
+  const type = SPECIMEN_TYPES.find((t) => t.model === model && !t.dog) || BASE_TYPE;   // Desséchés de Khamsin compris
   const helmet = !!type.helmet;
-  const look = () => ({ ...randomZombieLook(), helmet });
+  const look = () => khSpecLook({ ...randomZombieLook(), helmet }, type);
   const z = {
     id: helmet ? 3 : 5, slot: 0, R, model, type, rig: makeRig(), look: look(), helmetOn: helmet, alive: true, state: 'idle', t: 0, spec: true,
     pos: new THREE.Vector3(), yaw: 0, gy: 0, moving: 0, speedType: 'walk', phase: 0, flinch: 0, gib: 0, headless: false,
@@ -16531,7 +16538,7 @@ function updatePlayer(dt) {
   const mobility = slot ? WEAPONS[slot.id].mobility : 1;
   let f = (key('KeyW') ? 1 : 0) - (key('KeyS') ? 1 : 0);
   let s = (key('KeyD') ? 1 : 0) - (key('KeyA') ? 1 : 0);
-  if (p.down) { f = 0; s = 0; }
+  if (p.down || p.grabT > 0) { f = 0; s = 0; }         // Khamsin : agrippé par un Rôdeur
   const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
   let wx = fx * f + rx * s, wz = fz * f + rz * s;
   const wl = Math.hypot(wx, wz);
@@ -20440,6 +20447,7 @@ function knifeLungeStep(dt) {
 }
 /* La lame touche : dégâts, points et décompte du jeu. */
 function knifeOnHit(z) {
+  if (z.rodeur) khKnifeRelease(z);                    // le couteau fait lâcher prise au Rôdeur
   const dx = z.pos.x - player.pos.x, dz = z.pos.z - player.pos.z, d = Math.hypot(dx, dz) || 1;
   const killed = damageZombie(z, KNIFE.damage, { kind: 'knife', dx: dx / d, dz: dz / d, force: 1.2 });
   HUD.hitmarker(killed);
@@ -20711,6 +20719,7 @@ function turnTo(a, target, step) {
   return a + clamp(d, -step, step);
 }
 function rollSpeedType(round) {
+  if (OW.on) return khSpeedType(round);               // ils marchent, puis courent dès la manche 6
   const [w, j] = speedMixForRound(round);
   const x = Math.random();
   return x < w ? 'walk' : x < w + j ? 'jog' : 'run';
@@ -20830,6 +20839,7 @@ function spawnZombie(sp, hp) {
   const type = zoneZombieType(sp.zone);
   const look = randomZombieLook();
   look.helmet = !!type.helmet;
+  if (OW.on) khLook(look, type);                       // peau tannée, yeux turquoise
   paintZombieSlot(slot, look, ZR, type.model);
   hp *= type.mult.hp;
   const z = {
@@ -20874,6 +20884,7 @@ function spawnZombie(sp, hp) {
 }
 /* Type de zombie d'une pièce (zones[].zombie de la carte) ; le Fantassin par défaut. */
 function zoneZombieType(zi) {
+  if (OW.on) return khZombieType(zi);                // Khamsin : Desséchés selon le lieu le plus proche
   const zone = zi >= 0 ? LAYOUT.zones[zi] : null;
   return (zone && zone.zombie && ZOMBIE_TYPE_BY_ID[zone.zombie]) || BASE_TYPE;
 }
@@ -20939,7 +20950,7 @@ function damageZombie(z, amount, info) {
   return false;
 }
 function killZombie(z, info) {
-  if (z.dog) { killDog(z, info); return; }
+  if (z.dog) { if (z.rodeur) khKillRodeur(z, info); else killDog(z, info); return; }
   const st = z.state;
   z.alive = false;
   z.state = 'dead';
@@ -21347,7 +21358,7 @@ function updateDogEyes() {
   let n = 0;
   const eyes = dogGeometries().eyePos, arr = FX.dogEyePos;
   for (const z of Zombies.list) {
-    if (!z.dog || !z.alive || z.removed) continue;
+    if (!z.dog || z.rodeur || !z.alive || z.removed) continue;
     for (const e of eyes) {
       _dE.copy(e).applyMatrix4(z.rig.head.matrixWorld);
       arr[n * 3] = _dE.x; arr[n * 3 + 1] = _dE.y; arr[n * 3 + 2] = _dE.z;
@@ -21360,6 +21371,7 @@ function updateDogEyes() {
 
 /* -------------------------------------------------------------- Conduite --- */
 function updateDog(z, dt) {
+  if (z.rodeur) { khRodeurUpdate(z, dt); return; }   // Rôdeur des sables : son propre comportement
   z.t += dt; z.st += dt;
   if (!z.alive) { removeZombie(z); return; }
   if (z.nukeT > 0) {
@@ -21572,7 +21584,7 @@ const DOG_HIT = [
 function rayHitDog(z, ox, oy, oz, dx, dy, dz, extra) {
   _hitHead = false; _hitLeg = false; _hitArm = 0;
   let best = -1, head = false;
-  for (const [part, ba, a, bb, b, r] of DOG_HIT) {
+  for (const [part, ba, a, bb, b, r] of (z.rodeur ? RODEUR_HIT : DOG_HIT)) {
     _dA.fromArray(a).applyMatrix4(z.rig[ba].matrixWorld);
     _dB.fromArray(b).applyMatrix4(z.rig[bb].matrixWorld);
     const t = raySegment(ox, oy, oz, dx, dy, dz, _dA, _dB, r + extra);
@@ -24835,13 +24847,14 @@ function startRound(n) {
   G.dogRound = isDogRound(n);
   G.total = G.dogRound ? dogsForRound(G.dogs.n) : zombiesForRound(n);
   G.spawned = 0; G.killed = 0;
-  G.zombieHp = G.dogRound ? dogHpForRound(n) : zombieHpForRound(n);
+  G.zombieHp = G.dogRound ? dogHpForRound(n) : OW.on ? khHp(n) : zombieHpForRound(n);   // Khamsin : 150, +100 par manche
   G.spawnDelay = Math.max(0.35, 2 * Math.pow(0.95, n - 1));
   G.spawnT = n === 1 ? 1.2 : 2.5;
   G.repairPts = 0;
   Powerups.drops = 0;
   if (n > 1) G.grenades = Math.min(RULES.maxGrenades, G.grenades + 2);
   if (G.dogRound) dogRoundStart(); else Sound.roundStart();
+  if (OW.on) khOnRound(n);
   HUD.round(true);
   HUD.weapon();
 }
@@ -27069,8 +27082,7 @@ function owApplyGrade(dt) {
   u.uSunDir.value.copy(g.dir); u.uSunCol.value.copy(g.sun); u.uSunK.value = g.sunK; u.uStars.value = g.stars;
   // brouillard du calme (planche, page 8 : densité √3 ÷ visibilité) ; la tempête le prend ensuite en main
   const fogCol = OWG.tmp.copy(g.haze);
-  if (OW.stormFog) OW.stormFog(fogCol, u);
-  else { scene.fog.density = 0.00058; u.uHazeK.value = 0.5; }
+  khStormGrade(g, u, fogCol);
   // three r128 mélange le brouillard après l'étalonnage et l'encodage : sa couleur est une couleur d'écran
   scene.fog.color.copy(fogCol).convertLinearToSRGB();
   u.uHaze.value.copy(fogCol);
@@ -27255,6 +27267,10 @@ function owUnload() {
   OW.on = false; OW.map = null;
   camera.near = 0.05; camera.far = 220; camera.updateProjectionMatrix();
   renderer.shadowMap.enabled = false;
+  if (KHS.snd) KHS.snd.g.gain.value = 0;
+  for (const m of KHS.walls ? KHS.walls.meshes : []) m.visible = false;
+  if (KHS.streaks) KHS.streaks.mesh.visible = false;
+  if (KHE.pts) KHE.pts.visible = false;
   if (MOON) { MOON.scale.set(30, 30, 1); MOON.material.opacity = 0.8; }
   OW.lastLoc = null;
   owHud(false);
@@ -27281,7 +27297,10 @@ function owUpdateView(dt) {
 function owUpdate(dt) {
   owUpdateView(dt);
   if (OW.sandFX) OW.sandFX.update(dt);
+  khStormUpdate(dt);
   owVehUpdate(dt);
+  khRodeurs(dt);
+  khEyes();
   // nom du lieu en entrant
   const near = khNearestLoc(player.pos.x, player.pos.z);
   const inside = near.d < 0 ? near.loc : null;
@@ -27304,9 +27323,10 @@ function owHud(on) {
     OWH.drive = el('div', 'ow-drive');
     OWH.drive.innerHTML = '<span class="nm"></span><span class="row"><span class="spd">0</span><span class="u">km/h</span></span><span class="fuel"><i></i></span>';
     OWH.dName = OWH.drive.querySelector('.nm'); OWH.dSpd = OWH.drive.querySelector('.spd'); OWH.dFuel = OWH.drive.querySelector('.fuel i');
-    hud.append(OWH.map, OWH.comp, OWH.drive);
+    OWH.storm = el('div', 'ow-storm'); OWH.storm.hidden = true;
+    hud.append(OWH.map, OWH.comp, OWH.drive, OWH.storm);
   }
-  if (OWH.map) { OWH.map.hidden = !on; OWH.comp.hidden = !on; OWH.drive.hidden = true; }
+  if (OWH.map) { OWH.map.hidden = !on; OWH.comp.hidden = !on; OWH.drive.hidden = true; OWH.storm.hidden = true; }
   if (on && !OWH.bg && OW.H) OWH.bg = khPlanCanvas(1000, 750, { relief: true });
 }
 function owUpdateHud(dt) {
@@ -27350,8 +27370,9 @@ function owUpdateHud(dt) {
     }
     g.fillStyle = '#e9884d'; g.fillRect(W / 2 - 1, 6, 2, 8);
   }
-  // mini-carte
-  {
+  // mini-carte (coupée en Tempête : restent la boussole et le faisceau)
+  OWH.map.hidden = OW.mapMode === 'off';
+  if (OW.mapMode !== 'off') {
     const c = OWH.map, g = c.getContext('2d'), S = c.width, R = 300, bg = OWH.bg;
     g.clearRect(0, 0, S, S);
     g.save();
@@ -27392,6 +27413,12 @@ function owUpdateHud(dt) {
     g.fillStyle = '#f5c88d'; g.strokeStyle = '#120e0b'; g.lineWidth = 2;
     g.beginPath(); g.moveTo(0, -9); g.lineTo(6.5, 7); g.lineTo(0, 3.5); g.lineTo(-6.5, 7); g.closePath(); g.stroke(); g.fill();
     g.restore();
+    if (OW.mapMode === 'scramble') {
+      // vent de sable : au-delà de 200 m, le signal se perd
+      g.save(); g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 3, 0, TAU); g.arc(S / 2, S / 2, (S / 2) * (200 / R), 0, TAU, true); g.clip();
+      for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(${150 + Math.random() * 90 | 0},${110 + Math.random() * 70 | 0},${70 + Math.random() * 40 | 0},0.9)`; g.fillRect(Math.random() * S, Math.random() * S, 3, 3); }
+      g.restore();
+    }
     g.strokeStyle = 'rgba(245,200,141,0.7)'; g.lineWidth = 2; g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 3, 0, TAU); g.stroke();
     g.fillStyle = '#e9884d'; g.font = `700 14px ${FONT_HUD}`; g.fillText('N', S / 2, 12);
   }
@@ -27436,6 +27463,8 @@ function owDecalSlope(x, y, z) {
 
 /* Nouvelle partie, retour au menu : véhicules à leur place, disjoncteurs relevés. */
 function owResetWorld() {
+  khStormReset();
+  khEnemiesReset();
   owResetVehicles();
   owResetFeatures();
 }
@@ -29113,6 +29142,942 @@ function owBreakerLook(B) {
   B.lever.rotation.x = B.done || G.power ? -1.1 : 0;
 }
 
+/* ------------------------------------------------------------ Tempêtes --
+   Planche « Le cycle du Khamsin » (page 3) : toutes les 4 manches, la tempête traverse la carte du
+   sud-ouest au nord-est, le long du couloir. Alerte 60 s (vent de sable, sirène, compte à rebours,
+   mini-carte brouillée au-delà de 200 m, pistes ensablées), Tempête 90 s (mini-carte coupée,
+   véhicules à 50 km/h, phares, Rôdeurs), Khamsin 40 s (dehors : abrasion continue ; véhicules à
+   30 km/h ; le Gardien traverse), puis 20 s de retour au calme. Visibilité de la planche (page 8) :
+   brouillard exponentiel au carré, densité √3 ÷ visibilité, interpolée en échelle logarithmique ;
+   distance d'affichage réduite d'autant (la poussière paie la carte). Le faisceau et les yeux
+   ignorent le brouillard. Hors du couloir, on voit le mur de poussière et on sent le vent. */
+const KHS_LV = [
+  // visibilité (m), densité, affichage max (m), couleur du brouillard (planche)
+  { vis: 3000, dens: 0.00058, far: 4300, col: 0xe6ad74 },
+  { vis: 800, dens: 0.0022, far: 1000, col: 0xd79a5e },
+  { vis: 150, dens: 0.0115, far: 220, col: 0xa65b2d },
+  { vis: 30, dens: 0.058, far: 60, col: 0x4c1f10 },
+];
+const KHS_PHASES = [['alert', 60, 'Vent de sable'], ['tempete', 90, 'Tempête'], ['khamsin', 40, 'Khamsin'], ['settle', 20, 'Le vent tombe']];
+const KHS = { on: false, i: -1, t: 0, front: -3000, lv: 0, abr: 0, every: 4, walls: null, streaks: null, snd: null, calmT: 0, hurtT: 0 };
+const _khc = new THREE.Color(), _khc2 = new THREE.Color();
+/* Axe du couloir (vers le nord-est) : position d'un point le long du couloir. */
+const khAlong = (x, z) => KH.corridor.ax * x + KH.corridor.az * z;
+
+/* Manche : une tempête au début des manches 4, 8, 12… (pas pendant le calme qui suit le Gardien). */
+function khOnRound(n) {
+  if (!OW.on || n < KHS.every || n % KHS.every !== 0 || KHS.on || KHS.calmT > 0) return;
+  khStormStart();
+}
+function khStormStart() {
+  KHS.on = true; KHS.i = 0; KHS.t = 0; KHS.front = -2400;
+  HUD.banner('Alerte Khamsin', 'Rejoignez un refuge ou un véhicule fermé · 60 s', 'warn');
+  khSiren();
+}
+function khStormReset() {
+  KHS.on = false; KHS.i = -1; KHS.t = 0; KHS.lv = 0; KHS.abr = 0; KHS.calmT = 0;
+  OW.stormVmax = 0; OW.stormDark = 0; OW.mapMode = 'full';
+  if (KHS.snd) KHS.snd.g.gain.value = 0;
+}
+/* Niveau de la tempête de la phase en cours (0 calme … 3 Khamsin) et du front. */
+function khPhaseLevel() {
+  if (!KHS.on) return 0;
+  const [id, dur] = KHS_PHASES[KHS.i], k = clamp(KHS.t / dur, 0, 1);
+  if (id === 'alert') return lerp(0.4, 1, smooth(k));
+  if (id === 'tempete') return lerp(1, 2, smooth(clamp(k * 1.6, 0, 1)));
+  if (id === 'khamsin') return lerp(2, 3, smooth(clamp(k * 3, 0, 1)));
+  return lerp(2.2, 0, smooth(k));
+}
+/* Niveau ressenti en (x, z) : dans le couloir, derrière le front ; dehors, un vent de sable au plus. */
+function khStormLevelAt(x, z) {
+  if (!KHS.on) return 0;
+  const L = khPhaseLevel(), inC = khCorridor(x, z);
+  const behind = owSmoothstep(KHS.front + 60, KHS.front - 380, khAlong(x, z));
+  return Math.max(L * inC * behind, Math.min(L, 1) * 0.55 * behind);
+}
+
+/* Chaque image (owUpdate) : phases, front, effets sur le joueur. */
+function khStormUpdate(dt) {
+  if (KHS.calmT > 0) KHS.calmT -= dt;
+  if (KHS.on) {
+    KHS.t += dt;
+    const [id, dur] = KHS_PHASES[KHS.i];
+    // le front avance du sud-ouest au nord-est pendant l'alerte et la tempête (≈ 34 m/s)
+    if (id === 'alert' || id === 'tempete') KHS.front += dt * 5600 / 150;
+    if (KHS.t >= dur) {
+      KHS.i++; KHS.t = 0;
+      if (KHS.i >= KHS_PHASES.length) { khStormReset(); HUD.banner('Le Khamsin est passé', 'Le calme revient', 'power'); }
+      else {
+        const nid = KHS_PHASES[KHS.i][0];
+        if (nid === 'tempete') { HUD.banner('Tempête', 'Visibilité 150 m · mini-carte coupée', 'warn'); KHS.front = Math.max(KHS.front, 0); }
+        if (nid === 'khamsin') { HUD.banner('Khamsin', 'Dehors, le sable écorche : abritez-vous', 'warn'); KHS.front = 9999; }
+      }
+    }
+  }
+  const p = player, lv = khStormLevelAt(p.pos.x, p.pos.z);
+  KHS.lv = damp(KHS.lv, lv, 2.5, dt);
+  const phase = KHS.on ? KHS_PHASES[KHS.i][0] : 'calm';
+  // mini-carte, véhicules, phares
+  OW.mapMode = KHS.lv > 1.4 ? 'off' : KHS.lv > 0.6 ? 'scramble' : 'full';
+  OW.stormVmax = KHS.lv > 2.4 ? 30 : KHS.lv > 1.4 ? 50 : 0;
+  OW.stormTrack = KHS.lv > 0.6 ? 0.85 : 1;
+  OW.stormDark = clamp((KHS.lv - 1) / 2, 0, 1);
+  // abrasion au cœur du Khamsin, hors des refuges (un véhicule fermé divise par deux)
+  if (KHS.lv > 2.4 && G.state === 'playing' && !player.down) {
+    const k = khShelterFactor();
+    if (k > 0) {
+      KHS.abr += 3.2 * k * dt;
+      if (KHS.abr >= 6) { KHS.abr -= 6; playerDamage(6); }
+    }
+  } else KHS.abr = 0;
+  khWindSound(dt);
+  khStreaks(dt);
+  khWalls(dt);
+  owStormHud(phase);
+}
+/* Part de l'abrasion reçue : 0 dans un refuge (pièce couverte), ½ dans un véhicule fermé, 1 dehors. */
+function khShelterFactor() {
+  const V = VEH.drive;
+  if (V) return V.type === 'buggy' ? 1 : V.T.protect <= 0.25 ? 0.25 : 0.5;
+  const cx = Math.floor(player.pos.x), cz = Math.floor(player.pos.z), ch = owChunk(player.layer ? OW.under : OW.surf, cx, cz);
+  if (player.layer) return 0;
+  if (ch) { const i = owIdx(cx, cz); if ((ch.kind[i] === OWK.FLOOR || ch.kind[i] === OWK.RAMP) && ch.ceil[i] > 0) return 0; }
+  return 1;
+}
+/* Brouillard, ciel, lumière, distance d'affichage selon le niveau ressenti (appelé par owApplyGrade). */
+function khStormGrade(g, u, fogCol) {
+  const lv = KHS.lv;
+  if (lv <= 0.001) { scene.fog.density = KHS_LV[0].dens; u.uHazeK.value = 0.5; khFar(KHS_LV[0].far); return; }
+  const i = Math.min(2, Math.floor(lv)), f = lv - i, A = KHS_LV[i], B = KHS_LV[i + 1];
+  // densité et affichage : interpolation logarithmique (sinon la visibilité s'effondre dès le début)
+  scene.fog.density = Math.exp(lerp(Math.log(A.dens), Math.log(B.dens), f));
+  khFar(Math.exp(lerp(Math.log(A.far), Math.log(B.far), f)));
+  _khc.setHex(A.col).lerp(_khc2.setHex(B.col), f).convertSRGBToLinear();
+  const w = clamp(lv / 1.2, 0, 1);
+  fogCol.lerp(_khc, w);
+  // le ciel prend la couleur du brouillard ; la lumière baisse et rougit
+  u.uHazeK.value = lerp(0.5, 1, clamp(lv - 0.6, 0, 1));
+  u.uSunK.value *= clamp(1.4 - lv * 0.6, 0, 1);
+  OW.sunLight.intensity *= clamp(1 - lv * 0.28, 0.12, 1);
+  OW.sunLight.color.lerp(_khc, w * 0.5);
+  if (HEMI) { HEMI.color.lerp(_khc, w * 0.6); HEMI.groundColor.lerp(_khc, w * 0.6); HEMI.intensity *= clamp(1 - lv * 0.18, 0.35, 1); }
+}
+function khFar(far) {
+  const f = Math.max(60, far);
+  if (Math.abs(camera.far - f) > 1) { camera.far = f; camera.updateProjectionMatrix(); }
+  // au-delà de la distance d'affichage : le fond prend la couleur du brouillard
+  if (f < 3900) { if (!scene.background || !scene.background.isColor) scene.background = new THREE.Color(); scene.background.copy(scene.fog.color); }
+}
+
+/* ---- Sable qui file (traits dans le vent), autour de la caméra */
+function khStreaks(dt) {
+  const S = KHS.streaks || (KHS.streaks = khMakeStreaks());
+  const lv = KHS.lv;
+  S.mesh.visible = lv > 0.15;
+  if (!S.mesh.visible) return;
+  const ax = KH.corridor.ax, az = KH.corridor.az, sp = 8 + lv * 14, len = 0.4 + lv * 0.7;
+  const c = camera.position, P = S.pos, R = 22;
+  for (let i = 0; i < S.n; i++) {
+    const k = i * 6;
+    let x = S.p[i * 3] + ax * sp * dt * S.v[i], y = S.p[i * 3 + 1] + Math.sin(OW.t * 3 + i) * 0.4 * dt, z = S.p[i * 3 + 2] + az * sp * dt * S.v[i];
+    // recyclage autour de la caméra
+    if (x - c.x > R) x -= 2 * R; else if (x - c.x < -R) x += 2 * R;
+    if (z - c.z > R) z -= 2 * R; else if (z - c.z < -R) z += 2 * R;
+    if (y - c.y > 8) y -= 14; else if (y - c.y < -6) y += 14;
+    S.p[i * 3] = x; S.p[i * 3 + 1] = y; S.p[i * 3 + 2] = z;
+    P[k] = x; P[k + 1] = y; P[k + 2] = z;
+    P[k + 3] = x - ax * len * S.v[i]; P[k + 4] = y; P[k + 5] = z - az * len * S.v[i];
+  }
+  S.geo.attributes.position.needsUpdate = true;
+  S.mat.opacity = clamp(lv / 2, 0, 0.75);
+  S.mat.color.copy(scene.fog.color).lerp(_khc2.setRGB(1, 0.92, 0.8), 0.35);
+}
+function khMakeStreaks() {
+  const n = 900, p = new Float32Array(n * 3), v = new Float32Array(n), pos = new Float32Array(n * 6);
+  const c = camera.position;
+  for (let i = 0; i < n; i++) { p[i * 3] = c.x + rand(-22, 22); p[i * 3 + 1] = c.y + rand(-5, 7); p[i * 3 + 2] = c.z + rand(-22, 22); v[i] = rand(0.6, 1.4); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xd8b080, transparent: true, opacity: 0, depthWrite: false, fog: false });
+  const mesh = new THREE.LineSegments(geo, mat);
+  mesh.frustumCulled = false; mesh.renderOrder = 7;
+  scene.add(mesh);
+  return { n, p, v, pos, geo, mat, mesh };
+}
+
+/* ---- Murs de poussière : les deux bords du couloir et le front (vus du dehors) */
+function khWalls(dt) {
+  const W = KHS.walls || (KHS.walls = khMakeWalls());
+  const L = khPhaseLevel(), vis = KHS.on ? clamp(L / 1.2, 0, 1) * clamp(1.6 - KHS.lv, 0, 1) : 0;
+  for (const m of W.meshes) { m.visible = vis > 0.01; m.material.uniforms.uTime.value = OW.t; m.material.uniforms.uAlpha.value = vis; m.material.uniforms.uHaze.value.copy(scene.fog.color).convertSRGBToLinear(); m.material.uniforms.uFogD.value = scene.fog.density; }
+  // le front : perpendiculaire au couloir, à sa position
+  const C = KH.corridor, mid = (C.s0 + C.s1) / 2;
+  W.front.position.set(C.ax * KHS.front + C.nx * mid, 220, C.az * KHS.front + C.nz * mid);
+  W.front.visible = W.front.visible && KHS.on && KHS.front > -2300 && KHS.front < 3400;
+}
+function khMakeWalls() {
+  const C = KH.corridor, meshes = [];
+  const mk = (len, x, z, rotY) => {
+    const mat = OW.sandWall.material.clone();
+    mat.uniforms = THREE.UniformsUtils.clone(OW.sandWall.material.uniforms);
+    mat.uniforms.uAlpha = { value: 0 };
+    mat.fragmentShader = mat.fragmentShader.replace('uniform float uTime, uFogD;', 'uniform float uTime, uFogD, uAlpha;').replace('gl_FragColor = vec4(col, a);', 'gl_FragColor = vec4(col, a * uAlpha);');
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(len, 460, 48, 6), mat);
+    m.position.set(x, 220, z); m.rotation.y = rotY; m.renderOrder = 3; m.visible = false;
+    scene.add(m); meshes.push(m);
+    return m;
+  };
+  // bords : le long de l'axe (direction ax, az), décalés de s0 et s1 selon la normale
+  const rot = Math.atan2(-C.az, C.ax);
+  for (const s of [C.s0, C.s1]) mk(7000, C.nx * s + C.ax * 600, C.nz * s + C.az * 600, rot);
+  const front = mk(C.s1 - C.s0 + 300, 0, 0, rot + Math.PI / 2);
+  return { meshes, front };
+}
+
+/* ---- Vent (bruit filtré qui souffle par rafales) et sirène */
+function khWindSound(dt) {
+  const b = Sound.bus();
+  if (!b) return;
+  if (!KHS.snd) {
+    const ctx = b.ctx, src = ctx.createBufferSource(), len = ctx.sampleRate * 3, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) { last = last * 0.97 + (Math.random() * 2 - 1) * 0.03; d[i] = last * 6 + (Math.random() * 2 - 1) * 0.25; }
+    src.buffer = buf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 500; f.Q.value = 0.6;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(f); f.connect(g); g.connect(b.sortie); src.start();
+    KHS.snd = { ctx, f, g };
+  }
+  const S = KHS.snd, t = S.ctx.currentTime, lv = KHS.lv, gust = 0.75 + 0.25 * Math.sin(OW.t * 0.7) * Math.sin(OW.t * 1.9 + 1);
+  S.g.gain.setTargetAtTime(G.state === 'playing' || G.state === 'menu' ? (0.02 + lv * 0.11) * gust : 0, t, 0.3);
+  S.f.frequency.setTargetAtTime(380 + lv * 260 * gust, t, 0.3);
+}
+function khSiren() {
+  const b = Sound.bus();
+  if (!b) return;
+  const ctx = b.ctx, t0 = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 1600;
+  for (let i = 0; i < 3; i++) { o.frequency.setValueAtTime(330, t0 + i * 2.4); o.frequency.linearRampToValueAtTime(820, t0 + i * 2.4 + 1.4); o.frequency.linearRampToValueAtTime(330, t0 + i * 2.4 + 2.4); }
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.4); g.gain.setValueAtTime(0.12, t0 + 6.6); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 7.2);
+  o.connect(f); f.connect(g); g.connect(b.sortie);
+  o.start(t0); o.stop(t0 + 7.3);
+}
+
+/* ---- Bandeau de la tempête (sous la boussole) : phase et compte à rebours */
+function owStormHud(phase) {
+  if (!OWH.storm) return;
+  const on = KHS.on;
+  OWH.storm.hidden = !on;
+  if (!on) return;
+  const [, dur, name] = KHS_PHASES[KHS.i], left = Math.max(0, Math.ceil(dur - KHS.t));
+  const txt = `${name} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  if (OWH.stormTxt !== txt) { OWH.storm.textContent = txt; OWH.stormTxt = txt; }
+  OWH.storm.className = `ow-storm ${phase}`;
+}
+
+/* --------------------------------------------------------------- Ennemis --
+   Planche « Ce qui marche dans la poussière » (page 7).
+   Desséchés : l'équipe de fouilles (l'Archéologue : chemise kaki, chapeau de brousse, foulard,
+   besace ; il lâche parfois un chargeur), les ouvriers (tunique, turban) et les villageois de
+   Sekhet (galabeya bleue, calotte blanche). Peau tannée, maigres ; yeux turquoise visibles à 150 m
+   dans la poussière. 150 PV en manche 1, +100 par manche jusqu'à la 10, puis ×1,1 ; ils marchent,
+   puis courent à partir de la manche 6. Tir à la tête : dégâts doublés.
+   Rôdeur des sables : seulement dans la Tempête et le Khamsin, il sort du sable ; deux fois les PV
+   d'un Desséché ; très rapide en ligne droite, lent dans les virages ; il agrippe un joueur à pied
+   2 s (seul, on s'en libère au couteau), immobilise 3 s un véhicule qui roule à moins de 20 km/h ;
+   les phares braqués sur lui le font replonger sous le sable 5 s. Squelette du Molosse (allures,
+   pattes posées au sol) avec ses propres os : côtes, longue queue d'échine, crâne aux yeux turquoise. */
+const KH_EYE = 0x5ff2e2;                        // turquoise : réservé au surnaturel (planche « La couleur dit qui est qui »)
+const KH_EYE_LIN = new THREE.Color(KH_EYE).convertSRGBToLinear().getHex();   // teinte d'instance (paintZombieSlot ne convertit pas celle des yeux)
+const KH_TYPES = [
+  {
+    id: 'kh_arch', num: 'K-01', name: 'L’Archéologue', cls: 'Desséché (Khamsin)', from: 1, model: 'kh_arch', facts: 'kh', maps: ['khamsin'], kh: true,
+    desc: 'L’équipe de fouilles du Km 47. Il a ouvert le sceau du sanctuaire ; le sable l’a séché sur pied.',
+    sign: 'Chemise kaki, chapeau de brousse, foulard rouge et besace : il lâche parfois un chargeur.',
+    mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde', drop: { item: 'mag', chance: 0.3 },
+  },
+  {
+    id: 'kh_ouvrier', num: 'K-02', name: 'L’Ouvrier', cls: 'Desséché (Khamsin)', from: 1, model: 'kh_ouvrier', facts: 'kh', maps: ['khamsin'], kh: true,
+    desc: 'Un terrassier du chantier de fouilles. Il creusait encore quand la tempête est passée.',
+    sign: 'Tunique olive serrée d’une ceinture d’étoffe, turban clair, jambes nues.',
+    mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
+  },
+  {
+    id: 'kh_villageois', num: 'K-03', name: 'Le Villageois', cls: 'Desséché (Khamsin)', from: 1, model: 'kh_villageois', facts: 'kh', maps: ['khamsin'], kh: true,
+    desc: 'Un habitant de Sekhet. L’oasis n’a pas suffi à le garder de la poussière.',
+    sign: 'Longue galabeya bleue jusqu’aux chevilles, calotte blanche.',
+    mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
+  },
+];
+/* Le Rôdeur des sables : squelette du Molosse, ses propres os ; il n'est pas un type de pièce. */
+const RODEUR_TYPE = {
+  id: 'kh_rodeur', num: 'K-04', name: 'Le Rôdeur des sables', cls: 'Piège de la tempête (Khamsin)', tag: 'Tempête et Khamsin', model: 'kh_rodeur', facts: 'rodeur',
+  maps: ['khamsin'], dog: true, kh: true,
+  desc: 'Une chose faite d’os et de sable, longue comme une voiture. Elle ne sort du sol que lorsque la tempête couvre tout.',
+  mult: { hp: 2, speed: 3, damage: 0.7 }, headMult: 2, ability: 'Embuscade',
+};
+/* Fiches de l'écran « Modèles » et compteurs d'éliminations, après celles de Bunker 7. Les Desséchés
+   ne sont pas dans ZOMBIE_TYPES : les cartes et les Mod Tools ne les proposent pas (leurs règles,
+   PV et allures, sont celles de Khamsin). */
+SPECIMEN_TYPES.push(...KH_TYPES, RODEUR_TYPE);
+
+/* Points de vie et allures des Desséchés (planche). */
+const khHp = (r) => Math.round(r <= 10 ? 150 + 100 * (r - 1) : 1050 * Math.pow(1.1, r - 10));
+function khSpeedType(r) {
+  const x = Math.random();
+  if (r < 6) return 'walk';
+  if (r < 8) return x < 0.35 ? 'walk' : x < 0.6 ? 'jog' : 'run';
+  if (r < 12) return x < 0.15 ? 'walk' : x < 0.4 ? 'jog' : 'run';
+  return x < 0.25 ? 'jog' : 'run';
+}
+/* Type selon le lieu le plus proche : archéologues au camp et au plateau, villageois à l'oasis, ouvriers ailleurs. */
+const KH_MIX = { A: [0.6, 0.3, 0.1], B: [0.45, 0.4, 0.15], C: [0.2, 0.5, 0.3], D: [0.1, 0.2, 0.7], E: [0.1, 0.7, 0.2], F: [0.35, 0.35, 0.3], G: [0.2, 0.6, 0.2] };
+function khZombieType(zi) {
+  const L = KH.locs[zi] || KH.locs[0], w = KH_MIX[L.id], x = Math.random();
+  return KH_TYPES[x < w[0] ? 0 : x < w[0] + w[1] ? 1 : 2];
+}
+/* Teintes : peau tannée, étoffes délavées, yeux turquoise. */
+function khLook(look, type) {
+  look.eyes = KH_EYE_LIN;
+  look.skin = pick([0xffffff, 0xf2e8dc, 0xfff4e6, 0xe8dccc]);
+  look.cloth = pick([0xffffff, 0xf4eadc, 0xe6e2d8, 0xfaf0e2]);
+  look.helmet = false;
+  return look;
+}
+
+/* ---- Modèles (pièces des os du squelette humain, comme les variantes du Fantassin) */
+const KH_DK = (C) => ({ ...zCommonK(C), skin: C(0x8c6e50, 1.0), skinD: C(0x4e3826, 1.0), teeth: C(0xb8a888), mouth: C(0x120a06), socket: C(0x0a0806) });
+const ZP_HUMAN = (extra) => [
+  { geo: 'torso', bone: 'hips', mat: 'zCloth', tint: 'cloth' },
+  { geo: 'head', bone: 'neck', mat: 'zSkin', tint: 'skin', head: true },
+  { geo: 'eyes', bone: 'neck', mat: 'khEyes', tint: 'eyes', head: true },
+  { geo: 'hat', bone: 'neck', mat: 'zCloth', tint: 'cloth', head: true },
+  { geo: 'upper', bone: 'sh', mat: 'zCloth', tint: 'cloth' },
+  { geo: 'fore', bone: 'el', mat: 'zCloth', tint: 'cloth' },
+  { geo: 'hand', bone: 'el', mat: 'zSkin', tint: 'skin' },
+  { geo: 'thigh', bone: 'hip', mat: 'zCloth', tint: 'cloth' },
+  { geo: 'shin', bone: 'kn', mat: 'zCloth', tint: 'cloth', legs: true },
+  { geo: 'stump', bone: 'kn', mat: 'zSkin', tint: 'skin', stump: true },
+  { geo: 'armStump', bone: 'sh', mat: 'zSkin', tint: 'skin', stump: 'arm' },
+  ...extra,
+];
+ZPARTS.kh_arch = ZP_HUMAN([]);
+ZPARTS.kh_ouvrier = ZP_HUMAN([]);
+ZPARTS.kh_villageois = ZP_HUMAN([]);
+/* Avant-bras décharné et main griffue (peau tannée) ; sleeve : bout de manche jusqu'à sleeveTo (m sous le coude). */
+function khForearm(k, K, sleeve, sleeveTo = 0) {
+  const { cyl, ell } = k, cloth = [], skin = [];
+  if (sleeve && sleeveTo < 0) cloth.push(cyl(0.05, 0.048, -sleeveTo, 0, sleeveTo / 2, 0, sleeve), cyl(0.051, 0.051, 0.015, 0, sleeveTo, 0, sleeve));
+  skin.push(cyl(0.036, 0.03, 0.25 + sleeveTo * 0.2, 0, -0.125, 0, K.skin), ell(0.03, 0.022, 0.026, 0, -0.255, 0.004, K.skinD));
+  return { cloth, skin: skin.concat(zClawHand(k, K, -0.29)) };
+}
+function khDesseche(model) {
+  const k = zKit(), { C, V, box, cyl, ell, tor, cap, seg, on } = k, H = ZRIG.head;
+  const merge = (o) => { const out = {}; for (const key in o) out[key] = mergeGeometries(o[key]); return out; };
+  const K = KH_DK(C);
+  const head = zHeadCore(k, K).concat(zMouthBlood(k, K, 0.05), [
+    // joues creusées, peau tirée sur les pommettes
+    ell(0.022, 0.03, 0.01, -0.07, H - 0.035, 0.07, K.skinD, 0, -0.6, 0), ell(0.022, 0.03, 0.01, 0.07, H - 0.035, 0.07, K.skinD, 0, 0.6, 0),
+  ]);
+  const eyes = zombieGeometries().eyes;
+  let G;
+  if (model === 'kh_arch') {
+    const sh = C(0xa8956a), shD = C(0x8a7a54), tr = C(0x8a7a58), belt = C(0x4a3424), red = C(0xa8432a), bag = C(0x5a3e26), hat = C(0xc8b48a), band = C(0x5a4632);
+    const R = (y) => lerp(0.185, 0.205, clamp((y - 0.06) / 0.42, 0, 1)), sT = (x, y, o = 0) => on(x, R(y), 0.6, o);
+    const T = [cyl(0.205, 0.185, 0.42, 0, 0.27, 0, sh, 0.6, 0, 0, 0, 14), ell(0.225, 0.08, 0.125, 0, 0.45, 0, sh, 0, 0, 0, 14, 8),
+      cyl(0.185, 0.2, 0.18, 0, -0.06, 0, tr, 0.64, 0, 0, 0, 14), cyl(0.192, 0.192, 0.05, 0, 0.035, 0, belt, 0.645, 0, 0, 0, 16)];
+    // poches de poitrine à rabat, boutonnage, col ouvert
+    for (const s of [-1, 1]) { const p = sT(s * 0.09, 0.34, 0.004); T.push(box(0.075, 0.08, 0.008, p.x, 0.34, p.z, shD, 0, p.ry, 0), box(0.078, 0.022, 0.01, p.x, 0.375, p.z + 0.001, sh, 0, p.ry, 0)); }
+    for (const y of [0.42, 0.3, 0.18, 0.08]) { const p = sT(0, y, 0.005); T.push(ell(0.009, 0.009, 0.005, 0, y, p.z, shD, 0, 0, 0, 6, 4)); }
+    // foulard rouge noué au cou, pointe sur la poitrine
+    T.push(tor(0.082, 0.02, 0, 0.5, 0.0, red, Math.PI / 2 - 0.25, 0, 0, 1, 1, 0.85), box(0.06, 0.07, 0.012, 0, 0.45, sT(0, 0.45).z + 0.012, red, 0.1, 0, Math.PI / 4));
+    // besace : courroie de l'épaule gauche à la hanche droite, sac sur la hanche
+    T.push(seg(V(0.17, 0.5, 0.0), V(-0.15, 0.04, 0.12), bag, 0.035, 0.008));
+    T.push(seg(V(0.17, 0.5, -0.0), V(-0.17, 0.06, -0.1), bag, 0.035, 0.008));
+    T.push(box(0.17, 0.14, 0.06, -0.21, -0.03, 0.06, bag, 0, 0.4, 0.05), box(0.172, 0.05, 0.065, -0.21, 0.02, 0.062, C(0x4a3220), 0, 0.4, 0.05));
+    // poussière et sang
+    for (const [x, y, a] of [[0.1, 0.22, 0.03], [-0.06, 0.12, 0.022], [0.14, 0.4, 0.016]]) { const p = sT(x, y, 0.003); T.push(ell(a, a * 0.9, 0.006, p.x, y, p.z, K.blood, 0, p.ry, 0, 8, 5)); }
+    const hatG = [cyl(0.21, 0.21, 0.012, 0, H + 0.07, -0.01, hat, 1, -0.06, 0, 0.05, 22), cyl(0.098, 0.112, 0.1, 0, H + 0.125, -0.012, hat, 1, -0.06, 0, 0.05, 18),
+      cyl(0.113, 0.113, 0.024, 0, H + 0.088, -0.011, band, 1, -0.06, 0, 0.05, 18), ell(0.098, 0.03, 0.1, 0, H + 0.175, -0.014, hat, -0.06, 0, 0.05, 14, 6)];
+    // manches retroussées au-dessus du coude
+    const upper = [ell(0.064, 0.062, 0.064, 0, -0.005, 0, sh), cyl(0.06, 0.055, 0.17, 0, -0.085, 0, sh), tor(0.056, 0.014, 0, -0.17, 0, shD, Math.PI / 2),
+      cyl(0.04, 0.036, 0.15, 0, -0.245, 0, K.skin)];
+    const F = khForearm(k, K, null), fore = [cyl(0.034, 0.031, 0.05, 0, -0.215, 0, C(0xcfc2a0)), tor(0.033, 0.006, 0, -0.195, 0, C(0xa89a78), Math.PI / 2)], hand = F.skin;   // bande de toile au poignet
+    const thigh = [cyl(0.084, 0.064, 0.44, 0, -0.22, 0, tr), ell(0.092, 0.12, 0.088, 0, -0.13, 0, tr), box(0.07, 0.07, 0.01, 0.0, -0.2, 0.07, shD)];
+    const shin = [cyl(0.064, 0.058, 0.26, 0, -0.13, 0, tr), cyl(0.064, 0.064, 0.016, 0, -0.26, 0, shD),
+      cyl(0.06, 0.056, 0.14, 0, -0.33, 0, C(0x4a3424)), box(0.1, 0.07, 0.24, 0, -0.39, 0.045, C(0x4a3424)), ell(0.05, 0.036, 0.05, 0, -0.395, 0.158, C(0x4a3424)),
+      box(0.105, 0.018, 0.262, 0, -0.432, 0.048, C(0x1a120c))];
+    G = merge({ torso: T, head, hat: hatG, upper, fore, hand, thigh, shin });
+    Object.assign(G, zStumps(k, { ...K, flesh: C(0x6a2a1c), fleshD: C(0x2e0d08) }, tr, sh));
+  } else if (model === 'kh_ouvrier') {
+    const tu = C(0x6e6f58), tuD = C(0x55573f), sash = C(0x9a8460), wrap = C(0xd8d0bc), wrapD = C(0xb8b09a), sole = C(0x3a2a1c);
+    const R = (y) => lerp(0.18, 0.2, clamp((y - 0.06) / 0.42, 0, 1)), sT = (x, y, o = 0) => on(x, R(y), 0.6, o);
+    const T = [cyl(0.2, 0.18, 0.42, 0, 0.27, 0, tu, 0.6, 0, 0, 0, 14), ell(0.22, 0.08, 0.125, 0, 0.45, 0, tu, 0, 0, 0, 14, 8),
+      cyl(0.18, 0.21, 0.2, 0, -0.07, 0, tu, 0.66, 0, 0, 0, 14), cyl(0.188, 0.19, 0.07, 0, 0.04, 0, sash, 0.64, 0, 0, 0, 16)];
+    // encolure fendue, pan de ceinture qui pend, plis
+    { const z = sT(0, 0.44).z; T.push(box(0.016, 0.12, 0.008, 0, 0.44, z + 0.003, K.skinD)); }
+    T.push(box(0.05, 0.16, 0.012, 0.12, -0.04, sT(0.12, 0.04).z + 0.01, sash, 0.05, 0.4, 0.1));
+    for (const x of [-0.12, -0.04, 0.06, 0.14]) { const p = sT(x, 0.2, 0.002); T.push(box(0.006, 0.3, 0.004, p.x, 0.2, p.z, tuD, 0, p.ry, 0)); }
+    const hatG = [tor(0.1, 0.034, 0, H + 0.055, -0.008, wrap, Math.PI / 2 + 0.08, 0, 0, 1, 1.05, 0.95), tor(0.088, 0.03, 0, H + 0.09, -0.012, wrapD, Math.PI / 2 + 0.12, 0.3, 0, 1, 1.05, 0.95),
+      cap(Math.PI * 0.45, 0.092, 0.085, 0.096, 0, H + 0.075, -0.01, wrap, -0.1), seg(V(-0.07, H + 0.05, -0.08), V(-0.09, H - 0.12, -0.11), wrap, 0.04, 0.01)];
+    const upper = [ell(0.062, 0.06, 0.062, 0, -0.005, 0, tu), cyl(0.058, 0.054, 0.31, 0, -0.155, 0, tu), cyl(0.055, 0.055, 0.02, 0, -0.3, 0, tuD)];
+    const F = khForearm(k, K, tu, -0.2), fore = F.cloth, hand = F.skin;
+    const thigh = [cyl(0.08, 0.064, 0.44, 0, -0.22, 0, tuD), cyl(0.13, 0.155, 0.42, 0, -0.24, 0, tu, 1, 0, 0, 0, 14), cyl(0.156, 0.157, 0.02, 0, -0.44, 0, tuD, 1, 0, 0, 0, 14)];
+    const shin = [cyl(0.044, 0.036, 0.36, 0, -0.18, 0, K.skin), ell(0.04, 0.03, 0.04, 0, -0.36, 0.0, K.skinD),
+      box(0.085, 0.03, 0.2, 0, -0.395, 0.05, K.skin), box(0.1, 0.014, 0.26, 0, -0.42, 0.05, sole), box(0.08, 0.008, 0.02, 0, -0.39, 0.08, sole)];
+    G = merge({ torso: T, head, hat: hatG, upper, fore, hand, thigh, shin });
+    Object.assign(G, zStumps(k, { ...K, flesh: C(0x6a2a1c), fleshD: C(0x2e0d08) }, K.skin, tu));
+  } else {
+    const ga = C(0x3e5f8a), gaD = C(0x2e4a6e), cap0 = C(0xe8e4da), sole = C(0x3a2a1c);
+    const R = (y) => lerp(0.185, 0.205, clamp((y - 0.06) / 0.42, 0, 1)), sT = (x, y, o = 0) => on(x, R(y), 0.6, o);
+    const T = [cyl(0.205, 0.185, 0.42, 0, 0.27, 0, ga, 0.6, 0, 0, 0, 14), ell(0.225, 0.08, 0.125, 0, 0.45, 0, ga, 0, 0, 0, 14, 8),
+      cyl(0.185, 0.225, 0.22, 0, -0.08, 0, ga, 0.66, 0, 0, 0, 14)];
+    { const z = sT(0, 0.4).z; T.push(box(0.018, 0.16, 0.008, 0, 0.42, z + 0.004, gaD), ell(0.05, 0.03, 0.01, 0, 0.5, z - 0.01, K.skinD)); }
+    for (const x of [-0.13, -0.05, 0.05, 0.13]) { const p = sT(x, 0.15, 0.002); T.push(box(0.006, 0.42, 0.004, p.x, 0.15, p.z, gaD, 0, p.ry, 0)); }
+    for (const [x, y, a] of [[-0.09, 0.3, 0.026], [0.11, 0.1, 0.02]]) { const p = sT(x, y, 0.003); T.push(ell(a, a * 1.2, 0.006, p.x, y, p.z, K.blood, 0, p.ry, 0, 8, 5)); }
+    const hatG = [cap(Math.PI * 0.42, 0.106, 0.1, 0.108, 0, H + 0.012, -0.006, cap0, -0.18)];
+    // manches larges de la galabeya
+    const upper = [ell(0.066, 0.064, 0.066, 0, -0.005, 0, ga), cyl(0.062, 0.07, 0.31, 0, -0.155, 0, ga)];
+    const F = khForearm(k, K, ga, -0.17), fore = [cyl(0.074, 0.082, 0.06, 0, -0.03, 0, ga), ...F.cloth], hand = F.skin;
+    // la robe descend jusqu'aux chevilles (cuisses et tibias)
+    const thigh = [cyl(0.08, 0.062, 0.44, 0, -0.22, 0, gaD), cyl(0.15, 0.17, 0.46, 0, -0.23, 0, ga, 1, 0, 0, 0, 14)];
+    const shin = [cyl(0.17, 0.18, 0.34, 0, -0.17, 0, ga, 1, 0, 0, 0, 14), cyl(0.181, 0.182, 0.02, 0, -0.34, 0, gaD, 1, 0, 0, 0, 14),
+      cyl(0.04, 0.036, 0.08, 0, -0.38, 0, K.skin), box(0.085, 0.03, 0.2, 0, -0.405, 0.05, K.skin), box(0.1, 0.014, 0.26, 0, -0.428, 0.05, sole)];
+    G = merge({ torso: T, head, hat: hatG, upper, fore, hand, thigh, shin });
+    Object.assign(G, zStumps(k, { ...K, flesh: C(0x6a2a1c), fleshD: C(0x2e0d08) }, ga, ga));
+  }
+  G.eyes = eyes;
+  return G;
+}
+for (const m of ['kh_arch', 'kh_ouvrier', 'kh_villageois']) Object.defineProperty(ZVGEO, m, { configurable: true, enumerable: true, get() { const g = khDesseche(m); Object.defineProperty(ZVGEO, m, { value: g, enumerable: true }); return g; } });
+
+/* ---- Le Rôdeur : os du Molosse (cage thoracique, échine, crâne, longues pattes) */
+ZPARTS.kh_rodeur = [
+  { geo: 'rChest', bone: 'chest', mat: 'khBone', tint: 'skin' },
+  { geo: 'rPelvis', bone: 'pelvis', mat: 'khBone', tint: 'skin' },
+  { geo: 'rNeck', bone: 'neck', mat: 'khBone', tint: 'skin' },
+  { geo: 'rHead', bone: 'head', mat: 'khBone', tint: 'skin' },
+  { geo: 'rEyes', bone: 'head', mat: 'khEyes', tint: 'eyes' },
+  { geo: 'rJaw', bone: 'jaw', mat: 'khBone', tint: 'skin' },
+  { geo: 'rTail', bone: 'tail', mat: 'khBone', tint: 'skin' },
+  { geo: 'rArm', bone: 'f1', mat: 'khBone', tint: 'skin' },
+  { geo: 'rFore', bone: 'f2', mat: 'khBone', tint: 'skin' },
+  { geo: 'rPawF', bone: 'f3', mat: 'khBone', tint: 'skin' },
+  { geo: 'rThigh', bone: 'h1', mat: 'khBone', tint: 'skin' },
+  { geo: 'rShin', bone: 'h2', mat: 'khBone', tint: 'skin' },
+  { geo: 'rPawH', bone: 'h3', mat: 'khBone', tint: 'skin' },
+];
+function khRodeurGeometries() {
+  const k = zKit(), { C, V, box, cyl, ell, tor, seg } = k;
+  const bone = C(0xd6c6a0), boneD = C(0xa08c66), boneS = C(0xbca57a), crust = C(0xb08a5e), dark = C(0x0e0a07), tooth = C(0xcbbb92), claw = C(0x2a1e14);
+  const merge = (o) => { const out = {}; for (const key in o) out[key] = mergeGeometries(o[key]); return out; };
+  // vertèbre : corps, apophyses, épine dorsale penchée vers l'arrière
+  const vert = (out, z, y, s = 1, spine = 1) => {
+    out.push(box(0.05 * s, 0.05 * s, 0.045, 0, y, z, bone), box(0.09 * s, 0.012, 0.016, 0, y, z, boneD));
+    if (spine) out.push(box(0.016 * s, 0.085 * s * spine, 0.018, 0, y + 0.06 * s * spine, z - 0.012, boneS, -0.5));
+  };
+  // cage : échine à épines, côtes en arcs, sternum, lambeaux de peau séchée croûtés de sable
+  const chest = [];
+  for (let i = 0; i < 8; i++) vert(chest, -0.04 + i * 0.065, 0.06, 1, 1 + 0.25 * Math.sin((i / 7) * Math.PI));
+  for (let i = 0; i < 7; i++) {
+    const z = i * 0.062, r = 0.155 - Math.abs(i - 2.6) * 0.011;
+    chest.push(tor(r, 0.0105, 0, 0.06 - r * 1.08, z, i % 2 ? bone : boneS, 0.12, 0, 0, 1, 1.12, 1, 16));
+  }
+  chest.push(box(0.028, 0.018, 0.4, 0, -0.27, 0.2, boneD, 0.08));
+  chest.push(ell(0.06, 0.03, 0.09, 0.12, -0.05, 0.14, crust, 0, 0, 0.8, 9, 6), ell(0.05, 0.025, 0.07, -0.125, -0.11, 0.3, crust, 0, 0.2, -0.7, 9, 6));
+  // bassin : ailes de l'os iliaque, sacrum qui prolonge l'échine
+  const pelvis = [ell(0.06, 0.07, 0.03, 0.08, -0.04, -0.2, bone, 0.3, 0.4, 0, 9, 6), ell(0.06, 0.07, 0.03, -0.08, -0.04, -0.2, bone, 0.3, -0.4, 0, 9, 6),
+    ell(0.05, 0.04, 0.09, 0, -0.06, -0.22, boneD), ell(0.03, 0.03, 0.03, 0.1, -0.1, -0.19, boneD), ell(0.03, 0.03, 0.03, -0.1, -0.1, -0.19, boneD)];
+  for (let i = 0; i < 3; i++) vert(pelvis, -0.06 - i * 0.065, 0.05, 0.95, 0.8);
+  // cou : vertèbres à épines
+  const neck = [];
+  for (let i = 0; i < 4; i++) vert(neck, -0.03 + i * 0.048, -0.03 + i * 0.006, 0.85, 0.6);
+  // crâne humain étiré : voûte allongée, arcades en V, face qui avance, pommettes saillantes, orbites obliques
+  const head = [ell(0.072, 0.07, 0.1, 0, 0.03, -0.012, bone, 0.1, 0, 0, 14, 10), ell(0.052, 0.042, 0.075, 0, -0.035, 0.083, bone, 0.15, 0, 0, 12, 8),
+    box(0.058, 0.017, 0.03, -0.033, 0.021, 0.086, boneD, 0, 0.25, -0.32), box(0.058, 0.017, 0.03, 0.033, 0.021, 0.086, boneD, 0, -0.25, 0.32),
+    ell(0.021, 0.016, 0.045, -0.057, -0.016, 0.07, boneD, 0, -0.3, 0), ell(0.021, 0.016, 0.045, 0.057, -0.016, 0.07, boneD, 0, 0.3, 0),
+    ell(0.028, 0.02, 0.02, -0.034, 0.0, 0.106, dark, 0, 0, -0.4), ell(0.028, 0.02, 0.02, 0.034, 0.0, 0.106, dark, 0, 0, 0.4),
+    box(0.02, 0.03, 0.02, 0, -0.04, 0.138, dark, 0.3)];
+  for (let i = 0; i < 8; i++) { const x = (i - 3.5) * 0.0118, fang = i === 1 || i === 6; head.push(box(0.0098, fang ? 0.036 : 0.022, 0.009, x, fang ? -0.089 : -0.083, 0.112 - Math.abs(x) * 0.8, tooth)); }
+  // yeux : fentes au fond des orbites (turquoise de l'instance)
+  const eyes = [ell(0.019, 0.011, 0.012, -0.034, 0.0, 0.117, null, 0, 0, -0.4, 10, 6), ell(0.019, 0.011, 0.012, 0.034, 0.0, 0.117, null, 0, 0, 0.4, 10, 6)];
+  // mâchoire : mandibule, branches montantes, dents du bas (pivot de la mâchoire du Molosse)
+  const jaw = [box(0.078, 0.016, 0.085, 0, -0.036, 0.0, bone), box(0.012, 0.05, 0.026, 0.042, -0.012, -0.045, bone, -0.3), box(0.012, 0.05, 0.026, -0.042, -0.012, -0.045, bone, -0.3)];
+  for (let i = 0; i < 8; i++) { const x = (i - 3.5) * 0.011; jaw.push(box(0.0092, 0.02, 0.009, x, -0.022, 0.03 - Math.abs(x) * 0.8, tooth)); }
+  // queue d'échine : 20 vertèbres de plus en plus fines (1,45 m)
+  const tail = [];
+  for (let i = 0; i < 20; i++) { const s = 1 - i / 23; vert(tail, -0.03 - i * 0.072, -i * 0.01, 0.95 * s, i < 14 ? 0.7 * s : 0); }
+  // pattes d'araignée : os longs et fins, articulations noueuses à éperon, trois griffes
+  const limb = (L, r, spur) => {
+    const out = [cyl(r, r * 0.75, L, 0, -L / 2, 0, bone, 1, 0, 0, 0, 8), ell(r * 1.7, r * 1.7, r * 1.7, 0, 0, 0, boneD, 0, 0, 0, 8, 6)];
+    if (spur) out.push(seg(V(0, -L * 0.98, 0), V(0, -L * 0.98 + spur, -spur * 0.9), boneS, r * 0.8, 0, true, 0.003));
+    return out;
+  };
+  const paw = (L) => {
+    const out = [ell(0.026, 0.024, 0.026, 0, 0, 0, boneD, 0, 0, 0, 8, 6), cyl(0.013, 0.011, L, 0, -L / 2, 0, bone, 1, 0, 0, 0, 6)];
+    for (const a of [-0.4, 0, 0.4]) out.push(seg(V(0, -L, 0.005), V(Math.sin(a) * 0.07, -L - 0.035, 0.09), claw, 0.009, 0, true, 0.0015));
+    return out;
+  };
+  return merge({ rChest: chest, rPelvis: pelvis, rNeck: neck, rHead: head, rEyes: eyes, rJaw: jaw, rTail: tail,
+    rArm: limb(DRIG.f[0], 0.024, 0.07), rFore: limb(DRIG.f[1], 0.02, 0), rPawF: paw(DRIG.f[2]), rThigh: limb(DRIG.h[0], 0.028, 0), rShin: limb(DRIG.h[1], 0.021, 0.08), rPawH: paw(DRIG.h[2]) });
+}
+Object.defineProperty(ZVGEO, 'kh_rodeur', { configurable: true, enumerable: true, get() { const g = khRodeurGeometries(); Object.defineProperty(ZVGEO, 'kh_rodeur', { value: g, enumerable: true }); return g; } });
+
+/* ---- Rôdeurs : apparition dans la tempête, poursuite, prise, plongée sous le sable */
+const KHR = {
+  t: 0, max: [0, 0, 2, 3],                  // à la fois : rien en vent de sable, 2 en Tempête, 3 en Khamsin
+  every: [9, 15], dist: [14, 26],           // une sortie toutes les 9 à 15 s, à 14–26 m du joueur
+  speed: [7, 8.5], scale: 1.2,              // m/s en ligne droite ; taille : 1 m au garrot, 2,5 m queue comprise
+  grab: 2, bite: 10, dps: 5, cd: 4,         // prise : 2 s, une morsure de 10 puis 5 PV/s ; 4 s avant la suivante
+  free: 1.5,                                // après une prise, 1,5 s sans qu'aucun Rôdeur ne vous reprenne
+  stall: 3, stallKmh: 20,                   // véhicule à moins de 20 km/h : bloqué 3 s
+  lights: 30, lightsCos: 0.92, dive: 5,     // phares : à moins de 30 m, à ±23° ; sous le sable 5 s
+  depth: 1.25,                              // profondeur sous le sable (m, avant l'échelle)
+};
+const KHR_TINTS = [0xffffff, 0xf2e6d4, 0xe8dcc4];
+
+/* Touches : capsules sur ses os (crâne court, échine, longue queue), comme DOG_HIT. */
+const RODEUR_HIT = [
+  ['head', 'head', [0, 0.03, -0.06], 'head', [0, -0.04, 0.12], 0.095],
+  ['body', 'neck', [0, -0.04, -0.02], 'neck', [0, -0.02, 0.15], 0.07],
+  ['body', 'chest', [0, -0.1, 0.42], 'pelvis', [0, -0.04, -0.27], 0.18],
+  ['body', 'tail', [0, 0, 0], 'tail', [0, -0.15, -1.0], 0.05],
+  ['body', 'f1L', [0, 0, 0], 'f3L', [0, -0.12, 0], 0.045], ['body', 'f1R', [0, 0, 0], 'f3R', [0, -0.12, 0], 0.045],
+  ['body', 'h1L', [0, -0.05, 0], 'h3L', [0, -0.16, 0], 0.05], ['body', 'h1R', [0, -0.05, 0], 'h3R', [0, -0.16, 0], 0.05],
+];
+function khRodeurs(dt) {
+  khGrabGuard(dt);
+  KHR.t -= dt;
+  const lvl = KHS.on ? (KHS.lv > 2.4 ? 3 : KHS.lv > 1.4 ? 2 : 0) : 0;
+  if (lvl < 2) {
+    // le vent tombe : ils replongent
+    for (const z of Zombies.list) if (z.rodeur && z.alive && z.rstate !== 'dive' && z.rstate !== 'gone') khRodeurState(z, 'dive');
+    return;
+  }
+  let n = 0;
+  for (const z of Zombies.list) if (z.rodeur && z.alive) n++;
+  if (KHR.t > 0 || n >= KHR.max[lvl] || G.state !== 'playing' || player.layer || player.down) return;
+  KHR.t = rand(KHR.every[0], KHR.every[1]);
+  const V = VEH.drive, px = V ? V.x : player.pos.x, pz = V ? V.z : player.pos.z;
+  for (let tries = 0; tries < 24; tries++) {
+    const a = rand(0, TAU), d = rand(KHR.dist[0], KHR.dist[1]), x = px + Math.sin(a) * d, z = pz + Math.cos(a) * d;
+    const cx = Math.floor(x), cz = Math.floor(z);
+    if (owKind(OW.surf, cx, cz) !== OWK.TERRAIN || !owWalkCell(0, cx, cz)) continue;   // dans le sable, pas dans un lieu
+    if (Math.abs(owGroundAt(0, x, z) - player.gy) > 6) continue;
+    if (khSpawnRodeur(x, z)) return;
+  }
+}
+/* Une prise ne survit pas à son Rôdeur (mort, retiré, replongé) ; 2,5 s au plus de toute façon. */
+function khGrabGuard(dt) {
+  if (player.grabFreeT > 0) player.grabFreeT -= dt;
+  if (!(player.grabT > 0)) return;
+  player.grabT -= dt;
+  const z = player.grabbedBy;
+  if (player.grabT <= -0.5 || !z || !z.alive || z.removed || z.rstate !== 'grab' || player.down) khRelease();
+}
+/* Le joueur est lâché : un court répit avant la prise suivante (un autre Rôdeur attendait). */
+function khRelease() {
+  if (player.grabbedBy || player.grabT > 0) player.grabFreeT = KHR.free;
+  player.grabT = 0; player.grabbedBy = null;
+}
+function khEnemiesReset() {
+  KHR.t = rand(2, 4);
+  player.grabT = 0; player.grabbedBy = null; player.grabFreeT = 0;
+}
+function khSpawnRodeur(x, zz) {
+  if (!ZR.free.length) { const c = Zombies.list.find((q) => !q.alive); if (!c) return null; removeZombie(c); }
+  const slot = ZR.free.pop();
+  const look = { skin: pick(KHR_TINTS), cloth: 0xffffff, eyes: KH_EYE_LIN, helmet: false, helmetColor: 0 };
+  paintZombieSlot(slot, look, ZR, 'kh_rodeur');
+  const hp = khHp(G.round) * 2, gy = owGroundAt(0, x, zz);
+  const z = {
+    id: ++Zombies.seq, slot, type: RODEUR_TYPE, model: 'kh_rodeur', dog: true, rodeur: true, rig: makeDogRig(), look, helmetOn: false, alive: true, outside: false,
+    state: 'chase', dstate: 'spawn', rstate: 'rise', st: 0, t: 0, hp, maxHp: hp, pos: new THREE.Vector3(x, gy - KHR.depth * KHR.scale, zz), k: owLocate(x, zz, gy), gy,
+    yaw: Math.atan2(player.pos.x - x, player.pos.z - zz), vx: 0, vz: 0, moving: 0, speedType: 'run', speed: rand(KHR.speed[0], KHR.speed[1]), win: null, gib: 0,
+    headless: false, crawl: false, stagger: 0, flinch: 0, flinchSide: 1, knockX: 0, knockZ: 0, knockT: 0, knockDur: 0, knockDir: 1, knockK: 0, knockShift: false,
+    reelT: 0, called: null, nukeT: 0, deathKind: null, losT: 0, los: false, stuckT: 0, lastX: x, lastZ: zz, farT: 0,
+    flank: 1, leapCd: 0, leap: 0, leapFrom: null, leapTo: null, leapL: 0, leapHit: false,
+    biteN: -1, biteHit: true, barkT: rand(1, 2.5), yelpT: 0, droolT: 99, pawU: 1, aim: 0, turn: 0, stunDur: 1.2, stunSide: 1, grabCd: 0, hideT: 0, layer: 0, biteAcc: 0,
+  };
+  z.rig.root.scale.setScalar(KHR.scale);
+  owSandBurst(x, zz, gy);
+  Sound.rise(z.pos);
+  Zombies.list.push(z);
+  animateDog(z, 0);
+  return z;
+}
+function khRodeurState(z, s) {
+  z.rstate = s; z.st = 0;
+  z.dstate = s === 'grab' ? 'bite' : s === 'rise' ? 'spawn' : s === 'stun' ? 'stun' : 'chase';
+  if (s === 'grab') { z.biteN = -1; z.biteHit = true; z.biteAcc = 0; }
+  if (s === 'chase') { z.stuckT = 0; z.lastX = z.pos.x; z.lastZ = z.pos.z; }
+  if (s === 'dive') { owSandBurst(z.pos.x, z.pos.z, z.gy); if (player.grabbedBy === z) khRelease(); }
+}
+function khRodeurUpdate(z, dt) {
+  z.t += dt; z.st += dt;
+  if (!z.alive) { removeZombie(z); return; }
+  if (z.nukeT > 0) { z.nukeT -= dt; if (z.nukeT <= 0) { killZombie(z, { kind: 'nuke', dx: 0, dz: 0 }); return; } }
+  z.flinch = damp(z.flinch, 0, 8, dt);
+  if (z.stagger > 0) z.stagger -= dt;
+  if (z.grabCd > 0) z.grabCd -= dt;
+  if (z.yelpT > 0) z.yelpT -= dt;
+  const V = VEH.drive, tx = V ? V.x : player.pos.x, tz = V ? V.z : player.pos.z;
+  const dx = tx - z.pos.x, dz = tz - z.pos.z, d = Math.hypot(dx, dz) || 1e-3, deep = KHR.depth * KHR.scale;
+  const yaw0 = z.yaw;
+  switch (z.rstate) {
+    case 'rise': {
+      const k = clamp(z.st / 1.2, 0, 1);
+      z.pos.y = z.gy - deep * (1 - smooth(k)); z.moving = 0;
+      z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 2 * dt);
+      if (k >= 1) khRodeurState(z, 'chase');
+      break;
+    }
+    case 'chase': {
+      // très rapide en ligne droite, lent dans les virages : il court dans l'axe de son corps
+      const want = Math.atan2(dx, dz), off = Math.abs(wrapAngle(want - z.yaw));
+      z.yaw = turnTo(z.yaw, want, (off > 0.6 ? 1.8 : 2.6) * dt);
+      const sp = z.speed * (off < 0.45 ? 1 : off < 1.2 ? 0.45 : 0.25) * (z.stagger > 0 ? 0.3 : 1) * (d < 2.5 ? 0.5 : 1);
+      z.vx = damp(z.vx, Math.sin(z.yaw) * sp, 4, dt); z.vz = damp(z.vz, Math.cos(z.yaw) * sp, 4, dt);
+      z.pos.x += (z.vx + z.knockX) * dt; z.pos.z += (z.vz + z.knockZ) * dt;
+      z.knockX = damp(z.knockX, 0, 5, dt); z.knockZ = damp(z.knockZ, 0, 5, dt);
+      settleBody(z, 0.35); z.pos.y = z.gy;
+      z.moving = Math.hypot(z.vx, z.vz);
+      z.barkT -= dt;
+      if (z.barkT <= 0) { z.barkT = rand(2.5, 5); Sound.dogGrowl(z.pos); }
+      // bloqué contre un mur : il passe sous le sable et ressort plus loin
+      z.stuckT += dt;
+      if (z.stuckT > 1.5) {
+        const moved = Math.hypot(z.pos.x - z.lastX, z.pos.z - z.lastZ);
+        z.stuckT = 0; z.lastX = z.pos.x; z.lastZ = z.pos.z;
+        if (moved < 1 && d > 3) { khRodeurState(z, 'dive'); z.hideT = 1.5; break; }
+      }
+      // phares braqués sur lui : il replonge 5 s
+      if (V && V.lights) {
+        const [fx, fz] = vehFwd(V.yaw), rx = z.pos.x - V.x, rz = z.pos.z - V.z, dd = Math.hypot(rx, rz) || 1;
+        if (dd < KHR.lights && (rx * fx + rz * fz) / dd > KHR.lightsCos) { khRodeurState(z, 'dive'); z.hideT = KHR.dive; Sound.dogYelp(z.pos); break; }
+      }
+      // véhicule lent : il le bloque 3 s ; joueur à pied : il l'agrippe 2 s
+      if (V) {
+        if (d < V.T.len / 2 + 1.6 && Math.abs(V.v) * 3.6 < KHR.stallKmh && z.grabCd <= 0) {
+          V.stuckT = KHR.stall; z.grabCd = KHR.stall + 3; Sound.dogSnarl(z.pos); FX.shake = Math.min(1, FX.shake + 0.4);
+          HUD.hint('Un Rôdeur bloque le véhicule !', 2);
+        }
+      } else if (d < 1.5 && Math.abs(player.gy - z.gy) < 1.2 && !player.down && z.grabCd <= 0 && !(player.grabT > 0) && !(player.grabFreeT > 0)) {
+        khRodeurState(z, 'grab'); player.grabT = KHR.grab; player.grabbedBy = z; Sound.dogSnarl(z.pos);
+        playerDamage(KHR.bite); Sound.dogBite(z.pos);
+        HUD.hint('Agrippé ! Couteau (V) pour vous libérer', 2);
+      }
+      break;
+    }
+    case 'grab': {
+      z.yaw = turnTo(z.yaw, Math.atan2(dx, dz), 10 * dt);
+      const want = d > 1.2 ? 1.5 : d < 0.9 ? -1 : 0;
+      z.pos.x += (dx / d) * want * dt; z.pos.z += (dz / d) * want * dt;
+      settleBody(z, 0.35); z.pos.y = z.gy; z.moving = 0;
+      z.biteAcc += dt * KHR.dps;
+      if (z.biteAcc >= 1) { const n = Math.floor(z.biteAcc); z.biteAcc -= n; playerDamage(n); }
+      if (z.st >= KHR.grab || player.down || player.grabbedBy !== z) {
+        if (player.grabbedBy === z) khRelease();
+        z.grabCd = KHR.cd; khRodeurState(z, 'chase');
+      }
+      break;
+    }
+    case 'stun':
+      z.moving = 0;
+      if (z.st >= 1.2) khRodeurState(z, 'chase');
+      break;
+    case 'dive': {
+      const k = clamp(z.st / 0.8, 0, 1);
+      z.pos.y = z.gy - deep * smooth(k); z.moving = 0;
+      if (k >= 1) { z.rstate = 'gone'; z.st = 0; if (!(z.hideT > 0)) z.hideT = KHR.dive; hideZombieSlot(z.slot); }
+      break;
+    }
+    case 'gone':
+      z.hideT -= dt;
+      if (z.hideT <= 0) {
+        if (!KHS.on || KHS.lv < 1.4) { z.alive = false; removeZombie(z); return; }   // la tempête est passée
+        // il ressort plus loin, autour du joueur
+        const a = rand(0, TAU), r = rand(12, 20), x = tx + Math.sin(a) * r, zz = tz + Math.cos(a) * r, cx = Math.floor(x), cz = Math.floor(zz);
+        if (owKind(OW.surf, cx, cz) === OWK.TERRAIN && owWalkCell(0, cx, cz)) {
+          z.gy = owGroundAt(0, x, zz); z.pos.set(x, z.gy - deep, zz); z.k = owLocate(x, zz, z.gy); z.vx = z.vz = 0; z.hideT = 0;
+          z.yaw = Math.atan2(tx - x, tz - zz);
+          owSandBurst(x, zz, z.gy); Sound.rise(z.pos); khRodeurState(z, 'rise');
+        } else z.hideT = 0.3;
+      }
+      return;
+    default: khRodeurState(z, 'chase');
+  }
+  if (!z.alive || z.removed) return;
+  z.turn = dAng(z.yaw, yaw0) / Math.max(dt, 1e-4);
+  z.aim = clamp(dAng(Math.atan2(dx, dz), z.yaw), -1.2, 1.2);
+  animateDog(z, dt);
+}
+/* Mort : il s'effondre en sable et en os (pas d'explosion). Points comme un Desséché ; hors du décompte de la manche. */
+function khKillRodeur(z, info) {
+  z.alive = false; z.state = 'dead'; z.dstate = 'dead'; z.t = 0; z.deathKind = info.kind;
+  if (player.grabbedBy === z) khRelease();
+  let pts = RULES.pointsKill;
+  if (info.kind === 'knife') pts = RULES.pointsKnife; else if (info.kind === 'nuke') pts = 0; else if (info.head) pts = RULES.pointsHead;
+  if (pts) addPoints(pts);
+  G.stats.kills++;
+  if (info.head && info.kind === 'bullet') { G.stats.headshots++; Sound.headshot(); }
+  Life.kill(info, RODEUR_TYPE);
+  Rank.kill(info);
+  glasOnKill(z, info);
+  _khV.set(0, -0.05, 0.1).applyMatrix4(z.rig.chest.matrixWorld);
+  const x = _khV.x, y = _khV.y, zz = _khV.z, dx = info.dx || 0, dz = info.dz || 0;
+  owSandBurst(x, zz, z.gy);
+  for (let i = 0; i < 9; i++) spawnDebris(MAT.dBone, rand(0.03, 0.06), rand(0.1, 0.24), rand(0.03, 0.06), x + rand(-0.3, 0.3), y, zz + rand(-0.3, 0.3),
+    dx * rand(0.5, 2) + rand(-2, 2), rand(1.5, 4), dz * rand(0.5, 2) + rand(-2, 2), 3);
+  for (let i = 0; i < 4; i++) spawnPuff(x + rand(-0.4, 0.4), y + rand(-0.2, 0.2), zz + rand(-0.4, 0.4), rand(0.9, 1.4), rand(1.2, 2), 0xb08a5c, 0.55, 0.5);
+  Sound.zombie(z.pos, 'death');
+  hideZombieSlot(z.slot);
+}
+const _khV = new THREE.Vector3();
+/* Couteau sur un Rôdeur qui vous tient : il lâche prise, sonné. */
+function khKnifeRelease(z) {
+  if (!z.rodeur || z.rstate !== 'grab') return;
+  khRelease(); z.grabCd = KHR.cd;
+  z.knockX = -Math.sin(z.yaw) * 4; z.knockZ = -Math.cos(z.yaw) * 4;
+  khRodeurState(z, 'stun');
+  HUD.hint('Libéré !', 1);
+}
+
+/* ---- Écran « Modèles » : les Desséchés comme les variantes du Fantassin, le Rôdeur sur le modèle du Molosse */
+const KH_SPEC_ANIMS = SPEC_ANIMS.filter((a) => a !== 'tear' && a !== 'climb');     // pas de barricades à Khamsin
+for (const m of ['kh_arch', 'kh_ouvrier', 'kh_villageois']) SPECIMEN_MODELS[m] = { anims: KH_SPEC_ANIMS, make: () => makeSpecimen(m) };
+SPECIMEN_MODELS.kh_rodeur = { anims: ['idle', 'gallop', 'emerge', 'grab', 'dive', 'death'], dog: true, make: () => makeRodeurSpecimen() };
+const khSpecLook = (look, type) => (type && type.kh ? khLook(look, type) : look);
+const _khSpecV = new THREE.Vector3();
+function makeRodeurSpecimen() {
+  const R = {};
+  const root = zombieInstances(R, 1, ['kh_rodeur']);
+  for (const m of R.parts) m.castShadow = true;
+  const look = () => ({ skin: pick(KHR_TINTS), cloth: 0xffffff, eyes: KH_EYE_LIN, helmet: false, helmetColor: 0 });
+  const z = {
+    id: 11, slot: 0, R, model: 'kh_rodeur', type: RODEUR_TYPE, dog: true, rodeur: true, rig: makeDogRig(), look: look(), helmetOn: false, alive: true, spec: true,
+    pos: new THREE.Vector3(), yaw: 0, gy: 0, dstate: 'idle', st: 0, moving: 0, flinch: 0, flinchSide: 1, aim: 0, turn: 0, leap: 0,
+    stunDur: 1.2, stunSide: 1, gib: 0, headless: false, vx: 0, vz: 0,
+  };
+  z.rig.root.scale.setScalar(KHR.scale);
+  paintZombieSlot(0, z.look, R, 'kh_rodeur');
+  // sable soulevé, os qui retombent, lueur des yeux
+  const fx = new THREE.Group();
+  root.add(fx);
+  const sand = [], bones = [];
+  for (let i = 0; i < 8; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.smoke, transparent: true, depthWrite: false }));
+    setLin(s.material.color, 0xb48a5a);
+    s.visible = false; fx.add(s);
+    sand.push({ s, v: new THREE.Vector3(), t: 0, life: 1 });
+  }
+  for (let i = 0; i < 8; i++) {
+    const m = new THREE.Mesh(GEO.box, MAT.dBone);
+    m.castShadow = true; m.visible = false; fx.add(m);
+    bones.push({ m, v: new THREE.Vector3(), w: new THREE.Vector3() });
+  }
+  const eyeGlow = [0, 1].map(() => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: KH_EYE, transparent: true, opacity: 0.75, depthWrite: false, blending: THREE.AdditiveBlending }));
+    s.scale.setScalar(0.09); fx.add(s); return s;
+  });
+  const S = { anim: null, loop: -1, phase: -1, sounds: 0, t: 0 };
+  const loud = () => S.sounds < 2;
+  const burst = (up) => {
+    for (const p of sand) {
+      const a = rand(0, TAU), r = rand(0.2, 1.0);
+      p.s.position.set(Math.sin(a) * r, rand(0.05, 0.3), Math.cos(a) * r - 0.3);
+      p.v.set(Math.sin(a) * rand(0.2, 0.6), rand(0.4, 1.1) * up, Math.cos(a) * rand(0.2, 0.6));
+      p.t = 0; p.life = rand(1.1, 1.8); p.s.visible = true; p.s.material.opacity = 0; p.s.material.rotation = rand(0, TAU);
+    }
+  };
+  const shatter = () => {
+    const c = root.worldToLocal(_khSpecV.set(0, -0.05, 0.1).applyMatrix4(z.rig.chest.matrixWorld));
+    for (const b of bones) {
+      b.m.position.copy(c); b.m.scale.set(rand(0.03, 0.06), rand(0.1, 0.22), rand(0.03, 0.06)); b.m.rotation.set(rand(0, TAU), rand(0, TAU), 0);
+      b.v.set(rand(-2, 2), rand(1.5, 3.5), rand(-2, 2)); b.w.set(rand(-8, 8), rand(-8, 8), rand(-8, 8)); b.m.visible = true;
+    }
+    burst(1);
+  };
+  const stepFx = (dt) => {
+    for (const p of sand) {
+      if (!p.s.visible) continue;
+      p.t += dt;
+      const k = p.t / p.life;
+      if (k >= 1) { p.s.visible = false; continue; }
+      p.s.position.addScaledVector(p.v, dt); p.v.y -= 0.6 * dt;
+      p.s.scale.setScalar(0.5 + k * 1.3);
+      p.s.material.opacity = 0.55 * Math.min(1, k * 6) * (1 - k);
+    }
+    for (const b of bones) {
+      if (!b.m.visible) continue;
+      b.v.y -= 9.8 * dt; b.m.position.addScaledVector(b.v, dt);
+      b.m.rotation.x += b.w.x * dt; b.m.rotation.y += b.w.y * dt; b.m.rotation.z += b.w.z * dt;
+      if (b.m.position.y < 0.03) { b.m.position.y = 0.03; b.v.y = Math.abs(b.v.y) * 0.2; b.v.x *= 0.5; b.v.z *= 0.5; b.w.multiplyScalar(0.4); }
+    }
+  };
+  const hideFx = () => { for (const p of sand) p.s.visible = false; for (const b of bones) b.m.visible = false; };
+  const state = (s, t) => { z.dstate = s; z.st = t; };
+  const deep = KHR.depth * KHR.scale;
+  let hidden = false;
+  return {
+    root,
+    restyle() { z.look = look(); paintZombieSlot(0, z.look, R, 'kh_rodeur'); },
+    center: () => {
+      _specC.setFromMatrixPosition(z.rig.chest.matrixWorld);
+      _specC.y = 0.95 + (_specC.y - DRIG.mid[1] * KHR.scale);
+      return _specC;
+    },
+    view: [0.6, 0.82],
+    shot() {
+      if (hidden || z.pos.y < -0.3) return false;
+      z.flinch = 0.65; z.flinchSide = Math.random() < 0.5 ? 1 : -1;
+      return true;
+    },
+    pose(anim, t, dt, yaw) {
+      if (S.anim !== anim || t < S.t) { S.anim = anim; S.loop = -1; S.sounds = 0; S.phase = -1; hideFx(); hidden = false; z.dan = null; z.pos.set(0, 0, 0); z.flinch = 0; }
+      S.t = t;
+      z.yaw = yaw; z.moving = 0; z.aim = 0; z.leap = 0; z.pos.set(0, 0, 0);
+      const loopOf = (len) => { const L = Math.floor(t / len); if (L !== S.loop) { if (S.loop >= 0) S.sounds++; S.loop = L; S.phase = -1; } return t - L * len; };
+      const once = (ph, fn) => { if (S.phase < ph) { S.phase = ph; fn(); } };
+      const rise = (p) => { const k = clamp(p / 1.2, 0, 1); z.pos.y = -deep * (1 - smooth(k)); state(k < 1 ? 'spawn' : 'idle', p); };
+      switch (anim) {
+        case 'gallop':
+          state('chase', z.st + dt); z.moving = 7.5;
+          break;
+        case 'emerge': {
+          // sous le sable 0,4 s, sortie en 1,2 s, puis repos
+          const p = loopOf(3.6);
+          if (p < 0.4) hidden = true;
+          else if (p < 1.6) { hidden = false; once(1, () => { burst(1); if (loud()) Sound.rise(null); }); rise(p - 0.4); }
+          else { hidden = false; state('idle', z.st + dt); }
+          break;
+        }
+        case 'grab': {
+          const p = loopOf(0.75);
+          state('bite', p);
+          once(1, () => { if (loud()) Sound.dogBite(null); });
+          break;
+        }
+        case 'dive': {
+          // les phares : il replonge (0,8 s), reste sous le sable, ressort
+          const p = loopOf(4.4);
+          if (p < 0.8) state('idle', z.st + dt);
+          else if (p < 1.6) { once(1, () => { burst(0.6); if (loud()) Sound.dogYelp(null); }); z.pos.y = -deep * smooth((p - 0.8) / 0.8); state('chase', z.st + dt); }
+          else if (p < 2.9) hidden = true;
+          else { hidden = false; once(2, () => burst(1)); rise(p - 2.9); }
+          break;
+        }
+        case 'death': {
+          // il court, s'effondre en sable et en os, puis ressort du sol
+          const p = loopOf(4.6);
+          if (p < 1.4) { hidden = false; state('chase', z.st + dt); z.moving = 7.5; }
+          else if (p < 3.3) once(1, () => { shatter(); hidden = true; if (loud()) Sound.zombie(null, 'death'); });
+          else { once(2, () => { hidden = false; z.dan = null; burst(1); }); rise(p - 3.3); }
+          break;
+        }
+        default:
+          state('idle', z.st + dt);
+          z.aim = Math.sin(t * 0.7) * 0.7;
+          break;
+      }
+      z.flinch = damp(z.flinch, 0, 6, dt);
+      animateDog(z, dt);
+      if (hidden) hideZombieSlot(0, R);
+      flushZombieMatrices(R);
+      eyeGlow.forEach((e, i) => {
+        e.visible = !hidden && z.pos.y > -0.35;
+        if (e.visible) e.position.copy(root.worldToLocal(_khSpecV.set(i ? 0.034 : -0.034, 0.0, 0.126).applyMatrix4(z.rig.head.matrixWorld)));
+      });
+      stepFx(dt);
+    },
+  };
+}
+/* Libellés et fiches (MODEL_ANIMS et SPECIMEN_FACTS sont définis plus bas dans le fichier : appelé après eux). */
+function khSpecimenSetup() {
+  Object.assign(MODEL_ANIMS, { emerge: 'Sortie du sable', grab: 'Agrippe', dive: 'Plongée' });
+  SPECIMEN_FACTS.kh = (type) => {
+    const hit = RULES.zombieHit * type.mult.damage, hp = (r) => fmtNum(khHp(r), 0), d = type.drop, pct = (x) => `${fmtNum(x * 100, 2)} %`;
+    const sp = (k) => `${fmtNum(SPEEDS[k][0])} à ${fmtNum(SPEEDS[k][1])}`;
+    const where = { kh_arch: 'Surtout au camp de fouilles et au plateau', kh_ouvrier: 'Surtout à la centrale, au relais Km 47 et à l’aérodrome', kh_villageois: 'Surtout à l’oasis de Sekhet' }[type.id] || 'Partout';
+    const details = [
+      ['Apparaît', 'Khamsin', '', `${where} ; ils sortent du sable autour de vous`],
+      ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20 : 150, +100 par manche jusqu’à la 10, puis ×1,1'],
+      ['Vitesse', `${fmtNum(SPEEDS.walk[0])} à ${fmtNum(SPEEDS.run[1])} m/s`, '', `Marche ${sp('walk')} m/s jusqu’à la manche 5 ; dès la 6, trot ${sp('jog')} et course ${sp('run')} m/s`],
+      ['Coup', `${fmtNum(hit, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / hit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / hit)} avec ${PERKS.cuirasse.name}`],
+      ['Bruit', `${VEH_TYPES.jeep.noise} m`, '', `Un moteur qui tourne les attire jusqu’à ${VEH_TYPES.jeep.noise} m, ${VEH_TYPES.truck.noise} m pour le camion blindé`],
+      ['Yeux', '150 m', '', 'Turquoise : on les voit dans la poussière avant la silhouette'],
+      ['Tête', `dégâts ×${fmtNum(type.headMult)}`, '', 'Sans casque : rien n’arrête le premier tir à la tête'],
+      ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
+    ];
+    if (d && d.item === 'mag') details.push(['Chargeur', `${pct(d.chance)} des Archéologues`, '', `Un chargeur de plus pour l’arme en main (ou l’autre si sa réserve est pleine) · ${PICKUPS.mag.life} s au sol`]);
+    return {
+      bars: [['PV', khHp(1) / zombieHpForRound(1)], ['Vitesse', type.mult.speed], ['Dégâts', type.mult.damage]],
+      ref: `Référence ×1 du bestiaire : le Fantassin, ${fmtNum(zombieHpForRound(1), 0)} PV à la manche 1. Les Desséchés ont leur propre courbe : ${hp(1)} PV à la manche 1, ${hp(10)} à la 10.`,
+      cards: [
+        [`Capacité · ${type.ability}`, 'Ils marchent jusqu’à la manche 5 et courent dès la 6. Un moteur qui tourne les attire.'],
+        ['Signe distinctif', type.sign],
+      ],
+      details,
+    };
+  };
+  SPECIMEN_FACTS.rodeur = (type) => {
+    const hp = (r) => fmtNum(khHp(r) * 2, 0), dmg = KHR.bite + KHR.dps * KHR.grab;
+    return {
+      bars: [['PV', (khHp(1) * 2) / zombieHpForRound(1)], ['Vitesse', KHR.speed[1] / SPEEDS.jog[1]], ['Dégâts', dmg / RULES.zombieHit]],
+      ref: `Trait clair = zombie standard (×1) : ${fmtNum(zombieHpForRound(1), 0)} PV à la manche 1, trot de ${fmtNum(SPEEDS.jog[0])} à ${fmtNum(SPEEDS.jog[1])} m/s, ${fmtNum(RULES.zombieHit, 0)} dégâts par coup.`,
+      cards: [
+        [`Capacité · ${type.ability}`, `Il sort du sable pendant la Tempête et le Khamsin. Il agrippe un joueur à pied ${fmtNum(KHR.grab, 0)} s et bloque ${fmtNum(KHR.stall, 0)} s un véhicule qui roule à moins de ${KHR.stallKmh} km/h.`],
+        ['Faiblesse', `Très rapide en ligne droite, lent dans les virages. Les phares braqués sur lui le renvoient ${fmtNum(KHR.dive, 0)} s sous le sable.`],
+      ],
+      details: [
+        ['Apparition', 'Tempête et Khamsin', '', `Il sort du sable à ${KHR.dist[0]} à ${KHR.dist[1]} m de vous · ${KHR.max[2]} à la fois en Tempête, ${KHR.max[3]} en Khamsin · il replonge quand le vent tombe`],
+        ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20 : deux fois ceux d’un Desséché de la même manche'],
+        ['Vitesse', `${fmtNum(KHR.speed[0])} à ${fmtNum(KHR.speed[1])} m/s`, '', 'En ligne droite ; moins de la moitié dans les virages'],
+        ['Prise', `${fmtNum(KHR.grab, 0)} s`, '', `Joueur à pied : ${KHR.bite} dégâts, puis ${KHR.dps} par seconde · seul, un coup de couteau (V) vous libère`],
+        ['Véhicule', `${fmtNum(KHR.stall, 0)} s`, '', `Bloque un véhicule qui roule à moins de ${KHR.stallKmh} km/h`],
+        ['Parade', 'Les phares', '', `À moins de ${KHR.lights} m, droit devant : il replonge ${fmtNum(KHR.dive, 0)} s sous le sable`],
+        ['Taille', '1 m · 2,5 m', '', 'Au garrot · queue comprise'],
+        ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche · hors du décompte de la manche`],
+      ],
+    };
+  };
+}
+
+/* ---- Yeux qui percent la poussière (points turquoise, sans brouillard, taille fixe) */
+const KHE = { pts: null, pos: null };
+const _khEye = new THREE.Vector3();
+function khEyes() {
+  if (!KHE.pts) {
+    const n = ZR.N * 2;
+    KHE.pos = new Float32Array(n * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(KHE.pos, 3));
+    g.setDrawRange(0, 0);
+    KHE.pts = new THREE.Points(g, new THREE.PointsMaterial({ color: new THREE.Color(KH_EYE).convertSRGBToLinear(), size: 4, sizeAttenuation: false, map: TEX.glow, transparent: true, depthWrite: false, fog: false }));
+    KHE.pts.frustumCulled = false; KHE.pts.renderOrder = 8;
+    scene.add(KHE.pts);
+  }
+  let n = 0;
+  const P = KHE.pos, H = ZRIG.head, cx = camera.position.x, cz = camera.position.z;
+  for (const z of Zombies.list) {
+    if (!z.alive || z.removed || z.rstate === 'gone' || (z.headless && !z.rodeur) || ((z.rodeur || z.state === 'rise') && z.pos.y < z.gy - 0.6)) continue;
+    const d = Math.hypot(z.pos.x - cx, z.pos.z - cz);
+    if (d < 12 || d > 150 || n >= ZR.N * 2 - 2) continue;
+    const bone = z.rodeur ? z.rig.head : z.rig.neck;
+    for (const s of [-1, 1]) {
+      if (z.rodeur) _khEye.set(s * 0.034, 0.0, 0.124); else _khEye.set(s * 0.04, H - 0.004, 0.106);
+      _khEye.applyMatrix4(bone.matrixWorld);
+      P[n * 3] = _khEye.x; P[n * 3 + 1] = _khEye.y; P[n * 3 + 2] = _khEye.z; n++;
+    }
+  }
+  KHE.pts.geometry.setDrawRange(0, n);
+  KHE.pts.geometry.attributes.position.needsUpdate = true;
+  KHE.pts.visible = OW.on;
+  const k = clamp(KHS.lv / 3, 0, 1);
+  KHE.pts.material.opacity = 0.7 + 0.3 * k;
+  KHE.pts.material.size = 4 + 2.5 * k;            // pixels : plus gros quand la poussière cache tout
+}
+
 /* ====================================================== fin du monde ouvert == */
 
 /* ------------------------------------------------- Catalogue des cartes -- */
@@ -29450,6 +30415,8 @@ const SPECIMEN_FACTS = {
   },
 };
 
+khSpecimenSetup();                                    // Khamsin : fiches des Desséchés et du Rôdeur
+
 /* Toise peinte sur le mur du fond : 4 m × 3 m, un trait tous les 10 cm. */
 function heightChart() {
   const W = 1024, H = 768, ppm = 256;
@@ -29706,7 +30673,7 @@ function setModelAnim(k) {
   // le cri qui va avec (le son démarre au premier geste du joueur)
   Sound.init();
   // Le Molosse : ses animations jouent leurs sons (grognement, éclair, morsure, explosion)
-  if (Models.sel === DOG_TYPE.id) { if (k === 'gallop') Sound.dogSnarl(null); else Sound.ui(); return; }
+  if (Models.sel === DOG_TYPE.id || Models.sel === RODEUR_TYPE.id) { if (k === 'gallop') Sound.dogSnarl(null); else Sound.ui(); return; }
   if (k === 'attack' || k === 'frenzy') Sound.zombie(null, 'attack');
   else if (k === 'death') Sound.zombie(null, 'death');
   else if (k === 'rise') Sound.rise(null);
