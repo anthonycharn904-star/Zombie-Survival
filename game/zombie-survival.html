@@ -1352,7 +1352,7 @@ const GLAS = {
    name : le nom affiché dans le HUD (« Mod de munition : … », GLAS.tiers[].mod) ; quote : la phrase
    de la planche ; facts() : fiche complète, chiffres tirés des règles (GLAS). */
 const MOD_SOURCES = {
-  glas: { name: 'Le Glas', has: (map) => !!(map && map.amp), tiers: () => GLAS.tiers, how: (t) => `${t}ᵉ coup de cloche` },
+  glas: { name: 'Le Glas', has: (map) => !!(map && (map.amp || map.altar)), tiers: () => GLAS.tiers, how: (t) => `${t}ᵉ coup de cloche (à Khamsin : ${t}ᵉ rayon de l’autel du sanctuaire)` },
 };
 const WEAPON_MODS = [
   {
@@ -16538,7 +16538,7 @@ function updatePlayer(dt) {
   const mobility = slot ? WEAPONS[slot.id].mobility : 1;
   let f = (key('KeyW') ? 1 : 0) - (key('KeyS') ? 1 : 0);
   let s = (key('KeyD') ? 1 : 0) - (key('KeyA') ? 1 : 0);
-  if (p.down || p.grabT > 0) { f = 0; s = 0; }         // Khamsin : agrippé par un Rôdeur
+  if (p.down || p.grabT > 0 || (OW.on && KHP.busy > 0)) { f = 0; s = 0; }   // Khamsin : agrippé par un Rôdeur, dans un escalier
   const fx = -Math.sin(p.yaw), fz = -Math.cos(p.yaw), rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
   let wx = fx * f + rx * s, wz = fz * f + rz * s;
   const wl = Math.hypot(wx, wz);
@@ -20305,7 +20305,7 @@ function hitscan(s, ox, oy, oz, dx, dy, dz, mw) {
     let d = dmg;
     if (fall) d *= h.t <= fall[0] ? 1 : h.t >= fall[1] ? fall[2] : lerp(1, fall[2], (h.t - fall[0]) / (fall[1] - fall[0]));
     if (h.head) d *= (h.z.type || BASE_TYPE).headMult;
-    bloodBurst(hx, hy, hz, dx, dz, h.head ? 7 : 4, 1);
+    if (h.z.boss) khGardienSpark(hx, hy, hz, dx, dz); else bloodBurst(hx, hy, hz, dx, dz, h.head ? 7 : 4, 1);
     Arms.shotHit = true;
     const killed = damageZombie(h.z, d, { kind: 'bullet', head: h.head, leg: h.leg, arm: h.arm, hx, hy, hz, dx, dz, force: def.kind === 'shotgun' ? 1.4 : 0.5, slot: s });
     if (h.arm && Math.random() < armGibChance(def, s)) gibArm(h.z, h.arm, dx, dz);
@@ -20475,7 +20475,7 @@ function buildKnife() {
 }
 
 function updateArms(dt) {
-  if (OW.on && owDriving()) { player.ads = 0; return; }        // au volant : seul, on ne tire pas
+  if (OW.on && (owDriving() || KHP.busy > 0)) { player.ads = 0; return; }   // au volant : seul, on ne tire pas ; ni dans un passage
   const s = curSlot();
   Arms.bloom = Math.max(0, Arms.bloom - dt * 5);
   if (pressed('KeyR')) startReload();
@@ -20733,6 +20733,7 @@ function zombieHead(z, out) { return out.set(0, ZRIG.head, 0.02).applyMatrix4(z.
    bras (depuis le jeu 1.9.0 : un bras tendu hors du corps se touche, et un tir au bras peut
    l'arracher). */
 function rayHitZombie(z, ox, oy, oz, dx, dy, dz, extra) {
+  if (z.boss) return khGardienRay(z, ox, oy, oz, dx, dy, dz, extra);
   if (z.dog) return rayHitDog(z, ox, oy, oz, dx, dy, dz, extra);
   let best = -1;
   _hitHead = false; _hitLeg = false; _hitArm = 0;
@@ -20932,6 +20933,7 @@ function aliveCount() {
 }
 
 function damageZombie(z, amount, info) {
+  if (z.boss) return khGardienDamage(z, amount, info);
   if (!z.alive) return false;
   if (G.timers.insta > 0 && info.kind !== 'nuke') amount = z.hp + 1;
   z.hp -= amount;
@@ -20950,6 +20952,7 @@ function damageZombie(z, amount, info) {
   return false;
 }
 function killZombie(z, info) {
+  if (z.boss) return;                                  // le Gardien meurt par ses dégâts
   if (z.dog) { if (z.rodeur) khKillRodeur(z, info); else killDog(z, info); return; }
   const st = z.state;
   z.alive = false;
@@ -21029,6 +21032,8 @@ function updateZombies(dt) {
 }
 
 function updateZombie(z, dt) {
+  if (z.boss) { khGardienUpdate(z, dt); return; }      // Khamsin : le Gardien
+  if (z.pilot && khPilotWander(z, dt)) return;          // Khamsin : le pilote fait le tour du bassin
   if (z.dog) { updateDog(z, dt); return; }
   z.t += dt;
   if (!z.alive) { updateCorpse(z, dt); return; }
@@ -21358,7 +21363,7 @@ function updateDogEyes() {
   let n = 0;
   const eyes = dogGeometries().eyePos, arr = FX.dogEyePos;
   for (const z of Zombies.list) {
-    if (!z.dog || z.rodeur || !z.alive || z.removed) continue;
+    if (!z.dog || z.rodeur || z.boss || !z.alive || z.removed) continue;
     for (const e of eyes) {
       _dE.copy(e).applyMatrix4(z.rig.head.matrixWorld);
       arr[n * 3] = _dE.x; arr[n * 3 + 1] = _dE.y; arr[n * 3 + 2] = _dE.z;
@@ -23967,6 +23972,7 @@ function glasCollar(box, E) {
    est maintenue, prix du prochain coup), relève, reprise. */
 const glasNext = (amp) => (amp.landed ? amp.tier : amp.tier + 1) + 1;
 function glasPrompt(amp) {
+  if (amp.altar) return khAltarPrompt(amp);
   const T = GLAS.tiers;
   switch (amp.state) {
     case 'mute': return { text: 'Le Glas est muet : il faut du courant', disabled: true };
@@ -24239,6 +24245,7 @@ function updateGlasChain(amp) {
    (Muette, Repos, Rituel, Prête), flash des coups, arme sur le berceau, ondes, bourdonnement. */
 const GLAS_CRACK_DARK = new THREE.Color(0x1c120a).convertSRGBToLinear(), GLAS_SLOT_DARK = new THREE.Color(0x120a04).convertSRGBToLinear();
 function glasAnimate(amp, dt) {
+  if (amp.altar) { khAltarAnimate(amp, dt); return; }   // Khamsin : l'autel du sanctuaire
   const st = amp.state, t = amp.t, M = GLAS_R.M, now = G.time;
   amp.flashT += dt; amp.strikeT += dt; amp.ropeT += dt; amp.offerT += dt;
   // --- la cloche : chute (accélérée), rebond des coups, relève au treuil
@@ -24925,6 +24932,7 @@ function serializeGame() {
     // Le Glas : coups sonnés (le douzième sonne minuit, une fois), arme restée sur le berceau
     glas: { tolls: G.glasTolls, midnight: G.glasMidnight, weapon: Features.amp && Features.amp.weapon ? { id: Features.amp.weapon.id, tier: Features.amp.tier } : null },
     perks: [...player.perks], souffleUses: player.souffleUses, power: G.power,
+    kh: OW.on ? khSerialize() : null,                   // Khamsin : pièces, Sceptre, véhicules
     doors: Object.keys(World.doors).filter((id) => World.doors[id].opened), box: Features.box ? Features.box.cur : -1,
     stats: Object.assign({}, G.stats), cheat: G.cheat, rank: G.rankStart,
     // manches de chiens : celles déjà tirées (la manche en cours comprise) et le nombre de manches de chiens finies
@@ -24965,6 +24973,7 @@ function restoreSave(s) {
       for (const p of d.pieces) p.m.visible = false;
     }
     if (s.power) powerOnQuiet();
+    if (OW.on && s.kh) khRestore(s.kh);
     for (const p of s.perks) if (PERKS[p]) player.perks.add(p);
     if (player.perks.has('cuirasse')) { player.maxHp = RULES.cuirasseHp; player.hp = player.maxHp; }
     player.souffleUses = s.souffleUses || 0;
@@ -25277,7 +25286,8 @@ function gameOver() {
   if (G.state !== 'playing') return;
   G.state = 'gameover';
   closeKeypad();
-  Sound.gameOver();
+  $('go-title').textContent = 'Partie terminée';
+  if (!(OW.on && KHQ.won)) Sound.gameOver();          // Khamsin : l'évasion n'est pas une défaite
   Sound.setMuffle(true);
   exitLock();
   HUD.setDowned(false);
@@ -26408,6 +26418,7 @@ function owFlowDir(k, x, z, out) {
 
 /* Apparition : dans le sable autour du joueur (de 16 à 38 m), plutôt derrière lui. */
 function owPickSpawn() {
+  if ((player.layer | 0) === 1) return khPickSpawnUnder();     // sanctuaire : les fosses de sable
   const p = player;
   const others = Zombies.list.filter((z) => z.alive && z.state === 'rise');
   const V = VEH.drive, fast = V && Math.abs(V.v) > 6;
@@ -26571,7 +26582,7 @@ function owChunkGeometry(c, s) {
   const put = (v, gi, gj, dy) => {
     const ci = clamp(gi, 0, NX - 1), cj = clamp(gj, 0, OW.NZ - 1), k = cj * NX + ci;
     const x = OW.X0 + gi * 4, z = OW.Z0 + gj * 4;
-    pos[v * 3] = x; pos[v * 3 + 1] = H[k] + dy; pos[v * 3 + 2] = z;
+    pos[v * 3] = x; pos[v * 3 + 1] = H[k] + dy + (s === 4 && OW.pit && OW.pit.has(k) ? OW.pit.get(k) : 0); pos[v * 3 + 2] = z;
     const l = Math.max(0, ci - st), r = Math.min(NX - 1, ci + st), u = Math.max(0, cj - st), d = Math.min(OW.NZ - 1, cj + st);
     const gx = (H[cj * NX + r] - H[cj * NX + l]) / ((r - l) * 4 || 1), gz = (H[d * NX + ci] - H[u * NX + ci]) / ((d - u) * 4 || 1);
     const ln = Math.hypot(gx, 1, gz);
@@ -27068,7 +27079,7 @@ function owGradeOf(id, out) {
   return out;
 }
 function owApplyGrade(dt) {
-  const g = G.state === 'menu' ? owGradeOf('route', _owGrade) : owGradeAt(camera.position.x, camera.position.z, _owGrade);
+  const g = G.state === 'menu' ? owGradeOf('route', _owGrade) : KHSAN.under ? owGradeOf('S', _owGrade) : owGradeAt(camera.position.x, camera.position.z, _owGrade);
   const sun = OW.sunLight;
   sun.color.copy(g.sun); sun.intensity = g.sunI;
   // la cible suit la caméra, calée sur la taille d'un texel de l'ombre (pas de scintillement)
@@ -27084,7 +27095,9 @@ function owApplyGrade(dt) {
   const fogCol = OWG.tmp.copy(g.haze);
   khStormGrade(g, u, fogCol);
   // three r128 mélange le brouillard après l'étalonnage et l'encodage : sa couleur est une couleur d'écran
+  if (KHSAN.under) { scene.fog.density = 0.022; khFar(300); }       // sanctuaire : brume sombre, la salle se perd dans le noir
   scene.fog.color.copy(fogCol).convertLinearToSRGB();
+  if (KHSAN.under && scene.background && scene.background.isColor) scene.background.copy(scene.fog.color);
   u.uHaze.value.copy(fogCol);
   if (OW.sandWall) { const w = OW.sandWall.material.uniforms; w.uHaze.value.copy(fogCol); w.uFogD.value = scene.fog.density; }
   renderer.toneMappingExposure = g.exp;
@@ -27182,7 +27195,7 @@ const KHAMSIN = {
   rules: { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null },
   spawn: { pos: KH.spawn.pos.slice(), yaw: KH.spawn.yaw, lv: 0 },
   ambiance: { sky: '#e6ad74', fog: '#e6ad74', fogDensity: 0.00058, hemiSky: '#9aa9c2', hemiGround: '#c8915c', hemi: 0.8, exposure: 1.0, moon: false, trees: 0, pipes: false, wallHeight: 3.5 },
-  boxes: [], perks: [], doors: [], wallbuys: [], lights: [], signs: [], props: [], zones: [], risers: [], power: null, amp: null, digipass: null,
+  boxes: [], perks: [], doors: [], wallbuys: [], lights: [], signs: [], props: [], zones: [], risers: [], power: null, amp: null, digipass: null, altar: true,
   thumb: null, menuCam: null, seed: 4747, updated: '2026-10-09',
 };
 function khThumb() {
@@ -27230,6 +27243,10 @@ function owLoad(map) {
   owBuildPoles(root);
   owBuildPlaces(root);
   owBuildFeatures(root);
+  owBuildSanctuary(root);
+  khPortalInteractables();
+  owBuildQuest(root);
+  owBuildTunnel(root);
   owBuildVehicles(root);
   owBuildFarRing(root);
   owBuildSandWall(root);
@@ -27271,6 +27288,9 @@ function owUnload() {
   for (const m of KHS.walls ? KHS.walls.meshes : []) m.visible = false;
   if (KHS.streaks) KHS.streaks.mesh.visible = false;
   if (KHE.pts) KHE.pts.visible = false;
+  KHSAN.under = false; if (KHP.el) khFade(false, 0.01);
+  if (KHG.R) { KHG.R.root.visible = false; KHG.tornado.group.visible = false; } KHG.e = null; khBossBar(null);
+  if (KHQ.hud) KHQ.hud.hidden = true; khPlaneSound(false); KHT.ride = null; KHSAN.view = 'surface';
   if (MOON) { MOON.scale.set(30, 30, 1); MOON.material.opacity = 0.8; }
   OW.lastLoc = null;
   owHud(false);
@@ -27298,8 +27318,11 @@ function owUpdate(dt) {
   owUpdateView(dt);
   if (OW.sandFX) OW.sandFX.update(dt);
   khStormUpdate(dt);
+  khSanctuaryUpdate(dt);
   owVehUpdate(dt);
   khRodeurs(dt);
+  khGardienStormTick(dt);
+  khQuestUpdate(dt);
   khEyes();
   // nom du lieu en entrant
   const near = khNearestLoc(player.pos.x, player.pos.z);
@@ -27307,6 +27330,8 @@ function owUpdate(dt) {
   if (inside && inside !== OW.lastLoc) HUD.zone(inside.name);
   OW.lastLoc = inside || (near.d > 60 ? null : OW.lastLoc);
   owUpdateHud(dt);
+  khVictoryCam(dt);
+  khRideCam(dt);
 }
 
 /* ---------------------------------------------------- Mini-carte, boussole --
@@ -27399,6 +27424,7 @@ function owUpdateHud(dt) {
       g.fillRect(-w / 2, -l / 2, w, l); g.strokeRect(-w / 2, -l / 2, w, l);
       g.restore();
     }
+    khQuestMapMarks(g, X, Z, S);
     // lieux hors du cadre : flèches au bord
     g.font = `700 13px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle';
     for (const L of KH.locs) {
@@ -27464,6 +27490,10 @@ function owDecalSlope(x, y, z) {
 /* Nouvelle partie, retour au menu : véhicules à leur place, disjoncteurs relevés. */
 function owResetWorld() {
   khStormReset();
+  khSanctuaryReset();
+  khGardienReset();
+  khQuestReset();
+  khTunnelReset();
   khEnemiesReset();
   owResetVehicles();
   owResetFeatures();
@@ -27772,6 +27802,7 @@ function owResetVehicles() {
   if (VEH.drive) vehExit(true);
   for (const V of VEH.list) {
     V.x = V.sp.x; V.z = V.sp.z; V.yaw = V.sp.yaw; V.v = 0; V.steer = 0; V.fuel = V.T.fuel; V.bought = !V.T.cost; V.lights = false; V.stuckT = 0; V.stuck = false; V.bogT = 0; V.plateT = 0;
+    V.flipT = 0; V.flipped = V.flipping = V.unflipping = false; V.unflipT = 0; V.dented = false;
     vehPose(V, 0, true);
   }
 }
@@ -27838,6 +27869,7 @@ function vehPose(V, dt, snap) {
   V.group.position.set(V.x, V.y, V.z);
   _ve.set(V.pitch, V.yaw, V.roll, 'YXZ');
   V.group.quaternion.setFromEuler(_ve);
+  if (V.flipT) khVehFlipPose(V);                  // renversé par le Gardien
 }
 
 /* ---- Monter, descendre */
@@ -27845,21 +27877,29 @@ function vehInteractable(V) {
   return {
     get x() { return V.x; }, get z() { return V.z; }, get y() { return V.y; },
     get r() { return V.T.len / 2 + 1.4; }, veh: V,
-    get hold() { return !!V.stuck && !VEH.drive; },
+    get hold() { return (!!V.stuck || !!V.flipped) && !VEH.drive; },
     useHold(dt) {
+      if (V.flipped) {
+        if (V.unflipping) return;
+        V.unflipT = (V.unflipT || 0) + dt;
+        if (V.unflipT >= 5) { V.unflipping = true; V.unflipT = 0; Sound.boardPlace({ x: V.x, z: V.z }); HUD.hint(`${V.T.name} : sur ses roues`, 2); }
+        return;
+      }
       V.plateT += dt;
       if (Math.random() < dt * 4) owSandBurst(V.x + rand(-1, 1), V.z + rand(-1, 1), V.y);
       if (V.plateT >= 10) { V.stuck = false; V.plateT = 0; Sound.boardPlace({ x: V.x, z: V.z }); HUD.hint('Dégagé : les plaques sont rangées sur le flanc', 2.5); }
     },
     prompt() {
       if (VEH.drive || G.state !== 'playing') return null;
+      if (V.flipping || V.unflipping) return null;
+      if (V.flipped) return { text: 'Maintenez F pour remettre le véhicule sur ses roues', sub: `${Math.round(((V.unflipT || 0) / 5) * 100)} %` };
       if (V.T.power && !G.power) return { text: `${V.T.name} : sans courant`, disabled: true, sub: 'Rétablissez le courant à la centrale' };
       if (!V.bought) return { text: `Acheter ${V.T.short}`, cost: V.T.cost };
       if (V.stuck) return { text: 'Maintenez F pour poser les plaques de désensablage', sub: `${Math.round((V.plateT / 10) * 100)} %` };
       return { text: `Conduire ${V.T.short}`, sub: V.fuel <= 0 ? 'Réservoir vide : faites le plein aux jerricans' : `Carburant ${Math.round((V.fuel / V.T.fuel) * 100)} %` };
     },
     use() {
-      if (VEH.drive) return;
+      if (VEH.drive || V.flipped || V.flipping || V.unflipping) return;
       if (V.T.power && !G.power) { Sound.deny(); return; }
       if (!V.bought) { if (!trySpend(V.T.cost)) return; V.bought = true; HUD.banner(V.T.name, 'Il est à vous', 'power'); }
       vehEnter(V);
@@ -28007,7 +28047,7 @@ const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
 function vehZombies(V, dt) {
   const T = V.T, [fx, fz] = vehFwd(V.yaw), sp = Math.abs(V.v), R = T.len / 2 + 1;
   for (const z of Zombies.list) {
-    if (!z.alive || z.state === 'rise' || Math.abs(z.gy - V.y) > 2.2) continue;
+    if (!z.alive || z.boss || z.state === 'rise' || Math.abs(z.gy - V.y) > 2.2) continue;
     const dx = z.pos.x - V.x, dz = z.pos.z - V.z;
     if (dx * dx + dz * dz > R * R) continue;
     const lf = dx * fx + dz * fz, lr = dx * -fz + dz * fx, m = 0.32;
@@ -28077,7 +28117,9 @@ function vehCamera(V, dt) {
 function owVehUpdate(dt) {
   const dark = owDarkness();
   for (const V of VEH.list) {
-    if (V !== VEH.drive && (Math.abs(V.v) > 0.01 || V.y > owGroundAt(0, V.x, V.z) + 0.3)) vehStep(V, dt, { f: 0, s: 0, hand: true });
+    if (V.flipping || V.unflipping) { khVehFlipStep(V, dt); V.v = 0; vehPose(V, dt); }
+    else if (V.flipped) V.v = 0;
+    else if (V !== VEH.drive && (Math.abs(V.v) > 0.01 || V.y > owGroundAt(0, V.x, V.z) + 0.3)) vehStep(V, dt, { f: 0, s: 0, hand: true });
     // roues : rotation, braquage
     for (const w of V.wheels) {
       w.w.rotation.x = -V.rot;
@@ -28298,7 +28340,7 @@ function owHouse(K, o) {
   // sol et plafond (cases intérieures : FLOOR avec plafond, le toit arrête les rayons)
   const roofY = top + (o.roof === 'flat' ? 0.25 : 0.1);
   K.solid(x0 + 1, z0 + 1, x1 - 1, z1 - 1, OWK.FLOOR, { base: y, ceil: o.roof === 'none' ? 0 : top, roof: roofY, mat: OWM.STONE });
-  K.box(o.floorTex || 'kh_floor', 0xffffff, x0 + 1, y - 0.3, z0 + 1, x1 - 1, y, z1 - 1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+  if (!o.noFloor) K.box(o.floorTex || 'kh_floor', 0xffffff, x0 + 1, y - 0.3, z0 + 1, x1 - 1, y, z1 - 1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
   // murs : côté par côté, en segments entre les ouvertures
   const sides = [
     ['n', x0, x1, (a, b) => [a, z0, b, z0 + 1], true],
@@ -28502,8 +28544,9 @@ function owLightsUpdate(dt) {
   }
   if (OWL.t > 0) return;
   OWL.t = 0.3;
-  const px = camera.position.x, pz = camera.position.z;
-  const near = OWL.lamps.filter((L) => L.on && Math.abs(L.x - px) < 60 && Math.abs(L.z - pz) < 60)
+  const C = KHT.ride && KHT.cart ? KHT.cart.position : camera.position, px = C.x, pz = C.z;      // en draisine : autour de la draisine
+  const layer = KHSAN.view === 'tunnel' ? 2 : KHSAN.under ? 1 : 0;
+  const near = OWL.lamps.filter((L) => L.on && (L.layer | 0) === layer && Math.abs(L.x - px) < 60 && Math.abs(L.z - pz) < 60)
     .sort((a, b) => Math.hypot(a.x - px, a.z - pz) - Math.hypot(b.x - px, b.z - pz));
   OWL.pool.forEach((l, i) => {
     const L = near[i];
@@ -28511,6 +28554,7 @@ function owLightsUpdate(dt) {
     l.position.set(L.x, L.y - 0.15, L.z);
     l.color.copy(L.color);
     l.intensity = (0.4 + dark * 1.6) * L.size;
+    l.distance = L.range || 16;
   });
 }
 
@@ -28543,6 +28587,7 @@ function khShapeTerrain() {
 
 function owBuildPlaces(root) {
   OWL.lamps = [];
+  OW.placesRoot = root;
   const K = owKit('lieux');
   khPlaceA(K); khPlaceB(K); khPlaceC(K); khPlaceD(K); khPlaceE(K); khPlaceF(K); khPlaceG(K);
   K.build(root);
@@ -28622,7 +28667,7 @@ function khPlaceB(K) {
   for (const [x, z] of [[1985, 1085], [2000, 1085], [1985, 1100], [2000, 1100], [2015, 1093]]) mastaba(x, z, x + 9, z + 5);
   // kiosque du sanctuaire (porte scellée jusqu'au courant), entre les deux grandes pyramides
   const yk = owH(2190, 1396) + 0.05;
-  owHouse(K, { x0: 2184, z0: 1390, x1: 2196, z1: 1402, y: yk, h: 4.6, wall: 'kh_sandstone', roof: 'flat', roofTex: 'kh_sandstone', parapet: 0.6, floorTex: 'kh_sandstone', doors: [['s', 5, 2, 3.2]] });
+  owHouse(K, { x0: 2184, z0: 1390, x1: 2196, z1: 1402, y: yk, h: 4.6, wall: 'kh_sandstone', roof: 'flat', roofTex: 'kh_sandstone', parapet: 0.6, noFloor: true, doors: [['s', 5, 2, 3.2]] });   // sol percé de l'escalier (sanctuaire)
   P.kiosk = { x: 2190, y: yk, z: 1402, door: [2189, 1401, 2191, 1402] };
   // petit camp de l'équipe (tentes et groupe électrogène)
   const yc = owH(2246, 1560);
@@ -28861,7 +28906,13 @@ function khPlaceG(K) {
   }
   for (const [x, z] of [[2786, 360], [2870, 400], [2930, 440]]) owLampPost(K, x, y, z, 6, 0xffc890, false, [0, -0.8]);
   P.plane = { x: 3000, y: owH(3000, 300), z: 300 };
-  khPlane(K, P.plane.x, P.plane.y, P.plane.z);
+  // l'avion à part (il décolle à la fin) : pivot sur sa position, pièces en coordonnées du monde
+  const KP = owKit('avion'), pivot = new THREE.Group();
+  khPlane(KP, P.plane.x, P.plane.y, P.plane.z);
+  pivot.position.set(P.plane.x, P.plane.y, P.plane.z);
+  KP.build(pivot).position.set(-P.plane.x, -P.plane.y, -P.plane.z);
+  OW.placesRoot.add(pivot);
+  P.planeGroup = pivot;
   P.refuge = [{ x0: 2791, z0: 371, x1: 2821, z1: 391, name: 'hangar' }, { x0: 2831, z0: 371, x1: 2861, z1: 391, name: 'hangar' }];
 }
 /* Tour de contrôle : fût de béton 6 × 6, escalier droit à l'est (rampes), cabine vitrée. */
@@ -28932,8 +28983,6 @@ function khPlane(K, x, y, z) {
     const ez = z + sd * 4.6;
     K.geo('kh_paint', W, ax(new THREE.CylinderGeometry(0.62, 0.55, 4.2, 18)), mtx(x - 1.6, yc + rf - 0.55, ez));
     K.geo('kh_sheet', 0x3a3632, ax(new THREE.CylinderGeometry(0.22, 0.42, 0.7, 14)), mtx(x - 4.0, yc + rf - 0.55, ez));
-    for (let b = 0; b < 4; b++) K.box('kh_sheet', 0x2a2826, x - 4.25, yc + rf - 0.55 - 0.09, ez - 1.9, x - 4.15, yc + rf - 0.55 + 0.09, ez + 1.9, { });
-    K.geo('kh_sheet', 0x2a2826, new THREE.BoxGeometry(0.1, 3.8, 0.18), mtx(x - 4.2, yc + rf - 0.55, ez, 0, 0, 0));
   }
   // dérive (bout rouge), empennage, rampe arrière, train d'atterrissage
   K.geo('kh_paint', W, khFin(4.2, 3.4, 1.6), mtx(x + 9.2, yc + rf - 0.1, z));
@@ -29170,6 +29219,7 @@ function khOnRound(n) {
   khStormStart();
 }
 function khStormStart() {
+  KHS.n = (KHS.n || 0) + 1;
   KHS.on = true; KHS.i = 0; KHS.t = 0; KHS.front = -2400;
   HUD.banner('Alerte Khamsin', 'Rejoignez un refuge ou un véhicule fermé · 60 s', 'warn');
   khSiren();
@@ -29214,7 +29264,7 @@ function khStormUpdate(dt) {
       }
     }
   }
-  const p = player, lv = khStormLevelAt(p.pos.x, p.pos.z);
+  const p = player, lv = p.layer ? 0 : khStormLevelAt(p.pos.x, p.pos.z);      // sous terre : à l'abri
   KHS.lv = damp(KHS.lv, lv, 2.5, dt);
   const phase = KHS.on ? KHS_PHASES[KHS.i][0] : 'calm';
   // mini-carte, véhicules, phares
@@ -29409,6 +29459,13 @@ const KH_TYPES = [
     mult: { hp: 1, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
   },
 ];
+/* Le pilote du KH-47 : un Desséché à part, unique ; il erre autour du bassin de l'oasis et garde la clé de contact. */
+const KH_PILOTE_TYPE = {
+  id: 'kh_pilote', num: 'K-06', name: 'Le Pilote', cls: 'Desséché (Khamsin)', tag: 'Oasis de Sekhet', model: 'kh_pilote', facts: 'kh', maps: ['khamsin'], kh: true, pilot: true,
+  desc: 'Le pilote du KH-47. Il s’est posé à l’aérodrome la veille de la tempête ; il erre depuis autour du bassin, la clé de contact dans la poche.',
+  sign: 'Blouson de cuir à col de mouton, serre-tête et lunettes de vol, écharpe blanche. Il porte la clé de contact (pièce ③).',
+  mult: { hp: 4, speed: 1, damage: 1 }, headMult: 2, helmet: false, ability: 'Horde',
+};
 /* Le Rôdeur des sables : squelette du Molosse, ses propres os ; il n'est pas un type de pièce. */
 const RODEUR_TYPE = {
   id: 'kh_rodeur', num: 'K-04', name: 'Le Rôdeur des sables', cls: 'Piège de la tempête (Khamsin)', tag: 'Tempête et Khamsin', model: 'kh_rodeur', facts: 'rodeur',
@@ -29419,7 +29476,7 @@ const RODEUR_TYPE = {
 /* Fiches de l'écran « Modèles » et compteurs d'éliminations, après celles de Bunker 7. Les Desséchés
    ne sont pas dans ZOMBIE_TYPES : les cartes et les Mod Tools ne les proposent pas (leurs règles,
    PV et allures, sont celles de Khamsin). */
-SPECIMEN_TYPES.push(...KH_TYPES, RODEUR_TYPE);
+SPECIMEN_TYPES.push(...KH_TYPES, KH_PILOTE_TYPE, RODEUR_TYPE);
 
 /* Points de vie et allures des Desséchés (planche). */
 const khHp = (r) => Math.round(r <= 10 ? 150 + 100 * (r - 1) : 1050 * Math.pow(1.1, r - 10));
@@ -29464,6 +29521,7 @@ const ZP_HUMAN = (extra) => [
 ZPARTS.kh_arch = ZP_HUMAN([]);
 ZPARTS.kh_ouvrier = ZP_HUMAN([]);
 ZPARTS.kh_villageois = ZP_HUMAN([]);
+ZPARTS.kh_pilote = ZP_HUMAN([]);
 /* Avant-bras décharné et main griffue (peau tannée) ; sleeve : bout de manche jusqu'à sleeveTo (m sous le coude). */
 function khForearm(k, K, sleeve, sleeveTo = 0) {
   const { cyl, ell } = k, cloth = [], skin = [];
@@ -29527,6 +29585,30 @@ function khDesseche(model) {
       box(0.085, 0.03, 0.2, 0, -0.395, 0.05, K.skin), box(0.1, 0.014, 0.26, 0, -0.42, 0.05, sole), box(0.08, 0.008, 0.02, 0, -0.39, 0.08, sole)];
     G = merge({ torso: T, head, hat: hatG, upper, fore, hand, thigh, shin });
     Object.assign(G, zStumps(k, { ...K, flesh: C(0x6a2a1c), fleshD: C(0x2e0d08) }, K.skin, tu));
+  } else if (model === 'kh_pilote') {
+    const lea = C(0x5e3c22), leaD = C(0x3e2614), wool = C(0xdcd0b4), scarf = C(0xece6da), kh = C(0x8e7c58), khD = C(0x6e5e40), boot = C(0x3a2414), brass = C(0xb08a40), glass = C(0x1c2a2a);
+    const R = (y) => lerp(0.19, 0.212, clamp((y - 0.06) / 0.42, 0, 1)), sT = (x, y, o = 0) => on(x, R(y), 0.6, o);
+    const T = [cyl(0.212, 0.19, 0.42, 0, 0.27, 0, lea, 0.6, 0, 0, 0, 14), ell(0.232, 0.084, 0.13, 0, 0.45, 0, lea, 0, 0, 0, 14, 8),
+      cyl(0.19, 0.2, 0.14, 0, 0.0, 0, lea, 0.62, 0, 0, 0, 14), cyl(0.2, 0.2, 0.06, 0, 0.06, 0, leaD, 0.63, 0, 0, 0, 16),
+      cyl(0.185, 0.2, 0.16, 0, -0.1, 0, kh, 0.64, 0, 0, 0, 14)];
+    // col de mouton, fermeture, poches, écharpe dont le pan flotte sur l'épaule
+    T.push(tor(0.105, 0.04, 0, 0.5, 0.0, wool, Math.PI / 2 - 0.2, 0, 0, 1.15, 1, 0.9));
+    { const z = sT(0, 0.3).z; T.push(box(0.012, 0.4, 0.008, 0.02, 0.28, z + 0.004, leaD)); }
+    for (const s of [-1, 1]) { const p = sT(s * 0.1, 0.16, 0.004); T.push(box(0.08, 0.07, 0.01, p.x, 0.16, p.z, leaD, 0, p.ry, 0)); }
+    T.push(tor(0.085, 0.022, 0, 0.53, 0.01, scarf, Math.PI / 2 - 0.15, 0, 0, 1, 1, 0.9), seg(V(0.06, 0.52, 0.08), V(0.17, 0.32, 0.16), scarf, 0.06, 0.012));
+    for (const [x, y, a] of [[0.12, 0.25, 0.022], [-0.08, 0.36, 0.018]]) { const p = sT(x, y, 0.003); T.push(ell(a, a * 0.9, 0.006, p.x, y, p.z, K.blood, 0, p.ry, 0, 8, 5)); }
+    // serre-tête de cuir (couvre-oreilles), lunettes relevées sur le front
+    const hatG = [cap(Math.PI * 0.55, 0.104, 0.108, 0.112, 0, H + 0.006, -0.004, lea, -0.1)];
+    for (const s of [-1, 1]) hatG.push(ell(0.022, 0.05, 0.04, s * 0.1, H - 0.03, -0.005, lea), cyl(0.026, 0.026, 0.022, s * 0.042, H + 0.072, 0.092, brass, 1, Math.PI / 2 - 0.5, 0, 0, 12), cyl(0.02, 0.02, 0.024, s * 0.042, H + 0.072, 0.094, glass, 1, Math.PI / 2 - 0.5, 0, 0, 12));
+    hatG.push(box(0.21, 0.014, 0.012, 0, H + 0.07, 0.07, leaD, -0.5));
+    const upper = [ell(0.066, 0.064, 0.066, 0, -0.005, 0, lea), cyl(0.062, 0.058, 0.31, 0, -0.155, 0, lea)];
+    const F = khForearm(k, K, lea, -0.2), fore = [...F.cloth, cyl(0.054, 0.054, 0.03, 0, -0.2, 0, wool)], hand = F.skin;
+    // culotte de cheval (évasée à la cuisse), bottes hautes lacées
+    const thigh = [cyl(0.084, 0.064, 0.44, 0, -0.22, 0, kh), ell(0.1, 0.13, 0.095, 0, -0.16, 0.0, kh), box(0.06, 0.07, 0.01, 0.0, -0.2, 0.075, khD)];
+    const shin = [cyl(0.06, 0.054, 0.12, 0, -0.06, 0, kh), cyl(0.07, 0.06, 0.3, 0, -0.24, 0, boot), cyl(0.072, 0.072, 0.02, 0, -0.1, 0, C(0x2a1a0e)),
+      box(0.1, 0.07, 0.24, 0, -0.39, 0.045, boot), ell(0.05, 0.036, 0.05, 0, -0.395, 0.158, boot), box(0.105, 0.018, 0.262, 0, -0.432, 0.048, C(0x1a120c))];
+    G = merge({ torso: T, head, hat: hatG, upper, fore, hand, thigh, shin });
+    Object.assign(G, zStumps(k, { ...K, flesh: C(0x6a2a1c), fleshD: C(0x2e0d08) }, kh, lea));
   } else {
     const ga = C(0x3e5f8a), gaD = C(0x2e4a6e), cap0 = C(0xe8e4da), sole = C(0x3a2a1c);
     const R = (y) => lerp(0.185, 0.205, clamp((y - 0.06) / 0.42, 0, 1)), sT = (x, y, o = 0) => on(x, R(y), 0.6, o);
@@ -29549,7 +29631,7 @@ function khDesseche(model) {
   G.eyes = eyes;
   return G;
 }
-for (const m of ['kh_arch', 'kh_ouvrier', 'kh_villageois']) Object.defineProperty(ZVGEO, m, { configurable: true, enumerable: true, get() { const g = khDesseche(m); Object.defineProperty(ZVGEO, m, { value: g, enumerable: true }); return g; } });
+for (const m of ['kh_arch', 'kh_ouvrier', 'kh_villageois', 'kh_pilote']) Object.defineProperty(ZVGEO, m, { configurable: true, enumerable: true, get() { const g = khDesseche(m); Object.defineProperty(ZVGEO, m, { value: g, enumerable: true }); return g; } });
 
 /* ---- Le Rôdeur : os du Molosse (cage thoracique, échine, crâne, longues pattes) */
 ZPARTS.kh_rodeur = [
@@ -29845,7 +29927,7 @@ function khKnifeRelease(z) {
 
 /* ---- Écran « Modèles » : les Desséchés comme les variantes du Fantassin, le Rôdeur sur le modèle du Molosse */
 const KH_SPEC_ANIMS = SPEC_ANIMS.filter((a) => a !== 'tear' && a !== 'climb');     // pas de barricades à Khamsin
-for (const m of ['kh_arch', 'kh_ouvrier', 'kh_villageois']) SPECIMEN_MODELS[m] = { anims: KH_SPEC_ANIMS, make: () => makeSpecimen(m) };
+for (const m of ['kh_arch', 'kh_ouvrier', 'kh_villageois', 'kh_pilote']) SPECIMEN_MODELS[m] = { anims: KH_SPEC_ANIMS, make: () => makeSpecimen(m) };
 SPECIMEN_MODELS.kh_rodeur = { anims: ['idle', 'gallop', 'emerge', 'grab', 'dive', 'death'], dog: true, make: () => makeRodeurSpecimen() };
 const khSpecLook = (look, type) => (type && type.kh ? khLook(look, type) : look);
 const _khSpecV = new THREE.Vector3();
@@ -29996,12 +30078,12 @@ function makeRodeurSpecimen() {
 function khSpecimenSetup() {
   Object.assign(MODEL_ANIMS, { emerge: 'Sortie du sable', grab: 'Agrippe', dive: 'Plongée' });
   SPECIMEN_FACTS.kh = (type) => {
-    const hit = RULES.zombieHit * type.mult.damage, hp = (r) => fmtNum(khHp(r), 0), d = type.drop, pct = (x) => `${fmtNum(x * 100, 2)} %`;
+    const hit = RULES.zombieHit * type.mult.damage, mh = type.mult.hp, hp = (r) => fmtNum(khHp(r) * mh, 0), d = type.drop, pct = (x) => `${fmtNum(x * 100, 2)} %`;
     const sp = (k) => `${fmtNum(SPEEDS[k][0])} à ${fmtNum(SPEEDS[k][1])}`;
-    const where = { kh_arch: 'Surtout au camp de fouilles et au plateau', kh_ouvrier: 'Surtout à la centrale, au relais Km 47 et à l’aérodrome', kh_villageois: 'Surtout à l’oasis de Sekhet' }[type.id] || 'Partout';
+    const where = { kh_arch: 'Surtout au camp de fouilles et au plateau', kh_ouvrier: 'Surtout à la centrale, au relais Km 47 et à l’aérodrome', kh_villageois: 'Surtout à l’oasis de Sekhet', kh_pilote: 'Seul, autour du bassin de l’oasis de Sekhet' }[type.id] || 'Partout';
     const details = [
       ['Apparaît', 'Khamsin', '', `${where} ; ils sortent du sable autour de vous`],
-      ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', 'Manches 1, 10 et 20 : 150, +100 par manche jusqu’à la 10, puis ×1,1'],
+      ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', mh > 1 ? `Manches 1, 10 et 20 : ${fmtNum(mh, 0)} fois ceux d’un Desséché` : 'Manches 1, 10 et 20 : 150, +100 par manche jusqu’à la 10, puis ×1,1'],
       ['Vitesse', `${fmtNum(SPEEDS.walk[0])} à ${fmtNum(SPEEDS.run[1])} m/s`, '', `Marche ${sp('walk')} m/s jusqu’à la manche 5 ; dès la 6, trot ${sp('jog')} et course ${sp('run')} m/s`],
       ['Coup', `${fmtNum(hit, 0)} dégâts`, '', `${Math.ceil(RULES.playerHp / hit)} coups vous mettent à terre, ${Math.ceil(RULES.cuirasseHp / hit)} avec ${PERKS.cuirasse.name}`],
       ['Bruit', `${VEH_TYPES.jeep.noise} m`, '', `Un moteur qui tourne les attire jusqu’à ${VEH_TYPES.jeep.noise} m, ${VEH_TYPES.truck.noise} m pour le camion blindé`],
@@ -30009,9 +30091,10 @@ function khSpecimenSetup() {
       ['Tête', `dégâts ×${fmtNum(type.headMult)}`, '', 'Sans casque : rien n’arrête le premier tir à la tête'],
       ['Points rapportés', `+${RULES.pointsKill} à +${RULES.pointsKnife}`, '', `Élimination +${RULES.pointsKill}, tête +${RULES.pointsHead}, couteau +${RULES.pointsKnife} · +${RULES.pointsHit} par touche`],
     ];
+    if (type.pilot) details.push(['Clé de contact', 'pièce ③', '', 'Abattu, il lâche la clé de contact du KH-47 ; tant qu’il ne vous a pas vu, il fait le tour du bassin']);
     if (d && d.item === 'mag') details.push(['Chargeur', `${pct(d.chance)} des Archéologues`, '', `Un chargeur de plus pour l’arme en main (ou l’autre si sa réserve est pleine) · ${PICKUPS.mag.life} s au sol`]);
     return {
-      bars: [['PV', khHp(1) / zombieHpForRound(1)], ['Vitesse', type.mult.speed], ['Dégâts', type.mult.damage]],
+      bars: [['PV', (khHp(1) * mh) / zombieHpForRound(1)], ['Vitesse', type.mult.speed], ['Dégâts', type.mult.damage]],
       ref: `Référence ×1 du bestiaire : le Fantassin, ${fmtNum(zombieHpForRound(1), 0)} PV à la manche 1. Les Desséchés ont leur propre courbe : ${hp(1)} PV à la manche 1, ${hp(10)} à la 10.`,
       cards: [
         [`Capacité · ${type.ability}`, 'Ils marchent jusqu’à la manche 5 et courent dès la 6. Un moteur qui tourne les attire.'],
@@ -30060,6 +30143,7 @@ function khEyes() {
   let n = 0;
   const P = KHE.pos, H = ZRIG.head, cx = camera.position.x, cz = camera.position.z;
   for (const z of Zombies.list) {
+    if (z.boss) continue;
     if (!z.alive || z.removed || z.rstate === 'gone' || (z.headless && !z.rodeur) || ((z.rodeur || z.state === 'rise') && z.pos.y < z.gy - 0.6)) continue;
     const d = Math.hypot(z.pos.x - cx, z.pos.z - cz);
     if (d < 12 || d > 150 || n >= ZR.N * 2 - 2) continue;
@@ -30076,6 +30160,2012 @@ function khEyes() {
   const k = clamp(KHS.lv / 3, 0, 1);
   KHE.pts.material.opacity = 0.7 + 0.3 * k;
   KHE.pts.material.size = 4 + 2.5 * k;            // pixels : plus gros quand la poussière cache tout
+}
+
+/* ---------------------------------------------------------- Sanctuaire --
+   Planche « B Le sanctuaire · sous la Grande Pyramide · lumière turquoise » (page 6) : une salle
+   hypostyle à 40 m sous le plateau ; la colonne de lumière qui sort du sommet de la pyramide descend
+   jusqu'ici et frappe l'autel. La porte (au kiosque, entre les pyramides) ne s'ouvre qu'avec le
+   courant de la centrale (E). L'autel améliore une arme contre des points (les paliers du Glas :
+   I, II, III, mêmes prix, mêmes mods) et réveille le Gardien. Arène : 10 colonnes pour se couvrir,
+   6 braseros, des statues qui bloquent les lignes de tir au fond.
+   Le sous-sol est la couche 1 du monde ouvert (OW.under, roche hors des salles) ; on y descend par
+   l'escalier du kiosque (fondu au noir) ; les Desséchés y sortent des fosses de sable. */
+const KHSY = -8;                                   // sol du sanctuaire (le plateau est à 32 m)
+const KHSAN = {
+  hall: [2100, 1212, 2140, 1268], h: 11,           // salle : x0, z0, x1, z1 ; hauteur sous plafond
+  altar: { x: 2120, z: 1240 },                     // sous le sommet de la Grande Pyramide
+  south: [2116, 1268, 2124, 1302], southH: 6,      // couloir d'entrée et pied de l'escalier
+  west: [2066, 1236, 2100, 1244], westH: 5,        // galerie de la draisine (vers la nécropole)
+  columns: [], braziers: [], statues: [], pits: [], group: null, kiosk: null, door: null,
+  under: false, fire: [], t: 0, beam: null, light: null,
+};
+
+/* ---- Textures : grandes dalles, reliefs gravés, plafond étoilé, basalte, or, faïence */
+(function khSanctuaryTextures() {
+  defTex('kh_slab', 'Dalles du sanctuaire (Khamsin)', 'sol', { size: [4, 4] }, tgBrick({ tile: 4, colors: [[176, 150, 112], [168, 142, 104], [186, 160, 120]], bw: 1.95, bh: 0.98, mortar: 0.006, mortarColor: [116, 96, 72], stains: 9 }));
+  defTex('kh_relief', 'Reliefs gravés (Khamsin)', 'brique', { size: [3, 3] }, (g, w, h, R) => {
+    const n = vnoise(w, h, [[5, 5, 1], [22, 22, 0.5], [90, 90, 0.35]], 1.8, R);
+    paintPixels(g, w, h, (x, y, c) => { const k = 0.82 + 0.24 * n[y * w + x]; c[0] = 196 * k; c[1] = 168 * k; c[2] = 126 * k; });
+    const reg = h / 6, paint = ['rgba(168,67,42,0.35)', 'rgba(46,95,154,0.32)', 'rgba(214,170,72,0.38)', 'rgba(64,140,120,0.3)'];
+    const carve = (draw) => {
+      g.save(); g.translate(1.2, 1.2); g.strokeStyle = 'rgba(70,50,30,0.75)'; g.fillStyle = 'rgba(70,50,30,0.35)'; draw(); g.restore();
+      g.save(); g.translate(-0.8, -0.8); g.strokeStyle = 'rgba(255,240,210,0.45)'; g.fillStyle = 'rgba(0,0,0,0)'; draw(); g.restore();
+    };
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (let r = 0; r < 6; r++) {
+      const y0 = r * reg;
+      carve(() => { g.lineWidth = 2.2; g.beginPath(); g.moveTo(0, y0 + 2); g.lineTo(w, y0 + 2); g.stroke(); });
+      for (let x = 8; x < w - 30; x += 30 + R() * 16) {
+        const cx = x + 14, cy = y0 + reg / 2 + 2, s = reg * 0.32, kind = Math.floor(R() * 7);
+        if (R() < 0.45) { g.fillStyle = paint[Math.floor(R() * paint.length)]; g.beginPath(); g.ellipse(cx, cy, s * 0.8, s * 1.1, 0, 0, TAU); g.fill(); }
+        carve(() => {
+          g.lineWidth = 2;
+          g.beginPath();
+          switch (kind) {
+            case 0: g.arc(cx, cy, s * 0.7, 0, TAU); g.moveTo(cx + 2, cy); g.arc(cx, cy, 2, 0, TAU); break;                              // soleil
+            case 1: g.ellipse(cx, cy - s * 0.35, s * 0.35, s * 0.4, 0, 0, TAU); g.moveTo(cx, cy + s * 0.05); g.lineTo(cx, cy + s * 1.1); g.moveTo(cx - s * 0.55, cy + s * 0.3); g.lineTo(cx + s * 0.55, cy + s * 0.3); break;   // ânkh
+            case 2: g.moveTo(cx - s, cy + s * 0.2); for (let i = 0; i <= 6; i++) g.lineTo(cx - s + (i * 2 * s) / 6, cy + (i % 2 ? -0.2 : 0.2) * s); break;   // eau
+            case 3: g.moveTo(cx - s * 0.8, cy); g.quadraticCurveTo(cx, cy - s * 0.9, cx + s * 0.8, cy); g.quadraticCurveTo(cx, cy + s * 0.6, cx - s * 0.8, cy); g.moveTo(cx + 3, cy); g.arc(cx, cy, 3, 0, TAU); g.moveTo(cx, cy + s * 0.3); g.lineTo(cx - s * 0.3, cy + s); break;   // œil
+            case 4: g.moveTo(cx - s * 0.6, cy + s); g.lineTo(cx - s * 0.2, cy); g.lineTo(cx + s * 0.1, cy - s * 0.5); g.lineTo(cx + s * 0.6, cy - s * 0.7); g.lineTo(cx + s * 0.35, cy - s * 0.2); g.lineTo(cx + s * 0.3, cy + s * 0.5); g.lineTo(cx - s * 0.1, cy + s * 0.6); g.moveTo(cx, cy + s * 0.55); g.lineTo(cx - s * 0.1, cy + s * 1.05); break;   // oiseau
+            case 5: g.moveTo(cx, cy - s); g.quadraticCurveTo(cx + s * 0.5, cy, cx, cy + s); g.quadraticCurveTo(cx - s * 0.2, cy, cx, cy - s); break;   // plume
+            default: g.rect(cx - s * 0.45, cy - s, s * 0.9, s * 2); g.moveTo(cx - s * 0.45, cy + s * 0.75); g.lineTo(cx + s * 0.45, cy + s * 0.75);   // cartouche
+          }
+          g.stroke();
+        });
+      }
+    }
+  });
+  defTex('kh_stars', 'Plafond étoilé (Khamsin)', 'beton', { size: [3, 3] }, (g, w, h, R) => {
+    const n = vnoise(w, h, [[4, 4, 1], [18, 18, 0.5]], 1.6, R);
+    paintPixels(g, w, h, (x, y, c) => { const k = 0.8 + 0.3 * n[y * w + x]; c[0] = 26 * k; c[1] = 38 * k; c[2] = 82 * k; });
+    const star = (x, y, r) => { g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.42 : r; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); g.fill(); };
+    const step = w / 8;
+    for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) {
+      g.fillStyle = R() < 0.15 ? 'rgba(214,176,90,0.35)' : 'rgba(222,184,96,0.9)';
+      star((i + (j % 2) * 0.5 + 0.25) * step, (j + 0.5) * step, step * 0.28);
+    }
+    g.strokeStyle = 'rgba(10,12,20,0.5)'; g.lineWidth = 1;
+    for (let i = 0; i < 6; i++) { g.beginPath(); let x = R() * w, y = R() * h; g.moveTo(x, y); for (let k = 0; k < 8; k++) { x += (R() - 0.5) * 40; y += (R() - 0.3) * 30; g.lineTo(x, y); } g.stroke(); }
+  });
+  defTex('kh_basalt', 'Basalte poli (Khamsin)', 'brique', { size: [2, 2], rough: 0.42 }, tgConcrete({ base: [46, 44, 46], stains: 3, cracks: 2 }));
+  defTex('kh_gold', 'Feuille d’or (Khamsin)', 'metal', { size: [2, 2], rough: 0.32, metal: 0.75 }, tgPlaster({ color: [214, 170, 72], rough: false, stains: 2, cracks: 0 }));
+  defTex('kh_faience', 'Faïence turquoise (Khamsin)', 'metal', { size: [1, 1], rough: 0.28, metal: 0.05 }, tgBrick({ tile: 1, colors: [[64, 178, 168], [52, 160, 152], [74, 192, 180]], bw: 0.25, bh: 0.1, mortar: 0.012, mortarColor: [36, 58, 54] }));
+})();
+
+/* Cases du sous-sol (couche 1). */
+const khUnderFill = (x0, z0, x1, z1, kind, o) => owFill(OW.under, x0, z0, x1, z1, kind, o);
+
+/* ---- Construction (une fois par génération : cases ; à chaque chargement : maillages) */
+function owBuildSanctuary(root) {
+  const K = owKit('sanctuaire'), y = KHSY, [x0, z0, x1, z1] = KHSAN.hall, H = KHSAN.h;
+  KHSAN.columns = []; KHSAN.braziers = []; KHSAN.statues = []; KHSAN.pits = []; KHSAN.fire = [];
+  // salle : sol, murs gravés, plafond étoilé (ouvert au-dessus de l'autel)
+  khUnderFill(x0, z0, x1, z1, OWK.FLOOR, { base: y, ceil: y + H, roof: y + H + 1, mat: OWM.STONE });
+  K.box('kh_slab', 0xffffff, x0, y - 0.3, z0, x1, y, z1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+  const A = KHSAN.altar, hole = 1.4;
+  for (const [a0, b0, a1, b1] of [[x0, z0, x1, A.z - hole], [x0, A.z + hole, x1, z1], [x0, A.z - hole, A.x - hole, A.z + hole], [A.x + hole, A.z - hole, x1, A.z + hole]]) {
+    K.box('kh_stars', 0xffffff, a0, y + H, b0, a1, y + H + 0.6, b1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] });
+  }
+  // puits de lumière au-dessus de l'autel (le faisceau descend du sommet de la pyramide)
+  for (const [a0, b0, a1, b1] of [[A.x - hole - 0.3, A.z - hole - 0.3, A.x + hole + 0.3, A.z - hole], [A.x - hole - 0.3, A.z + hole, A.x + hole + 0.3, A.z + hole + 0.3],
+    [A.x - hole - 0.3, A.z - hole, A.x - hole, A.z + hole], [A.x + hole, A.z - hole, A.x + hole + 0.3, A.z + hole]]) K.box('kh_sandstone', 0xbfae8e, a0, y + H, b0, a1, y + H + 9, b1);
+  // murs (faces intérieures) : grès gravé, frise peinte en haut, plinthe
+  const wall = (ax, az, bx, bz, nx, nz, hh = H, from = 0) => {
+    const len = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / len, tz = (bz - az) / len;
+    const p = (s, yy) => [ax + tx * s, yy, az + tz * s];
+    K.quad('kh_relief', 0xffffff, p(0, y + from), p(len, y + from), p(len, y + hh - 1.2), p(0, y + hh - 1.2), [nx, 0, nz], (q) => [(q[0] - ax) * tx + (q[2] - az) * tz, q[1] - y]);
+    K.quad('kh_faience', 0xffffff, p(0, y + hh - 1.2), p(len, y + hh - 1.2), p(len, y + hh - 0.9), p(0, y + hh - 0.9), [nx, 0, nz], (q) => [(q[0] - ax) * tx + (q[2] - az) * tz, q[1]]);
+    K.quad('kh_gold', 0xc8a050, p(0, y + hh - 0.9), p(len, y + hh - 0.9), p(len, y + hh), p(0, y + hh), [nx, 0, nz], (q) => [(q[0] - ax) * tx + (q[2] - az) * tz, q[1]]);
+  };
+  // nord (statues devant), est, ouest (galerie), sud (couloir)
+  wall(x1, z0, x0, z0, 0, 1);
+  wall(x1, z1, x1, z0, -1, 0);
+  const [, wz0, , wz1] = KHSAN.west;
+  wall(x0, z0, x0, wz0, 1, 0); wall(x0, wz1, x0, z1, 1, 0);
+  wall(x0, wz0, x0, wz1, 1, 0, H, KHSAN.westH);                 // linteau de la galerie
+  const [sx0, , sx1] = KHSAN.south;
+  wall(x0, z1, sx0, z1, 0, -1); wall(sx1, z1, x1, z1, 0, -1);
+  wall(sx0, z1, sx1, z1, 0, -1, H, KHSAN.southH);                // linteau du couloir
+  // couloir d'entrée (au sud) et escalier qui remonte vers le kiosque
+  {
+    const [cx0, cz0, cx1, cz1] = KHSAN.south, hh = KHSAN.southH, zs = 1294;
+    khUnderFill(cx0, cz0, cx1, zs, OWK.FLOOR, { base: y, ceil: y + hh, roof: y + hh + 1, mat: OWM.STONE });
+    khUnderFill(cx0, zs, cx1, cz1, OWK.VOID, {});
+    K.box('kh_slab', 0xe8dcc8, cx0, y - 0.3, cz0, cx1, y, zs, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+    K.box('kh_stars', 0xffffff, cx0, y + hh, cz0, cx1, y + hh + 0.4, zs, { skip: ['top', 'px', 'nx', 'pz', 'nz'] });
+    wall(cx0, cz0, cx0, cz1, 1, 0, hh + 4); wall(cx1, cz1, cx1, cz0, -1, 0, hh + 4);
+    // marches (0,25 m) qui montent vers le sud, plafond en pente, puis le noir
+    for (let i = 0; i < 16; i++) K.box('kh_sandstone', 0xd8c8aa, cx0, y, zs + i * 0.5, cx1, y + 0.25 * (i + 1), zs + (i + 1) * 0.5);
+    K.box('kh_stars', 0xffffff, cx0, y + hh + 0.4, zs, cx1, y + hh + 4.4, zs + 8, { skip: ['top', 'px', 'nx', 'pz', 'bottom'] });
+    K.add(khVoid(cx0, y + 4, zs + 8, cx1 - cx0, hh, 0));
+    KHSAN.stairFoot = { x: (cx0 + cx1) / 2, y, z: zs - 0.6 };
+    // torchères du couloir
+    for (const z of [1276, 1288]) for (const x of [cx0 + 0.25, cx1 - 0.25]) khBrazier(K, x, y + 2.6, z, true);
+  }
+  // galerie de la draisine (vers la nécropole) : couloir plus bas, quai, rails qui filent dans le noir
+  {
+    const [gx0, gz0, gx1, gz1] = KHSAN.west, hh = KHSAN.westH;
+    khUnderFill(gx0, gz0, gx1, gz1, OWK.FLOOR, { base: y, ceil: y + hh, roof: y + hh + 1, mat: OWM.STONE });
+    K.box('kh_slab', 0xd8ccb8, gx0, y - 0.3, gz0, gx1, y, gz1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+    K.box('kh_rock', 0x9a8670, gx0, y + hh, gz0, gx1, y + hh + 0.4, gz1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] });
+    K.box('kh_rock', 0xa89276, gx0, y, gz0 - 0.4, gx1, y + hh, gz0, { skip: ['nz', 'top', 'bottom'] }).box('kh_rock', 0xa89276, gx0, y, gz1, gx1, y + hh, gz1 + 0.4, { skip: ['pz', 'top', 'bottom'] });
+    // étais de bois (galerie de fouilles), rails Decauville
+    for (let x = gx0 + 3; x < gx1 - 1; x += 4) {
+      K.box('kh_planks', 0x7a5a3a, x - 0.12, y, gz0, x + 0.12, y + hh, gz0 + 0.25).box('kh_planks', 0x7a5a3a, x - 0.12, y, gz1 - 0.25, x + 0.12, y + hh, gz1);
+      K.box('kh_planks', 0x7a5a3a, x - 0.12, y + hh - 0.3, gz0, x + 0.12, y + hh, gz1);
+    }
+    const zc = (gz0 + gz1) / 2;
+    for (let x = gx0 - 6; x < gx1 - 6; x += 0.6) K.box('kh_planks', 0x5a4028, x, y, zc - 0.55, x + 0.14, y + 0.08, zc + 0.55);
+    for (const s of [-0.3, 0.3]) K.box('kh_sheet', 0x5a5550, gx0 - 6, y + 0.08, zc + s - 0.03, gx1 - 6, y + 0.16, zc + s + 0.03);
+    K.add(khVoid(gx0, y + hh / 2, zc, gz1 - gz0, hh, Math.PI / 2));
+    KHSAN.railHead = { x: gx0 + 4, y, z: zc };
+    khBrazier(K, gx1 - 3, y + 2.4, gz0 + 0.3, true); khBrazier(K, gx0 + 8, y + 2.4, gz1 - 0.3, true);
+  }
+  // colonnes papyriformes (deux rangées de cinq)
+  for (const x of [2110, 2130]) for (const z of [1220, 1230, 1240, 1250, 1260]) khColumn(K, x, z, y, H);
+  // statues du fond : quatre colosses à tête de chacal, assis, face à l'autel
+  for (const x of [2105, 2114.5, 2125.5, 2135]) khStatue(K, x, z0 + 3.4, y);
+  for (const x of [2109.8, 2120, 2130.2]) khBrazier(K, x, y + 3.2, z0 + 0.3, true);
+  // braseros : six, autour de l'autel et le long des bas-côtés
+  for (const [x, z] of [[2104, 1226], [2104, 1254], [2136, 1226], [2136, 1254], [2115, 1263], [2125, 1263]]) khBrazier(K, x, y, z, false);
+  // fosses de sable (les Desséchés en sortent)
+  for (const [x, z] of [[2103.5, 1218], [2136.5, 1218], [2103.5, 1240], [2136.5, 1240], [2103.5, 1262], [2136.5, 1262], [2120, 1284], [2080, 1240]]) {
+    KHSAN.pits.push({ x, z });
+    K.box('kh_slab', 0xffffff, x - 1.6, y, z - 1.6, x + 1.6, y + 0.04, z + 1.6, { top: 'kh_rock', topHex: 0xc8a070, skip: ['bottom'] });
+  }
+  // autel et faisceau
+  khAltarBuild(K);
+  // kiosque : escalier, porte scellée
+  khKioskBuild(K);
+  const g = K.build(root);
+  g.name = 'sanctuaire';
+  KHSAN.group = g;
+  // lumière du faisceau (toujours dans la scène : le nombre de lumières ne change pas en jeu)
+  const L = new THREE.PointLight(0x5ff2e2, 0, 22, 2);
+  L.position.set(A.x, y + 3.2, A.z);
+  root.add(L);
+  KHSAN.light = L;
+  khBuildAltarFeature(g);
+}
+/* Fond noir (la suite d'un escalier, d'une galerie) : un plan sans brouillard. */
+function khVoid(x, y, z, w, h, ry) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }));
+  m.position.set(x + (ry ? 0 : w / 2), y, z); m.rotation.y = ry ? ry : Math.PI;
+  if (ry) m.position.set(x, y, z);
+  return m;
+}
+/* Colonne papyriforme : base, fût gravé, bandes peintes, chapiteau évasé, abaque. */
+const KH_CAPITAL = (() => {
+  const pts = [[0.8, 0], [0.86, 0.25], [1.05, 0.7], [1.24, 1.15], [1.34, 1.5], [1.36, 1.6]].map(([r, h]) => new THREE.Vector2(r, h));
+  return new THREE.LatheGeometry(pts, 24);
+})();
+function khColumn(K, x, z, y, H) {
+  const top = y + H, shaftTop = top - 0.5 - 1.6;
+  K.cyl('kh_sandstone', 0xd6c4a2, x, y + 0.15, z, 1.05, 0.3, 24);
+  K.geo('kh_relief', 0xf0e2c8, new THREE.CylinderGeometry(0.8, 0.88, shaftTop - y - 0.3, 24, 1, true), mtx(x, (y + 0.3 + shaftTop) / 2, z));
+  const bands = [[0xa8432a, 0], [0x2e5f9a, 0.14], [0xd6aa48, 0.28]];
+  for (const [hex, dy] of bands) K.cyl('kh_ochre', hex, x, shaftTop - 0.5 + dy, z, 0.83, 0.12, 24);
+  K.geo('kh_sandstone', 0xe2cfa8, KH_CAPITAL, mtx(x, shaftTop, z));
+  K.box('kh_sandstone', 0xd2bf9c, x - 0.95, top - 0.5, z - 0.95, x + 0.95, top, z + 0.95);
+  khUnderFill(x - 1, z - 1, x + 1, z + 1, OWK.SOLID, { base: y, top, mat: OWM.STONE });
+  KHSAN.columns.push({ x, z });
+}
+/* Colosse à tête de chacal, assis sur son trône (6,5 m), face au sud. */
+function khStatue(K, x, z, y) {
+  const B = (tex, hex, a, b, c, d, e, f) => K.box(tex, hex, x + a, y + b, z + c, x + d, y + e, z + f);
+  const R = (tex, hex, sx, sy, sz, px, py, pz, rx = 0, ry = 0, rz = 0) => K.geo(tex, hex, GEO.box, mtx(x + px, y + py, z + pz, rx, ry, rz, sx, sy, sz));
+  B('kh_sandstone', 0xcdb995, -1.9, 0, -2.2, 1.9, 1.1, 2.4);                      // socle
+  B('kh_relief', 0xe8d6b0, -1.92, 0.15, 2.4, 1.92, 0.95, 2.42);                     // inscription
+  B('kh_basalt', 0xffffff, -1.4, 1.1, -2.0, 1.4, 3.4, -0.6);                        // trône
+  for (const s of [-1, 1]) {
+    B('kh_basalt', 0xffffff, s * 0.62 - 0.3, 1.1, 1.0, s * 0.62 + 0.3, 3.0, 1.6);    // jambes
+    B('kh_basalt', 0xffffff, s * 0.62 - 0.32, 1.1, 1.55, s * 0.62 + 0.32, 1.35, 2.05); // pieds
+    B('kh_basalt', 0xffffff, s * 0.62 - 0.34, 2.95, -0.7, s * 0.62 + 0.34, 3.55, 1.65); // cuisses
+    B('kh_basalt', 0xffffff, s * 0.95 - 0.2, 3.5, -0.9, s * 0.95 + 0.2, 4.9, -0.4);    // bras
+    B('kh_basalt', 0xffffff, s * 0.9 - 0.18, 3.55, -0.5, s * 0.9 + 0.18, 3.85, 1.2);   // avant-bras posés sur les cuisses
+  }
+  B('kh_gold', 0xffffff, -0.75, 2.95, -0.75, 0.75, 3.75, 0.9);                     // pagne doré
+  B('kh_basalt', 0xffffff, -0.8, 3.55, -1.0, 0.8, 5.2, -0.2);                       // torse
+  R('kh_faience', 0xffffff, 1.5, 0.12, 0.9, 0, 5.0, -0.48, -0.15);                   // collier large
+  R('kh_gold', 0xffffff, 1.55, 0.06, 0.92, 0, 4.92, -0.47, -0.15);
+  // tête de chacal : crâne, museau, oreilles dressées, némès rayé
+  B('kh_basalt', 0xffffff, -0.42, 5.2, -0.95, 0.42, 5.95, -0.15);
+  R('kh_basalt', 0xffffff, 0.34, 0.32, 0.85, 0, 5.42, 0.25, 0.12);
+  R('kh_basalt', 0xffffff, 0.2, 0.16, 0.3, 0, 5.38, 0.62, 0.2);
+  for (const s of [-1, 1]) R('kh_basalt', 0xffffff, 0.2, 0.95, 0.14, s * 0.25, 6.3, -0.6, 0.1, 0, s * -0.12);
+  for (const s of [-1, 1]) {
+    R('kh_gold', 0xffffff, 0.22, 1.2, 0.5, s * 0.52, 5.1, -0.55, 0, 0, s * 0.08);
+    R('kh_faience', 0x7aa0d8, 0.23, 1.2, 0.06, s * 0.53, 5.1, -0.28, 0, 0, s * 0.08);
+  }
+  const eyes = [];
+  for (const s of [-1, 1]) {
+    const e = new THREE.Mesh(GEO.box, new THREE.MeshBasicMaterial({ color: 0x0c1412, fog: false }));
+    e.position.set(x + s * 0.2, y + 5.68, z + 0.05); e.scale.set(0.12, 0.05, 0.04); e.rotation.z = s * 0.25;
+    K.add(e); eyes.push(e);
+  }
+  khUnderFill(x - 1.9, z - 2.2, x + 1.9, z + 2.4, OWK.SOLID, { base: y, top: y + 6.4, mat: OWM.STONE });
+  KHSAN.statues.push({ x, z, eyes });
+}
+/* Brasero de bronze sur trépied (ou torchère murale) : feu animé, vraie lumière quand il est proche. */
+function khBrazier(K, x, y, z, wall) {
+  const bronze = 0x8a6436;
+  if (!wall) {
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * TAU;
+      K.geo('kh_gold', bronze, new THREE.CylinderGeometry(0.035, 0.045, 1.2, 6), mtx(x + Math.cos(a) * 0.28, y + 0.55, z + Math.sin(a) * 0.28, Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25));
+    }
+    K.geo('kh_gold', bronze, new THREE.CylinderGeometry(0.48, 0.24, 0.32, 16, 1, false), mtx(x, y + 1.18, z));
+    khUnderFill(x - 0.5, z - 0.5, x + 0.5, z + 0.5, OWK.LOW, { base: y, top: y + 1.34, mat: OWM.METAL });
+  } else {
+    K.geo('kh_gold', bronze, new THREE.CylinderGeometry(0.18, 0.08, 0.3, 10), mtx(x, y, z));
+  }
+  const fy = y + (wall ? 0.25 : 1.42), s = wall ? 0.55 : 1;
+  const fire = [];
+  for (let i = 0; i < 3; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.flare, color: i ? 0xff7a2a : 0xffc070, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    sp.position.set(x, fy + 0.2 * i * s, z); sp.scale.set(0.9 * s, 1.2 * s, 1);
+    K.add(sp); fire.push(sp);
+  }
+  const L = { x, y: fy + 0.4, z, color: new THREE.Color(0xff9a4a), power: false, bulb: null, halo: fire[0], mat: new THREE.MeshBasicMaterial(), on: true, size: wall ? 0.9 : 1.4, base: wall ? 0.9 : 1.4, layer: 1, range: wall ? 14 : 22 };
+  OWL.lamps.push(L);
+  KHSAN.fire.push({ fire, L, ph: Math.random() * TAU, s });
+  KHSAN.braziers.push({ x, z, wall });
+}
+
+/* ---- Autel : estrade, bloc de granit noir cerclé d'or, berceau de l'arme ; au-dessus, le
+   pyramidion d'or suspendu dans le faisceau (il descend sur l'arme comme la cloche du Glas). */
+function khAltarBuild(K) {
+  const A = KHSAN.altar, y = KHSY;
+  K.box('kh_slab', 0xe0d0b0, A.x - 3.4, y, A.z - 2.6, A.x + 3.4, y + 0.2, A.z + 2.6);
+  K.box('kh_slab', 0xe8d8b8, A.x - 2.6, y + 0.2, A.z - 1.9, A.x + 2.6, y + 0.4, A.z + 1.9);
+  khUnderFill(A.x - 3, A.z - 2.2, A.x + 3, A.z + 2.2, OWK.FLOOR, { base: y + 0.2, ceil: y + KHSAN.h, roof: y + KHSAN.h + 1, mat: OWM.STONE });
+  khUnderFill(A.x - 2.2, A.z - 1.5, A.x + 2.2, A.z + 1.5, OWK.FLOOR, { base: y + 0.4, ceil: y + KHSAN.h, roof: y + KHSAN.h + 1, mat: OWM.STONE });
+  const E = y + 0.4, top = E + 1.05;
+  K.box('kh_basalt', 0xffffff, A.x - 1.3, E, A.z - 0.65, A.x + 1.3, top, A.z + 0.65);
+  K.box('kh_gold', 0xffffff, A.x - 1.36, top - 0.08, A.z - 0.71, A.x + 1.36, top, A.z + 0.71);
+  K.box('kh_gold', 0xffffff, A.x - 1.36, E, A.z - 0.71, A.x + 1.36, E + 0.1, A.z + 0.71);
+  for (const s of [-1, 1]) K.box('kh_faience', 0xffffff, A.x + s * 0.9 - 0.18, E + 0.3, A.z + 0.655, A.x + s * 0.9 + 0.18, E + 0.75, A.z + 0.665);
+  K.box('kh_relief', 0xe0d0b4, A.x - 0.6, E + 0.25, A.z + 0.652, A.x + 0.6, E + 0.85, A.z + 0.662);
+  khUnderFill(A.x - 1.3, A.z - 0.65, A.x + 1.3, A.z + 0.65, OWK.LOW, { base: E, top, mat: OWM.STONE });
+  KHSAN.altarTop = top;
+}
+/* Kiosque du plateau : escalier qui descend (fondu vers le sanctuaire), porte scellée. */
+function khKioskBuild(K) {
+  const P = KH.places.B.kiosk, y = P.y;
+  // trémie de l'escalier (2 × 6 m) au milieu du kiosque, bordée d'une balustrade de pierre
+  const x0 = 2189, x1 = 2191, za = 1392, zb = 1398;
+  // sol du kiosque autour de la trémie
+  for (const [a0, b0, a1, b1] of [[2185, 1391, x0, 1401], [x1, 1391, 2195, 1401], [x0, zb, x1, 1401], [x0, 1391, x1, za]]) K.box('kh_sandstone', 0xffffff, a0, y - 0.3, b0, a1, y, b1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+  owFill(OW.surf, x0, za, x1, zb, OWK.VOID, {});
+  owFill(OW.surf, x0 - 1, za - 1, x0, zb, OWK.LOW, { base: y, top: y + 0.9, mat: OWM.STONE });
+  owFill(OW.surf, x1, za - 1, x1 + 1, zb, OWK.LOW, { base: y, top: y + 0.9, mat: OWM.STONE });
+  owFill(OW.surf, x0, za - 1, x1, za, OWK.LOW, { base: y, top: y + 0.9, mat: OWM.STONE });
+  K.box('kh_sandstone', 0xd8c4a0, x0 - 0.3, y, za - 0.3, x0, y + 0.9, zb).box('kh_sandstone', 0xd8c4a0, x1, y, za - 0.3, x1 + 0.3, y + 0.9, zb).box('kh_sandstone', 0xd8c4a0, x0, y, za - 0.3, x1, y + 0.9, za);
+  // parois de la trémie et marches qui descendent vers le nord
+  K.box('kh_relief', 0xc8b490, x0 - 0.3, y - 4.5, za, x0, y, zb, { skip: ['top', 'bottom', 'nx'] }).box('kh_relief', 0xc8b490, x1, y - 4.5, za, x1 + 0.3, y, zb, { skip: ['top', 'bottom', 'px'] });
+  K.box('kh_relief', 0xc8b490, x0, y - 4.5, za - 0.3, x1, y, za, { skip: ['top', 'bottom', 'nz'] });
+  for (let i = 0; i < 14; i++) K.box('kh_sandstone', 0xcfbc98, x0, y - 0.3 * (i + 1) - 0.3, zb - (i + 1) * 0.42, x1, y - 0.3 * (i + 1), zb - i * 0.42);
+  const v = khVoid(x0, y - 3.4, za + 0.02, x1 - x0, 2.6, 0);
+  v.rotation.y = 0; K.add(v);
+  KHSAN.kiosk = { x: (x0 + x1) / 2, y, z: zb + 0.6 };
+  // porte scellée : dalle de grès gravée du chacal turquoise, qui s'enfonce dans le sol avec le courant
+  const [dx0, dz0, dx1, dz1] = P.door;
+  let di = OW.doors.findIndex((d) => d.id === 'sanctuaire');
+  if (di < 0) { di = OW.doors.length; OW.doors.push({ open: false, id: 'sanctuaire' }); }
+  for (let x = dx0; x < dx1; x++) owSet(OW.surf, x, dz0, OWK.DOOR, { base: y, top: y + 3.2, ceil: y + 3.2, roof: y + 4.6, door: di, mat: OWM.STONE });
+  // fosse sous le kiosque (maillage fin du terrain seulement) : l'escalier s'y enfonce
+  OW.pit = new Map();
+  for (const px of [2188, 2192]) for (const pz of [1392, 1396, 1400]) OW.pit.set(((pz - OW.Z0) / 4) * OW.NX + (px - OW.X0) / 4, -6);
+  const slab = new THREE.Group();
+  const stone = new THREE.Mesh(new THREE.BoxGeometry(dx1 - dx0, 3.2, 0.5), levelMaterial('kh_sandstone'));
+  stone.position.y = 1.6; slab.add(stone);
+  const seal = khSeal(0.7); seal.rotation.x = Math.PI / 2; seal.position.set(0, 1.7, 0.26); slab.add(seal);
+  slab.position.set((dx0 + dx1) / 2, y, (dz0 + dz1) / 2);
+  K.add(slab);
+  KHSAN.door = { i: di, slab, t: 0, opening: false, y };
+}
+
+/* ---- Le Glas devient l'autel : mêmes paliers, mêmes prix, mêmes mods ; autre machine.
+   Features.amp reçoit l'autel (altar : vrai) ; le rituel du Glas (offrande, coups tenus, relève,
+   reprise) le pilote ; son apparence et ses sons sont les siens. */
+function khBuildAltarFeature(group) {
+  const R = glasResources(), A = KHSAN.altar, E = KHSY + 0.4, top = KHSAN.altarTop;
+  share(R.T.ring); share(R.G.plane);                // partagés avec Le Glas : pas libérés au déchargement
+  const g = new THREE.Group();
+  g.position.set(A.x, 0, A.z);
+  group.add(g);
+  // berceau : l'arme couchée sur l'autel
+  const holder = new THREE.Group();
+  holder.position.set(0, top + 0.12, 0);
+  g.add(holder);
+  // pyramidion d'or, suspendu dans le faisceau
+  const pyr = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.1, 4, 1), new THREE.MeshStandardMaterial({ color: 0xd8ac4a, roughness: 0.28, metalness: 0.9, emissive: 0x5ff2e2, emissiveIntensity: 0 }));
+  pyr.rotation.y = Math.PI / 4;
+  const cap = new THREE.Group(); cap.add(pyr); pyr.position.y = 0.55;
+  g.add(cap);
+  // faisceau : du puits du plafond à l'autel
+  const H = KHSY + KHSAN.h + 9 - top;
+  const beamMat = new THREE.MeshBasicMaterial({ map: TEX.beam, color: 0x5ff2e2, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, H, 20, 1, true), beamMat);
+  beam.position.y = top + H / 2;
+  g.add(beam);
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, H, 12, 1, true), beamMat.clone());
+  core.material.opacity = 0.9; core.position.y = top + H / 2;
+  g.add(core);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ff2e2, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  glow.position.y = top + 0.3; glow.scale.set(3.2, 2, 1);
+  g.add(glow);
+  // ondes au sol (comme celles du Glas, turquoise)
+  const waves = [];
+  for (let i = 0; i < 8; i++) {
+    const mat = new THREE.MeshBasicMaterial(Object.assign({ map: R.T.ring, color: 0x5ff2e2, opacity: 0 }, R.add));
+    const m = new THREE.Mesh(R.G.plane, mat);
+    m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 3;
+    group.add(m);
+    waves.push({ m, mat, on: false, t: 0, dur: 1, R: 1, a: 1 });
+  }
+  const fp = { cx: A.x, cz: A.z, rot: 0, toWorld: (lx, lz) => [A.x + lx, A.z + lz], cells: [] };
+  const amp = Features.amp = {
+    altar: true, group: g, holder, cap, pyr, beam, core, glow, li: 0, E, s: 1, open: false, fp, cx: A.x, cz: A.z, waves,
+    pos: { x: A.x, y: top + 0.6, z: A.z },
+    state: 'mute', t: 0, tier: 0, weapon: null, landed: false, nextT: 0, lastT: 0, holdT: -9,
+    lip: -1, flashT: 9, strikeT: 9, ropeT: 9, offerT: 9, sparkT: 0, struck: false,
+    models: {}, display: null, called: [],
+  };
+  khAltarAnimate(amp, 0);
+  Features.interactables.push({
+    kind: 'amp', x: A.x, z: A.z + 1.9, y: E, r: 1.7, hold: true, layer: 1,
+    prompt() { return glasPrompt(amp); },
+    useHold() { glasUse(amp); },
+  });
+}
+const KH_CAP = { up: 2.6, down: 0.02 };          // hauteur du pyramidion au-dessus du berceau : levé, posé sur l'arme
+/* Image par image (à la place de glasAnimate) : pyramidion, faisceau, éclats des coups, ondes. */
+function khAltarAnimate(amp, dt) {
+  const st = amp.state, t = amp.t, top = KHSAN.altarTop;
+  amp.flashT += dt; amp.strikeT += dt; amp.ropeT += dt; amp.offerT += dt;
+  let lip = KH_CAP.up;
+  if (st === 'ritual') {
+    if (!amp.landed) lip = lerp(KH_CAP.up, KH_CAP.down, clamp(t / GLAS.fall, 0, 1) ** 2);
+    else lip = KH_CAP.down + (amp.strikeT < 0.16 ? 0.04 * Math.sin((Math.PI * amp.strikeT) / 0.16) : 0);
+  } else if (st === 'raise') lip = lerp(KH_CAP.down, KH_CAP.up, smooth(clamp(t / GLAS.raise, 0, 1)));
+  amp.lip = lip;
+  const now = G.time;
+  amp.cap.position.y = top + 0.12 + lip + (lip > 2 ? 0.06 * Math.sin(now * 1.3) : 0);
+  amp.cap.rotation.y = lip > 2 ? now * 0.25 : amp.cap.rotation.y;
+  // faisceau : éteint sans courant, vif pendant le rituel, éclat à chaque coup
+  const awake = st !== 'mute', flash = Math.exp(-amp.flashT / 0.35), k = (awake ? 0.55 : 0.12) + (st === 'ritual' ? 0.25 : 0) + flash * 0.9;
+  const fl = 0.92 + Math.sin(now * 2.3) * 0.05 + Math.sin(now * 7.1) * 0.03;
+  amp.beam.material.opacity = 0.32 * k * fl; amp.core.material.opacity = 0.75 * k * fl;
+  amp.glow.material.opacity = 0.35 + 0.5 * k; amp.glow.scale.set(3 + flash * 3, 2 + flash * 1.5, 1);
+  amp.pyr.material.emissiveIntensity = flash * 2.5 + (st === 'ritual' ? 0.3 : 0);
+  if (KHSAN.light) KHSAN.light.intensity = KHSAN.under ? (0.6 + 1.6 * k) * fl : 0;
+  // ondes au sol
+  for (const w of amp.waves) {
+    if (!w.on) continue;
+    w.t += dt;
+    if (w.t < 0) continue;
+    const q = w.t / w.dur;
+    if (q >= 1) { w.on = false; w.m.visible = false; continue; }
+    w.m.visible = true;
+    const r = Math.max(0.05, w.R * smooth(q));
+    w.m.scale.set(r * 2, r * 2, 1);
+    w.mat.opacity = w.a * (1 - q);
+  }
+  if (amp.display) { amp.display.rotation.x = 0; amp.display.position.y = st === 'ritual' && amp.landed ? Math.sin(now * 30) * 0.004 : 0; }
+}
+/* Invites de l'autel (le rituel est celui du Glas). */
+function khAltarPrompt(amp) {
+  const T = GLAS.tiers;
+  switch (amp.state) {
+    case 'mute': return { text: 'L’autel est éteint : il faut du courant (centrale du Nil)', disabled: true };
+    case 'wake': return { text: 'Le faisceau s’éveille…', disabled: true };
+    case 'ritual': {
+      const n = glasNext(amp);
+      if (n > 3) return { text: 'Le faisceau frappe…', disabled: true };
+      return { text: `Maintenez F · Rayon ${T[n].roman}`, cost: T[n].cost, hold: key('KeyF'), sub: `${T[n].name} : ${T[n].desc}` };
+    }
+    case 'raise': return { text: 'Le pyramidion remonte…', disabled: true };
+    case 'ready': return { text: `Appuyez sur F pour reprendre ${tierStats(amp.weapon.id, amp.tier).name}` };
+    default: {
+      const s = curSlot();
+      if (!s) return null;
+      const t = s.tier || 0;
+      if (t >= 3) return { text: 'L’autel refuse cette arme : elle est au palier III', disabled: true };
+      return { text: 'Appuyez sur F pour poser l’arme sur l’autel', cost: T[t + 1].cost, sub: `${wstat(s, 'name')} · Rayon ${T[t + 1].roman} : ${T[t + 1].name} (${T[t + 1].desc})` };
+    }
+  }
+}
+
+/* ---- Sons de l'autel (à la place de ceux de la cloche quand l'autel est la machine) */
+function khAltarSound(kind, pos, a, b) {
+  const bus = Sound.bus();
+  if (!bus) return;
+  const ctx = bus.ctx, t0 = ctx.currentTime, d = pos ? Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z) : 0, vol = clamp(1.2 - d / 30, 0.08, 1);
+  const out = ctx.createGain(); out.connect(bus.sortie);
+  const tone = (f, dur, type = 'sine', g0 = 0.2, f1 = f, at = 0) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0 + at); if (f1 !== f) o.frequency.exponentialRampToValueAtTime(f1, t0 + at + dur);
+    g.gain.setValueAtTime(0.0001, t0 + at); g.gain.exponentialRampToValueAtTime(g0 * vol, t0 + at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+    o.connect(g); g.connect(out); o.start(t0 + at); o.stop(t0 + at + dur + 0.05);
+  };
+  const noise = (dur, f, q, g0, at = 0) => {
+    const n = ctx.createBufferSource(), len = Math.ceil(ctx.sampleRate * dur), buf = ctx.createBuffer(1, len, ctx.sampleRate), dd = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) dd[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    n.buffer = buf;
+    const fl = ctx.createBiquadFilter(); fl.type = 'bandpass'; fl.frequency.value = f; fl.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = g0 * vol;
+    n.connect(fl); fl.connect(g); g.connect(out); n.start(t0 + at);
+  };
+  switch (kind) {
+    case 'toll': {                                  // le faisceau frappe : grondement grave et carillon de verre
+      const tier = a || 1, f = [55, 49, 43.6, 36.7][tier] || 55;
+      tone(f, 3.2, 'sine', 0.32 * (b || 1)); tone(f * 2.01, 2.4, 'triangle', 0.1 * (b || 1)); tone(f * 7.98, 1.6, 'sine', 0.05, f * 7.9);
+      tone(880 + tier * 110, 1.8, 'sine', 0.06, 870 + tier * 110, 0.05); tone(1318, 1.4, 'sine', 0.04, 1310, 0.1);
+      noise(0.5, 220, 0.8, 0.18);
+      break;
+    }
+    case 'fall': tone(330, a || 0.8, 'sine', 0.05, 110); noise(a || 0.8, 1800, 0.6, 0.03); break;
+    case 'impact': tone(62, 1.2, 'sine', 0.3, 48); noise(0.7, 160, 0.7, 0.3); break;
+    case 'raise': tone(110, a || 0.8, 'sine', 0.05, 330); noise(a || 0.8, 2400, 0.5, 0.02); break;
+    case 'offer': tone(220, 0.5, 'triangle', 0.06, 196); noise(0.25, 900, 1.2, 0.06); break;
+    case 'chime': tone(660, 1.2, 'sine', 0.08); tone(990, 1.4, 'sine', 0.06, 990, 0.08); tone(1320, 1.6, 'sine', 0.04, 1320, 0.16); break;
+    case 'lost': tone(196, 1.5, 'sine', 0.08, 98); noise(0.8, 700, 0.6, 0.06); break;
+    default: break;
+  }
+}
+const khAltarOn = () => !!(OW.on && Features.amp && Features.amp.altar);
+(function khWrapGlasSounds() {
+  const wrap = (name, kind, map) => {
+    const f = Sound[name];
+    if (typeof f !== 'function') return;
+    Sound[name] = function (...args) { if (khAltarOn()) return khAltarSound(kind, ...(map ? map(args) : args)); return f.apply(this, args); };
+  };
+  wrap('glasToll', 'toll');
+  wrap('glasFall', 'fall', (a) => [a[0], a[1]]);
+  wrap('glasImpact', 'impact');
+  wrap('glasRaise', 'raise', (a) => [a[0], a[1]]);
+  wrap('glasOffer', 'offer');
+  wrap('glasChime', 'chime');
+  wrap('glasLost', 'lost');
+  const hum = Sound.glasHum;
+  if (typeof hum === 'function') Sound.glasHum = function (level, pos) { return hum.call(this, khAltarOn() && !KHSAN.under ? 0 : level, pos); };
+})();
+
+/* ---- Passages : l'escalier du kiosque et celui du sanctuaire (fondu au noir) */
+const KHP = { busy: 0, el: null };
+function khFade(on, dur = 0.35) {
+  if (!KHP.el) {
+    KHP.el = el('div', 'kh-fade');
+    Object.assign(KHP.el.style, { position: 'fixed', inset: '0', background: '#000', opacity: '0', pointerEvents: 'none', transition: `opacity ${dur}s ease`, zIndex: '40' });
+    document.body.append(KHP.el);
+  }
+  KHP.el.style.transition = `opacity ${dur}s ease`;
+  KHP.el.style.opacity = on ? '1' : '0';
+}
+/* Passer d'une couche à l'autre : fondu, joueur posé à l'arrivée, fondu retour. */
+function khPortal(to, name) {
+  if (KHP.busy > 0) return;
+  KHP.busy = 1.1;
+  khFade(true);
+  schedule(0.4, () => {
+    placePlayer(to.x, to.z, to.layer ? -1 : 0);
+    player.yaw = to.yaw;
+    player.vel.set(0, 0, 0);
+    clearFarZombies();
+    khSetView(to.layer ? 'under' : 'surface');
+    if (name) HUD.zone(name);
+    khFade(false);
+  });
+}
+/* Les zombies de l'autre couche ne suivent pas : retirés (ils ressortiront près du joueur). */
+function clearFarZombies() {
+  for (const z of Zombies.list.slice()) {
+    if (!z.alive || z.boss) continue;
+    if ((z.layer | 0) !== (player.layer | 0)) { if (z.rodeur) removeZombie(z); else recycleZombie(z); }
+  }
+}
+/* Sous terre : la surface est cachée (rien ne s'y voit), le soleil ne fait plus d'ombres. */
+function khSetUnder(on) {
+  KHSAN.under = on;
+  // (les lumières restent visibles : leur nombre ne change pas, rien n'est recompilé)
+  const hide = (o) => { if (o === KHSAN.group || o.isLight) return; if (o.getObjectByProperty('isLight', true)) { for (const c of o.children) hide(c); return; } o.visible = !on; };
+  if (World.root) for (const c of World.root.children) hide(c);
+  OWNAV.ready = false;
+  if (Features.amp && Features.amp.altar) khAltarAnimate(Features.amp, 0);
+}
+function khPortalInteractables() {
+  const K = KHSAN.kiosk, F = KHSAN.stairFoot;
+  Features.interactables.push({
+    kind: 'portal', x: K.x, z: K.z, y: K.y, r: 1.5,
+    prompt() { return { text: 'Appuyez sur F pour descendre au sanctuaire', sub: '40 m sous le plateau' }; },
+    use() { khPortal({ x: F.x, z: F.z - 1.2, layer: 1, yaw: 0 }, 'Sanctuaire'); },
+  });
+  Features.interactables.push({
+    kind: 'portal', x: F.x, z: F.z, y: F.y, r: 1.8, layer: 1,
+    prompt() { return { text: 'Appuyez sur F pour remonter au plateau', sub: 'Kiosque du sanctuaire' }; },
+    use() { khPortal({ x: K.x, z: K.z + 1.6, layer: 0, yaw: Math.PI }, KH.locs[1].name); },
+  });
+  // porte du kiosque : scellée jusqu'au courant
+  const D = KHSAN.door, P = KH.places.B.kiosk;
+  Features.interactables.push({
+    kind: 'seal', x: (P.door[0] + P.door[2]) / 2, z: P.door[3] + 0.9, y: P.y, r: 1.6,
+    prompt() { return OW.doors[D.i].open || D.opening ? null : { text: 'Porte scellée : rétablissez le courant à la centrale du Nil', disabled: true }; },
+    use() {},
+  });
+}
+
+/* ---- Chaque image : porte, feux, faisceau ; couche du joueur */
+function khSanctuaryUpdate(dt) {
+  KHSAN.t += dt;
+  const D = KHSAN.door;
+  if (D) {
+    const open = OW.doors[D.i].open;
+    if (G.power && !open && !D.opening) { D.opening = true; D.t = 0; Sound.powerOn(); HUD.banner('Le sanctuaire s’ouvre', 'La porte du kiosque s’enfonce dans le sol · plateau des pyramides', 'power'); }
+    if (D.opening) {
+      D.t += dt;
+      const k = clamp(D.t / 2.6, 0, 1);
+      D.slab.position.y = D.y - 3.25 * smooth(k);
+      if (Math.random() < dt * 10 && k < 1) owSandBurst(D.slab.position.x + rand(-1, 1), D.slab.position.z + 0.4, D.y);
+      if (k >= 1) { D.opening = false; OW.doors[D.i].open = true; }
+    }
+  }
+  // feux des braseros (flamme, lumière qui vacille)
+  const t = KHSAN.t;
+  for (const B of KHSAN.fire) {
+    const f = 0.85 + Math.sin(t * 9 + B.ph) * 0.08 + Math.sin(t * 23 + B.ph * 2) * 0.06;
+    B.fire.forEach((sp, i) => { sp.scale.set((0.9 - i * 0.2) * B.s * f, (1.2 + i * 0.25) * B.s * (2 - f), 1); sp.material.opacity = 0.85 - i * 0.2; });
+    B.L.size = B.L.base * f;
+  }
+  // couche du joueur (au cas où un saut, une téléportation l'auraient changée)
+  if (!KHT.ride && KHSAN.view !== 'tunnel') {
+    const under = (player.layer | 0) === 1;
+    if (under !== KHSAN.under) khSetView(under ? 'under' : 'surface');
+  }
+  if (KHP.busy > 0) KHP.busy -= dt;
+}
+function khSanctuaryReset() {
+  const D = KHSAN.door;
+  if (D) { D.opening = false; D.t = 0; D.slab.position.y = D.y; OW.doors[D.i].open = false; }
+  KHP.busy = 0;
+  if (KHP.el) khFade(false, 0.01);
+  khSetView('surface');
+}
+
+/* Réglage de lumière du sanctuaire : pas de soleil, braseros chauds, brume sombre. */
+OW_GRADES.S = { az: 0, el: 60, sun: 0x000000, sunI: 0, hemiSky: 0x7a5a3c, hemiGround: 0x2e3a38, hemiI: 0.55, top: 0x0c0a08, horizon: 0x1a120c, ground: 0x0c0a08, haze: 0x1c140e, exp: 1.0, stars: 0, sunK: 0 };
+
+/* Apparitions sous terre : dans les fosses de sable, à 8–45 m du joueur, plutôt hors de vue. */
+function khPickSpawnUnder() {
+  const p = player, others = Zombies.list.filter((z) => z.alive && z.state === 'rise');
+  const cand = KHSAN.pits.filter((q) => { const d = Math.hypot(q.x - p.pos.x, q.z - p.pos.z); return d > 6 && d < 48; });
+  if (!cand.length) return null;
+  for (let tries = 0; tries < 12; tries++) {
+    const q = cand[Math.floor(Math.random() * cand.length)], x = q.x + rand(-1.2, 1.2), z = q.z + rand(-1.2, 1.2);
+    if (others.some((o) => Math.hypot(o.pos.x - x, o.pos.z - z) < 1.2)) continue;
+    const cx = Math.floor(x), cz = Math.floor(z);
+    if (!owWalkCell(1, cx, cz)) continue;
+    return { riser: true, x, z, li: 0, k: owK(1, cx, cz), zone: 1, layer: 1, y: owGroundAt(1, x, z) };
+  }
+  return null;
+}
+
+/* --------------------------------------------------------------- Gardien --
+   Planche « Ce qui marche dans la poussière » (page 7) : le Gardien à tête de chacal, l'horloge de
+   la partie. 3,2 m oreilles comprises ; lent, mais il se déplace en tourbillon de sable. À chaque pic
+   de Khamsin, il traverse la carte le long du couloir de tempête et renverse les véhicules sur son
+   passage (le camion blindé encaisse un coup) ; invulnérable hors du sanctuaire. Au sanctuaire, boss
+   en 3 phases : ses fissures s'allument juste après un coup de sceptre au sol (la fenêtre de tir) ;
+   le Sceptre reconstitué (nécropole) double les dégâts pendant ces fenêtres. Sa mort fait tomber la
+   tempête pendant 4 minutes : la fenêtre pour décoller.
+   Il est dans la liste des zombies (tirs, explosions, couteau le trouvent), avec son propre modèle,
+   son pas, ses coups et ses dégâts. */
+const KHG = {
+  hp: (r) => Math.round(25000 * (1 + 0.15 * Math.max(0, r - 10))),   // PV au sanctuaire selon la manche
+  window: 5, chip: 0.1, sceptre: 2,              // fenêtre de tir (s) ; hors fenêtre : 10 % ; Sceptre : ×2
+  slam: { r: 7, dmg: 45, min: 12, reach: 2.6 },  // onde du coup de sceptre (au contact, au bord) ; point d'impact devant lui
+  swipe: { r: 3.2, dmg: 40, cd: 1.8 },
+  speed: [1.6, 2.1, 2.7], slamEvery: [9, 7, 5.5], whirlEvery: 13,
+  whirl: { speed: 16, out: 0.5, in: 0.6 },
+  cross: { speed: 6.5, whirl: 18, len: 260, back: 110, flip: 5.5 },
+  calm: 240,                                     // s de calme après sa mort
+  phases: [0.66, 0.33],
+  e: null, R: null, mats: null, tornado: null, bar: null, lastCross: 0, dead: false, kills: 0, hintT: 0,
+};
+const GARDIEN_TYPE = {
+  id: 'kh_gardien', num: 'K-05', name: 'Le Gardien à tête de chacal', cls: 'Boss (Khamsin)', tag: 'L’horloge de la partie', model: 'kh_gardien', facts: 'gardien',
+  maps: ['khamsin'], dog: true, kh: true, boss: true,
+  desc: 'Le gardien du sanctuaire sous la Grande Pyramide. Le sceau brisé l’a réveillé ; la tempête est son souffle.',
+  mult: { hp: 1, speed: 1, damage: 1.5 }, headMult: 1.5, ability: 'Tourbillon',
+};
+SPECIMEN_TYPES.push(GARDIEN_TYPE);
+
+/* ---- Matières : corps de basalte fendu (fissures turquoise en émission), or, faïence, lin */
+function khGardienMats() {
+  if (KHG.mats) return KHG.mats;
+  const c = makeCanvas(512, 512), g = c.getContext('2d'), R = mulberry32(3207);
+  g.fillStyle = '#000'; g.fillRect(0, 0, 512, 512);
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const bolt = (x, y, a, len, w, depth) => {
+    g.strokeStyle = `rgba(95,242,226,${0.55 + 0.45 * R()})`; g.lineWidth = w; g.shadowColor = '#5ff2e2'; g.shadowBlur = 6;
+    g.beginPath(); g.moveTo(x, y);
+    for (let i = 0; i < len; i++) { a += (R() - 0.5) * 0.9; x += Math.cos(a) * 9; y += Math.sin(a) * 9; g.lineTo(x, y); if (depth < 3 && R() < 0.12) bolt(x, y, a + (R() - 0.5) * 1.6, len / 2, w * 0.6, depth + 1); }
+    g.stroke();
+  };
+  for (let i = 0; i < 16; i++) bolt(R() * 512, R() * 512, R() * TAU, 14 + R() * 18, 2.2 + R() * 1.6, 0);
+  const crack = toTex(c);
+  share(crack);
+  // collier large : rangées d'or, de turquoise et de lapis
+  const cc = makeCanvas(256, 64), gc = cc.getContext('2d');
+  ['#d4a640', '#2fa89c', '#d4a640', '#2c4f9a', '#d4a640', '#2fa89c', '#d4a640'].forEach((col, i) => { gc.fillStyle = col; gc.fillRect(0, i * 9 + 1, 256, 8); });
+  for (let x = 0; x < 256; x += 8) { gc.fillStyle = 'rgba(0,0,0,0.25)'; gc.fillRect(x, 0, 1, 64); }
+  const collar = toTex(cc);
+  share(collar);
+  const std = (o) => linearize(share(new THREE.MeshStandardMaterial(o)));
+  KHG.mats = {
+    body: std({ color: 0x1b1a1e, roughness: 0.42, metalness: 0.25, emissive: 0xffffff, emissiveMap: crack, emissiveIntensity: 0.12 }),
+    gold: std({ color: 0xd4a640, roughness: 0.3, metalness: 0.85, emissive: 0x2a1c06, emissiveIntensity: 1 }),
+    faience: std({ color: 0x2fa89c, roughness: 0.32, metalness: 0.1, emissive: 0x0a3430, emissiveIntensity: 1 }),
+    linen: std({ color: 0xe6dcc6, roughness: 0.9, side: THREE.DoubleSide }),
+    collar: std({ map: collar, roughness: 0.35, metalness: 0.5, side: THREE.DoubleSide }),
+    eye: linearize(share(new THREE.MeshBasicMaterial({ color: 0x5ff2e2, fog: false }))),
+  };
+  return KHG.mats;
+}
+/* ---- Modèle : un squelette d'objets (bassin, buste, cou, tête ; épaules, coudes, mains ; hanches,
+   genoux, pieds) et ses pièces ; le sceptre was dans la main droite. Origine au sol. */
+function khGardienModel() {
+  const M = khGardienMats();
+  const root = new THREE.Group();
+  const bone = (p, x, y, z) => { const o = new THREE.Group(); o.position.set(x, y, z); p.add(o); return o; };
+  const part = (p, geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.scale.set(sx, sy, sz); m.castShadow = true; p.add(m); return m;
+  };
+  const cyl = (rt, rb, h, n = 12, open = false) => new THREE.CylinderGeometry(rt, rb, h, n, 1, open);
+  const R = { root };
+  R.body = bone(root, 0, 0, 0);
+  R.hips = bone(R.body, 0, 1.45, 0);
+  // pagne plissé, ceinture d'or, tablier rayé
+  part(R.hips, cyl(0.36, 0.52, 0.64, 18, true), M.linen, 0, -0.27, 0.02);
+  part(R.hips, cyl(0.375, 0.375, 0.1, 18), M.gold, 0, 0.04, 0);
+  part(R.hips, new THREE.BoxGeometry(0.26, 0.52, 0.04), M.collar, 0, -0.28, 0.43, 0.08, 0, Math.PI / 2);
+  R.chest = bone(R.hips, 0, 0.1, 0);
+  part(R.chest, cyl(0.47, 0.33, 0.9, 14), M.body, 0, 0.44, 0, 0, 0, 0, 1, 1, 0.7);
+  part(R.chest, cyl(0.54, 0.47, 0.3, 24, true), M.collar, 0, 0.8, 0.02, 0.12);
+  R.neck = bone(R.chest, 0, 0.92, 0.03);
+  part(R.neck, cyl(0.13, 0.16, 0.3, 10), M.body, 0, 0.1, 0);
+  R.head = bone(R.neck, 0, 0.27, 0);
+  // tête de chacal : crâne, museau effilé, mâchoire, oreilles dressées, némès rayé
+  part(R.head, new THREE.SphereGeometry(1, 14, 10), M.body, 0, 0.06, 0, 0, 0, 0, 0.19, 0.2, 0.23);
+  part(R.head, cyl(0.055, 0.11, 0.44, 10), M.body, 0, -0.02, 0.3, Math.PI / 2 - 0.12);
+  part(R.head, new THREE.SphereGeometry(0.045, 8, 6), M.body, 0, 0.01, 0.52);
+  R.jaw = bone(R.head, 0, -0.08, 0.12);
+  part(R.jaw, new THREE.BoxGeometry(0.11, 0.045, 0.32), M.body, 0, -0.02, 0.16, -0.06);
+  for (const s of [-1, 1]) {
+    part(R.head, new THREE.ConeGeometry(0.095, 0.46, 4), M.body, s * 0.11, 0.4, -0.04, -0.06, Math.PI / 4, s * -0.12);
+    part(R.head, new THREE.ConeGeometry(0.05, 0.3, 4), M.gold, s * 0.11, 0.38, 0.0, -0.06, Math.PI / 4, s * -0.12);
+    part(R.head, new THREE.BoxGeometry(0.15, 0.5, 0.05), M.collar, s * 0.2, -0.22, 0.08, 0.1, 0, s * 0.08);   // pans du némès
+    const e = part(R.head, new THREE.SphereGeometry(1, 8, 6), M.eye, s * 0.085, 0.08, 0.17, 0, 0, s * -0.35, 0.035, 0.016, 0.02);
+    e.castShadow = false;
+  }
+  part(R.head, cyl(0.2, 0.22, 0.22, 16, true), M.collar, 0, -0.04, -0.06, -0.25, 0, 0, 1, 1, 1);
+  // bras : épaules, coudes, mains ; brassards d'or
+  for (const [s, k] of [[1, 'L'], [-1, 'R']]) {
+    const sh = R[`sh${k}`] = bone(R.chest, s * 0.5, 0.74, 0);
+    part(sh, new THREE.SphereGeometry(0.15, 10, 8), M.body, 0, 0, 0);
+    part(sh, cyl(0.12, 0.1, 0.62), M.body, 0, -0.31, 0);
+    part(sh, cyl(0.13, 0.13, 0.08), M.gold, 0, -0.14, 0);
+    const el = R[`el${k}`] = bone(sh, 0, -0.62, 0);
+    part(el, cyl(0.1, 0.08, 0.56), M.body, 0, -0.28, 0);
+    part(el, cyl(0.105, 0.1, 0.1), M.gold, 0, -0.46, 0);
+    const ha = R[`ha${k}`] = bone(el, 0, -0.56, 0);
+    part(ha, new THREE.BoxGeometry(0.1, 0.17, 0.09), M.body, 0, -0.08, 0.01);
+  }
+  // sceptre was : hampe d'or, tête de chacal stylisée en haut, fourche en bas (tenu à un tiers du haut)
+  R.staff = bone(R.haR, 0, -0.1, 0.03);
+  part(R.staff, cyl(0.032, 0.032, 2.75, 8), M.gold, 0, -0.4, 0);
+  part(R.staff, new THREE.BoxGeometry(0.07, 0.07, 0.24), M.gold, 0, 0.98, 0.09, 0.5);
+  part(R.staff, new THREE.ConeGeometry(0.03, 0.12, 4), M.gold, 0, 1.05, -0.02, -0.3);
+  for (const s of [-1, 1]) part(R.staff, cyl(0.02, 0.012, 0.22, 6), M.gold, s * 0.05, -1.82, 0, 0, 0, s * 0.3);
+  // jambes
+  for (const [s, k] of [[1, 'L'], [-1, 'R']]) {
+    const hp = R[`hip${k}`] = bone(R.hips, s * 0.18, -0.05, 0);
+    part(hp, cyl(0.17, 0.13, 0.72), M.body, 0, -0.36, 0);
+    const kn = R[`kn${k}`] = bone(hp, 0, -0.72, 0);
+    part(kn, cyl(0.12, 0.085, 0.68), M.body, 0, -0.34, 0);
+    part(kn, cyl(0.095, 0.095, 0.07), M.gold, 0, -0.6, 0);
+    const ft = R[`ft${k}`] = bone(kn, 0, -0.68, 0);
+    part(ft, new THREE.BoxGeometry(0.16, 0.08, 0.34), M.body, 0, -0.04, 0.08);
+  }
+  // lueur des yeux (perce la poussière)
+  R.glow = [];
+  for (const s of [-1, 1]) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ff2e2, transparent: true, opacity: 0.9, depthWrite: false, fog: false }));
+    sp.position.set(s * 0.085, 0.08, 0.2); sp.scale.setScalar(0.22);
+    R.head.add(sp); R.glow.push(sp);
+  }
+  root.traverse((o) => { if (o.isMesh) o.frustumCulled = true; });
+  return R;
+}
+
+/* ---- Pose : marche, coup de sceptre, rugissement, tourbillon, chute (temps de l'état st). */
+function khGardienPose(R, s, st, ph, opt = {}) {
+  const sw = Math.sin(ph), cw = Math.cos(ph);
+  const set = (b, x = 0, y = 0, z = 0) => b.rotation.set(x, y, z);
+  // repos
+  set(R.body); set(R.hips); set(R.chest); set(R.neck, 0.08); set(R.head, -0.06); set(R.jaw);
+  for (const k of ['L', 'R']) { set(R[`sh${k}`]); set(R[`el${k}`], -0.25); set(R[`ha${k}`]); set(R[`hip${k}`]); set(R[`kn${k}`]); set(R[`ft${k}`]); }
+  R.hips.position.y = 1.45;
+  R.root.scale.setScalar(opt.scale || 1);
+  const breathe = Math.sin((opt.t || 0) * 1.6) * 0.02;
+  R.chest.rotation.x = breathe;
+  // bras droit : le sceptre tenu droit, la hampe au sol devant lui
+  R.shR.rotation.set(-0.35, 0, -0.12); R.elR.rotation.x = -0.5; R.haR.rotation.x = 0.85;
+  R.shL.rotation.set(0.1, 0, 0.18);
+  switch (s) {
+    case 'walk': case 'cross': {
+      const a = opt.stride || 0.42;
+      R.hipL.rotation.x = sw * a; R.hipR.rotation.x = -sw * a;
+      R.knL.rotation.x = Math.max(0, -cw) * a * 1.4; R.knR.rotation.x = Math.max(0, cw) * a * 1.4;
+      R.ftL.rotation.x = -R.hipL.rotation.x * 0.4; R.ftR.rotation.x = -R.hipR.rotation.x * 0.4;
+      R.hips.position.y = 1.45 - Math.abs(cw) * 0.05;
+      R.hips.rotation.y = sw * 0.08; R.chest.rotation.y = -sw * 0.1;
+      R.shL.rotation.x = -sw * a * 0.7; R.shR.rotation.x = -0.35 + sw * 0.12;
+      R.body.rotation.x = 0.06;
+      break;
+    }
+    case 'slam': {
+      // 0 → 0,6 s : le sceptre monte à deux mains au-dessus de la tête ; 0,6 → 0,78 : il frappe ; puis il se relève
+      const up = smooth(clamp(st / 0.6, 0, 1)), down = smooth(clamp((st - 0.6) / 0.18, 0, 1)), back = smooth(clamp((st - 0.95) / 0.55, 0, 1));
+      const raise = up * (1 - down);
+      const sx = lerp(lerp(-0.35, -2.9, raise), -1.1, down * (1 - back));
+      R.shR.rotation.set(sx, 0, lerp(-0.12, 0.25, raise));
+      R.shL.rotation.set(lerp(0.1, -2.7, raise) * (1 - back) + lerp(-0.9, 0.1, back) * down, 0, lerp(0.18, -0.3, raise));
+      R.elR.rotation.x = lerp(-0.5, -0.2, raise); R.elL.rotation.x = lerp(-0.25, -0.6, raise);
+      R.haR.rotation.x = lerp(0.85, 1.6, raise) * (1 - down) + lerp(0.2, 0.85, back) * down;
+      R.body.rotation.x = lerp(-0.12 * raise, 0.42, down) * (1 - back);
+      R.hipL.rotation.x = -0.5 * down * (1 - back); R.knL.rotation.x = 0.7 * down * (1 - back);
+      R.hipR.rotation.x = 0.25 * down * (1 - back);
+      R.hips.position.y = 1.45 - 0.22 * down * (1 - back);
+      R.jaw.rotation.x = 0.35 * down * (1 - back);
+      break;
+    }
+    case 'swipe': {
+      const k = clamp(st / 0.45, 0, 1), r = smooth(clamp((st - 0.45) / 0.45, 0, 1));
+      R.shL.rotation.set(-1.4 * (1 - r), 0, lerp(-1.1, 0.4, smooth(k)) * (1 - r));
+      R.chest.rotation.y = lerp(0.5, -0.5, smooth(k)) * (1 - r);
+      R.jaw.rotation.x = 0.25 * (1 - r);
+      break;
+    }
+    case 'roar': case 'rise': {
+      const k = s === 'rise' ? clamp(st / 2.4, 0, 1) : 1, r = s === 'roar' ? Math.sin(clamp(st / 2.2, 0, 1) * Math.PI) : smooth(clamp((st - 1.8) / 0.6, 0, 1));
+      R.head.rotation.x = -0.5 * r; R.neck.rotation.x = -0.25 * r; R.jaw.rotation.x = 0.5 * r;
+      R.shL.rotation.set(-0.4 * r, 0, 0.18 + 0.9 * r); R.shR.rotation.set(-0.35 - 0.3 * r, 0, -0.12 - 0.6 * r);
+      R.body.rotation.x = -0.15 * r;
+      if (s === 'rise') { R.body.rotation.x = lerp(0.6, -0.15 * r, k); R.hips.position.y = lerp(0.6, 1.45, smooth(k)); R.knL.rotation.x = R.knR.rotation.x = lerp(1.6, 0, smooth(k)); R.hipL.rotation.x = R.hipR.rotation.x = lerp(-1.2, 0, smooth(k)); }
+      break;
+    }
+    case 'stagger': {
+      const k = Math.sin(clamp(st / 0.8, 0, 1) * Math.PI);
+      R.body.rotation.x = -0.25 * k; R.head.rotation.x = 0.3 * k; R.shL.rotation.z = 0.18 + 0.5 * k;
+      break;
+    }
+    case 'dying': {
+      const k = smooth(clamp(st / 1.6, 0, 1));
+      R.hipL.rotation.x = R.hipR.rotation.x = -1.4 * k; R.knL.rotation.x = R.knR.rotation.x = 2.2 * k;
+      R.hips.position.y = lerp(1.45, 0.62, k);
+      R.body.rotation.x = 0.35 * k; R.head.rotation.x = 0.4 * k;
+      R.shL.rotation.set(0.3 * k, 0, 0.18); R.shR.rotation.set(-0.35 + 0.5 * k, 0, -0.12);
+      break;
+    }
+    default: break;
+  }
+  R.root.updateMatrixWorld(true);
+}
+
+/* ---- Entité : un « zombie » de la liste, sans pièces instanciées (son modèle est à part). */
+function khGardienSpawn(x, z, mode) {
+  if (KHG.e && !KHG.e.removed) khGardienRemove();
+  if (!ZR.free.length) { const c = Zombies.list.find((q) => !q.alive); if (c) removeZombie(c); else return null; }
+  const slot = ZR.free.pop();
+  hideZombieSlot(slot);
+  if (!KHG.R) {
+    KHG.R = khGardienModel();
+    KHG.tornado = khTornado();
+  }
+  if (KHG.R.root.parent !== scene) { scene.add(KHG.R.root); scene.add(KHG.tornado.group); }
+  KHG.R.root.visible = true;
+  const layer = mode === 'arena' ? 1 : 0, gy = owGroundAt(layer, x, z);
+  const hp = mode === 'arena' ? KHG.hp(G.round) : 1e9;
+  const e = {
+    id: ++Zombies.seq, slot, type: GARDIEN_TYPE, model: 'kh_gardien', boss: true, alive: true, outside: false, layer, mode,
+    hp, maxHp: hp, pos: new THREE.Vector3(x, gy, z), gy, k: owLocate(x, z, gy), yaw: Math.atan2(player.pos.x - x, player.pos.z - z),
+    state: 'chase', gstate: mode === 'arena' ? 'rise' : 'cross', st: 0, t: 0, ph: 0, phase: 0, window: 0, slamT: 6, whirlT: KHG.whirlEvery, swipeCd: 0,
+    whirlTo: null, whirlFrom: null, whirlD: 0, path: null, crossT: 0, hitT: 0, scale: 1, sunk: mode === 'arena' ? 1 : 0, double: false,
+    win: null, gib: 0, headless: false, crawl: false, stagger: 0, flinch: 0, knockX: 0, knockZ: 0, knockT: 0, reelT: 0, called: null,
+    look: { skin: 0xffffff, cloth: 0xffffff, eyes: 0xffffff, helmet: false, helmetColor: 0 }, helmetOn: false, dog: true, speedType: 'walk', speed: 1, moving: 0,
+    vx: 0, vz: 0, nukeT: 0, losT: 0, los: true, farT: 0, stuck: 0, stuckT: 9, lastX: x, lastZ: z,
+  };
+  Zombies.list.push(e);
+  KHG.e = e;
+  khGardienPose(KHG.R, e.gstate, 0, 0, { t: 0 });
+  khGardienPlace(e);
+  return e;
+}
+function khGardienRemove() {
+  const e = KHG.e;
+  if (e && !e.removed) removeZombie(e);
+  KHG.e = null;
+  if (KHG.R) KHG.R.root.visible = false;
+  if (KHG.tornado) KHG.tornado.group.visible = false;
+  khBossBar(null);
+}
+function khGardienPlace(e) {
+  const R = KHG.R;
+  R.root.position.set(e.pos.x, e.gy - e.sunk * 3.4, e.pos.z);
+  R.root.rotation.y = e.yaw;
+}
+
+/* ---- Tourbillon de sable (il s'y dissout pour se déplacer) */
+function khTornado() {
+  const group = new THREE.Group();
+  const parts = [];
+  for (let i = 0; i < 22; i++) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.smoke, transparent: true, depthWrite: false, opacity: 0 }));
+    setLin(s.material.color, i % 3 ? 0xb48a5a : 0x8a6a48);
+    group.add(s);
+    parts.push({ s, a: Math.random() * TAU, h: (i / 22) * 4.2, r: 0.4 + (i / 22) * 1.6, sp: 4 + Math.random() * 3 });
+  }
+  group.visible = false;
+  return { group, parts, k: 0 };
+}
+function khTornadoUpdate(T, x, y, z, k, dt) {
+  T.k = k;
+  T.group.visible = k > 0.01;
+  if (!T.group.visible) return;
+  T.group.position.set(x, y, z);
+  for (const p of T.parts) {
+    p.a += p.sp * dt; p.h += dt * 1.2; if (p.h > 4.4) p.h -= 4.4;
+    const r = p.r * (0.6 + p.h / 4.4);
+    p.s.position.set(Math.cos(p.a) * r, p.h, Math.sin(p.a) * r);
+    p.s.scale.setScalar(0.9 + p.h * 0.35);
+    p.s.material.opacity = 0.5 * k * (1 - Math.abs(p.h - 2.2) / 2.6);
+    p.s.material.rotation += dt * 2;
+  }
+}
+
+/* ---- Chaque image */
+function khGardienUpdate(e, dt) {
+  e.t += dt; e.st += dt;
+  if (e.hitT > 0) e.hitT -= dt;
+  if (e.swipeCd > 0) e.swipeCd -= dt;
+  if (e.window > 0) e.window -= dt;
+  if (e.mode === 'cross') khGardienCross(e, dt); else khGardienArena(e, dt);
+  if (e.removed || !KHG.R) return;
+  // pas lourds, fissures, lueur des yeux
+  const M = KHG.mats, lit = e.window > 0 ? 1.6 + 0.6 * Math.sin(e.t * 14) : e.gstate === 'dying' ? 3 : e.gstate === 'roar' || e.gstate === 'rise' ? 0.9 : e.mode === 'cross' ? 0.45 : 0.12;
+  M.body.emissiveIntensity = damp(M.body.emissiveIntensity, lit, 10, dt);
+  for (const g of KHG.R.glow) g.material.opacity = e.gstate === 'whirl' ? 0 : 0.9;
+  khGardienPlace(e);
+  KHG.R.root.scale.setScalar(e.scale);
+  khBossBar(e);
+}
+/* Combat au sanctuaire. */
+function khGardienArena(e, dt) {
+  const p = player, dx = p.pos.x - e.pos.x, dz = p.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1e-3;
+  const sameLayer = (p.layer | 0) === 1;
+  const ph = e.phase;
+  const go = (s) => { e.gstate = s; e.st = 0; };
+  switch (e.gstate) {
+    case 'rise': {
+      e.sunk = Math.max(0, 1 - e.st / 2.4);
+      if (e.st < 2.4 && Math.random() < dt * 14) owSandBurst(e.pos.x + rand(-1.5, 1.5), e.pos.z + rand(-1.5, 1.5), e.gy);
+      if (e.st >= 2.4) { e.sunk = 0; go('roar'); khGardienSound('roar', e.pos); }
+      break;
+    }
+    case 'roar':
+      e.yaw = turnTo(e.yaw, Math.atan2(dx, dz), 2 * dt);
+      if (e.st >= 2.2) { go('walk'); if (e.summon) { khGardienSummon(e.summon); e.summon = 0; } }
+      break;
+    case 'walk': {
+      const sp = KHG.speed[ph];
+      e.yaw = turnTo(e.yaw, Math.atan2(dx, dz), 1.6 * dt);
+      if (sameLayer && d > 2.4) {
+        const v = sp * (Math.abs(wrapAngle(Math.atan2(dx, dz) - e.yaw)) < 0.8 ? 1 : 0.4);
+        e.pos.x += Math.sin(e.yaw) * v * dt; e.pos.z += Math.cos(e.yaw) * v * dt;
+        settleBody(e, 0.7); e.pos.y = e.gy;
+        e.ph += dt * v * 2.1;
+        e.stepT = (e.stepT || 0) - dt * v;
+        if (e.stepT <= 0) { e.stepT = 1.3; khGardienSound('step', e.pos); FX.shake = Math.min(1, FX.shake + Math.max(0, 0.18 - d / 120)); }
+      }
+      e.slamT -= dt; e.whirlT -= dt;
+      if (!sameLayer) break;
+      if (d < KHG.swipe.r && e.swipeCd <= 0) { go('swipe'); e.swipeHit = false; break; }
+      if (ph >= 1 && e.whirlT <= 0 && d > 5) { khGardienWhirl(e); break; }
+      if (e.slamT <= 0 && d < 14) { go('slam'); e.slamHit = false; e.double = ph >= 2; khGardienSound('windup', e.pos); }
+      break;
+    }
+    case 'swipe':
+      if (!e.swipeHit && e.st >= 0.45) {
+        e.swipeHit = true;
+        if (d < KHG.swipe.r + 0.4 && !p.down) { khPlayerHit(KHG.swipe.dmg, dx / d, dz / d, 7); khGardienSound('hit', p.pos); }
+      }
+      if (e.st >= 0.9) { e.swipeCd = KHG.swipe.cd; go('walk'); }
+      break;
+    case 'slam':
+      e.yaw = e.st < 0.55 ? turnTo(e.yaw, Math.atan2(dx, dz), 2.4 * dt) : e.yaw;
+      if (!e.slamHit && e.st >= 0.75) { e.slamHit = true; khGardienSlam(e); }
+      if (e.st >= 1.5) {
+        if (e.double) { e.double = false; go('slam'); e.slamHit = false; break; }
+        e.slamT = KHG.slamEvery[ph] * rand(0.85, 1.15); go('walk');
+      }
+      break;
+    case 'whirl': {
+      // dissolution (0,5 s), course du tourbillon, retour (0,6 s), puis coup de sceptre aussitôt
+      const W = KHG.whirl;
+      if (e.st < W.out) e.scale = 1 - smooth(e.st / W.out);
+      else if (e.whirlD > 0) {
+        e.scale = 0.001;
+        const tx = e.whirlTo.x - e.pos.x, tz = e.whirlTo.z - e.pos.z, dd = Math.hypot(tx, tz);
+        const step = Math.min(dd, W.speed * dt);
+        if (dd > 0.05) { e.pos.x += (tx / dd) * step; e.pos.z += (tz / dd) * step; settleBody(e, 0.3); }
+        if (dd <= 0.3 || e.st > 4) { e.whirlD = 0; e.st = W.out; e.reform = true; }
+      } else {
+        const k = clamp((e.st - W.out) / W.in, 0, 1);
+        e.scale = Math.max(0.001, smooth(k));
+        e.yaw = Math.atan2(dx, dz);
+        if (k >= 1) { e.scale = 1; e.whirlT = KHG.whirlEvery * rand(0.8, 1.2); go('slam'); e.slamHit = false; e.double = ph >= 2; }
+      }
+      khTornadoUpdate(KHG.tornado, e.pos.x, e.gy, e.pos.z, e.scale < 1 ? 1 - e.scale * 0.6 : 0, dt);
+      if (Math.random() < dt * 8) owSandBurst(e.pos.x, e.pos.z, e.gy);
+      break;
+    }
+    case 'stagger':
+      if (e.st >= 0.8) go('walk');
+      break;
+    case 'dying': {
+      if (e.st > 1.6) e.scale = Math.max(0.001, 1 - smooth((e.st - 1.6) / 1.6));
+      if (Math.random() < dt * 16) { owSandBurst(e.pos.x + rand(-1, 1), e.pos.z + rand(-1, 1), e.gy); }
+      if (e.st >= 3.3) { khGardienRemove(); return; }
+      break;
+    }
+    default: go('walk');
+  }
+  if (e.gstate !== 'whirl') khTornadoUpdate(KHG.tornado, e.pos.x, e.gy, e.pos.z, 0, dt);
+  khGardienPose(KHG.R, e.gstate === 'walk' ? 'walk' : e.gstate === 'whirl' ? 'walk' : e.gstate, e.st, e.ph, { t: e.t, stride: 0.38 });
+}
+/* Coup de sceptre au sol : onde (dégâts selon la distance, les morts renversés), fissures allumées. */
+function khGardienSlam(e) {
+  const fx = Math.sin(e.yaw), fz = Math.cos(e.yaw), x = e.pos.x + fx * KHG.slam.reach, z = e.pos.z + fz * KHG.slam.reach, y = e.gy;
+  khGardienSound('slam', { x, z });
+  FX.shake = Math.min(1.2, FX.shake + 0.9);
+  for (let i = 0; i < 14; i++) { const a = (i / 14) * TAU; owSandBurst(x + Math.cos(a) * rand(0.5, 2.5), z + Math.sin(a) * rand(0.5, 2.5), y); }
+  if (Features.amp && Features.amp.altar) { glasWave(Features.amp, 0, KHG.slam.r, 0.55, 1, x, z, y); glasWave(Features.amp, 0.1, KHG.slam.r * 0.6, 0.45, 0.7, x, z, y); }
+  const p = player, d = Math.hypot(p.pos.x - x, p.pos.z - z);
+  if (d < KHG.slam.r && !p.down && Math.abs(p.gy - y) < 2.5) {
+    const k = 1 - d / KHG.slam.r, dmg = lerp(KHG.slam.min, KHG.slam.dmg, k);
+    khPlayerHit(dmg, (p.pos.x - x) / (d || 1), (p.pos.z - z) / (d || 1), 3 + 6 * k);
+  }
+  glasKnockdown(x, z, KHG.slam.r, 1.6, 0);
+  // fenêtre de tir : les fissures s'allument
+  e.window = KHG.window;
+  if (e.mode === 'arena' && KHG.hintT <= 0) { KHG.hintT = 30; HUD.hint('Ses fissures brillent : tirez maintenant !', 2.5); }
+}
+/* Il se dissout en tourbillon et file vers un point à 6–9 m du joueur (plutôt dans son dos). */
+function khGardienWhirl(e) {
+  const p = player;
+  let to = null;
+  for (let i = 0; i < 16 && !to; i++) {
+    const a = p.yaw + rand(-1.2, 1.2), r = rand(6, 9), x = p.pos.x + Math.sin(a) * r, z = p.pos.z + Math.cos(a) * r;
+    if (owWalkCell(e.layer, Math.floor(x), Math.floor(z)) && Math.abs(owGroundAt(e.layer, x, z) - e.gy) < 1) to = { x, z };
+  }
+  if (!to) { e.whirlT = 4; return; }
+  e.gstate = 'whirl'; e.st = 0; e.whirlTo = to; e.whirlD = 1;
+  khGardienSound('whirl', e.pos);
+}
+/* Coup reçu par le joueur : dégâts, recul (glisse sur le sol, arrêtée par les murs), secousse. */
+function khPlayerHit(dmg, ux, uz, push) {
+  if (VEH.drive) { playerDamage(dmg * VEH.drive.T.protect); return; }
+  playerDamage(dmg);
+  KHG.push = { x: ux * push, z: uz * push, t: 0.3 };
+  FX.shake = Math.min(1.2, FX.shake + 0.6);
+}
+function khPushUpdate(dt) {
+  const P = KHG.push;
+  if (!P || P.t <= 0 || VEH.drive) return;
+  P.t -= dt;
+  const k = dt / 0.3;
+  player.pos.x += P.x * k; player.pos.z += P.z * k;
+  settleBody(player, player.radius);
+  player.pos.y = player.gy;
+}
+/* Les Desséchés sortent des fosses du sanctuaire (changement de phase). */
+function khGardienSummon(n) {
+  for (let i = 0; i < n; i++) {
+    const sp = khPickSpawnUnder();
+    if (!sp) continue;
+    const z = spawnZombie(sp, khHp(G.round));
+    if (z) { z.speedType = 'run'; z.speed = rand(SPEEDS.run[0], SPEEDS.run[1]); }
+  }
+}
+
+/* ---- Dégâts : seulement au sanctuaire ; pleins pendant les fenêtres de tir, 10 % hors fenêtre. */
+function khGardienDamage(e, amount, info) {
+  if (!e.alive || e.removed) return false;
+  const immune = e.mode !== 'arena' || e.gstate === 'rise' || e.gstate === 'roar' || e.gstate === 'dying' || e.gstate === 'whirl'
+    || info.kind === 'nuke' || info.kind === 'glas' || info.kind === 'vehicle';
+  if (immune) {
+    if (e.mode !== 'arena' && KHG.hintT <= 0 && info.kind !== 'vehicle') { KHG.hintT = 12; HUD.hint('Le Gardien est invulnérable hors du sanctuaire', 2.5); }
+    return false;
+  }
+  let k = e.window > 0 ? 1 : KHG.chip;
+  if (e.window > 0 && KHQ.sceptre) k *= KHG.sceptre;
+  e.hp -= amount * k;
+  if (e.window > 0 && info.kind !== 'nuke') addPoints(RULES.pointsHit);
+  e.hitT = 0.12;
+  // phases : à 66 % et à 33 %, il rugit et appelle les morts
+  const f = e.hp / e.maxHp;
+  if (e.phase < KHG.phases.length && f <= KHG.phases[e.phase] && e.hp > 0) {
+    e.phase++;
+    e.gstate = 'roar'; e.st = 0; e.window = 0; e.summon = e.phase === 1 ? 4 : 6;
+    khGardienSound('roar', e.pos);
+    HUD.banner(`Le Gardien · phase ${e.phase + 1}`, e.phase === 1 ? 'Il se déplace en tourbillon de sable' : 'Il frappe deux fois de suite', 'warn');
+  }
+  if (e.hp <= 0) { khGardienDie(e, info); return true; }
+  return false;
+}
+function khGardienDie(e, info) {
+  e.hp = 0; e.gstate = 'dying'; e.st = 0; e.window = 0;
+  e.alive = false; e.state = 'dead';
+  KHG.dead = true; KHG.kills++;
+  khGardienSound('die', e.pos);
+  FX.shake = Math.min(1.5, FX.shake + 1.2);
+  addPoints(5000);
+  G.stats.kills++;
+  Life.kill(info, GARDIEN_TYPE);
+  // la tempête tombe : 4 minutes de calme
+  KHS.calmT = KHG.calm;
+  if (KHS.on) khStormReset();
+  KHS.calmT = KHG.calm;
+  HUD.banner('Le Gardien est tombé', 'La tempête tombe : 4 minutes pour décoller de l’aérodrome', 'power');
+  if (typeof khQuestOnGardien === 'function') khQuestOnGardien();
+  for (const s of KHSAN.statues) for (const m of s.eyes) m.material.color.setHex(0x0c1412);
+}
+/* Rayon contre le Gardien : tête, buste, bras, jambes (capsules sur ses os). */
+const _gha = new THREE.Vector3(), _ghb = new THREE.Vector3();
+const KHG_HIT = [
+  ['head', 'head', [0, 0.06, 0.05], 'head', [0, 0.0, 0.42], 0.24],
+  ['body', 'hips', [0, -0.3, 0], 'neck', [0, 0.05, 0], 0.46],
+  ['body', 'shL', [0, 0, 0], 'haL', [0, -0.1, 0], 0.15], ['body', 'shR', [0, 0, 0], 'haR', [0, -0.1, 0], 0.15],
+  ['body', 'hipL', [0, 0, 0], 'ftL', [0, 0, 0], 0.18], ['body', 'hipR', [0, 0, 0], 'ftR', [0, 0, 0], 0.18],
+];
+function khGardienRay(e, ox, oy, oz, dx, dy, dz, extra) {
+  _hitHead = false; _hitLeg = false; _hitArm = 0;
+  if (!KHG.R || e.removed || e.scale < 0.5 || (e.gstate === 'rise' && e.sunk > 0.6)) return -1;
+  let best = -1, head = false;
+  for (const [part, ba, a, bb, b, r] of KHG_HIT) {
+    _gha.fromArray(a).applyMatrix4(KHG.R[ba].matrixWorld);
+    _ghb.fromArray(b).applyMatrix4(KHG.R[bb].matrixWorld);
+    const t = raySegment(ox, oy, oz, dx, dy, dz, _gha, _ghb, r * e.scale + extra);
+    if (t >= 0 && (best < 0 || t < best)) { best = t; head = part === 'head'; }
+  }
+  _hitHead = head;
+  return best;
+}
+/* Impact sur le Gardien : éclats de pierre ; turquoise pendant la fenêtre de tir. */
+function khGardienSpark(x, y, z, dx, dz) {
+  const e = KHG.e, open = e && e.window > 0 && e.mode === 'arena';
+  sparkBurst(x, y, z, -dx, 0, -dz, open ? 3 : 5);
+  if (open) spawnPuff(x, y, z, 0.35, 0.35, 0x5ff2e2, 0.8, 0.2, true, TEX.glow);
+  else if (Math.random() < 0.3) khGardienSound('ping', { x, z });
+}
+
+/* ---- Traversée au pic du Khamsin : le long du couloir, il renverse les véhicules */
+function khGardienStormTick(dt) {
+  if (KHG.hintT > 0) KHG.hintT -= dt;
+  khPushUpdate(dt);
+  if (KHG.R && (!KHG.e || KHG.e.removed)) { KHG.R.root.visible = false; if (KHG.tornado) KHG.tornado.group.visible = false; }
+  if (!KHS.on || KHS_PHASES[KHS.i][0] !== 'khamsin' || KHS.n === KHG.lastCross) return;
+  if (KHG.e && !KHG.e.removed) return;                       // il est déjà là (combat au sanctuaire)
+  if ((player.layer | 0) === 1 || G.state !== 'playing') return;
+  KHG.lastCross = KHS.n;
+  const C = KH.corridor, p = player.pos;
+  // la ligne qu'il suit : dans le couloir, au plus près du joueur
+  const sP = p.x * C.nx + p.z * C.nz, sL = clamp(sP + rand(-5, 5), C.s0 + 40, C.s1 - 40), off = sL - sP;
+  const ox = p.x + C.nx * off, oz = p.z + C.nz * off;
+  const x0 = ox - C.ax * KHG.cross.back, z0 = oz - C.az * KHG.cross.back;
+  const e = khGardienSpawn(x0, z0, 'cross');
+  if (!e) return;
+  e.path = { x0, z0, s: 0, len: KHG.cross.len };
+  e.yaw = Math.atan2(C.ax, C.az);
+  e.whirlT = rand(3, 6);
+  HUD.hint('Une silhouette immense traverse la poussière…', 3);
+  khGardienSound('roar', e.pos);
+}
+function khGardienCross(e, dt) {
+  const C = KH.corridor, P = e.path;
+  // fin du Khamsin ou du trajet : il se dissout
+  if (!KHS.on || KHS_PHASES[KHS.i][0] !== 'khamsin' || P.s >= P.len) {
+    e.scale = Math.max(0.001, e.scale - dt * 1.5);
+    khTornadoUpdate(KHG.tornado, e.pos.x, e.gy, e.pos.z, 1 - e.scale, dt);
+    if (e.scale <= 0.01) { khGardienRemove(); return; }
+    khGardienPose(KHG.R, 'cross', 0, e.ph, { t: e.t });
+    return;
+  }
+  // il marche ; par moments (et à travers les bâtiments), il file en tourbillon
+  e.whirlT -= dt;
+  const cx = Math.floor(e.pos.x), cz = Math.floor(e.pos.z), blocked = owKind(OW.surf, cx, cz) !== OWK.TERRAIN;
+  if (e.whirlT <= 0 && !e.whirling) { e.whirling = 2; e.whirlT = rand(5, 8); khGardienSound('whirl', e.pos); }
+  if (e.whirling > 0) e.whirling -= dt;
+  const fast = e.whirling > 0 || blocked;
+  e.scale = damp(e.scale, fast ? 0.001 : 1, 6, dt);
+  const v = fast ? KHG.cross.whirl : KHG.cross.speed;
+  P.s += v * dt;
+  e.pos.x = P.x0 + C.ax * P.s; e.pos.z = P.z0 + C.az * P.s;
+  e.gy = owH(e.pos.x, e.pos.z); e.pos.y = e.gy;
+  e.k = owLocate(e.pos.x, e.pos.z, e.gy);
+  e.yaw = Math.atan2(C.ax, C.az);
+  e.ph += dt * (fast ? 0 : v * 0.9);
+  if (!fast) {
+    e.stepT = (e.stepT || 0) - dt * v;
+    if (e.stepT <= 0) { e.stepT = 2.2; khGardienSound('step', e.pos); }
+  }
+  khTornadoUpdate(KHG.tornado, e.pos.x, e.gy, e.pos.z, 1 - e.scale * 0.7, dt);
+  // véhicules sur son passage : renversés (le camion encaisse le premier coup)
+  for (const V of VEH.list) {
+    if (V.flipped || V.flipping) continue;
+    if (Math.hypot(V.x - e.pos.x, V.z - e.pos.z) < KHG.cross.flip) khFlipVehicle(V, C.ax, C.az);
+  }
+  // à pied : un revers ; les morts sur son chemin, écartés
+  const p = player, d = Math.hypot(p.pos.x - e.pos.x, p.pos.z - e.pos.z);
+  if (!VEH.drive && d < KHG.swipe.r && e.swipeCd <= 0 && !p.down && p.layer === 0) {
+    e.swipeCd = 2; khPlayerHit(KHG.swipe.dmg, (p.pos.x - e.pos.x) / (d || 1), (p.pos.z - e.pos.z) / (d || 1), 8); khGardienSound('hit', p.pos);
+  }
+  for (const z of Zombies.list) {
+    if (z === e || !z.alive || z.boss) continue;
+    const zd = Math.hypot(z.pos.x - e.pos.x, z.pos.z - e.pos.z);
+    if (zd < 2.5) { z.knockX += (z.pos.x - e.pos.x) * 2; z.knockZ += (z.pos.z - e.pos.z) * 2; z.stagger = Math.max(z.stagger, 0.8); }
+  }
+  khGardienPose(KHG.R, 'cross', 0, e.ph, { t: e.t, stride: 0.5 });
+}
+
+function khGardienReset() {
+  khGardienRemove();
+  KHG.dead = false; KHG.push = null; KHG.hintT = 0; KHG.lastCross = KHS.n || 0;
+  if (KHG.mats) KHG.mats.body.emissiveIntensity = 0.12;
+}
+
+/* ---- Véhicules renversés (le Gardien) ; remis sur roues en maintenant F 5 s */
+function khFlipVehicle(V, ux, uz) {
+  if (V.T.ram && !V.dented) {
+    V.dented = true; V.v *= 0.2;
+    V.x += ux * 1.2; V.z += uz * 1.2;
+    if (V === VEH.drive) { FX.shake = Math.min(1.5, FX.shake + 1); HUD.hint('Le camion blindé encaisse le coup', 2.5); }
+    khGardienSound('hit', { x: V.x, z: V.z });
+    return;
+  }
+  const [rx, rz] = [-vehFwd(V.yaw)[1], vehFwd(V.yaw)[0]];
+  V.flipDir = Math.sign(rx * ux + rz * uz) || 1;
+  V.flipping = true; V.flipT = 0; V.v = 0; V.unflipT = 0;
+  khGardienSound('hit', { x: V.x, z: V.z });
+  if (V === VEH.drive) {
+    vehExit(true);
+    playerDamage(25);
+    FX.shake = Math.min(1.5, FX.shake + 1.2);
+    HUD.hint('Le Gardien a renversé le véhicule !', 3);
+  }
+}
+/* Animation du retournement (appelée à chaque image pour chaque véhicule). */
+function khVehFlipStep(V, dt) {
+  if (V.flipping) {
+    V.flipT += dt / 0.9;
+    if (V.flipT >= 1) { V.flipT = 1; V.flipping = false; V.flipped = true; owSandBurst(V.x, V.z, V.y); Sound.bodyFall({ x: V.x, z: V.z }); }
+  } else if (V.unflipping) {
+    V.flipT -= dt / 1.2;
+    if (V.flipT <= 0) { V.flipT = 0; V.unflipping = false; V.flipped = false; }
+  }
+  return V.flipT || 0;
+}
+/* Pose du véhicule renversé : roulis vers le côté du choc, la caisse reposant sur son toit. */
+const _vfq = new THREE.Quaternion(), _vfa = new THREE.Vector3();
+function khVehFlipPose(V) {
+  const k = V.flipT || 0;
+  if (k <= 0) return;
+  const r = Math.PI * smooth(k), T = V.T;
+  const [fx, fz] = vehFwd(V.yaw), rx = -fz, rz = fx, side = (V.flipDir || 1) * T.wid * 0.5 * Math.sin(r * 0.5);
+  V.group.position.x += rx * side; V.group.position.z += rz * side;
+  V.group.position.y += T.hgt * (1 - Math.cos(r)) / 2 + Math.sin(r) * T.wid * 0.35;
+  _vfa.set(fx, 0, fz);
+  _vfq.setFromAxisAngle(_vfa, r * (V.flipDir || 1));
+  V.group.quaternion.premultiply(_vfq);
+}
+
+/* ---- Sons du Gardien (synthétisés) */
+function khGardienSound(kind, pos) {
+  const bus = Sound.bus();
+  if (!bus) return;
+  const ctx = bus.ctx, t0 = ctx.currentTime, d = pos ? Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z) : 0;
+  const vol = clamp(1.3 - d / (kind === 'roar' ? 160 : 60), 0.04, 1);
+  if (vol <= 0.04 && kind !== 'roar') return;
+  const out = ctx.createGain(); out.gain.value = vol; out.connect(bus.sortie);
+  const tone = (f, dur, type, g0, f1 = f, at = 0) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0 + at); if (f1 !== f) o.frequency.exponentialRampToValueAtTime(f1, t0 + at + dur);
+    g.gain.setValueAtTime(0.0001, t0 + at); g.gain.exponentialRampToValueAtTime(g0, t0 + at + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+    o.connect(g); g.connect(out); o.start(t0 + at); o.stop(t0 + at + dur + 0.05);
+  };
+  const noise = (dur, f, q, g0, at = 0, type = 'bandpass') => {
+    const n = ctx.createBufferSource(), len = Math.ceil(ctx.sampleRate * dur), buf = ctx.createBuffer(1, len, ctx.sampleRate), dd = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) dd[i] = (Math.random() * 2 - 1) * Math.min(1, (len - i) / (len * 0.6));
+    n.buffer = buf;
+    const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = g0;
+    n.connect(fl); fl.connect(g); g.connect(out); n.start(t0 + at);
+  };
+  switch (kind) {
+    case 'step': tone(46, 0.45, 'sine', 0.35, 34); noise(0.3, 120, 0.8, 0.25); break;
+    case 'roar': tone(70, 2.2, 'sawtooth', 0.12, 52); tone(105, 2.0, 'square', 0.05, 80); noise(2.2, 340, 0.7, 0.3); noise(1.6, 900, 1.2, 0.08, 0.2); break;
+    case 'windup': noise(0.6, 600, 0.8, 0.08, 0, 'highpass'); tone(90, 0.6, 'sine', 0.06, 140); break;
+    case 'slam': tone(52, 1.4, 'sine', 0.6, 30); noise(0.9, 160, 0.6, 0.6); noise(0.4, 1800, 0.8, 0.15); tone(330, 1.2, 'sine', 0.05, 320, 0.05); break;
+    case 'whirl': noise(2.2, 700, 0.5, 0.25); noise(2.2, 1600, 1.5, 0.1, 0.1); break;
+    case 'hit': tone(80, 0.4, 'sine', 0.35, 50); noise(0.25, 500, 0.9, 0.35); break;
+    case 'ping': tone(1900 + Math.random() * 400, 0.18, 'triangle', 0.05, 1500); break;
+    case 'die': tone(60, 3.4, 'sawtooth', 0.12, 28); noise(3.4, 260, 0.6, 0.35); tone(880, 2.6, 'sine', 0.04, 440, 0.3); break;
+    default: break;
+  }
+}
+
+/* ---- Barre de vie (en haut, sous la boussole) pendant le combat */
+function khBossBar(e) {
+  const show = !!(e && e.mode === 'arena' && !e.removed && (player.layer | 0) === 1 && G.state === 'playing');
+  if (!KHG.bar) {
+    if (!show) return;
+    const hud = $('hud');
+    const b = el('div', 'kh-boss');
+    Object.assign(b.style, { position: 'absolute', left: '50%', top: 'calc(64px + env(safe-area-inset-top, 0px))', transform: 'translateX(-50%)', width: 'min(560px, 70vw)', textAlign: 'center', pointerEvents: 'none', textShadow: '0 2px 0 rgba(0,0,0,0.6)' });
+    b.innerHTML = '<div style="font-weight:700;font-size:15px;letter-spacing:0.18em;text-transform:uppercase;color:#f5e6cf">Le Gardien à tête de chacal</div>'
+      + '<div style="position:relative;height:10px;margin-top:5px;background:rgba(0,0,0,0.6);box-shadow:0 0 0 1px rgba(95,242,226,0.55)"><i style="position:absolute;left:0;top:0;bottom:0;background:#5ff2e2"></i>'
+      + '<b style="position:absolute;left:66%;top:-2px;bottom:-2px;width:2px;background:rgba(245,230,207,0.7)"></b><b style="position:absolute;left:33%;top:-2px;bottom:-2px;width:2px;background:rgba(245,230,207,0.7)"></b></div>'
+      + '<div class="kh-boss-sub" style="margin-top:4px;font-size:13px;letter-spacing:0.1em;color:#5ff2e2"></div>';
+    hud.append(b);
+    KHG.bar = { el: b, fill: b.querySelector('i'), sub: b.querySelector('.kh-boss-sub'), last: '' };
+  }
+  const B = KHG.bar;
+  B.el.hidden = !show;
+  if (!show) return;
+  B.fill.style.width = `${clamp(e.hp / e.maxHp, 0, 1) * 100}%`;
+  B.fill.style.background = e.window > 0 ? '#9ffff4' : '#5ff2e2';
+  const sub = e.window > 0 ? `Fenêtre de tir${KHQ.sceptre ? ' · Sceptre : dégâts ×2' : ''}` : e.gstate === 'whirl' ? 'Tourbillon' : `Phase ${e.phase + 1} / 3`;
+  if (sub !== B.last) { B.sub.textContent = sub; B.last = sub; }
+}
+
+/* ---- Écran « Modèles » : le Gardien, avec ses animations ; sa fiche */
+SPECIMEN_MODELS.kh_gardien = { anims: ['idle', 'walk', 'slam', 'roar', 'whirl'], dog: true, make: () => makeGardienSpecimen() };
+function makeGardienSpecimen() {
+  const R = khGardienModel(), T = khTornado();
+  const root = new THREE.Group();
+  root.add(R.root, T.group);
+  const S = { anim: null, t: 0, ph: 0, flinch: 0 };
+  return {
+    root,
+    restyle() {},
+    center: () => _specC.set(0, 1.6, 0),
+    view: [1.75, 2.95],
+    shot() { S.flinch = 0.6; return true; },
+    pose(anim, t, dt, yaw) {
+      if (S.anim !== anim) { S.anim = anim; S.ph = 0; }
+      R.root.rotation.y = yaw; R.root.position.set(0, 0, 0);
+      let st = t, s = anim, scale = 1;
+      if (anim === 'walk') { S.ph += dt * 1.8 * 2.1; }
+      else if (anim === 'slam') st = t % 2.4;
+      else if (anim === 'roar') st = t % 3.2;
+      else if (anim === 'whirl') { const p = t % 3.6; scale = p < 0.5 ? 1 - smooth(p / 0.5) : p < 2.6 ? 0.001 : smooth(clamp((p - 2.6) / 0.6, 0, 1)); s = 'walk'; }
+      else s = 'idle';
+      khGardienPose(R, s, st, S.ph, { t, scale: Math.max(0.001, scale) });
+      if (S.flinch > 0) { S.flinch = Math.max(0, S.flinch - dt * 1.5); R.body.rotation.x -= S.flinch * 0.15; R.root.updateMatrixWorld(true); }
+      khTornadoUpdate(T, 0, 0, 0, anim === 'whirl' ? 1 - scale * 0.6 : 0, dt);
+      const lit = anim === 'slam' && st > 0.75 && st < 2.2 ? 1.8 : anim === 'roar' ? 0.9 : 0.15;
+      KHG.mats.body.emissiveIntensity = damp(KHG.mats.body.emissiveIntensity, lit, 8, dt);
+    },
+  };
+}
+function khGardienSetup() {
+  Object.assign(MODEL_ANIMS, { slam: 'Coup de sceptre', roar: 'Rugissement', whirl: 'Tourbillon' });
+  SPECIMEN_FACTS.gardien = (type) => {
+    const hp = (r) => fmtNum(KHG.hp(r), 0), S = KHG.slam;
+    return {
+      bars: [['PV', 2], ['Vitesse', KHG.speed[0] / SPEEDS.jog[1]], ['Dégâts', S.dmg / RULES.zombieHit]],
+      ref: `Trait clair = zombie standard (×1) : ${fmtNum(zombieHpForRound(1), 0)} PV à la manche 1, trot de ${fmtNum(SPEEDS.jog[0])} à ${fmtNum(SPEEDS.jog[1])} m/s, ${fmtNum(RULES.zombieHit, 0)} dégâts par coup.`,
+      cards: [
+        [`Capacité · ${type.ability}`, 'Lent, mais il se dissout en tourbillon de sable et reparaît près de vous. À chaque pic de Khamsin, il traverse la carte le long du couloir et renverse les véhicules.'],
+        ['Faiblesse', `Ses fissures s’allument juste après un coup de sceptre au sol : ${fmtNum(KHG.window, 0)} s de fenêtre de tir. Le Sceptre reconstitué double alors les dégâts.`],
+      ],
+      details: [
+        ['Apparition', 'Pic du Khamsin · sanctuaire', '', 'Il traverse le couloir de tempête à chaque Khamsin ; l’autel du sanctuaire le réveille pour le combat'],
+        ['Points de vie', `${hp(10)} → ${hp(15)} → ${hp(20)}`, '', 'Manches 10, 15 et 20 · invulnérable hors du sanctuaire'],
+        ['Fenêtre de tir', `${fmtNum(KHG.window, 0)} s`, '', `Après chaque coup de sceptre ; hors fenêtre, ${fmtNum(KHG.chip * 100, 0)} % des dégâts seulement`],
+        ['Coup de sceptre', `${fmtNum(S.dmg, 0)} à ${fmtNum(S.min, 0)} dégâts`, '', `Onde de ${fmtNum(S.r, 0)} m devant lui : vous êtes projeté, les morts sont renversés`],
+        ['Revers', `${fmtNum(KHG.swipe.dmg, 0)} dégâts`, '', `À moins de ${fmtNum(KHG.swipe.r, 1)} m`],
+        ['Phases', '3', '', 'À 66 % : tourbillons et 4 Desséchés ; à 33 % : doubles coups et 6 Desséchés'],
+        ['Véhicules', 'renversés', '', 'Le camion blindé encaisse un coup ; un véhicule renversé se remet sur ses roues en maintenant F 5 s'],
+        ['Sa mort', '4 min de calme', '', 'La tempête tombe : la fenêtre pour décoller de l’aérodrome'],
+        ['Taille', '3,2 m', '', 'Oreilles comprises'],
+      ],
+    };
+  };
+}
+
+/* ----------------------------------------------------------------- Quête --
+   Planche « Sortir du Khamsin » (page 5) : la partie se gagne en décollant de l'aérodrome. Trois
+   pièces à réunir, un boss à abattre pour calmer la tempête, une course contre la montre à la fin.
+     ① carburant d'aviation : la cuve derrière le garage du relais Km 47 (C) ;
+     ② batterie de démarrage : la centrale du Nil (E), chargée une fois le courant rétabli ;
+     ③ clé de contact : sur le pilote, qui erre autour du bassin de l'oasis (D) ;
+   poser ①, ② et ③ sur l'avion (G) : avion prêt ; tuer le Gardien au sanctuaire (B) : la tempête
+   tombe 4 minutes ; rejoindre l'avion, tenir 60 s pendant le démarrage, décoller.
+   Optionnel : les trois fragments du Sceptre, dans les tombes de la nécropole (F) qui brillent
+   pendant les tempêtes (dégâts doublés sur le Gardien pendant ses fenêtres de tir). */
+const KHQ = {
+  have: { fuel: false, battery: false, key: false },          // pièces portées
+  placed: { fuel: false, battery: false, key: false },        // pièces posées sur l'avion
+  ready: false, sceptre: false, frags: [false, false, false], charge: 0, charging: false,
+  pilot: null, key: null, escape: null, won: false, fail: 0,
+  hud: null, hudKey: '', fx: null, items: null,
+};
+const KHQ_PARTS = [
+  { id: 'fuel', n: '①', name: 'Carburant d’aviation', where: 'Relais Km 47 · cuve derrière le garage', short: 'carburant' },
+  { id: 'battery', n: '②', name: 'Batterie de démarrage', where: 'Centrale du Nil · courant rétabli', short: 'batterie' },
+  { id: 'key', n: '③', name: 'Clé de contact', where: 'Oasis de Sekhet · sur le pilote', short: 'clé' },
+];
+const KHQ_RULES = { charge: 45, fill: 4, place: 1.5, wake: 3, start: 60, pilotNear: 150, pilotFar: 320, frag: 1.2 };
+
+/* ---- Construction (à chaque chargement) : vanne de la cuve, chargeur, fragments, pièces de l'avion */
+function owBuildQuest(root) {
+  const g = new THREE.Group();
+  g.name = 'quête';
+  root.add(g);
+  const P = KH.places, std = (hex, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: hex, roughness: 0.6, metalness: 0.2 }, o));
+  const at = (geo, mat, x, y, z, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = true; g.add(m); return m; };
+  KHQ.items = {};
+  // ① vanne et flexible sur la cuve d'aviation (relais) ; le fût rempli
+  {
+    const T = P.C.fuelTank, y = P.C.y;
+    at(new THREE.CylinderGeometry(0.06, 0.06, 1.1, 8), std(0x6a6a64, { metalness: 0.6 }), T.x, y + 0.85, T.z + 0.2);
+    const wheel = at(new THREE.TorusGeometry(0.16, 0.025, 6, 16), std(0xb03a28), T.x, y + 1.1, T.z - 0.02);
+    const drum = at(new THREE.CylinderGeometry(0.3, 0.3, 0.88, 14), std(0x9c2f22, { metalness: 0.35 }), T.x - 1.4, y + 0.44, T.z - 0.9);
+    drum.visible = false;
+    KHQ.items.wheel = wheel; KHQ.items.drum = drum;
+    Features.interactables.push({
+      kind: 'quest', x: T.x, z: T.z - 1.3, y, r: 1.6, hold: true,
+      prompt() {
+        if (KHQ.have.fuel || KHQ.placed.fuel) return null;
+        return { text: 'Maintenez F pour remplir un fût de carburant d’aviation', sub: `Pièce ① de l’avion · ${Math.round(((KHQ.fillT || 0) / KHQ_RULES.fill) * 100)} %` };
+      },
+      useHold(dt) {
+        if (KHQ.have.fuel || KHQ.placed.fuel) return;
+        KHQ.fillT = (KHQ.fillT || 0) + dt;
+        wheel.rotation.z += dt * 4;
+        if (Math.random() < dt * 3) Sound.gulp(0);
+        if (KHQ.fillT >= KHQ_RULES.fill) { KHQ.fillT = 0; khTake('fuel'); drum.visible = false; }
+      },
+    });
+  }
+  // ② chargeur de la batterie (poste de commande de la centrale)
+  {
+    const B = P.E.battery, y = B.y;
+    at(new THREE.BoxGeometry(1.2, 0.8, 0.6), std(0x4a5a52, { metalness: 0.5 }), B.x, y + 0.4, B.z);
+    const bat = at(new THREE.BoxGeometry(0.62, 0.34, 0.36), std(0x22282c, { metalness: 0.3 }), B.x, y + 0.97, B.z);
+    for (const s of [-1, 1]) at(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), std(s > 0 ? 0xb03a28 : 0x222222), B.x + s * 0.2, y + 1.17, B.z);
+    const lamp = at(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a1a }), B.x + 0.45, y + 0.7, B.z + 0.31);
+    owFill(OW.surf, B.x - 0.6, B.z - 0.3, B.x + 0.6, B.z + 0.3, OWK.LOW, { base: y, top: y + 0.8, mat: OWM.METAL });
+    KHQ.items.bat = bat; KHQ.items.batLamp = lamp;
+    Features.interactables.push({
+      kind: 'quest', x: B.x, z: B.z - 0.9, y, r: 1.5,
+      prompt() {
+        if (KHQ.have.battery || KHQ.placed.battery) return null;
+        if (!G.power) return { text: 'Batterie de démarrage déchargée : rétablissez le courant (trois disjoncteurs)', disabled: true };
+        if (KHQ.charge < 1) return { text: `Batterie en charge… ${Math.round(KHQ.charge * 100)} %`, disabled: true, sub: 'Pièce ② de l’avion' };
+        return { text: 'Appuyez sur F pour prendre la batterie de démarrage', sub: 'Pièce ② de l’avion' };
+      },
+      use() { if (!KHQ.have.battery && !KHQ.placed.battery && KHQ.charge >= 1) { khTake('battery'); bat.visible = false; } },
+    });
+  }
+  // fragments du Sceptre : sur les sarcophages des tombes 1, 3 et 5 (ils n'apparaissent qu'en tempête)
+  KHQ.fragMeshes = [];
+  [0, 2, 4].forEach((ti, i) => {
+    const T = P.F.tombs[ti], cx = (T.x0 + T.x1) / 2, y = T.y, z = T.z0 + 2.1;
+    const fr = new THREE.Group();
+    const shard = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.75, 8), std(0xd4a640, { roughness: 0.3, metalness: 0.85, emissive: 0x5ff2e2, emissiveIntensity: 0.6 }));
+    shard.rotation.z = 0.9 + i * 0.5; fr.add(shard);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ff2e2, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    halo.scale.set(1.4, 1.4, 1); fr.add(halo);
+    fr.position.set(cx, y + 1.45, z);
+    g.add(fr);
+    // la tombe brille (visible de loin dans la poussière)
+    const door = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ff2e2, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    door.position.set(cx, y + 1.6, T.z1 + 0.6); door.scale.set(7, 5, 1);
+    g.add(door);
+    KHQ.fragMeshes.push({ fr, shard, halo, door, i });
+    Features.interactables.push({
+      kind: 'quest', x: cx, z: T.z0 + 3.3, y, r: 1.6,
+      prompt() {
+        if (KHQ.frags[i] || !KHS.on) return null;
+        return { text: 'Appuyez sur F pour prendre le fragment du Sceptre', sub: `${KHQ.frags.filter(Boolean).length + 1} / 3 · dégâts doublés sur le Gardien une fois reconstitué` };
+      },
+      use() { if (!KHQ.frags[i] && KHS.on) khTakeFrag(i); },
+    });
+  });
+  // avion : pièces posées (fût contre le fuselage, batterie sous le nez, voyant du tableau de bord), hélices
+  {
+    const A = P.G.plane, y = A.y;
+    const drum = at(new THREE.CylinderGeometry(0.3, 0.3, 0.88, 14), std(0x9c2f22, { metalness: 0.35 }), A.x + 2, y + 0.44, A.z + 2.3);
+    const bat = at(new THREE.BoxGeometry(0.62, 0.34, 0.36), std(0x22282c), A.x - 9.9, y + 0.5, A.z);
+    const keyLamp = at(new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a1a }), A.x - 6.6, y + 3.0, A.z - 0.9);
+    drum.visible = bat.visible = false;
+    KHQ.items.pDrum = drum; KHQ.items.pBat = bat; KHQ.items.pKey = keyLamp;
+    const spots = { fuel: [A.x + 2, A.z + 2.9], battery: [A.x - 10.5, A.z], key: [A.x - 5.4, A.z - 2.4] };
+    for (const part of KHQ_PARTS) {
+      const [x, z] = spots[part.id];
+      Features.interactables.push({
+        kind: 'quest', x, z, y, r: 1.6, hold: true,
+        prompt() {
+          if (KHQ.placed[part.id]) {
+            if (part.id === 'key') return khEscapePrompt();
+            return null;
+          }
+          if (!KHQ.have[part.id]) return { text: `Il manque la pièce ${part.n} : ${part.name.toLowerCase()}`, disabled: true, sub: part.where };
+          return { text: `Maintenez F pour poser ${part.n} ${part.name.toLowerCase()}`, sub: `Avion de transport KH-47 · ${Math.round(((KHQ.placeT || 0) / KHQ_RULES.place) * 100)} %` };
+        },
+        useHold(dt) {
+          if (KHQ.placed[part.id]) { if (part.id === 'key') khEscapeHold(dt); return; }
+          if (!KHQ.have[part.id]) return;
+          KHQ.placeT = (KHQ.placeT || 0) + dt;
+          if (KHQ.placeT >= KHQ_RULES.place) { KHQ.placeT = 0; khPlace(part.id); }
+        },
+      });
+    }
+  }
+  // autel : réveiller le Gardien (face nord de l'autel)
+  {
+    const A = KHSAN.altar, E = KHSY + 0.4;
+    Features.interactables.push({
+      kind: 'quest', x: A.x, z: A.z - 1.9, y: E, r: 1.6, hold: true,
+      prompt() {
+        if (KHG.e && !KHG.e.removed) return null;
+        if (KHG.dead && KHS.calmT > 0) return { text: 'Le Gardien est tombé : rejoignez l’avion', disabled: true };
+        if (!KHQ.ready) return { text: 'Le Gardien dort. Réparez d’abord l’avion : sa mort ne donne que 4 minutes de calme', disabled: true };
+        return { text: 'Maintenez F pour réveiller le Gardien', sub: `${Math.round(((KHQ.wakeT || 0) / KHQ_RULES.wake) * 100)} %${KHQ.sceptre ? ' · Sceptre reconstitué : dégâts ×2 pendant les fenêtres de tir' : ' · Sceptre incomplet (fragments à la nécropole, en tempête)'}` };
+      },
+      useHold(dt) {
+        if ((KHG.e && !KHG.e.removed) || !KHQ.ready || (KHG.dead && KHS.calmT > 0)) return;
+        KHQ.wakeT = (KHQ.wakeT || 0) + dt;
+        if (KHQ.wakeT >= KHQ_RULES.wake) { KHQ.wakeT = 0; khWakeGardien(); }
+      },
+    });
+  }
+  // hélices de l'avion (elles tournent au démarrage)
+  KHQ.props = [];
+  {
+    const A = P.G.plane, yc = A.y + 2.6 + 1.45 - 0.55;
+    for (const sd of [-1, 1]) {
+      const hub = new THREE.Group();
+      hub.position.set(A.x - 4.2, yc, A.z + sd * 4.6);
+      for (let b = 0; b < 4; b++) {
+        const bl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.9, 0.2), std(0x2a2826, { roughness: 0.5 }));
+        bl.position.y = 0.95; const arm = new THREE.Group(); arm.rotation.x = (b / 4) * TAU; arm.add(bl); hub.add(arm);
+      }
+      g.add(hub);
+      KHQ.props.push(hub);
+    }
+  }
+  linearizeTree(g);
+  KHQ.group = g;
+  khQuestLook();
+}
+
+/* ---- Pièces : prises, posées */
+function khTake(id) {
+  KHQ.have[id] = true;
+  const P = KHQ_PARTS.find((q) => q.id === id);
+  HUD.banner(`Pièce ${P.n} : ${P.name}`, 'À poser sur l’avion, à l’aérodrome', 'power');
+  Sound.ui();
+  khQuestLook();
+}
+function khPlace(id) {
+  KHQ.have[id] = false; KHQ.placed[id] = true;
+  const n = KHQ_PARTS.filter((q) => KHQ.placed[q.id]).length;
+  Sound.boardPlace(KH.places.G.plane);
+  if (n >= 3) {
+    KHQ.ready = true;
+    HUD.banner('L’avion est prêt', 'Il ne manque que le calme : abattez le Gardien au sanctuaire (plateau des pyramides)', 'power');
+  } else HUD.banner(`Pièce posée (${n}/3)`, KHQ_PARTS.filter((q) => !KHQ.placed[q.id]).map((q) => `${q.n} ${q.short}`).join(' · ') + ' à trouver', 'power');
+  khQuestLook();
+}
+function khTakeFrag(i) {
+  KHQ.frags[i] = true;
+  const n = KHQ.frags.filter(Boolean).length;
+  if (n >= 3) { KHQ.sceptre = true; HUD.banner('Sceptre du Gardien reconstitué', 'Dégâts doublés sur le Gardien pendant ses fenêtres de tir', 'power'); }
+  else HUD.banner(`Fragment du Sceptre (${n}/3)`, 'Les autres brillent dans les tombes de la nécropole, pendant la tempête', 'power');
+  Sound.glasChime ? Sound.glasChime(player.pos) : Sound.ui();
+  khQuestLook();
+}
+/* Apparence des pièces (visibles ou non) selon l'état de la quête. */
+function khQuestLook() {
+  const I = KHQ.items;
+  if (!I) return;
+  I.drum.visible = false;
+  I.bat.visible = !KHQ.have.battery && !KHQ.placed.battery;
+  I.batLamp.material.color.setHex(KHQ.charge >= 1 ? 0x40ff60 : G.power ? 0xffb030 : 0xff2a1a);
+  I.pDrum.visible = KHQ.placed.fuel; I.pBat.visible = KHQ.placed.battery;
+  I.pKey.material.color.setHex(KHQ.placed.key ? 0x40ff60 : 0xff2a1a);
+  KHQ.hudKey = '';
+}
+
+/* ---- Le pilote : il erre autour du bassin ; abattu, il lâche la clé de contact */
+function khPilotTick(dt) {
+  if (KHQ.have.key || KHQ.placed.key || KHQ.key) return;
+  const O = KH.oasis, d = Math.hypot(player.pos.x - O.x, player.pos.z - O.z), z = KHQ.pilot;
+  if (z && (z.removed || !z.alive)) {
+    if (!z.alive && !z.removed || (z.removed && z.hp <= 0)) khDropKey(z.pos.x, z.pos.z, z.gy);
+    KHQ.pilot = null;
+    return;
+  }
+  if (z && d > KHQ_RULES.pilotFar) { removeZombie(z); KHQ.pilot = null; return; }
+  if (!z && d < KHQ_RULES.pilotNear && (player.layer | 0) === 0 && G.state === 'playing') {
+    // il sort du sable de l'autre côté du bassin
+    const a = Math.atan2(player.pos.z - O.z, player.pos.x - O.x) + Math.PI + rand(-0.5, 0.5);
+    const x = O.x + Math.cos(a) * (O.rx + 9), zz = O.z + Math.sin(a) * (O.rz + 9), cx = Math.floor(x), cz = Math.floor(zz);
+    if (!owWalkCell(0, cx, cz)) return;
+    const y = owGroundAt(0, x, zz);
+    const e = spawnZombie({ riser: true, x, z: zz, li: 0, k: owK(0, cx, cz), zone: 3, layer: 0, y }, khHp(Math.max(1, G.round)));
+    if (!e) return;
+    hideZombieSlot(e.slot);
+    e.type = KH_PILOTE_TYPE; e.model = 'kh_pilote'; e.pilot = true;
+    e.maxHp = e.hp = khHp(Math.max(1, G.round)) * KH_PILOTE_TYPE.mult.hp;
+    e.look = khLook(randomZombieLook(), e.type);
+    paintZombieSlot(e.slot, e.look, ZR, 'kh_pilote');
+    e.wa = a;
+    if (G.roundState === 'active') G.total++;
+    KHQ.pilot = e;
+    HUD.hint('Le pilote erre autour du bassin : abattez-le pour la clé de contact', 3.5);
+  }
+}
+/* Tant qu'il ne vous a pas vu (et qu'on ne lui a pas tiré dessus), il fait le tour du bassin. */
+function khPilotWander(z, dt) {
+  if (!z.alive || z.state === 'rise' || z.hurt) return false;
+  const d = Math.hypot(player.pos.x - z.pos.x, player.pos.z - z.pos.z);
+  if ((d < 26 && (player.layer | 0) === 0) || z.hp < z.maxHp) { z.hurt = true; return false; }
+  const O = KH.oasis;
+  z.wa += dt * 0.022;
+  const tx = O.x + Math.cos(z.wa) * (O.rx + 9), tz = O.z + Math.sin(z.wa) * (O.rz + 9);
+  const sp = 0.9;
+  z.t += dt;
+  z.yaw = turnTo(z.yaw, Math.atan2(tx - z.pos.x, tz - z.pos.z), 2 * dt);
+  z.pos.x += Math.sin(z.yaw) * sp * dt; z.pos.z += Math.cos(z.yaw) * sp * dt;
+  settleBody(z, 0.3); z.pos.y = z.gy;
+  z.moving = sp; z.state = 'chase'; z.speedType = 'walk';
+  animateZombie(z, dt);
+  return true;
+}
+function khDropKey(x, z, y) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0xc8a050, roughness: 0.3, metalness: 0.9 });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 14), mat); ring.position.y = 0.06; g.add(ring);
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.008), mat); blade.position.y = -0.02; g.add(blade);
+  const tag = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.11, 0.006), new THREE.MeshStandardMaterial({ color: 0xa8432a, roughness: 0.8 })); tag.position.set(0.08, 0.08, 0); g.add(tag);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffcf86, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+  halo.scale.set(0.9, 0.9, 1); g.add(halo);
+  g.position.set(x, y + 0.35, z);
+  linearizeTree(g);
+  (KHQ.group || scene).add(g);
+  const it = {
+    kind: 'quest', x, z, y, r: 1.6,
+    prompt() { return KHQ.key ? { text: 'Appuyez sur F pour prendre la clé de contact', sub: 'Pièce ③ de l’avion' } : null; },
+    use() { if (!KHQ.key) return; g.parent && g.parent.remove(g); KHQ.key = null; khTake('key'); const i = Features.interactables.indexOf(it); if (i >= 0) Features.interactables.splice(i, 1); },
+  };
+  Features.interactables.push(it);
+  KHQ.key = { g, it };
+  HUD.hint('Le pilote a lâché la clé de contact', 3);
+}
+
+/* ---- Le Gardien : réveillé à l'autel ; sa mort ouvre la fenêtre de 4 minutes */
+function khWakeGardien() {
+  for (const s of KHSAN.statues) for (const m of s.eyes) m.material.color.setHex(0x5ff2e2);
+  HUD.banner('Le Gardien s’éveille', 'Ses fissures s’allument après chaque coup de sceptre : tirez à ce moment-là', 'warn');
+  const e = khGardienSpawn(2120, 1222, 'arena');
+  if (e) e.yaw = 0;
+  khGardienSound('roar', { x: 2120, z: 1222 });
+}
+function khQuestOnGardien() {
+  KHQ.escape = null; KHQ.fail = 0;
+}
+/* ---- Évasion : démarrer les moteurs (F maintenue), tenir 60 s, décoller (pendant le calme) */
+function khEscapePrompt() {
+  if (!KHQ.ready) return null;
+  if (KHQ.escape && KHQ.escape.t >= KHQ_RULES.start) return { text: 'Maintenez F pour décoller', sub: 'Les moteurs tournent : on part !' };
+  if (KHQ.escape) return { text: `Démarrage des moteurs… ${Math.max(0, Math.ceil(KHQ_RULES.start - KHQ.escape.t))} s`, disabled: true, sub: 'Défendez l’avion' };
+  if (!(KHG.dead && KHS.calmT > 0)) return { text: 'Impossible de décoller dans la tempête : abattez d’abord le Gardien (sanctuaire)', disabled: true };
+  return { text: 'Maintenez F pour démarrer les moteurs', sub: `60 s de démarrage à tenir · calme : ${khClock(KHS.calmT)}` };
+}
+function khEscapeHold(dt) {
+  if (!KHQ.ready || KHQ.won) return;
+  if (KHQ.escape && KHQ.escape.t >= KHQ_RULES.start) { KHQ.goT = (KHQ.goT || 0) + dt; if (KHQ.goT >= 0.6) khVictory(); return; }
+  if (KHQ.escape || !(KHG.dead && KHS.calmT > 0)) return;
+  KHQ.startT = (KHQ.startT || 0) + dt;
+  if (KHQ.startT < 1) return;
+  KHQ.startT = 0;
+  KHQ.escape = { t: 0 };
+  HUD.banner('Démarrage des moteurs', 'Tenez 60 s : les morts accourent au bruit', 'warn');
+  // le bruit des moteurs : les morts accourent
+  if (G.roundState !== 'active') startRound(G.round + 1);
+  G.total = Math.max(G.total, G.spawned + 36); G.spawnDelay = Math.min(G.spawnDelay, 0.7);
+  khPlaneSound(true);
+}
+const khClock = (s) => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+/* ---- Chaque image */
+function khQuestUpdate(dt) {
+  // batterie : en charge dès que le courant est rétabli
+  if (G.power && KHQ.charge < 1 && !KHQ.have.battery && !KHQ.placed.battery) {
+    const c0 = KHQ.charge;
+    KHQ.charge = Math.min(1, KHQ.charge + dt / KHQ_RULES.charge);
+    if (c0 < 1 && KHQ.charge >= 1) HUD.hint('La batterie de démarrage est chargée (centrale du Nil)', 3);
+    if (Math.floor(c0 * 20) !== Math.floor(KHQ.charge * 20)) khQuestLook();
+  }
+  khPilotTick(dt);
+  // fragments : visibles en tempête seulement ; les tombes brillent
+  const t = OW.t;
+  for (const F of KHQ.fragMeshes || []) {
+    const on = KHS.on && !KHQ.frags[F.i];
+    F.fr.visible = on;
+    F.door.material.opacity = on ? 0.55 + 0.25 * Math.sin(t * 3 + F.i) : 0;
+    if (on) { F.shard.rotation.y += dt * 1.2; F.fr.position.y += Math.sin(t * 2 + F.i) * 0.002; }
+  }
+  if (KHQ.key) { KHQ.key.g.rotation.y += dt * 2; }
+  // évasion : 60 s de démarrage (le compte s'arrête si on s'éloigne de l'avion), puis décoller
+  const E = KHQ.escape, A = KH.places.G.plane;
+  if (E && !KHQ.won) {
+    const d = Math.hypot(player.pos.x - A.x, player.pos.z - A.z);
+    if (d < 70 && (player.layer | 0) === 0) E.t += dt;
+    else if (!E.warnT || G.time - E.warnT > 6) { E.warnT = G.time; HUD.hint('Revenez à l’avion : le démarrage attend', 2.5); }
+    if (E.t >= KHQ_RULES.start && !E.done) { E.done = true; HUD.banner('Les moteurs tournent', 'Maintenez F à la porte du poste de pilotage pour décoller', 'power'); }
+    // le calme est fini avant le décollage : la tempête revient, le Gardien se reforme
+    if (KHS.calmT <= 0 && KHG.dead) {
+      KHQ.escape = null; KHG.dead = false; KHQ.fail++;
+      khPlaneSound(false);
+      HUD.banner('Trop tard', 'La tempête revient : il faudra abattre le Gardien de nouveau', 'warn');
+      khStormStart();
+    }
+  }
+  if (KHG.dead && KHS.calmT <= 0 && !KHQ.escape && !KHQ.won) KHG.dead = false;       // le calme passé, le Gardien se reforme
+  for (const h of KHQ.props || []) h.rotation.x += dt * (KHQ.escape ? Math.min(40, 4 + (KHQ.escape.t || 0) * 2) : 0);
+  if (KHQ.escape) khPlaneSound(true, clamp(KHQ.escape.t / 20, 0, 1));
+  khObjectivesHud(dt);
+}
+
+/* ---- Objectifs (à gauche, sous le nom du lieu) */
+function khObjectives() {
+  const L = [], done = (b) => (b ? '✓' : '·');
+  for (const p of KHQ_PARTS) {
+    if (KHQ.placed[p.id]) continue;
+    const extra = p.id === 'battery' && !KHQ.have.battery ? (G.power ? ` (${Math.round(KHQ.charge * 100)} %)` : ' · courant d’abord') : '';
+    L.push([KHQ.have[p.id] ? '►' : '·', `${p.n} ${p.name}${KHQ.have[p.id] ? ' : à poser sur l’avion' : ` · ${p.where}`}${extra}`]);
+  }
+  const placed = KHQ_PARTS.filter((p) => KHQ.placed[p.id]).length;
+  if (!KHQ.ready) L.push([done(false), `Réparer l’avion (${placed}/3) · aérodrome`]);
+  else if (!(KHG.dead && KHS.calmT > 0) && !KHQ.escape) L.push(['►', 'Abattre le Gardien · autel du sanctuaire']);
+  if (KHG.dead && KHS.calmT > 0 && !KHQ.won) {
+    if (!KHQ.escape) L.push(['►', `Démarrer l’avion · calme ${khClock(KHS.calmT)}`]);
+    else if (KHQ.escape.t < KHQ_RULES.start) L.push(['►', `Tenir pendant le démarrage : ${khClock(KHQ_RULES.start - KHQ.escape.t)} · calme ${khClock(KHS.calmT)}`]);
+    else L.push(['►', `Décoller ! · calme ${khClock(KHS.calmT)}`]);
+  }
+  const nf = KHQ.frags.filter(Boolean).length;
+  if (!KHQ.sceptre) L.push(['·', `Sceptre du Gardien (${nf}/3, optionnel) · nécropole, en tempête`]);
+  return L;
+}
+function khObjectivesHud(dt) {
+  if (!KHQ.hud) {
+    const hud = $('hud');
+    const b = el('div', 'kh-quest');
+    Object.assign(b.style, { position: 'absolute', left: 'calc(26px + env(safe-area-inset-left, 0px))', top: 'calc(62px + env(safe-area-inset-top, 0px))', maxWidth: 'min(430px, 44vw)', pointerEvents: 'none',
+      font: `600 13px/1.45 ${FONT_HUD}`, letterSpacing: '0.04em', color: '#f5e6cf', textShadow: '0 1px 0 rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.6)' });
+    hud.append(b);
+    KHQ.hud = b;
+  }
+  KHQ.hud.hidden = !OW.on || G.state !== 'playing' || KHQ.won;
+  if (KHQ.hud.hidden) return;
+  KHQ.hudT = (KHQ.hudT || 0) - dt;
+  if (KHQ.hudT > 0) return;
+  KHQ.hudT = 0.5;
+  const L = khObjectives(), key = L.map((l) => l.join(' ')).join('|');
+  if (key === KHQ.hudKey) return;
+  KHQ.hudKey = key;
+  KHQ.hud.innerHTML = `<div style="font-size:11px;letter-spacing:0.22em;color:#e9884d">SORTIR DU KHAMSIN</div>` + L.map(([m, t]) => `<div><span style="display:inline-block;width:1.2em;color:${m === '►' ? '#5ff2e2' : '#c8b490'}">${m}</span>${t}</div>`).join('');
+}
+/* Repères de la quête sur la mini-carte : pièces à prendre, avion, pilote, fragments (en tempête). */
+function khQuestMapMarks(g, X, Z, S) {
+  const mark = (x, z, col, txt) => {
+    const px = X(x), pz = Z(z);
+    if (px < -8 || pz < -8 || px > S + 8 || pz > S + 8) return;
+    g.fillStyle = col; g.strokeStyle = '#120e0b'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(px, pz, 6, 0, TAU); g.fill(); g.stroke();
+    if (txt) { g.fillStyle = '#120e0b'; g.font = `700 9px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, px, pz + 0.5); }
+  };
+  const P = KH.places;
+  if (!KHQ.have.fuel && !KHQ.placed.fuel) mark(P.C.fuelTank.x, P.C.fuelTank.z, '#f5c88d', '1');
+  if (!KHQ.have.battery && !KHQ.placed.battery) mark(P.E.battery.x, P.E.battery.z, G.power ? '#f5c88d' : '#8a7a64', '2');
+  if (KHQ.pilot && KHQ.pilot.alive) mark(KHQ.pilot.pos.x, KHQ.pilot.pos.z, '#e2402a', '3');
+  if (KHQ.key) mark(KHQ.key.g.position.x, KHQ.key.g.position.z, '#f5c88d', '3');
+  if (!KHQ.ready || (KHG.dead && KHS.calmT > 0)) mark(P.G.plane.x, P.G.plane.z, '#5fa8ff', '✈');
+  if (KHS.on) for (const F of KHQ.fragMeshes || []) if (!KHQ.frags[F.i]) mark(F.fr.position.x, F.fr.position.z, '#5ff2e2', '');
+}
+
+/* ---- Victoire : l'avion roule et décolle (vue de côté), puis l'écran de fin */
+function khVictory() {
+  if (KHQ.won) return;
+  KHQ.won = true;
+  KHQ.cine = { t: 0 };
+  clearZombies();
+  G.roundState = 'pre'; G.roundT = 1e9;
+  HUD.el.hud.hidden = true;
+  Arms.root.visible = false;
+  KHP.busy = 99;
+  store.set('zs.khamsin.wins', (store.get('zs.khamsin.wins', 0) | 0) + 1);
+}
+/* Caméra et avion pendant le décollage (appelé après la mise à jour du joueur). */
+function khVictoryCam(dt) {
+  const C = KHQ.cine;
+  if (!C) return;
+  C.t += dt;
+  const A = KH.places.G.plane, plane = KH.places.G.planeGroup;
+  const t = C.t, acc = 9, s = 0.5 * acc * Math.min(t, 7) ** 2 + Math.max(0, t - 7) * acc * 7;     // distance parcourue
+  const lift = Math.max(0, t - 5.2), h = lift * lift * 2.2 + lift * 3;
+  if (plane) {
+    plane.position.set(A.x - s, A.y + h, A.z);
+    plane.rotation.z = -clamp(lift * 0.12, 0, 0.22);     // nez vers le haut (le nez est vers -x)
+    plane.updateMatrixWorld(true);
+    for (const p of KHQ.props) { p.position.x = A.x - 4.2 - s; p.position.y = A.y + 2.6 + 1.45 - 0.55 + h; p.rotation.x += dt * 60; }
+  }
+  const px = A.x - s, py = A.y + 3 + h;
+  camera.position.set(A.x - 60, A.y + 4 + Math.min(h * 0.4, 12), A.z + 32);
+  camera.lookAt(px, py, A.z);
+  khPlaneSound(true, 1);
+  Arms.root.visible = false; HUD.el.hud.hidden = true;
+  if (t > 6.5 && !C.faded) { C.faded = true; khFade(true, 1.2); }
+  if (t > 8 && !C.done) {
+    C.done = true;
+    khPlaneSound(false);
+    KHP.busy = 0;
+    G.state = 'playing';
+    gameOver();
+    renderer.domElement.classList.remove('downed');
+    $('go-title').textContent = 'Évasion réussie';
+    $('go-rounds').textContent = `Vous avez quitté le Khamsin à la manche ${Math.max(1, G.round)}`;
+    setTimeout(() => khFade(false, 0.6), 1700);
+  }
+}
+/* Moteurs de l'avion (synthétisés) : montée en régime au démarrage. */
+function khPlaneSound(on, k = 0) {
+  const bus = Sound.bus();
+  if (!bus) return;
+  if (!on) { if (KHQ.snd) { const S = KHQ.snd; S.out.gain.setTargetAtTime(0, S.ctx.currentTime, 0.4); setTimeout(() => { try { S.o1.stop(); S.o2.stop(); S.n.stop(); } catch (e) { /* déjà arrêté */ } }, 1500); KHQ.snd = null; } return; }
+  if (!KHQ.snd) {
+    const ctx = bus.ctx, out = ctx.createGain(); out.gain.value = 0; out.connect(bus.sortie);
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(); o1.type = 'sawtooth'; o2.type = 'square';
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+    const g1 = ctx.createGain(), g2 = ctx.createGain(); g1.gain.value = 0.3; g2.gain.value = 0.12;
+    o1.connect(g1); o2.connect(g2); g1.connect(lp); g2.connect(lp); lp.connect(out);
+    const n = ctx.createBufferSource(), len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    n.buffer = buf; n.loop = true;
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1400; nf.Q.value = 0.7;
+    const ng = ctx.createGain(); ng.gain.value = 0.08; n.connect(nf); nf.connect(ng); ng.connect(out);
+    o1.start(); o2.start(); n.start();
+    KHQ.snd = { ctx, out, o1, o2, n, lp };
+  }
+  const S = KHQ.snd, t = S.ctx.currentTime, A = KH.places.G.plane, d = KHQ.cine ? 20 : Math.hypot(player.pos.x - A.x, player.pos.z - A.z);
+  const f = 38 + k * 46;
+  S.o1.frequency.setTargetAtTime(f, t, 0.3); S.o2.frequency.setTargetAtTime(f * 2.02, t, 0.3);
+  S.lp.frequency.setTargetAtTime(400 + k * 900, t, 0.3);
+  S.out.gain.setTargetAtTime(clamp(1.2 - d / 120, 0, 1) * (0.12 + k * 0.16), t, 0.25);
+}
+
+/* ---- Sauvegarde, remise à zéro */
+function khSerialize() {
+  return {
+    have: { ...KHQ.have }, placed: { ...KHQ.placed }, ready: KHQ.ready, sceptre: KHQ.sceptre, frags: KHQ.frags.slice(), charge: KHQ.charge,
+    veh: VEH.list.map((V) => ({ x: +V.x.toFixed(2), z: +V.z.toFixed(2), yaw: +V.yaw.toFixed(3), fuel: Math.round(V.fuel), bought: V.bought })),
+  };
+}
+function khRestore(s) {
+  try {
+    for (const p of KHQ_PARTS) { KHQ.have[p.id] = !!(s.have && s.have[p.id]); KHQ.placed[p.id] = !!(s.placed && s.placed[p.id]); }
+    KHQ.ready = KHQ_PARTS.every((p) => KHQ.placed[p.id]);
+    KHQ.frags = [0, 1, 2].map((i) => !!(s.frags && s.frags[i]));
+    KHQ.sceptre = KHQ.frags.every(Boolean);
+    KHQ.charge = clamp(+s.charge || 0, 0, 1);
+    (s.veh || []).forEach((v, i) => {
+      const V = VEH.list[i];
+      if (!V || !Number.isFinite(v.x) || !Number.isFinite(v.z)) return;
+      V.x = v.x; V.z = v.z; V.yaw = v.yaw || 0; V.fuel = clamp(v.fuel | 0, 0, V.T.fuel); V.bought = !!v.bought || !V.T.cost;
+      vehPose(V, 0, true);
+    });
+    if (G.power && KHSAN.door) { const D = KHSAN.door; OW.doors[D.i].open = true; D.slab.position.y = D.y - 3.25; D.opening = false; }
+    khQuestLook();
+  } catch (e) { console.warn('Khamsin : sauvegarde illisible', e); }
+}
+function khQuestReset() {
+  for (const p of KHQ_PARTS) { KHQ.have[p.id] = false; KHQ.placed[p.id] = false; }
+  KHQ.ready = false; KHQ.sceptre = false; KHQ.frags = [false, false, false]; KHQ.charge = 0;
+  KHQ.escape = null; KHQ.won = false; KHQ.fail = 0; KHQ.cine = null; KHQ.fillT = KHQ.placeT = KHQ.wakeT = KHQ.startT = KHQ.goT = 0;
+  if (KHQ.pilot && !KHQ.pilot.removed) removeZombie(KHQ.pilot);
+  KHQ.pilot = null;
+  if (KHQ.key) { KHQ.key.g.parent && KHQ.key.g.parent.remove(KHQ.key.g); const i = Features.interactables.indexOf(KHQ.key.it); if (i >= 0) Features.interactables.splice(i, 1); KHQ.key = null; }
+  const pg = KH.places.G && KH.places.G.planeGroup;
+  const A = KH.places.G && KH.places.G.plane;
+  if (pg && A) { pg.position.set(A.x, A.y, A.z); pg.rotation.set(0, 0, 0); pg.updateMatrixWorld(true); }
+  if (A) for (const p of KHQ.props || []) { p.position.x = A.x - 4.2; p.position.y = A.y + 2.6 + 1.45 - 0.55; }
+  khPlaneSound(false);
+  if (KHQ.hud) KHQ.hudKey = '';
+  for (const s of KHSAN.statues) for (const m of s.eyes) m.material.color.setHex(0x0c1412);
+  khQuestLook();
+}
+
+/* ---------------------------------------------------------------- Tunnel --
+   « Nécropole des falaises : tombeaux dans la roche, tunnels vers le plateau (raccourci à pied) »
+   (pages 2 et 4). La galerie de fouilles relie le grand tombeau de la nécropole (F) au sanctuaire
+   sous la Grande Pyramide (B) : 1,7 km de voie Decauville, parcourus en draisine à moteur.
+   Le trajet est un passage (comme l'escalier du kiosque) : fondu, quelques secondes dans le tunnel
+   (vue depuis la draisine, lampes qui défilent), fondu, arrivée. */
+const KHT = { group: null, ride: null, len: 260, x0: 1200, y: -60, z: 2420, cart: null };
+function owBuildTunnel(root) {
+  const K = owKit('tunnel'), { x0, y, z, len } = KHT, x1 = x0 + len, R = 2.3;
+  // voûte de roche (vue de l'intérieur), sol de gravier, voie, traverses, cadres de bois, lampes
+  const tube = new THREE.CylinderGeometry(R, R, len, 16, 1, true);
+  tube.rotateZ(Math.PI / 2);
+  const rock = levelMaterial('kh_rock').clone();
+  rock.side = THREE.BackSide;
+  const vault = new THREE.Mesh(tube, rock);
+  vault.position.set((x0 + x1) / 2, y + 1.2, z);
+  const uv = tube.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 4, uv.getY(i) * len / 3);
+  K.add(vault);
+  K.box('kh_rock', 0x9a8670, x0, y - 0.2, z - 1.9, x1, y, z + 1.9, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+  K.add(khVoid(x0, y + 1.2, z, 4.8, 4.8, Math.PI / 2)); K.add(khVoid(x1, y + 1.2, z, 4.8, 4.8, -Math.PI / 2));     // les deux bouts : le noir
+  for (let x = x0; x < x1; x += 0.65) K.box('kh_planks', 0x5a4028, x, y, z - 0.55, x + 0.14, y + 0.08, z + 0.55);
+  for (const s of [-0.3, 0.3]) K.box('kh_sheet', 0x6a645c, x0, y + 0.08, z + s - 0.03, x1, y + 0.16, z + s + 0.03);
+  for (let x = x0 + 2; x < x1; x += 6) {
+    K.box('kh_planks', 0x6b4a30, x - 0.12, y, z - 1.85, x + 0.12, y + 2.6, z - 1.6).box('kh_planks', 0x6b4a30, x - 0.12, y, z + 1.6, x + 0.12, y + 2.6, z + 1.85);
+    K.box('kh_planks', 0x6b4a30, x - 0.12, y + 2.5, z - 1.85, x + 0.12, y + 2.8, z + 1.85);
+  }
+  KHT.lamps = [];
+  for (let x = x0 + 5; x < x1; x += 18) {
+    const L = owLamp(K, x, y + 2.35, z - 1.4, 0xffc070, false, 0.7);
+    L.layer = 2; L.range = 14;
+    KHT.lamps.push(L);
+  }
+  // la draisine : plateau de planches, levier de pompe, moteur, phare
+  const cart = new THREE.Group();
+  const add = (geo, hex, px, py, pz, o = {}) => { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(Object.assign({ color: hex, roughness: 0.7, metalness: 0.2 }, o))); m.position.set(px, py, pz); cart.add(m); return m; };
+  add(new THREE.BoxGeometry(2.2, 0.12, 1.3), 0x7a5a3a, 0, 0.5, 0);
+  for (const sx of [-0.8, 0.8]) for (const sz of [-0.55, 0.55]) add(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 12), 0x2a2622, sx, 0.24, sz, { metalness: 0.6 }).rotation.x = Math.PI / 2;
+  add(new THREE.BoxGeometry(0.6, 0.45, 0.7), 0x4a5a48, -0.6, 0.8, 0, { metalness: 0.5 });
+  add(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 8), 0x3a3631, 0.3, 1.0, 0);
+  add(new THREE.BoxGeometry(0.06, 0.06, 1.1), 0x3a3631, 0.3, 1.5, 0);
+  add(new THREE.CylinderGeometry(0.08, 0.07, 0.12, 12), 0xfff0d0, -1.08, 0.66, 0, { emissive: 0xffe0a0, emissiveIntensity: 1.2 }).rotation.z = Math.PI / 2;
+  cart.visible = false;
+  K.add(cart);
+  KHT.cart = cart;
+  const g = K.build(root);
+  g.visible = false;
+  KHT.group = g;
+  // les deux quais : le fond du grand tombeau (F) et la galerie du sanctuaire (B)
+  const T = KH.places.F.tombs[2], cx = (T.x0 + T.x1) / 2;
+  KHT.endF = { x: cx + 2.6, y: T.y, z: T.z0 + 1.5, layer: 0, yaw: Math.PI };
+  KHT.endB = { x: KHSAN.railHead.x + 1.5, y: KHSY, z: KHSAN.railHead.z, layer: 1, yaw: -Math.PI / 2 };
+  khTunnelMouthF(T);
+  Features.interactables.push({
+    kind: 'portal', x: KHT.endF.x, z: KHT.endF.z + 0.4, y: T.y, r: 1.6,
+    prompt() { return { text: 'Appuyez sur F pour prendre la draisine', sub: 'Galerie de fouilles · vers le sanctuaire (1,7 km)' }; },
+    use() { khRide(KHT.endB, 1, 'Sanctuaire'); },
+  });
+  Features.interactables.push({
+    kind: 'portal', x: KHSAN.railHead.x, z: KHSAN.railHead.z, y: KHSY, r: 1.8,
+    prompt() { return { text: 'Appuyez sur F pour prendre la draisine', sub: 'Galerie de fouilles · vers la nécropole (1,7 km)' }; },
+    use() { khRide(KHT.endF, -1, 'Nécropole des falaises'); },
+  });
+}
+/* Fond du grand tombeau : une porte basse dans la roche, étayée, d'où sortent les rails. */
+function khTunnelMouthF(T) {
+  const K = owKit('tunnel-f'), cx = (T.x0 + T.x1) / 2 + 2.6, y = T.y, z = T.z0 + 1;
+  K.box('kh_planks', 0x6b4a30, cx - 1.2, y, z, cx - 1.0, y + 2.4, z + 0.25).box('kh_planks', 0x6b4a30, cx + 1.0, y, z, cx + 1.2, y + 2.4, z + 0.25);
+  K.box('kh_planks', 0x6b4a30, cx - 1.25, y + 2.3, z, cx + 1.25, y + 2.55, z + 0.25);
+  const v = khVoid(cx - 1.0, y + 1.15, z + 0.02, 2.0, 2.3, 0);
+  v.rotation.y = 0; K.add(v);
+  for (let i = 0; i < 6; i++) K.box('kh_planks', 0x5a4028, cx - 0.55, y, z + 0.3 + i * 0.6, cx + 0.55, y + 0.06, z + 0.44 + i * 0.6);
+  for (const s of [-0.3, 0.3]) K.box('kh_sheet', 0x6a645c, cx + s - 0.03, y + 0.06, z + 0.25, cx + s + 0.03, y + 0.13, z + 3.6);
+  K.build(OW.placesRoot || World.root);
+}
+/* Le trajet : fondu, vue depuis la draisine dans le tunnel, fondu, arrivée. dir : sens du défilement. */
+function khRide(to, dir, name) {
+  if (KHP.busy > 0 || KHT.ride) return;
+  KHP.busy = 99;
+  khFade(true);
+  schedule(0.4, () => {
+    for (const z of Zombies.list.slice()) { if (z.boss) continue; if (z.rodeur) removeZombie(z); else if (z.alive) recycleZombie(z); }
+    KHT.ride = { t: 0, to, dir, name, dur: 7.5 };
+    khSetView('tunnel');
+    KHT.group.visible = true; KHT.cart.visible = true;
+    Arms.root.visible = false;
+    HUD.el.hud.hidden = true;
+    khRideSound(true);
+    khFade(false, 0.5);
+  });
+}
+/* Caméra pendant le trajet (appelé après la mise à jour du joueur). */
+function khRideCam(dt) {
+  const Rd = KHT.ride;
+  if (!Rd) return;
+  Rd.t += dt;
+  const k = Rd.t / Rd.dur, { x0, y, z, len } = KHT;
+  const s = 6 + (len - 12) * k, x = Rd.dir > 0 ? x0 + s : x0 + len - s;
+  KHT.cart.position.set(x, y + 0.05, z);
+  KHT.cart.rotation.y = Rd.dir > 0 ? Math.PI : 0;
+  camera.position.set(x - Rd.dir * 0.95, y + 1.95 + Math.sin(Rd.t * 17) * 0.012, z + 0.1);
+  camera.rotation.set(-0.04 + Math.sin(Rd.t * 1.3) * 0.02, Rd.dir > 0 ? -Math.PI / 2 : Math.PI / 2, Math.sin(Rd.t * 9) * 0.006, 'YXZ');
+  Arms.root.visible = false;
+  if (Rd.t > Rd.dur - 0.45 && !Rd.faded) { Rd.faded = true; khFade(true, 0.4); }
+  if (Rd.t >= Rd.dur && !Rd.done) {
+    Rd.done = true;
+    const to = Rd.to;
+    schedule(0.05, () => {
+      KHT.group.visible = false; KHT.cart.visible = false;
+      placePlayer(to.x, to.z, to.layer ? -1 : 0);
+      player.yaw = to.yaw; player.vel.set(0, 0, 0);
+      khSetView(to.layer ? 'under' : 'surface');
+      HUD.el.hud.hidden = false;
+      Arms.root.visible = true;
+      KHT.ride = null; KHP.busy = 1;
+      khRideSound(false);
+      HUD.zone(Rd.name);
+      khFade(false, 0.5);
+    });
+  }
+}
+/* Ce que l'on voit : la surface, le sanctuaire ou le tunnel (les autres groupes sont cachés). */
+function khSetView(v) {
+  KHSAN.view = v;
+  if (v === 'tunnel') {
+    khSetUnder(true);
+    if (KHSAN.group) KHSAN.group.visible = false;
+  } else {
+    if (KHSAN.group) KHSAN.group.visible = true;
+    khSetUnder(v === 'under');
+  }
+}
+function khTunnelReset() {
+  if (KHT.ride) { KHT.ride = null; if (KHT.group) KHT.group.visible = false; if (KHT.cart) KHT.cart.visible = false; khRideSound(false); }
+  KHSAN.view = 'surface';
+}
+/* Bruit de la draisine : roues sur les rails, moteur. */
+function khRideSound(on) {
+  const bus = Sound.bus();
+  if (!bus) return;
+  if (!on) { if (KHT.snd) { const S = KHT.snd; S.out.gain.setTargetAtTime(0, S.ctx.currentTime, 0.2); setTimeout(() => { try { S.o.stop(); S.n.stop(); } catch (e) { /* déjà arrêté */ } }, 800); KHT.snd = null; } return; }
+  const ctx = bus.ctx, out = ctx.createGain(); out.gain.value = 0; out.connect(bus.sortie);
+  const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 52;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
+  const g1 = ctx.createGain(); g1.gain.value = 0.3; o.connect(g1); g1.connect(lp); lp.connect(out);
+  // clac-clac des joints de rail : bruit modulé
+  const n = ctx.createBufferSource(), len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) { const ph = (i / ctx.sampleRate) % 0.32; d[i] = (Math.random() * 2 - 1) * (ph < 0.03 || (ph > 0.07 && ph < 0.1) ? 1 : 0.15); }
+  n.buffer = buf; n.loop = true;
+  const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1200; nf.Q.value = 0.8;
+  const ng = ctx.createGain(); ng.gain.value = 0.22; n.connect(nf); nf.connect(ng); ng.connect(out);
+  o.start(); n.start();
+  out.gain.setTargetAtTime(0.5, ctx.currentTime, 0.3);
+  KHT.snd = { ctx, out, o, n };
 }
 
 /* ====================================================== fin du monde ouvert == */
@@ -30417,6 +32507,8 @@ const SPECIMEN_FACTS = {
 
 khSpecimenSetup();                                    // Khamsin : fiches des Desséchés et du Rôdeur
 
+khGardienSetup();                                     // Khamsin : fiche du Gardien
+
 /* Toise peinte sur le mur du fond : 4 m × 3 m, un trait tous les 10 cm. */
 function heightChart() {
   const W = 1024, H = 768, ppm = 256;
@@ -30562,6 +32654,8 @@ function selectSpecimen(id) {
   const i = Math.max(0, SPECIMEN_TYPES.findIndex((t) => t.id === id));
   const type = SPECIMEN_TYPES[i];
   const model = SPECIMEN_MODELS[type.model] || SPECIMEN_MODELS.fantassin;
+  MODEL_VIEW.distMax = type.boss ? 6.4 : 3.8;
+  if (Models.dist > MODEL_VIEW.distMax || type.boss) Models.dist = MODEL_VIEW.distMax;
   Models.sel = type.id;
   for (const b of $('md-tabs').children) {
     const on = b.dataset.id === type.id;
