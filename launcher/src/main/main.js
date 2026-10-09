@@ -385,14 +385,17 @@ function editorApiOf(dir) {
     return m ? parseInt(m[1], 10) : 0;
   } catch (e) { return 0; }
 }
-/* Jeu servi aux Mod Tools : la version la plus récente (installée ou livrée) qui contient l'éditeur. */
+/* Jeu servi aux Mod Tools : la version la plus récente (installée ou livrée) qui contient l'éditeur ;
+   à numéro égal, celle dont l'interface de l'éditeur est la plus récente (le jeu 2.0.0 a reçu la Lune
+   sans changer de numéro : interface 4 au lieu de 3). */
 function editorEngine() {
   const cands = [];
   const inst = updater.getInstalled();
   if (inst) cands.push({ dir: inst.dir, version: inst.version, source: 'installed' });
   const b = updater.bundledInfo();
   if (b) cands.push({ dir: BUNDLE_DIR, version: b.version, source: 'bundled' });
-  return cands.filter((c) => editorApiOf(c.dir) >= 1).sort((a, c) => compareVersions(c.version, a.version))[0] || null;
+  for (const c of cands) c.api = editorApiOf(c.dir);
+  return cands.filter((c) => c.api >= 1).sort((a, c) => compareVersions(c.version, a.version) || c.api - a.api)[0] || null;
 }
 function getWorkspace() {
   if (!workspace) workspace = new Workspace(userFile('modtools'));

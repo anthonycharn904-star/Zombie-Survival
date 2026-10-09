@@ -45,7 +45,7 @@ const USER = path.join(TMP, 'joueur');
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
       ok(GAME_VERSION === '2.0.0' && ZS.version === v, `jeu 2.0.0 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
-      ok(MAPS.list.length === 2 && MAPS.list[0] === 'bunker7' && MAPS.list[1] === 'khamsin', 'catalogue : Bunker 7, puis Khamsin (deuxième carte)', MAPS.list);
+      ok(MAPS.list.length === 3 && MAPS.list[0] === 'bunker7' && MAPS.list[1] === 'khamsin' && MAPS.list[2] === 'ombre', 'catalogue : Bunker 7, puis Khamsin (deuxième carte), puis Ombre éternelle', MAPS.list);
       const K = MAPS.byId.khamsin;
       ok(K && K.open && K.name === 'Khamsin' && /^data:image\/jpeg/.test(K.thumb || '') && K.altar === true, 'Khamsin : carte ouverte, vignette tirée de son plan, autel du sanctuaire', K && { open: K.open, name: K.name, thumb: (K.thumb || '').slice(0, 22) });
       ok(!ZS.MAPS.list.includes('khamsin') && ZS.MAPS.list.includes('bunker7') && !ZS.MAPS.byId.khamsin, 'Mod Tools : Khamsin absente du catalogue éditable', ZS.MAPS.list);
@@ -59,7 +59,7 @@ const USER = path.join(TMP, 'joueur');
     const cards = await game.evaluate(() => [...document.querySelectorAll('#ms-grid .ms-card')].map((c) => ({
       id: c.dataset.id, name: c.querySelector('.ms-name').textContent, img: !!c.querySelector('.ms-photo img'), desc: (c.querySelector('.ms-desc') || { textContent: '' }).textContent.slice(0, 40),
     })));
-    ok(cards.length === 2 && cards[0].id === 'bunker7' && cards[1].id === 'khamsin' && cards[1].name === 'Khamsin' && cards[1].img && /Désert égyptien/.test(cards[1].desc),
+    ok(cards.length === 3 && cards[0].id === 'bunker7' && cards[1].id === 'khamsin' && cards[1].name === 'Khamsin' && cards[1].img && /Désert égyptien/.test(cards[1].desc),
       'Jouer : Khamsin, deuxième carte sélectionnable (nom, vignette, description)', cards);
     await game.click('#ms-grid .ms-card[data-id="khamsin"]');
     ok(await game.evaluate(() => MapSel.sel === 'khamsin' && document.querySelector('#ms-grid .ms-card[data-id="khamsin"]').getAttribute('aria-selected') === 'true'), 'Jouer : Khamsin choisie');

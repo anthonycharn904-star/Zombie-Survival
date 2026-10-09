@@ -225,7 +225,7 @@ async function run(userData) {
       `enregistrée dans l’atelier (${fs.existsSync(file) ? fs.statSync(file).size : 0} octets) : base désert, blocs de relief et de sol, route, bâtiment, lieu ${JSON.stringify({ saved, keys: Object.keys(fo).join() })}`);
     await mt.evaluate(() => MT.savePublishSet(['bunker7', 'khamsin', 'mon-desert']));
     const pubSet = JSON.parse(fs.readFileSync(path.join(userData, 'modtools', 'publish.json'), 'utf8'));
-    ok(pubSet.maps.join() === 'bunker7,khamsin,mon-desert' && pubSet.editor === 3, 'liste de publication : la nouvelle carte après Khamsin');
+    ok(pubSet.maps.join() === 'bunker7,khamsin,mon-desert' && pubSet.editor === 4, 'liste de publication : la nouvelle carte après Khamsin');
 
     // 10. partie de test (F5) : le terrain modifié est dans la partie ; retour
     await mt.evaluate(() => { MT.select(null); MT.setTool('select'); });
@@ -263,7 +263,7 @@ async function run(userData) {
     const x = path.join(TMP, 'paquet');
     await extractZip(path.join(res.dir, `zombie-survival-${res.version}.zip`), x);
     const index = JSON.parse(fs.readFileSync(path.join(x, 'maps', 'index.json'), 'utf8'));
-    ok(index.maps.join() === 'bunker7,khamsin,mon-desert' && index.files.join() === 'mon-desert' && index.editor === 3 && fs.existsSync(path.join(x, 'maps', 'mon-desert.json')), `paquet publié : maps/mon-desert.json ${JSON.stringify(index)}`);
+    ok(index.maps.join() === 'bunker7,khamsin,mon-desert' && index.files.join() === 'mon-desert' && index.editor === 4 && fs.existsSync(path.join(x, 'maps', 'mon-desert.json')), `paquet publié : maps/mon-desert.json ${JSON.stringify(index)}`);
     await closeAll(app);
     const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.woff2': 'font/woff2' };
     const server = http.createServer((req, rs) => {

@@ -17,8 +17,13 @@
     { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser · clic droit : retirer · R : tourner · 1 à 8 : genre' },
   ];
   /* Outils des cartes ouvertes : ceux du niveau 2 (relief, sol, routes, bâtiments) si le moteur les a. */
-  Object.defineProperty(O, 'toolList', { get: () => BASE_TOOLS.concat(O.terrain && O.ok2() ? O.terrain.tools : []), configurable: true });
-  O.KIND_KEYS = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'loc'];
+  /* (Sur la Lune, pas de routes : le sol damé se peint.) */
+  Object.defineProperty(O, 'toolList', { get: () => BASE_TOOLS.concat(O.terrain && O.ok2() ? O.terrain.tools.filter((t) => !(O.moon() && t.id === 'roads')) : []), configurable: true });
+  /* Genres d'éléments (touches 1 à 8) : le désert a ses véhicules et ses jerricans, la Lune ses
+     postes d'oxygène et Le Glas. */
+  const KEYS_DESERT = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'loc'];
+  const KEYS_MOON = ['spawn', 'wallbuy', 'perk', 'box', 'breaker', 'oxy', 'glas', 'loc'];
+  Object.defineProperty(O, 'KIND_KEYS', { get: () => (O.moon() ? KEYS_MOON : KEYS_DESERT), configurable: true });
 
   const snapV = (v, step) => (step > 0 ? Math.round(v / step) * step : v);
   const zoom = () => (MT.plan ? MT.plan.cam.zoom : 4);
@@ -48,6 +53,8 @@
     m.vehicles.forEach((e, i) => { const T = ZS.VEH_TYPES[e.type]; test('vehicle', i, e.x, e.z, T ? T.wid * 0.5 : 1); });
     m.fuel.forEach((e, i) => test('fuel', i, e.x, e.z, 0.3));
     m.breakers.forEach((e, i) => test('breaker', i, e.x + e.nx * 0.2, e.z + e.nz * 0.2, 0.3));
+    (m.oxy || []).forEach((e, i) => test('oxy', i, e.x + e.face[0] * 0.25, e.z + e.face[1] * 0.25, 0.4));
+    if (m.glas) { const d = Math.hypot(m.glas.x - p.wx, m.glas.z - p.wz) - 1.4; if (d < Math.max(px, 0.4) && d < bd) { bd = d; best = { kind: 'glas' }; } }
     (m.locs || []).forEach((L, i) => test('loc', i, L.x, L.z));
     if (best) return best;
     let bi = -1, bestArea = Infinity;
@@ -225,7 +232,7 @@
     hover(p) {
       if (!p || !ZS.ow.on) { MT.preview.ow = null; return; }
       const o = S.opts.ow, r = O.place(o.kind, p.wx, p.wz);
-      MT.preview.ow = { kind: o.kind, ...r, face: r.face || (o.kind === 'perk' || o.kind === 'box' || o.kind === 'breaker' ? o.face : null), yaw: o.yaw, type: o.vehicle, wx: p.wx, wz: p.wz };
+      MT.preview.ow = { kind: o.kind, ...r, face: r.face || (o.kind === 'perk' || o.kind === 'box' || o.kind === 'breaker' || o.kind === 'oxy' || o.kind === 'glas' ? o.face : null), yaw: o.yaw, type: o.vehicle, wx: p.wx, wz: p.wz };
     },
   };
 

@@ -17,13 +17,21 @@
 
   /* Le moteur sait-il ouvrir les cartes ouvertes ? (jeu 2.0.0, interface 3) */
   O.ok = () => (ZS.editorApi || 1) >= 3 && !!ZS.ow && typeof ZS.openNormalize === 'function';
+  /* Monde d'une carte ouverte : « khamsin » (le désert) ou « lune » (Ombre éternelle, Lune vierge ;
+     interface 4 du moteur, jeu 2.0.0 du 9 octobre au soir). */
+  O.world = (m = S.map) => {
+    const B = m && ZS.ow && ZS.ow.BASES ? ZS.ow.BASES[m.base] : null;
+    return B && B.world ? B.world : 'khamsin';
+  };
+  O.moon = (m = S.map) => O.world(m) === 'lune';
+  O.okMoon = () => (ZS.editorApi || 1) >= 4 && !!ZS.ow && !!ZS.ow.BASES && !!ZS.ow.BASES.lune;
 
   /* --------------------------------------------------------- éléments -- */
-  O.KINDS = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'loc'];
-  O.LABEL = { spawn: 'Départ du joueur', wallbuy: 'Arme au mur', perk: 'Atout', box: 'Boîte mystère', vehicle: 'Véhicule', fuel: 'Jerricans', breaker: 'Disjoncteur', prop: 'Objet', loc: 'Lieu nommé', road: 'Route', building: 'Bâtiment' };
-  O.PLURAL = { wallbuy: 'Armes au mur', perk: 'Atouts', box: 'Emplacements de la boîte', vehicle: 'Véhicules', fuel: 'Jerricans', breaker: 'Disjoncteurs', prop: 'Objets', loc: 'Lieux nommés', road: 'Routes et pistes', building: 'Bâtiments' };
-  O.LIST = { wallbuy: 'wallbuys', perk: 'perks', box: 'boxes', vehicle: 'vehicles', fuel: 'fuel', breaker: 'breakers', prop: 'props', loc: 'locs', road: 'roads', building: 'buildings' };
-  O.COLOR = { spawn: '#2fa84a', wallbuy: '#f0ecdc', perk: '#b3231f', box: '#2f6fc8', vehicle: '#8d9a52', fuel: '#e07a24', breaker: '#e8c22a', prop: '#a5804c', loc: '#ffe7b0', road: '#3a3430', building: '#c8b08a' };
+  O.KINDS = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'oxy', 'glas', 'loc'];
+  O.LABEL = { spawn: 'Départ du joueur', wallbuy: 'Arme au mur', perk: 'Atout', box: 'Boîte mystère', vehicle: 'Véhicule', fuel: 'Jerricans', breaker: 'Disjoncteur', oxy: 'Poste d’oxygène', glas: 'Le Glas', prop: 'Objet', loc: 'Lieu nommé', road: 'Route', building: 'Bâtiment' };
+  O.PLURAL = { wallbuy: 'Armes au mur', perk: 'Atouts', box: 'Emplacements de la boîte', vehicle: 'Véhicules', fuel: 'Jerricans', breaker: 'Disjoncteurs', oxy: 'Postes d’oxygène', glas: 'Le Glas', prop: 'Objets', loc: 'Lieux nommés', road: 'Routes et pistes', building: 'Bâtiments' };
+  O.LIST = { wallbuy: 'wallbuys', perk: 'perks', box: 'boxes', vehicle: 'vehicles', fuel: 'fuel', breaker: 'breakers', oxy: 'oxy', prop: 'props', loc: 'locs', road: 'roads', building: 'buildings' };
+  O.COLOR = { spawn: '#2fa84a', wallbuy: '#f0ecdc', perk: '#b3231f', box: '#2f6fc8', vehicle: '#8d9a52', fuel: '#e07a24', breaker: '#e8c22a', oxy: '#5fd8a8', glas: '#d9a441', prop: '#a5804c', loc: '#ffe7b0', road: '#3a3430', building: '#c8b08a' };
   /* Niveau 2 (relief, sol, routes, bâtiments, lieux) : demande le moteur du jeu 2.0.0 complet. */
   O.ok2 = () => O.ok() && typeof ZS.ow.sculpt === 'function';
   /* Ce qui change le terrain (routes, bâtiments) : la zone à refaire. */
@@ -44,12 +52,15 @@
     fuel: 'Clic sur le sol : une pile de jerricans (plein du véhicule le plus proche, à moins de 14 m).',
     breaker: 'Clic près d’un mur : une armoire électrique. Tous les disjoncteurs enclenchés : le courant revient.',
     loc: 'Clic : un lieu nommé (cercle). Son nom s’affiche en entrant dedans et sur la mini-carte du joueur.',
+    oxy: 'Clic près d’un mur : un râtelier de bouteilles, dos au mur. Loin d’un mur : posé sur le sol, face selon la rotation (R). Une bouteille neuve (4 min d’oxygène) pour 250 points.',
+    glas: 'Clic sur un sol plat et libre de 5 × 5 m : la cloche (une seule par carte ; poser ailleurs la déplace). R : sens. Elle se réveille avec le courant.',
   };
   O.arr = (kind, m = S.map) => (m && O.LIST[kind] ? m[O.LIST[kind]] : null);
   O.limit = (kind) => (ZS.OPEN_LIMITS && O.LIST[kind] ? ZS.OPEN_LIMITS[O.LIST[kind]] : Infinity);
   O.get = (sel, m = S.map) => {
     if (!sel || !m) return null;
     if (sel.kind === 'spawn') return m.spawn;
+    if (sel.kind === 'glas') return m.glas || null;
     const a = O.arr(sel.kind, m);
     return a ? a[sel.i] || null : null;
   };
@@ -62,7 +73,7 @@
   /* Sens (vers le joueur) d'un élément : [fx, fz] ; null pour un véhicule (lacet). */
   O.faceOf = (kind, e) => {
     if (kind === 'wallbuy' || kind === 'breaker') return [e.nx, e.nz];
-    if (kind === 'perk' || kind === 'box') return e.face;
+    if (kind === 'perk' || kind === 'box' || kind === 'oxy' || kind === 'glas') return e.face;
     if (kind === 'spawn') return [-Math.sin(e.yaw), -Math.cos(e.yaw)];
     return null;
   };
@@ -80,6 +91,8 @@
       case 'breaker': return `Disjoncteur ${i + 1} · ${e.name}`;
       case 'spawn': return 'Départ du joueur';
       case 'loc': return e.name;
+      case 'oxy': return `Poste d’oxygène n° ${i + 1}`;
+      case 'glas': return 'Le Glas';
       case 'road': return `${e.kind === 'road' ? 'Route' : 'Piste'} n° ${i + 1}`;
       case 'building': return (ZS.ow.BUILDINGS[e.type] || { name: e.type }).name;
       default: return '';
@@ -128,6 +141,7 @@
         return { x: r.x, y: r.y, z: r.z, nx: f[0], nz: f[1], name: `disjoncteur ${(m.breakers || []).length + 1}` };
       }
       case 'loc': return { name: `Lieu ${(m.locs || []).length + 1}`, x: r.x, z: r.z, r: 120 };
+      case 'oxy': case 'glas': return { x: r.x, y: r.y, z: r.z, face: (r.face || o.face).slice() };
       default: return null;
     }
   };
@@ -140,6 +154,14 @@
     if (kind === 'spawn') {
       MT.edit('Départ du joueur', (mm) => { mm.spawn.pos = [r.x, r.z]; }, 'ow-el');
       MT.select({ kind: 'spawn' });
+      return S.sel;
+    }
+    if (kind === 'glas') {
+      // une seule cloche : poser ailleurs la déplace
+      const had = !!m.glas, e = O.make('glas', r);
+      MT.edit(had ? 'Déplacer : Le Glas' : 'Poser : Le Glas', (mm) => { mm.glas = e; }, 'ow-el');
+      if (had) MT.toast('Le Glas déplacé : une seule cloche par carte.', 'info');
+      MT.select({ kind: 'glas' });
       return S.sel;
     }
     const arr = O.arr(kind);
@@ -155,6 +177,12 @@
   O.remove = (kind, i) => {
     const m = S.map;
     if (!m || kind === 'spawn') return false;
+    if (kind === 'glas') {
+      if (!m.glas) return false;
+      MT.edit('Retirer : Le Glas', (mm) => { mm.glas = null; }, 'ow-el');
+      if (S.sel && S.sel.kind === 'glas') MT.select(null);
+      return true;
+    }
     const arr = O.arr(kind);
     if (!arr || !arr[i]) return false;
     const rect = O.terrainRect(kind, arr[i]);
@@ -184,7 +212,7 @@
     }
     if (kind === 'loc') { e.x = round(clamp(x, 0, m.w), 1); e.z = round(clamp(z, 0, m.h), 1); MT.touch('settings', { kind, i: sel.i, live }); return { ok: true }; }
     if (kind === 'road') return { ok: false };
-    const face = kind === 'perk' || kind === 'box' ? e.face : kind === 'breaker' ? [e.nx, e.nz] : null;
+    const face = kind === 'perk' || kind === 'box' || kind === 'oxy' || kind === 'glas' ? e.face : kind === 'breaker' ? [e.nx, e.nz] : null;
     const r = O.place(kind, x, z, face);
     if (!r.ok) return r;
     switch (kind) {
@@ -193,6 +221,7 @@
       case 'perk': Object.assign(e, { x: r.x, y: r.y, z: r.z, face: (r.face || e.face).slice() }); break;
       case 'breaker': { const f = r.face || [e.nx, e.nz]; Object.assign(e, { x: r.x, y: r.y, z: r.z, nx: f[0], nz: f[1] }); break; }
       case 'box': case 'fuel': Object.assign(e, { x: r.x, y: r.y, z: r.z }); break;
+      case 'oxy': case 'glas': Object.assign(e, { x: r.x, y: r.y, z: r.z, face: (r.face || e.face).slice() }); break;
       case 'vehicle': Object.assign(e, { x: r.x, z: r.z }); break;
       default: return { ok: false };
     }
@@ -267,7 +296,7 @@
     if (!e) return;
     MT.edit('Tourner', (mm) => {
       const x = O.get(s, mm);
-      if (s.kind === 'perk' || s.kind === 'box') x.face = O.turnFace(x.face, dir);
+      if (s.kind === 'perk' || s.kind === 'box' || s.kind === 'oxy' || s.kind === 'glas') x.face = O.turnFace(x.face, dir);
       else if (s.kind === 'breaker') { const f = O.turnFace([x.nx, x.nz], dir); x.nx = f[0]; x.nz = f[1]; }
       else if (s.kind === 'vehicle') x.yaw = round(wrapRad(x.yaw + rad(big ? 90 : 15) * dir), 4);
       else if (s.kind === 'spawn') x.yaw = round(wrapRad(x.yaw + rad(big ? 90 : 15) * dir), 4);
@@ -318,18 +347,18 @@
     return ZS.openSerialize(m);
   };
   /* Nombre d'éléments (pour les listes). */
-  O.count = (m = S.map) => (m ? m.wallbuys.length + m.perks.length + m.boxes.length + m.vehicles.length + m.fuel.length + m.breakers.length : 0);
+  O.count = (m = S.map) => (m ? m.wallbuys.length + m.perks.length + m.boxes.length + m.vehicles.length + m.fuel.length + m.breakers.length + (m.oxy || []).length + (m.glas ? 1 : 0) : 0);
   O.summary = (m = S.map) => {
     if (!m) return '';
     const nb = (m.buildings || []).length, nr = (m.roads || []).length;
-    return `${(m.w / 1000).toLocaleString('fr-BE')} × ${(m.h / 1000).toLocaleString('fr-BE')} km · ${m.props.length} objet${m.props.length > 1 ? 's' : ''} · ${O.count(m)} éléments${nb ? ` · ${nb} bâtiment${nb > 1 ? 's' : ''}` : ''}${nr ? ` · ${nr} route${nr > 1 ? 's' : ''}` : ''}`;
+    return `${(m.w / 1000).toLocaleString('fr-BE', { maximumFractionDigits: 1 })} × ${(m.h / 1000).toLocaleString('fr-BE', { maximumFractionDigits: 1 })} km · ${m.props.length} objet${m.props.length > 1 ? 's' : ''} · ${O.count(m)} éléments${nb ? ` · ${nb} bâtiment${nb > 1 ? 's' : ''}` : ''}${nr ? ` · ${nr} route${nr > 1 ? 's' : ''}` : ''}`;
   };
 
   /* Vérification : avec le monde chargé, le sol sous chaque élément ; sinon la forme. Les limites
      du format s'ajoutent (le moteur coupe au-delà). */
   O.validate = (m = S.map) => {
     const v = ZS.ow && ZS.ow.on && MT.v3 && MT.v3.owLoaded ? ZS.ow.validate(m) : ZS.openValidate(m);
-    for (const k of ['wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'prop', 'road', 'building', 'loc']) {
+    for (const k of ['wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'oxy', 'prop', 'road', 'building', 'loc']) {
       const a = O.arr(k, m);
       if (a && a.length > O.limit(k)) v.errors.push({ msg: `${O.PLURAL[k]} : ${a.length}, ${O.limit(k)} au plus (les suivants seraient ignorés).`, at: null });
     }

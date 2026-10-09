@@ -1200,14 +1200,16 @@
     let v = null;
     try { v = await MT.api.getPublishSet(); } catch (e) { v = null; }
     S.publish = v && Array.isArray(v.maps) ? { maps: v.maps.filter((id) => typeof id === 'string' && /^[a-z0-9_-]{1,40}$/.test(id)) } : { maps: MT.gameMaps().list.slice(), auto: true };
-    // liste écrite avant Khamsin (launcher 1.2) : le jeu 2.0.0 la met en deuxième place, la liste aussi
+    // liste écrite avant Khamsin (launcher 1.2) : le jeu 2.0.0 la met en deuxième place, la liste aussi ;
+    // liste d'avant la Lune (launcher 1.3.0) : Ombre éternelle en troisième
     const all = MT.gameMaps();
     if (v && !(v.editor >= 3) && all.byId.khamsin && !S.publish.maps.includes('khamsin')) S.publish.maps.splice(Math.min(1, S.publish.maps.length), 0, 'khamsin');
+    if (v && !(v.editor >= 4) && all.byId.ombre && !S.publish.maps.includes('ombre')) S.publish.maps.splice(Math.min(2, S.publish.maps.length), 0, 'ombre');
     return S.publish;
   };
   MT.savePublishSet = async (maps) => {
     S.publish = { maps: [...new Set(maps)] };
-    await MT.api.setPublishSet({ maps: S.publish.maps, updated: new Date().toISOString(), editor: 3 });
+    await MT.api.setPublishSet({ maps: S.publish.maps, updated: new Date().toISOString(), editor: 4 });
     MT.emit('publish');
   };
 })();

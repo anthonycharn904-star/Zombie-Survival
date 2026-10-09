@@ -22,7 +22,9 @@
     if (PL.base || PL.baseBusy || !ZS.ow.on || !(MT.v3 && MT.v3.owLoaded)) return;
     PL.baseBusy = true;
     setTimeout(() => {
-      try { PL.base = ZS.ow.plan(2000, 1500); PL.locs = O.baseLocs(); } catch (e) { console.error(e); }
+      // aux proportions de la carte : 2 000 × 1 500 pour le désert (4 × 3 km), 1 500 × 1 500 pour la Lune
+      const m = S.map, k = m ? Math.min(2000 / m.w, 1500 / m.h) : 0.5;
+      try { PL.base = ZS.ow.plan(Math.round((m ? m.w : 4000) * k), Math.round((m ? m.h : 3000) * k)); PL.locs = O.baseLocs(); } catch (e) { console.error(e); }
       PL.baseBusy = false;
       P.need = true;
     }, 30);
@@ -69,7 +71,7 @@
       g.imageSmoothingEnabled = true;
       g.drawImage(PL.base, ox, oy, m.w * Z, m.h * Z);
     } else {
-      g.fillStyle = '#3a2f24'; g.fillRect(ox, oy, m.w * Z, m.h * Z);
+      g.fillStyle = O.moon() ? '#2b2b2c' : '#3a2f24'; g.fillRect(ox, oy, m.w * Z, m.h * Z);
       text(g, 'Plan en préparation…', P.w / 2, P.h / 2, { size: 14 });
     }
     const w0 = P.toWorld(0, 0), w1 = P.toWorld(P.w, P.h);
@@ -244,12 +246,34 @@
         if (Z >= 6 && !ghost) text(g, e.name, sx + e.nx * 18, sy + e.nz * 18, { size: 11, color: '#fff1b0' });
         break;
       }
+      case 'oxy': {
+        // râtelier de bouteilles (1,3 × 0,45 m), dos au mur
+        const cx = e.x + e.face[0] * 0.22, cz = e.z + e.face[1] * 0.22, [sx, sy] = P.toScreen(cx, cz);
+        if (Z >= 4) poly(g, rotRect(P, cx, cz, 0.65, 0.24, yawOfFace(e.face)), tint('#5fd8a8'), '#0b2a1e', 1.5);
+        else marker(g, sx, sy, 5, tint('#5fd8a8'), '#0b2a1e', 'square');
+        if (!ghost && Z >= 2) text(g, 'O₂', sx, sy, { size: 10, color: '#0b2a1e', bg: null, weight: 700 });
+        if (Z >= 6 && !ghost) text(g, `Oxygène ${i + 1}`, sx, sy + Math.max(14, Z * 0.8), { size: 11, color: '#c8ffe8' });
+        break;
+      }
+      case 'glas': {
+        // beffroi de 4,7 m, socle de 2,4 × 1,2 m, place devant
+        const [sx, sy] = P.toScreen(e.x, e.z);
+        if (Z >= 1.2) {
+          poly(g, rotRect(P, e.x, e.z, 2.35, 2.35, yawOfFace(e.face)), ghost ? tint('#d9a441') : 'rgba(217,164,65,0.25)', '#2a1c06', 1.2);
+          poly(g, rotRect(P, e.x, e.z, 1.2, 0.6, yawOfFace(e.face)), tint('#d9a441'), '#2a1c06', 1.5);
+          const [fx, fy] = P.toScreen(e.x + e.face[0] * 2.2, e.z + e.face[1] * 2.2);
+          g.strokeStyle = '#ffe6a8'; g.lineWidth = 2; g.beginPath(); g.moveTo(sx, sy); g.lineTo(fx, fy); g.stroke();
+        } else marker(g, sx, sy, 6, tint('#d9a441'), '#2a1c06');
+        if (!ghost) text(g, 'Le Glas', sx, sy - Math.max(14, Z * 3), { size: 11, color: '#ffe6a8' });
+        break;
+      }
       default: break;
     }
   };
   function drawElements(P, g, m, vis) {
     const each = (kind) => (O.arr(kind, m) || []).forEach((e, i) => { if (vis(e.x, e.z, 10)) PL.drawElement(P, g, kind, e, i); });
-    for (const k of ['fuel', 'breaker', 'wallbuy', 'box', 'perk', 'vehicle']) each(k);
+    for (const k of ['fuel', 'breaker', 'oxy', 'wallbuy', 'box', 'perk', 'vehicle']) each(k);
+    if (m.glas && vis(m.glas.x, m.glas.z, 10)) PL.drawElement(P, g, 'glas', m.glas, 0);
     PL.drawElement(P, g, 'spawn', m.spawn, 0);
   }
 

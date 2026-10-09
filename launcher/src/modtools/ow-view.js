@@ -51,7 +51,9 @@
     const v = V();
     v.worldDirty = true;
     const first = !ZS.ow.on;
-    overlay(true, first ? 'Chargement du désert : relief, routes et lieux…' : 'Chargement de la carte…');
+    const moon = O.moon();
+    overlay(true, first || W3.lastWorld !== O.world() ? (moon ? 'Chargement de la Lune : relief, fosse, lieux et ombres du Soleil rasant…' : 'Chargement du désert : relief, routes et lieux…') : 'Chargement de la carte…');
+    W3.lastWorld = O.world();
     v.rebuildAt = 0;
     setTimeout(() => {
       try { W3.rebuild(); } catch (e) { console.error(e); overlay(false); MT.toast(`Monde illisible : ${e.message}`, 'error'); return; }
@@ -279,7 +281,7 @@
       out.push(new THREE.Box3(new THREE.Vector3(e.x - hx, y, e.z - hz), new THREE.Vector3(e.x + hx, y + 0.85, e.z + hz)));
       return out;
     }
-    const o = (objs[s.kind] || [])[s.i];
+    const o = (objs[s.kind] || [])[s.kind === 'glas' ? 0 : s.i];
     if (!fromObj(o)) {
       const y = Number.isFinite(e.y) ? e.y : groundY(e.x, e.z);
       out.push(new THREE.Box3(new THREE.Vector3(e.x - 0.5, y, e.z - 0.5), new THREE.Vector3(e.x + 0.5, y + 2, e.z + 0.5)));
@@ -320,6 +322,8 @@
         break;
       }
       case 'spawn': mesh.scale.set(0.7, 1.8, 0.7); break;
+      case 'oxy': mesh.scale.set(1.3, 1.9, 0.45); mesh.position.z = 0.22; break;
+      case 'glas': mesh.scale.set(4.7, 5.6, 4.7); break;
       default: break;
     }
     g.add(mesh);

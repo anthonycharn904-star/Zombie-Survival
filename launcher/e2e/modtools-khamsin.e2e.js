@@ -57,7 +57,7 @@ async function run(userData) {
 
     // 1. Khamsin dans la liste, ouverture : monde du jeu, outils des cartes ouvertes
     const list = await mt.evaluate(() => ({ ow: MT.ow.ok(), all: MT.gameMaps().list.join(), pub: MT.state.publish.maps.join(), api: ZS.editorApi }));
-    ok(list.ow && list.api >= 3 && list.all === 'bunker7,khamsin' && list.pub === 'bunker7,khamsin', `Khamsin parmi les cartes du jeu et de la publication ${JSON.stringify(list)}`);
+    ok(list.ow && list.api >= 4 && list.all === 'bunker7,khamsin,ombre' && list.pub === 'bunker7,khamsin,ombre', `Khamsin parmi les cartes du jeu et de la publication (puis Ombre éternelle) ${JSON.stringify(list)}`);
     const t0 = Date.now();
     await mt.evaluate(() => { MT.openGameMap('khamsin'); MT.ui.setView('split'); });
     await until(() => MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !!MT.ow.plan.base, null, 120000);
@@ -178,7 +178,7 @@ async function run(userData) {
       `enregistrée dans l’atelier : carte ouverte (base khamsin, sans grille ni vignette), 13 armes, 6 atouts, 1 objet ${JSON.stringify({ saved, keys: Object.keys(fo).join() })}`);
     await mt.evaluate(() => MT.savePublishSet(['bunker7', 'khamsin']));
     const pubSet = JSON.parse(fs.readFileSync(path.join(userData, 'modtools', 'publish.json'), 'utf8'));
-    ok(pubSet.maps.join() === 'bunker7,khamsin' && pubSet.editor === 3, 'liste de publication (Mod Tools 1.3) : editor 3');
+    ok(pubSet.maps.join() === 'bunker7,khamsin' && pubSet.editor === 4, 'liste de publication (Mod Tools 1.3.1) : editor 4');
 
     // 8. partie de test (F5) : les modifications sont dans la partie ; retour
     await mt.evaluate(() => MT.select(null));
@@ -214,7 +214,7 @@ async function run(userData) {
     const x = path.join(TMP, 'paquet');
     await extractZip(path.join(res.dir, `zombie-survival-${res.version}.zip`), x);
     const index = JSON.parse(fs.readFileSync(path.join(x, 'maps', 'index.json'), 'utf8'));
-    ok(index.maps.join() === 'bunker7,khamsin' && index.files.join() === 'khamsin' && index.editor === 3 && fs.existsSync(path.join(x, 'maps', 'khamsin.json')), `paquet publié : maps/khamsin.json, liste editor 3 ${JSON.stringify(index)}`);
+    ok(index.maps.join() === 'bunker7,khamsin' && index.files.join() === 'khamsin' && index.editor === 4 && fs.existsSync(path.join(x, 'maps', 'khamsin.json')), `paquet publié : maps/khamsin.json, liste editor 4 (la liste retire Ombre éternelle : le jeu la suit) ${JSON.stringify(index)}`);
     await closeAll(app);
     // le paquet dans un navigateur : Khamsin vient du fichier (13 armes au mur, une tempête toutes les 6 manches)
     const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.woff2': 'font/woff2' };

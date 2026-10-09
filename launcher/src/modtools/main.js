@@ -64,16 +64,19 @@
     const hI = h('input', { type: 'number', class: 'f-num', value: 30, min: ZS.MAP_MIN, max: ZS.MAP_MAX });
     const all = MT.gameMaps();
     const desert = MT.ow.ok2() ? [['desert', 'Désert vierge (monde ouvert 4 × 3 km, sans les lieux de Khamsin)']] : [];
-    const sources = [['room', 'Une pièce de départ (prête à tester)'], ['empty', 'Terrain vide'], ...desert, ...[...new Set([...S.known.map((k) => k.id), ...Object.keys(all.byId)])].map((id) => [`copy:${id}`, `Copie de « ${(S.known.find((k) => k.id === id) || all.byId[id] || { name: id }).name} »${all.byId[id] && all.byId[id].open ? ' (monde ouvert)' : ''}`])];
+    const lune = MT.ow.okMoon() ? [['lune', 'Lune vierge (monde ouvert 1,4 × 1,4 km, 1/6 g, sans les lieux d’Ombre éternelle)']] : [];
+    const sources = [['room', 'Une pièce de départ (prête à tester)'], ['empty', 'Terrain vide'], ...desert, ...lune, ...[...new Set([...S.known.map((k) => k.id), ...Object.keys(all.byId)])].map((id) => [`copy:${id}`, `Copie de « ${(S.known.find((k) => k.id === id) || all.byId[id] || { name: id }).name} »${all.byId[id] && all.byId[id].open ? ' (monde ouvert)' : ''}`])];
     const srcS = h('select', { class: 'f-select' }, sources.map(([v, l]) => h('option', { value: v }, l)));
     const sizeRow = h('div', null, UI.f.field('Largeur (x)', wI), UI.f.field('Hauteur (z)', hI));
     const NOTE_GRID = '1 case = 1 m. Bunker 7 fait 52 × 31. Vous pourrez redimensionner plus tard (onglet Carte).';
     const NOTE_OPEN = 'Monde ouvert de 4 × 3 km. Relief (T), sol (P), routes (L), bâtiments (B) et éléments de jeu (G) se posent dans le plan ou en 3D. Les routes d’origine et les pyramides restent en place.';
+    const NOTE_MOON = 'La Lune de 1,4 × 1,4 km : la fosse en gradins, la crête, les cratères ; 1/6 g, pas d’air, oxygène 4 min dehors. Relief (T), sol (P), bâtiments lunaires (B) et éléments de jeu (G : postes d’oxygène, Le Glas…) se posent dans le plan ou en 3D. La fosse et ses rampes restent en place.';
     const note = h('p', { class: 'p-note' }, NOTE_GRID);
     srcS.addEventListener('change', () => {
-      const v = srcS.value, open = v === 'desert' || (v.startsWith('copy:') && all.byId[v.slice(5)] && all.byId[v.slice(5)].open);
-      sizeRow.hidden = v.startsWith('copy:') || v === 'desert';
-      note.textContent = open ? NOTE_OPEN : NOTE_GRID;
+      const v = srcS.value, src = v.startsWith('copy:') ? all.byId[v.slice(5)] : null, open = v === 'desert' || v === 'lune' || !!(src && src.open);
+      sizeRow.hidden = v.startsWith('copy:') || v === 'desert' || v === 'lune';
+      const moon = v === 'lune' || !!(src && src.open && MT.ow.world(src) === 'lune');
+      note.textContent = moon ? NOTE_MOON : open ? NOTE_OPEN : NOTE_GRID;
     });
     UI.modal({
       title: 'Nouvelle carte',
@@ -89,11 +92,11 @@
           map.name = name;
           map.thumb = map.open && all.byId[map.base] ? all.byId[map.base].thumb : null;
           map.menuCam = map.menuCam || null;
-        } else if (src === 'desert') {
-          try { map = ZS.openNormalize({ base: 'desert', id: 'desert', name }); } catch (e) { MT.toast(e.message, 'error'); return false; }
+        } else if (src === 'desert' || src === 'lune') {
+          try { map = ZS.openNormalize({ base: src, id: src, name }); } catch (e) { MT.toast(e.message, 'error'); return false; }
           map = MT.copyOfMap(map);
           map.name = name;
-          map.thumb = ZS.ow.baseThumb ? ZS.ow.baseThumb('desert') : null;
+          map.thumb = ZS.ow.baseThumb ? ZS.ow.baseThumb(src) : null;
           map.menuCam = null;
         } else if (src === 'empty') {
           const grid = Array.from({ length: H }, () => ' '.repeat(W));
@@ -110,6 +113,7 @@
         MT.setTool(src === 'empty' ? 'build' : 'select');
         if (src === 'empty') { S.opts.build.shape = 'room'; MT.emit('tool-opts'); MT.toast('Glissez dans le plan pour tracer une première pièce.', 'info'); }
         if (src === 'desert') MT.toast('Désert vierge : T relief · P sol · L routes · B bâtiments · G éléments de jeu (départ, armes, atouts, boîte…).', 'info');
+        if (src === 'lune') MT.toast('Lune vierge : T relief · P sol · B bâtiments lunaires · G éléments de jeu (départ, armes, atouts, boîte, disjoncteurs, oxygène, Le Glas…).', 'info');
         return true;
       } }],
     });

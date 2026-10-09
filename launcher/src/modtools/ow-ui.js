@@ -10,7 +10,9 @@
   const OU = (O.ui = {});
   const { field, num, slider, select, check, text, seg, btn, section } = UI.f;
   const commit = (label, kind, fn, detail) => UI.edit.commit(label, kind, fn, detail);
-  const ELKINDS = ['wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker'];
+  const ELKINDS_DESERT = ['wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker'];
+  const ELKINDS_MOON = ['wallbuy', 'perk', 'box', 'breaker', 'oxy'];
+  const elKinds = () => (O.moon() ? ELKINDS_MOON : ELKINDS_DESERT);
   const FACE_NAME = (f) => (f[0] === 1 ? 'est' : f[0] === -1 ? 'ouest' : f[1] === 1 ? 'sud' : 'nord');
   const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toLocaleString('fr-BE', { maximumFractionDigits: d }) : '—');
   const where = (x, z) => { const w = O.where(x, z); return w ? ` · ${w}` : ''; };
@@ -53,7 +55,10 @@
         field('Force', slider({ value: b.strength, min: 0.05, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)} %`, onCommit: (v) => { b.strength = v; } })),
         h('p', { class: 'p-note' }, b.op === 'flatten' ? 'Aplanir : vers la hauteur du point où l’on commence à peindre.' : b.op === 'smooth' ? 'Adoucir : arrondit les creux et les bosses.' : b.op === 'reset' ? 'Effacer : rend au terrain sa forme d’origine (celle du jeu).' : 'Clic droit dans le plan : l’inverse (en 3D, il sert à regarder). Tenir le pinceau immobile continue de monter ou de creuser.')),
       section('Protégé',
-        h('p', { class: 'p-note' }, S.map.base === 'desert' ? 'Les routes du désert et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus).' : 'Les sept lieux de Khamsin, ses routes et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus) : leurs bâtiments y sont posés.'),
+        h('p', { class: 'p-note' }, S.map.base === 'desert' ? 'Les routes du désert et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus).'
+          : S.map.base === 'lune' ? 'La fosse, ses gradins et ses rampes ne bougent pas (le cercle du pinceau devient rouge au-dessus) ; le bord de la carte non plus.'
+            : S.map.base === 'ombre' ? 'La fosse, ses gradins, ses rampes et les lieux d’Ombre éternelle (base, plateau, tour, crête, dépôt) ne bougent pas : le cercle du pinceau devient rouge au-dessus.'
+              : 'Les sept lieux de Khamsin, ses routes et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus) : leurs bâtiments y sont posés.'),
         h('p', { class: 'p-note' }, 'Les routes et bâtiments ajoutés suivent : le terrain est aplani sous eux après chaque coup de pinceau.')),
     ];
   }
@@ -63,7 +68,7 @@
       type: 'button', class: `kind-btn ${o.bio === id ? 'on' : ''}`, onclick: () => { o.bio = id; MT.emit('tool-opts'); },
     }, h('i', { style: { background: col, borderRadius: '2px' } }), h('span', null, name))));
     return [
-      section('Sol', sw, h('p', { class: 'p-note' }, 'Couleur du terrain et conduite des véhicules (le sable damé et les graviers roulent mieux que le sable). Clic droit dans le plan : sol d’origine. L’eau, les routes et les pistes ne se peignent pas.')),
+      section('Sol', sw, h('p', { class: 'p-note' }, O.moon() ? 'Couleur du régolithe (le relief garde ses pentes : une paroi trop raide redevient de la roche). Clic droit dans le plan : sol d’origine.' : 'Couleur du terrain et conduite des véhicules (le sable damé et les graviers roulent mieux que le sable). Clic droit dans le plan : sol d’origine. L’eau, les routes et les pistes ne se peignent pas.')),
       section('Pinceau', field('Taille', slider({ value: o.size, min: 4, max: 160, step: 1, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => { o.size = Math.round(v); MT.emit('preview'); } }), '[ et ] pour changer')),
     ];
   }
@@ -87,13 +92,13 @@
       section('Catalogue', list),
       section('Pose',
         field('Orientation', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, ['entrée au sud', 'entrée à l’ouest', 'entrée au nord', 'entrée à l’est'][o.rot]), btn('Tourner', () => O.terrain.rotateTool(1), { ic: 'rotate', title: 'R' }))),
-        h('p', { class: 'p-note' }, 'Le terrain est aplani sous le bâtiment. Murs, portes, fenêtres et toits sont pleins : on y entre, les zombies en font le tour, on pose des armes sur ses murs (outil Éléments).'),
-        h('p', { class: 'p-note' }, `${(S.map.buildings || []).length} sur ${ZS.OPEN_LIMITS.buildings}. Pas sur un lieu de la base, une route d’origine ni dans l’eau.`)),
+        h('p', { class: 'p-note' }, `Le terrain est aplani sous le bâtiment. Murs, portes, fenêtres et toits sont pleins : on y entre, les zombies en font le tour, on pose des armes sur ses murs (outil Éléments).${O.moon() ? ' Sur la Lune, un module n’est pas pressurisé : l’oxygène ne s’y recharge pas (seulement dans la base Séléné et aux postes d’oxygène).' : ''}`),
+        h('p', { class: 'p-note' }, `${(S.map.buildings || []).length} sur ${ZS.OPEN_LIMITS.buildings}. ${O.moon() ? 'Pas sur un lieu de la base, ni dans la fosse ou sur son bord.' : 'Pas sur un lieu de la base, une route d’origine ni dans l’eau.'}`)),
     ];
   }
   function selectPanel() {
     const m = S.map;
-    const rows = ELKINDS.concat(O.ok2() ? ['building', 'road', 'loc'] : []).map((k) => {
+    const rows = elKinds().concat(O.ok2() ? (O.moon() ? ['building', 'loc'] : ['building', 'road', 'loc']) : []).map((k) => {
       const arr = O.arr(k), cur = S.sel && S.sel.kind === k ? S.sel.i : -1;
       const go = (d) => {
         if (!arr.length) return;
@@ -106,22 +111,30 @@
         h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Précédent', disabled: !arr.length, onclick: () => go(-1) }, UI.icon('up')),
         h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Suivant', disabled: !arr.length, onclick: () => go(1) }, UI.icon('down')));
     });
+    if (O.moon()) {
+      rows.push(h('div', { class: 'ow-count' },
+        h('i', { style: { background: O.COLOR.glas } }), h('span', null, 'Le Glas'), h('b', null, m.glas ? '1' : '0'),
+        h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Montrer', disabled: !m.glas, onclick: () => { MT.select({ kind: 'glas' }); OU.focusSel(); } }, UI.icon('eye'))));
+    }
     return [
       section('Éléments de la carte', ...rows,
         h('div', { class: 'p-actions' },
           btn('Départ du joueur', () => { MT.select({ kind: 'spawn' }); OU.focusSel(); }, { ic: 'walk' }),
           btn(`Tous les objets (${m.props.length})`, () => { if (m.props.length) MT.select({ kind: 'prop', list: m.props.map((_, i) => i) }); }, { disabled: !m.props.length }))),
       section('Carte ouverte',
-        h('p', { class: 'p-note' }, O.ok2()
-          ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; les lieux, les routes d’origine et les pyramides restent fixes. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
-          : `Relief, routes, bâtiments, sanctuaire et quête viennent du jeu (base : ${baseName(m)}). Vous placez ici les éléments de jeu, les objets de la bibliothèque, le départ et les règles.`),
-        h('p', { class: 'p-note' }, 'Plan : molette pour le zoom (de 4 km à quelques mètres), double-clic pour y aller en 3D. 3D : ZQSD/WASD pour voler (Maj : très vite), molette pour avancer vers le curseur.')),
+        h('p', { class: 'p-note' }, O.moon()
+          ? `Base : ${baseName(m)}. ${m.base === 'lune' ? 'Le relief de la Lune (fosse et rampes, crête, cratères) sans les lieux d’Ombre éternelle' : 'La base Séléné, la fosse, le pont, le convoyeur, la catapulte, la crête solaire, la tour, le plateau d’extraction, le dépôt et l’anomalie, la quête de l’atterrisseur'} viennent du jeu ; la fosse${m.base === 'lune' ? '' : ' et les lieux'} restent fixes. Ici : relief (T), sol (P), bâtiments (B), éléments de jeu (G : départ, armes, atouts, boîte, disjoncteurs, postes d’oxygène, Le Glas, lieux), objets (O), règles.`
+          : O.ok2()
+            ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; les lieux, les routes d’origine et les pyramides restent fixes. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
+            : `Relief, routes, bâtiments, sanctuaire et quête viennent du jeu (base : ${baseName(m)}). Vous placez ici les éléments de jeu, les objets de la bibliothèque, le départ et les règles.`),
+        h('p', { class: 'p-note' }, `Plan : molette pour le zoom (de ${O.moon() ? '1,4 km' : '4 km'} à quelques mètres), double-clic pour y aller en 3D. 3D : ZQSD/WASD pour voler (Maj : très vite), molette pour avancer vers le curseur.`)),
     ];
   }
-  const baseName = (m) => (m.base === 'khamsin' ? 'Khamsin' : m.base === 'desert' ? 'Désert vierge' : m.base);
+  const baseName = (m) => ({ khamsin: 'Khamsin', desert: 'Désert vierge', ombre: 'Ombre éternelle', lune: 'Lune vierge' }[m.base] || m.base);
 
   function elementsPanel() {
     const o = S.opts.ow;
+    if (!O.KIND_KEYS.includes(o.kind)) o.kind = 'wallbuy';          // genre d'un autre monde (véhicule sur la Lune…)
     const kinds = h('div', { class: 'kinds' }, O.KIND_KEYS.map((k, i) => h('button', {
       type: 'button', class: `kind-btn ${o.kind === k ? 'on' : ''}`, title: `${O.LABEL[k]} (${i + 1})`,
       onclick: () => { o.kind = k; MT.emit('tool-opts'); MT.emit('preview'); },
@@ -139,7 +152,9 @@
         break;
       case 'fuel': opts.push(count('fuel')); break;
       case 'loc': opts.push(count('loc')); break;
-      case 'breaker': opts.push(faceRow(), count('breaker'), h('p', { class: 'p-note' }, 'Le courant revient quand tous les disjoncteurs de la carte sont enclenchés (F maintenue 4 s chacun). Aucun disjoncteur : cochez « Courant allumé dès le départ » (onglet Carte), sinon atouts électriques, sanctuaire et batterie de l’avion restent sans courant.')); break;
+      case 'breaker': opts.push(faceRow(), count('breaker'), h('p', { class: 'p-note' }, `Le courant revient quand tous les disjoncteurs de la carte sont enclenchés (F maintenue 4 s chacun). Aucun disjoncteur : cochez « Courant allumé dès le départ » (onglet Carte), sinon ${O.moon() ? 'atouts électriques, Le Glas, ascenseur de la tour et atterrisseur restent' : 'atouts électriques, sanctuaire et batterie de l’avion restent'} sans courant.`)); break;
+      case 'oxy': opts.push(faceRow(), count('oxy'), h('p', { class: 'p-note' }, 'Dehors, l’oxygène dure 4 minutes ; il se recharge seul dans la base Séléné. Un poste rend le plein (4 min) pour 250 points. Répartissez-en entre les lieux éloignés de la base.')); break;
+      case 'glas': opts.push(faceRow(), h('p', { class: 'p-note' }, S.map.glas ? 'La carte a déjà sa cloche : un clic la déplace ici.' : 'Pas encore de cloche sur cette carte.'), h('p', { class: 'p-note' }, 'Mêmes paliers qu’ailleurs (Tocsin, Bourdon, Glas). Sur la Lune, sans air, on ne l’entend pas dehors.')); break;
       default: break;
     }
     return [section('Élément', kinds, h('p', { class: 'p-note' }, O.HELP[o.kind])), opts.length ? section('Réglages', ...opts) : null];
@@ -228,7 +243,15 @@
       case 'breaker': return [head('Disjoncteur', `${s.i + 1} sur ${m.breakers.length} · face ${FACE_NAME([e.nx, e.nz])}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         field('Nom', text({ value: e.name, maxLength: 40, onCommit: (v) => set('Nom du disjoncteur', (x) => { x.name = v.trim().slice(0, 40) || x.name; }) }), 'Affiché quand on le vise : « Maintenez F pour enclencher le disjoncteur (…) »'),
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME([e.nx, e.nz])), rotBtn())),
-        h('p', { class: 'p-note' }, `Tous enclenchés (${m.breakers.length}) : le courant revient (atouts, sanctuaire, batterie de l’avion, camion blindé).`))];
+        h('p', { class: 'p-note' }, `Tous enclenchés (${m.breakers.length}) : le courant revient (${O.moon() ? 'atouts, Le Glas, ascenseur de la tour, projecteurs, atterrisseur' : 'atouts, sanctuaire, batterie de l’avion, camion blindé'}).`))];
+      case 'oxy': return [head('Poste d’oxygène', `n° ${s.i + 1} sur ${(m.oxy || []).length} · face ${FACE_NAME(e.face)}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
+        field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME(e.face)), rotBtn())),
+        h('p', { class: 'p-note' }, 'F : une bouteille neuve (4 min d’oxygène) pour 250 points. Dans la base Séléné, inutile : l’air recharge seul.'),
+        h('p', { class: 'p-note' }, 'Glissez-le pour le changer de mur : il se recale dos au mur le plus proche.'))];
+      case 'glas': return [head('Le Glas', `face ${FACE_NAME(e.face)}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
+        field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME(e.face)), rotBtn())),
+        h('p', { class: 'p-note' }, 'La cloche qui reforge les armes : muette sans courant, trois paliers (5 000, +10 000, +20 000 points). Une seule par carte.'),
+        h('p', { class: 'p-note' }, 'Glissez-la sur un autre sol plat et libre de 5 × 5 m.'))];
       default: return [];
     }
   };
@@ -258,12 +281,16 @@
         field('Surtitre', text({ value: m.eyebrow, maxLength: 80, onCommit: (v) => set('Surtitre', (mm) => { mm.eyebrow = v.trim() || mm.eyebrow; }) }), 'Au-dessus du nom, dans le dossier du menu'),
         field('Consigne', h('textarea', { class: 'f-text', rows: 3, maxLength: 300, value: m.lead, onchange: (e) => set('Consigne', (mm) => { mm.lead = e.target.value.slice(0, 300) || mm.lead; }) }), 'Le but de la partie, dans le dossier du menu'),
         field('Auteur', text({ value: m.author, maxLength: 60, placeholder: 'Votre pseudo', onCommit: (v) => set('Auteur', (mm) => { mm.author = v.trim(); }) })),
-        field('Monde', h('span', { class: 'f-hint' }, `${baseName(m)} · ${fmt(m.w / 1000, 1)} × ${fmt(m.h / 1000, 1)} km · ${m.base === 'desert' ? 'relief, Nil, oasis, routes d’origine et pyramides du jeu, sans les lieux' : 'relief, routes, lieux, sanctuaire et quête du jeu'}`))),
+        field('Monde', h('span', { class: 'f-hint' }, `${baseName(m)} · ${fmt(m.w / 1000, 1)} × ${fmt(m.h / 1000, 1)} km · ${{
+          desert: 'relief, Nil, oasis, routes d’origine et pyramides du jeu, sans les lieux',
+          lune: 'relief de la Lune (fosse, crête, cratères), 1/6 g, sans air ni son dehors, oxygène 4 min ; sans les lieux',
+          ombre: 'lieux, quête de l’atterrisseur, dépôt et anomalie du jeu ; 1/6 g, sans air ni son dehors, oxygène 4 min',
+        }[m.base] || 'relief, routes, lieux, sanctuaire et quête du jeu'}`))),
       section('Règles de la partie',
         field('Points au départ', num({ value: r.startPoints, min: 0, max: 1000000, step: 100, unit: 'pts', digits: 0, onCommit: (v) => set('Points au départ', (mm) => { mm.rules.startPoints = Math.round(v); }) })),
         field('Arme de départ', select({ value: r.startWeapon, options: Object.entries(ZS.WEAPONS).map(([id, w]) => [id, w.name]), onChange: (v) => set('Arme de départ', (mm) => { mm.rules.startWeapon = v; }) })),
         check({ checked: r.powerOn, label: 'Courant allumé dès le départ', onChange: (v) => set('Courant au départ', (mm) => { mm.rules.powerOn = v; }) }),
-        field('Tempêtes de sable', select({ value: r.storms, options: [[0, 'Aucune'], ...[2, 3, 4, 5, 6, 8, 10].map((n) => [n, `Toutes les ${n} manches${n === 4 ? ' (Khamsin)' : ''}`])], onChange: (v) => set('Tempêtes', (mm) => { mm.rules.storms = parseInt(v, 10) || 0; }) }), 'Sans tempête : ni Rôdeurs, ni fragments du Sceptre (quête facultative)'),
+        O.moon() ? null : field('Tempêtes de sable', select({ value: r.storms, options: [[0, 'Aucune'], ...[2, 3, 4, 5, 6, 8, 10].map((n) => [n, `Toutes les ${n} manches${n === 4 ? ' (Khamsin)' : ''}`])], onChange: (v) => set('Tempêtes', (mm) => { mm.rules.storms = parseInt(v, 10) || 0; }) }), 'Sans tempête : ni Rôdeurs, ni fragments du Sceptre (quête facultative)'),
         field('Armes de la boîte', UI.panels.boxWeapons(r), 'Aucune cochée : toutes les armes habituelles')),
       section('Menu du jeu',
         thumb,
@@ -286,7 +313,7 @@
             MT.toast('Le menu du jeu montrera cette vue (avec un léger balancement).', 'ok');
           }, { ic: 'camera', disabled: !MT.v3.visible }),
           m.menuCam && !m.menuCam.auto ? btn('Automatique', () => set('Caméra du menu', (mm) => { mm.menuCam = null; })) : null),
-        h('p', { class: 'p-note' }, m.menuCam && !m.menuCam.auto ? 'Caméra du menu réglée à la main.' : 'Caméra du menu automatique : depuis le camp, vers le plateau des pyramides.')),
+        h('p', { class: 'p-note' }, m.menuCam && !m.menuCam.auto ? 'Caméra du menu réglée à la main.' : O.moon() ? 'Caméra du menu automatique : au-dessus du dépôt, vers la fosse et la Terre.' : 'Caméra du menu automatique : depuis le camp, vers le plateau des pyramides.')),
     ];
   };
 

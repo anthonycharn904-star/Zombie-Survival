@@ -1542,6 +1542,7 @@
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
       ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
       ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, effacer ; clic droit dans le plan : l’inverse ; Échap : annuler le coup) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · les sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
+      ['Carte ouverte (la Lune)', 'Ombre éternelle et Lune vierge (1,4 × 1,4 km, 1/6 g, sans air) · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 disjoncteur · 6 poste d’oxygène · 7 Le Glas, un seul · 8 lieu nommé) · T relief · P sol (régolithe, éjectas, roche, glace…) · B bâtiments lunaires (module, hangar, abri, réservoir, conteneur, panneaux solaires) · pas de routes ni de véhicules · la fosse, ses rampes et les lieux d’Ombre éternelle restent fixes · nouvelle carte « Lune vierge » : la Lune sans les lieux'],
     ];
     UI.modal({
       title: 'Aide des Mod Tools', wide: true,

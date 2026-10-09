@@ -18,16 +18,18 @@ const MAX_TEX_BYTES = 12 * 1024 * 1024;
 const MAX_MODEL_BYTES = 24 * 1024 * 1024;
 const KEEP_VERSIONS = 5;
 /* Cartes intégrées au fichier du jeu (pas de fichier dans maps/ tant qu'on ne les modifie pas).
-   Khamsin (jeu 2.0.0) : monde ouvert ; son fichier, s'il y en a un, porte seulement ce que les
-   Mod Tools changent (éléments, objets, règles). */
-const BUILTIN_MAPS = ['bunker7', 'khamsin'];
-const BUILTIN_NAMES = { bunker7: 'Bunker 7', khamsin: 'Khamsin' };
-/* Une liste écrite avant Khamsin (launcher 1.2 ou plus ancien) ne la nomme pas : le jeu 2.0.0 la
-   met de toute façon en deuxième place. Le paquet fait de même, pour que le menu soit celui-là. */
-function withKhamsin(ids) {
-  if (ids.includes('khamsin')) return ids;
+   Khamsin et Ombre éternelle (jeu 2.0.0) : mondes ouverts ; leur fichier, s'il y en a un, porte
+   seulement ce que les Mod Tools changent (éléments, objets, règles, relief, sol, bâtiments). */
+const BUILTIN_MAPS = ['bunker7', 'khamsin', 'ombre'];
+const BUILTIN_NAMES = { bunker7: 'Bunker 7', khamsin: 'Khamsin', ombre: 'Ombre éternelle' };
+/* Une liste écrite avant Khamsin (editor < 3 : launcher 1.2 ou plus ancien) ne la nomme pas, une
+   liste écrite avant Ombre éternelle (editor < 4 : launcher 1.3.0) ne nomme pas la Lune : le jeu
+   2.0.0 les met de toute façon en deuxième et troisième places. Le paquet fait de même, pour que
+   le menu soit celui-là. Une liste plus récente est suivie : l'auteur a pu les retirer. */
+function withBuiltins(ids, editor) {
   const out = ids.slice();
-  out.splice(Math.min(1, out.length), 0, 'khamsin');
+  if (!(editor >= 3) && !out.includes('khamsin')) out.splice(Math.min(1, out.length), 0, 'khamsin');
+  if (!(editor >= 4) && !out.includes('ombre')) out.splice(Math.min(2, out.length), 0, 'ombre');
   return out;
 }
 /* Une carte : une grille (cartes du jeu 1.x), ou une carte ouverte (base d'un monde ouvert). */
@@ -188,7 +190,7 @@ class Workspace {
   setPublishSet(v) {
     const maps = Array.isArray(v && v.maps) ? [...new Set(v.maps.filter((id) => typeof id === 'string' && MAP_ID.test(id)))].slice(0, 100) : [];
     if (!maps.length) throw new Error('Le jeu doit garder au moins une carte.');
-    writeAtomic(this.sub('publish.json'), JSON.stringify({ maps, updated: new Date().toISOString(), editor: 3 }, null, 2));
+    writeAtomic(this.sub('publish.json'), JSON.stringify({ maps, updated: new Date().toISOString(), editor: 4 }, null, 2));
     return true;
   }
   /* Cartes à mettre dans le paquet du jeu : la liste de l'atelier (ou, à défaut, celle du
@@ -198,11 +200,11 @@ class Workspace {
   publishPlan(installedDir) {
     const set = this.getPublishSet();
     let ids = set ? set.maps : null;
-    if (ids && ids.length && set.editor < 3) ids = withKhamsin(ids);
+    if (ids && ids.length) ids = withBuiltins(ids, set.editor);
     if (!ids || !ids.length) {
       const idx = installedDir ? readJsonFile(path.join(installedDir, 'maps', 'index.json')) : null;
       ids = idx && Array.isArray(idx.maps) ? idx.maps.filter((id) => typeof id === 'string' && MAP_ID.test(id)) : BUILTIN_MAPS.slice();
-      if (idx && Array.isArray(idx.maps) && !(Number(idx.editor) >= 3)) ids = withKhamsin(ids);
+      if (idx && Array.isArray(idx.maps)) ids = withBuiltins(ids, Number(idx.editor) || 0);
     }
     const index = [], files = [], missing = [];
     for (const id of ids) {

@@ -19,12 +19,18 @@
   S.opts.ow.road = { kind: 'track', w: 6 };
   S.opts.ow.bld = { type: 'maison', rot: 0 };
   TR.OPS = [['raise', 'Monter'], ['lower', 'Creuser'], ['flatten', 'Aplanir'], ['smooth', 'Adoucir'], ['reset', 'Effacer']];
-  TR.PAINT = {
+  const PAINT_DESERT = {
     SAND: ['Sable', '#d9a873'], PAD: ['Sable tassé', '#d8b48a'], TRACK: ['Sol damé', '#c49a66'], ROCK: ['Roche', '#8f7a64'], WADI: ['Graviers d’oued', '#b39674'],
     PLATEAU: ['Calcaire', '#e8d3ad'], OASIS: ['Herbe (oasis)', '#7a8f45'], FIELD: ['Champs', '#5d7d36'], MUD: ['Boue', '#6b5840'],
   };
+  const PAINT_MOON = {
+    SAND: ['Régolithe', '#8b8883'], DARKSOIL: ['Régolithe sombre', '#55524e'], EJECTA: ['Éjectas clairs', '#bdb9b2'], ROCK: ['Roche', '#6d6a66'],
+    PAD: ['Sol damé', '#9c9891'], BENCH: ['Gradin (régolithe tassé)', '#7c7873'], ICE: ['Glace sale', '#a3b3bf'],
+  };
+  /* Matières du sol du monde de la carte (le moteur dit lesquelles existent : ZS.ow.PAINTS). */
+  Object.defineProperty(TR, 'PAINT', { get: () => (O.moon() ? PAINT_MOON : PAINT_DESERT), configurable: true });
   TR.tools = [
-    { id: 'terrain', name: 'Relief', key: 'KeyT', label: 'T', hint: 'Glisser : pinceau · clic droit (plan) : l’inverse · [ et ] : taille · Échap : annuler le coup · les lieux, routes d’origine et pyramides ne bougent pas' },
+    { id: 'terrain', name: 'Relief', key: 'KeyT', label: 'T', hint: 'Glisser : pinceau · clic droit (plan) : l’inverse · [ et ] : taille · Échap : annuler le coup · les lieux de la base ne bougent pas (désert : routes d’origine et pyramides ; Lune : la fosse et ses rampes)' },
     { id: 'ground', name: 'Sol', key: 'KeyP', label: 'P', hint: 'Glisser : peindre le sol · clic droit (plan) : sol d’origine · [ et ] : taille' },
     { id: 'roads', name: 'Routes', key: 'KeyL', label: 'L', hint: 'Clic : un point · double-clic ou Entrée : finir · Retour arrière : enlever le dernier · Échap : annuler' },
     { id: 'buildings', name: 'Bâtiments', key: 'KeyB', label: 'B', hint: 'Clic : poser · R : tourner d’un quart de tour · Alt+clic : pipette' },
@@ -39,8 +45,8 @@
       const sMeters = (op === 'raise' || op === 'lower' ? b.strength * 0.9 : b.strength * 0.35) * k;
       r = ZS.ow.sculpt(op, x, z, b.size, sMeters, st.target);
     } else {
-      const p = S.opts.ow.paint;
-      r = ZS.ow.paint(st.erase ? -1 : ZS.ow.PAINTS.find((q) => q.id === p.bio).v, x, z, p.size);
+      const p = S.opts.ow.paint, P = ZS.ow.PAINTS, q = P.find((t) => t.id === p.bio) || P[0];
+      r = ZS.ow.paint(st.erase ? -1 : q.v, x, z, p.size);
     }
     st.rect = O.unionRect(st.rect, r);
     st.live = O.unionRect(st.live, r);
@@ -288,7 +294,7 @@
       g.beginPath(); g.arc(sx, sy, pv.brush.r * Z, 0, Math.PI * 2); g.stroke();
       g.setLineDash([3, 4]); g.beginPath(); g.arc(sx, sy, pv.brush.r * Z * 0.3, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
       if (S.tool === 'terrain' && prot < 0.05) {
-        const t = 'Protégé : lieu, route d’origine ou pyramide';
+        const t = O.moon() ? 'Protégé : fosse, rampes ou lieu de la base' : 'Protégé : lieu, route d’origine ou pyramide';
         g.font = '600 13px "Barlow Condensed", "Arial Narrow", sans-serif';
         const tw = g.measureText(t).width, tx = sx - tw / 2, ty = sy - pv.brush.r * Z - 14;
         g.fillStyle = 'rgba(7,9,10,0.8)'; g.fillRect(tx - 4, ty - 9, tw + 8, 18);

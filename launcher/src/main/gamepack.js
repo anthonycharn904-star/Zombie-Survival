@@ -79,8 +79,9 @@ function collectPackage({ htmlPath, folderPath, version, libsDir, notes = [], ma
       withFile.push(f.id);
     }
     // maps : ordre du menu ; files : cartes fournies en fichier (les autres sont intégrées au jeu) ;
-    // editor 3 : la liste vient d'un launcher qui connaît Khamsin (le jeu la suit telle quelle)
-    files.push({ name: 'maps/index.json', data: Buffer.from(JSON.stringify({ maps: ids, files: withFile, editor: 3 }, null, 2), 'utf8') });
+    // editor 3 : la liste vient d'un launcher qui connaît Khamsin, 4 : qui connaît aussi Ombre
+    // éternelle (le jeu la suit telle quelle)
+    files.push({ name: 'maps/index.json', data: Buffer.from(JSON.stringify({ maps: ids, files: withFile, editor: 4 }, null, 2), 'utf8') });
   }
   files.push({
     name: 'game.json',
