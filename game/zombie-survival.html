@@ -25883,8 +25883,9 @@ function owFlattenPad(p) {
     if (w > 0.9 && !p.keep) bio[k] = OWB.PAD;
   });
 }
-/* Pose une route : ligne lissée, profil en long (moyenne glissante, pente bornée), terrain aplani. */
-function owLayRoad(r) {
+/* Pose une route : ligne lissée, profil en long (moyenne glissante, pente bornée), terrain aplani.
+   mask (routes des Mod Tools) : 0 là où le terrain ne doit pas bouger (lieux, routes du jeu). */
+function owLayRoad(r, mask = null) {
   const line = owSmoothLine(r.pts, 4);
   const N = line.pts.length;
   const raw = new Float32Array(N), prof = new Float32Array(N);
@@ -25931,8 +25932,9 @@ function owLayRoad(r) {
     const d = bestD[k], py = profAt(bestS[k]), bl = blend + Math.abs(py - H[k]) * 2;
     bestD[k] = Infinity;
     if (d >= half + bl) continue;
-    H[k] = lerp(H[k], py, 1 - owSmoothstep(half, half + bl, d));
-    if (d < r.w / 2 + 0.5 && bio[k] !== OWB.RIVER) bio[k] = bioK;
+    const m = mask ? mask[k] / 255 : 1;
+    H[k] = lerp(H[k], py, (1 - owSmoothstep(half, half + bl, d)) * m);
+    if (d < r.w / 2 + 0.5 && bio[k] !== OWB.RIVER && m > 0.5) bio[k] = bioK;
   }
   return { id: r.id, kind: r.kind, w: r.w, line, prof, profAt };
 }
@@ -26009,7 +26011,7 @@ function owChunk(L, cx, cz, make) {
 const owIdx = (cx, cz) => ((cz & 63) << 6) | (cx & 63);
 /* Écrit une case. o : { base, top, lo, hi, ceil, roof, dir, mat, door } (absolus, en m). */
 function owSet(L, cx, cz, kind, o) {
-  if (OWLOG.on) owLogCell(L, cx, cz);
+  if (OWJ.cur) owLogCell(L, cx, cz);
   const ch = owChunk(L, cx, cz, true);
   if (!ch) return;
   const i = owIdx(cx, cz);
@@ -26091,27 +26093,32 @@ function owRasterPyramids() {
 }
 
 /* ------------------------------------------------- Journal des cases --
-   Les éléments de la carte (armes au mur, atouts, boîte, jerricans, disjoncteurs, objets posés)
-   écrivent leurs cases dans la grille des solides par-dessus les lieux. Pendant qu'ils se
-   construisent, chaque case touchée garde ici son état d'avant : on peut les retirer (nouveau
-   chargement, Mod Tools) sans refaire les lieux, et retrouver le sol des lieux sous eux. */
-const OWLOG = { on: false, cells: new Map(), created: [] };
+   Ce que la carte pose par-dessus les lieux écrit ses cases dans la grille des solides : d'abord
+   les bâtiments ajoutés (journal B), puis les éléments (armes au mur, atouts, boîte, jerricans,
+   disjoncteurs, objets posés : journal E). Pendant qu'ils se construisent, chaque case touchée
+   garde ici son état d'avant : on peut les retirer (nouveau chargement, Mod Tools) sans refaire les
+   lieux, et retrouver le sol sous eux. Le « sol de base » (owBase*) est celui d'avant les éléments,
+   bâtiments ajoutés compris : on pose une arme sur le mur d'un bâtiment ajouté. */
+const owJournal = () => ({ cells: new Map(), created: [] });
+const OWLOG = owJournal();              // éléments
+const OWLOGB = owJournal();             // bâtiments ajoutés
+const OWJ = { cur: null };              // journal ouvert (owSet y écrit)
 const owLogKey = (L, cx, cz) => (L === OW.under ? 0x10000000 : 0) + cz * 4096 + cx;
-function owLogCell(L, cx, cz) {
-  if (cx < 0 || cz < 0 || cx >= 4096 || cz >= 3072) return;
+function owLogCell(L, cx, cz, J = OWJ.cur) {
+  if (!J || cx < 0 || cz < 0 || cx >= 4096 || cz >= 3072) return;
   const key = owLogKey(L, cx, cz);
-  if (OWLOG.cells.has(key)) return;
+  if (J.cells.has(key)) return;
   const ci = (cz >> 6) * L.CW + (cx >> 6), ch = L.chunks[ci];
-  if (!ch) { OWLOG.created.push({ L, ci }); OWLOG.cells.set(key, { L, cx, cz, kind: L.def, none: true }); return; }
+  if (!ch) { J.created.push({ L, ci }); J.cells.set(key, { L, cx, cz, kind: L.def, none: true }); return; }
   const i = owIdx(cx, cz);
-  OWLOG.cells.set(key, { L, cx, cz, kind: ch.kind[i], base: ch.base[i], top: ch.top[i], lo: ch.lo[i], hi: ch.hi[i], ceil: ch.ceil[i], roof: ch.roof[i], dir: ch.dir[i], mat: ch.mat[i], door: ch.door[i] });
+  J.cells.set(key, { L, cx, cz, kind: ch.kind[i], base: ch.base[i], top: ch.top[i], lo: ch.lo[i], hi: ch.hi[i], ceil: ch.ceil[i], roof: ch.roof[i], dir: ch.dir[i], mat: ch.mat[i], door: ch.door[i] });
 }
-function owLogBegin() { OWLOG.on = true; }
-function owLogEnd() { OWLOG.on = false; }
+function owLogBegin(J = OWLOG) { OWJ.cur = J; }
+function owLogEnd() { OWJ.cur = null; }
 /* Retire tout ce qui a été écrit pendant le journal : les cases reprennent leur état d'avant. */
-function owLogUndo() {
-  OWLOG.on = false;
-  for (const c of OWLOG.cells.values()) {
+function owLogUndo(J = OWLOG) {
+  if (OWJ.cur === J) OWJ.cur = null;
+  for (const c of J.cells.values()) {
     if (c.none) continue;
     const ch = owChunk(c.L, c.cx, c.cz);
     if (!ch) continue;
@@ -26119,11 +26126,13 @@ function owLogUndo() {
     ch.kind[i] = c.kind; ch.base[i] = c.base; ch.top[i] = c.top; ch.lo[i] = c.lo; ch.hi[i] = c.hi;
     ch.ceil[i] = c.ceil; ch.roof[i] = c.roof; ch.dir[i] = c.dir; ch.mat[i] = c.mat; ch.door[i] = c.door;
   }
-  for (const { L, ci } of OWLOG.created) if (L.chunks[ci]) { L.chunks[ci] = null; L.n--; }
-  OWLOG.cells.clear();
-  OWLOG.created.length = 0;
+  for (const { L, ci } of J.created) if (L.chunks[ci]) { L.chunks[ci] = null; L.n--; }
+  J.cells.clear();
+  J.created.length = 0;
 }
-/* État d'une case sans les éléments (le sol des lieux). */
+/* Éléments puis bâtiments retirés (dans cet ordre : une arme peut être sur le mur d'un bâtiment). */
+function owLogUndoAll() { owLogUndo(OWLOG); owLogUndo(OWLOGB); }
+/* État d'une case sans les éléments (le sol des lieux et des bâtiments ajoutés). */
 function owBaseRec(L, cx, cz) {
   const c = OWLOG.cells.get(owLogKey(L, cx, cz));
   if (c) return c;
@@ -26131,6 +26140,13 @@ function owBaseRec(L, cx, cz) {
   if (!ch) return null;
   const i = owIdx(cx, cz);
   return { kind: ch.kind[i], base: ch.base[i], top: ch.top[i], lo: ch.lo[i], hi: ch.hi[i], ceil: ch.ceil[i], roof: ch.roof[i], dir: ch.dir[i], mat: ch.mat[i], door: ch.door[i] };
+}
+/* État d'une case sans les bâtiments ajoutés ni les éléments (les lieux de la base seuls). */
+function owPlaceRec(L, cx, cz) {
+  const key = owLogKey(L, cx, cz);
+  const c = OWLOGB.cells.get(key) || OWLOG.cells.get(key);
+  if (c) return c;
+  return owBaseRec(L, cx, cz);
 }
 /* Sol sous un point sans les éléments (comme owGroundAt). */
 function owBaseGround(layer, x, z) {
@@ -26755,17 +26771,33 @@ function owUpdateTerrainLod(force) {
 }
 
 /* ---- Routes : rubans posés sur le terrain, par tronçons de 200 m (cachés au-delà de 900 m) */
-function owBuildRoads(root) {
+function owRoadMats() {
+  if (OWT.roadMats) return OWT.roadMats;
   const T = owTextures();
-  const mats = {
-    road: new THREE.MeshStandardMaterial({ map: T.road, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
-    track: new THREE.MeshStandardMaterial({ map: T.track, roughness: 0.98, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
-    runway: new THREE.MeshStandardMaterial({ map: T.runway, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+  OWT.roadMats = {
+    road: share(new THREE.MeshStandardMaterial({ map: T.road, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })),
+    track: share(new THREE.MeshStandardMaterial({ map: T.track, roughness: 0.98, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })),
+    runway: share(new THREE.MeshStandardMaterial({ map: T.runway, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })),
   };
-  const group = new THREE.Group();
-  group.name = 'routes';
+  return OWT.roadMats;
+}
+function owBuildRoads(root) {
   OW.roadParts = [];
-  for (const r of OW.roads) {
+  root.add(owRoadGroup(OW.roads, 'routes', OW.roadParts));
+}
+/* Routes et pistes ajoutées par la carte (Mod Tools) : un groupe à part, refait quand elles changent. */
+function owBuildUserRoads(root) {
+  if (OW.userRoads) { OW.userRoads.parent && OW.userRoads.parent.remove(OW.userRoads); OW.userRoads.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+  OW.roadPartsUser = [];
+  OW.userRoads = owRoadGroup((OW.roadsUser || []).filter(Boolean), 'routes ajoutées', OW.roadPartsUser);
+  root.add(OW.userRoads);
+  return OW.userRoads;
+}
+function owRoadGroup(list, name, parts) {
+  const mats = owRoadMats();
+  const group = new THREE.Group();
+  group.name = name;
+  for (const r of list) {
     const pts = r.line.pts, cum = r.line.cum, half = r.w / 2, rep = r.kind === 'road' ? 9 : r.kind === 'runway' ? 40 : 12;
     const PER = 12;    // points par tronçon (48 m)
     for (let s0 = 0; s0 < pts.length - 1; s0 += PER) {
@@ -26801,15 +26833,24 @@ function owBuildRoads(root) {
         const pt = pts[s0 + q];
         for (const o of [-half - 2, half + 2]) { chunks.add(owTerChunkIndex(pt[0] + o, pt[1])); chunks.add(owTerChunkIndex(pt[0], pt[1] + o)); }
       }
-      OW.roadParts.push({ mesh: m, x: cx / n, z: cz / n, chunks: [...chunks].filter((c) => c >= 0) });
+      parts.push({ mesh: m, x: cx / n, z: cz / n, chunks: [...chunks].filter((c) => c >= 0) });
     }
   }
-  root.add(group);
+  return group;
 }
 function owUpdateRoads() {
   const cx = camera.position.x, cz = camera.position.z, C = OWTER.chunks;
   // plus loin, la couleur du terrain dessine la route (un ruban plat passerait sous le terrain simplifié)
-  for (const p of OW.roadParts) p.mesh.visible = Math.hypot(p.x - cx, p.z - cz) < 420 && p.chunks.every((c) => C[c].lod === 0);
+  for (const L of [OW.roadParts, OW.roadPartsUser]) for (const p of L || []) p.mesh.visible = Math.hypot(p.x - cx, p.z - cz) < 420 && p.chunks.every((c) => C[c].lod === 0);
+}
+/* Morceaux du terrain refaits dans une zone (relief ou sol changés) : au prochain niveau de détail. */
+function owTerrainInvalidate(rect) {
+  const S = OWTER.size;
+  for (const ch of OWTER.chunks) {
+    if (ch.x0 + S + 8 < rect[0] || ch.x0 - 8 > rect[2] || ch.z0 + S + 8 < rect[1] || ch.z0 - 8 > rect[3]) continue;
+    for (let l = 0; l < 4; l++) if (ch.geo[l]) { ch.geo[l].dispose(); ch.geo[l] = null; }
+    ch.lod = -1;
+  }
 }
 /* Rang du morceau de terrain qui contient (x, z), ou -1. */
 function owTerChunkIndex(x, z) {
@@ -27130,7 +27171,7 @@ function owGradeAt(x, z, out) {
   if (!out.sun) { for (const k of OW_GRADE_KEYS) out[k] = new THREE.Color(); out.dir = new THREE.Vector3(); }
   const ws = [];
   let maxW = 0;
-  for (const L of KH.locs) {
+  for (const L of owBaseHasPlaces() ? KH.locs : []) {
     const d = Math.hypot(x - L.x, z - L.z);
     const w = 1 - owSmoothstep(L.r * 0.75, L.r + 260, d);
     if (w > 0) { ws.push([P[L.id], w]); maxW = Math.max(maxW, w); }
@@ -27195,17 +27236,27 @@ function owApplyGrade(dt) {
 }
 
 /* ------------------------------------------------------------ Plan --
-   Plan de Khamsin dessiné d'après les données (vignette du menu et fond de la mini-carte). */
+   Plan de Khamsin dessiné d'après les données (vignette du menu, fond de la mini-carte, plan des
+   Mod Tools). clip : [px0, py0, px1, py1] pour ne refaire qu'une partie d'un plan existant (le
+   terrain changé dans les Mod Tools). */
 function khPlanCanvas(w, h, opts = {}) {
-  const c = makeCanvas(w, h), g = c.getContext('2d');
+  const c = makeCanvas(w, h);
+  khPlanDraw(c, opts, null);
+  return c;
+}
+function khPlanDraw(c, opts = {}, clip = null) {
+  const g = c.getContext('2d'), w = c.width, h = c.height;
   const s = Math.min(w / 4000, h / 3000), ox = (w - 4000 * s) / 2, oz = (h - 3000 * s) / 2;
   const X = (x) => ox + x * s, Z = (z) => oz + z * s;
-  g.fillStyle = '#0d0b09'; g.fillRect(0, 0, w, h);
+  const [px0, py0, px1, py1] = clip || [0, 0, w, h];
+  g.save();
+  g.beginPath(); g.rect(px0, py0, px1 - px0, py1 - py0); g.clip();
+  g.fillStyle = '#0d0b09'; g.fillRect(px0, py0, px1 - px0, py1 - py0);
   if (OW.H && opts.relief) {
     // relief : couleur du sol et ombrage depuis le nord-ouest
-    const img = g.createImageData(w, h), d = img.data, col = new THREE.Color();
-    for (let py = 0; py < h; py++) {
-      for (let px = 0; px < w; px++) {
+    const iw = px1 - px0, ih = py1 - py0, img = g.createImageData(iw, ih), d = img.data, col = new THREE.Color();
+    for (let py = py0; py < py1; py++) {
+      for (let px = px0; px < px1; px++) {
         const x = (px - ox) / s, z = (py - oz) / s;
         if (x < 0 || z < 0 || x > 4000 || z > 3000) continue;
         const k = owPointIndex(x, z), bk = OW.bio[k];
@@ -27213,11 +27264,15 @@ function khPlanCanvas(w, h, opts = {}) {
         else { owGroundColor(k, x, z, col); col.convertLinearToSRGB(); }
         const e = 4 / s, hl = owH(x - e, z - e), hr = owH(x + e, z + e);
         const shade = clamp(1 + (hr - hl) * 0.04 * s * 4, 0.55, 1.35);
-        const p = (py * w + px) * 4;
+        const p = ((py - py0) * iw + (px - px0)) * 4;
         d[p] = clamp(col.r * 255 * shade, 0, 255); d[p + 1] = clamp(col.g * 255 * shade, 0, 255); d[p + 2] = clamp(col.b * 255 * shade, 0, 255); d[p + 3] = 255;
       }
     }
-    g.putImageData(img, 0, 0);
+    // par une toile intermédiaire : putImageData sur une toile déjà dessinée passait parfois avant
+    // le fond noir (zone redessinée après un coup de pinceau restée noire)
+    const tmp = makeCanvas(iw, ih);
+    tmp.getContext('2d').putImageData(img, 0, 0);
+    g.drawImage(tmp, px0, py0);
   } else {
     // vignette (avant le terrain) : à plat
     g.fillStyle = '#d9a873'; g.fillRect(X(0), Z(0), 4000 * s, 3000 * s);
@@ -27241,8 +27296,9 @@ function khPlanCanvas(w, h, opts = {}) {
     }
     g.restore();
   }
-  // routes et pistes
-  for (const r of KH.roads) {
+  // routes et pistes (celles du jeu, puis celles de la carte, sauf pour le plan des Mod Tools qui les dessine lui-même)
+  const user = OW.H && opts.userRoads !== false ? (OW.roadsUser || []).filter(Boolean).map((q) => ({ kind: q.kind, pts: q.line.pts })) : [];
+  for (const r of [...KH.roads, ...user]) {
     g.beginPath();
     r.pts.forEach(([x, z], i) => (i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))));
     if (r.kind === 'road') { g.strokeStyle = '#f2e6d0'; g.lineWidth = Math.max(2, 22 * s); g.setLineDash([]); g.stroke(); g.strokeStyle = '#2a2420'; g.lineWidth = Math.max(1.2, 14 * s); g.stroke(); }
@@ -27266,6 +27322,7 @@ function khPlanCanvas(w, h, opts = {}) {
       g.fillStyle = '#fff4e2'; g.fillText(L.id, X(L.x), Z(L.z) + R * 0.06);
     }
   }
+  g.restore();
   return c;
 }
 
@@ -27307,11 +27364,10 @@ function owLoad(map, opts = {}) {
   CUR.levels = [0];
   Lanterns.lights = [];
   OW.on = true; OW.map = map;
-  if (!OW.H) {
-    owGenTerrain();
-    OW.surf = owNewLayer(OWK.TERRAIN); OW.under = owNewLayer(OWK.ROCK); OW.doors = [];
-    owRasterPyramids();
-  }
+  if (!OW.H) { owGenTerrain(); owTerrainSave(); }
+  // solides de la base (Khamsin et ses lieux, ou le désert vierge)
+  owUseBase(map.base);
+  const places = owBaseHasPlaces();
   if (!map.menuCam) {
     const cam = [2405, 0, 2085];
     cam[1] = owH(cam[0], cam[2]) + 2.4;
@@ -27319,23 +27375,32 @@ function owLoad(map, opts = {}) {
   }
   // éléments de la carte précédente (ou d'avant une modification) : leurs cases sont retirées
   owBoxRelease();
-  owLogUndo();
+  owLogUndoAll();
   registerCustomModels(map);
   KHS.every = map.rules && Number.isFinite(map.rules.storms) ? map.rules.storms : 4;
+  // terrain de la carte (relief, sol peint, routes et bâtiments ajoutés) : refait s'il change, ou si
+  // la carte d'avant le changeait (les Mod Tools tiennent leurs grilles de travail à jour)
+  if (!opts.editor) OWMOD.live = false;
+  if (owModsActive(map) || OWMOD.on) { owApplyMods(map); OWH.bg = null; }
+  else OW.roadsUser = [];
+  OW.locsShown = owNamedLocs(map);
   const root = new THREE.Group();
   root.name = 'monde';
   owBuildTerrainChunks(root);
   owBuildRoads(root);
+  owBuildUserRoads(root);
   owBuildWater(root);
   owBuildSky(root);
   owBuildPyramids(root);
   owBuildPalms(root);
-  owBuildPoles(root);
-  owBuildPlaces(root);
-  owBuildSanctuary(root);
-  khPortalInteractables();
-  owBuildQuest(root);
-  owBuildTunnel(root);
+  if (places) {
+    owBuildPoles(root);
+    owBuildPlaces(root);
+    owBuildSanctuary(root);
+    khPortalInteractables();
+    owBuildQuest(root);
+    owBuildTunnel(root);
+  } else khInertPlaces(root);
   owBuildElements(root, map, { perProp: !!opts.editor });
   owBuildFarRing(root);
   owBuildSandWall(root);
@@ -27406,21 +27471,20 @@ function owUpdateView(dt) {
 function owUpdate(dt) {
   owUpdateView(dt);
   if (OW.sandFX) OW.sandFX.update(dt);
+  const places = owBaseHasPlaces();
   khStormUpdate(dt);
-  khSanctuaryUpdate(dt);
+  if (places) khSanctuaryUpdate(dt);
   owVehUpdate(dt);
   khRodeurs(dt);
-  khGardienStormTick(dt);
-  khQuestUpdate(dt);
+  if (places) { khGardienStormTick(dt); khQuestUpdate(dt); }
   khEyes();
-  // nom du lieu en entrant
-  const near = khNearestLoc(player.pos.x, player.pos.z);
-  const inside = near.d < 0 ? near.loc : null;
+  // nom du lieu en entrant (lieux de la base et de la carte)
+  const near = owNearestNamed(player.pos.x, player.pos.z);
+  const inside = near && near.d < 0 ? near.loc : null;
   if (inside && inside !== OW.lastLoc) HUD.zone(inside.name);
-  OW.lastLoc = inside || (near.d > 60 ? null : OW.lastLoc);
+  OW.lastLoc = inside || (!near || near.d > 60 ? null : OW.lastLoc);
   owUpdateHud(dt);
-  khVictoryCam(dt);
-  khRideCam(dt);
+  if (places) { khVictoryCam(dt); khRideCam(dt); }
 }
 
 /* ---------------------------------------------------- Mini-carte, boussole --
@@ -27441,7 +27505,7 @@ function owHud(on) {
     hud.append(OWH.map, OWH.comp, OWH.drive, OWH.storm);
   }
   if (OWH.map) { OWH.map.hidden = !on; OWH.comp.hidden = !on; OWH.drive.hidden = true; OWH.storm.hidden = true; }
-  if (on && !OWH.bg && OW.H) OWH.bg = khPlanCanvas(1000, 750, { relief: true });
+  if (on && !OWH.bg && OW.H) OWH.bg = khPlanCanvas(1000, 750, { relief: true, pins: owBaseHasPlaces() });
 }
 function owUpdateHud(dt) {
   OWH.t -= dt;
@@ -27513,10 +27577,10 @@ function owUpdateHud(dt) {
       g.fillRect(-w / 2, -l / 2, w, l); g.strokeRect(-w / 2, -l / 2, w, l);
       g.restore();
     }
-    khQuestMapMarks(g, X, Z, S);
+    if (owBaseHasPlaces()) khQuestMapMarks(g, X, Z, S);
     // lieux hors du cadre : flèches au bord
     g.font = `700 13px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const L of KH.locs) {
+    for (const L of OW.locsShown || KH.locs) {
       let x = X(L.x), z = Z(L.z);
       const dx = x - S / 2, dz = z - S / 2, d = Math.hypot(dx, dz), lim = S / 2 - 14;
       if (d > lim) { x = S / 2 + (dx / d) * lim; z = S / 2 + (dz / d) * lim; }
@@ -27579,10 +27643,7 @@ function owDecalSlope(x, y, z) {
 /* Nouvelle partie, retour au menu : véhicules à leur place, disjoncteurs relevés. */
 function owResetWorld() {
   khStormReset();
-  khSanctuaryReset();
-  khGardienReset();
-  khQuestReset();
-  khTunnelReset();
+  if (owBaseHasPlaces()) { khSanctuaryReset(); khGardienReset(); khQuestReset(); khTunnelReset(); }
   khEnemiesReset();
   owResetVehicles();
   owResetFeatures();
@@ -27605,10 +27666,13 @@ function owResetWorld() {
                                                        les N manches (0 : aucune)
      menuCam   { pos, look, sway }                    vue du menu (absente : depuis le camp, vers le plateau)
      thumb     vignette du menu (absente : le plan en relief)
+     terrain, ground, roads, buildings, locs          relief, sol, routes, bâtiments et lieux ajoutés (voir
+                                                       « Terrain d'une carte ouverte »)
+   Bases : « khamsin » (Khamsin et ses sept lieux) ou « desert » (désert vierge, sans les lieux).
    y : hauteur du sol sous l'élément, recalculée par les Mod Tools quand il bouge (un sol de tombeau
    sous la falaise, un plancher de bâtiment : le terrain seul ne suffit pas à la retrouver). */
 const OPEN_FORMAT = 1;
-const OPEN_LIMITS = { wallbuys: 80, perks: 24, boxes: 24, vehicles: 24, fuel: 24, breakers: 12, props: 4000 };
+const OPEN_LIMITS = { wallbuys: 80, perks: 24, boxes: 24, vehicles: 24, fuel: 24, breakers: 12, props: 4000, roads: 60, buildings: 300, locs: 24 };
 const OPEN_KINDS = ['wallbuys', 'perks', 'boxes', 'vehicles', 'fuel', 'breakers', 'props'];
 const OPEN_RULES = { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null, storms: 4 };
 
@@ -27666,11 +27730,30 @@ Object.assign(KHAMSIN, {
     { x: 3524.9, y: 2.982, z: 1612.5, nx: 1, nz: 0, name: 'poste de commande' },
     { x: 3557, y: 2.982, z: 1625, nx: -1, nz: 0, name: 'transformateurs' },
   ],
-  props: [],
+  props: [], roads: [], buildings: [], locs: [], terrain: null, ground: null,
   custom: { models: {} },
   author: '', updated: KHAMSIN.updated,
 });
-const OPEN_BASES = { khamsin: KHAMSIN };
+/* Désert vierge : le désert de Khamsin (relief, routes, Nil, oasis, pyramides) sans ses lieux ni sa
+   quête ; base des cartes ouvertes faites à partir de zéro dans les Mod Tools. Pas dans le menu. */
+const DESERT = {
+  id: 'desert', open: true, format: OPEN_FORMAT, base: 'desert', name: 'Désert vierge', w: OW.W, h: OW.D,
+  description: 'Le désert du Khamsin sans ses lieux : dunes, plateau, Nil, oasis, routes et pyramides. Le reste est à construire.',
+  eyebrow: 'Rapport d’incident · désert du Khamsin',
+  lead: 'Survivez dans le désert le plus longtemps possible.',
+  rules: { ...OPEN_RULES }, spawn: { pos: [2350, 1992], yaw: 0.47, lv: 0 }, ambiance: { ...KHAMSIN.ambiance },
+  wallbuys: [], perks: [], boxes: [], boxStart: 0, vehicles: [], fuel: [], breakers: [], props: [],
+  roads: [], buildings: [], locs: [], terrain: null, ground: null, custom: { models: {} },
+  doors: [], lights: [], signs: [], zones: [], risers: [], power: null, amp: null, digipass: null, altar: false,
+  thumb: null, menuCam: null, seed: 4747, author: '', updated: '',
+};
+const OPEN_BASES = { khamsin: KHAMSIN, desert: DESERT };
+/* Vignette d'une base (plan du désert ; les lieux seulement pour Khamsin). */
+function owBaseThumb(base) {
+  if (base !== 'desert') return khThumb();
+  if (!DESERT.thumb) { try { DESERT.thumb = khPlanCanvas(640, 360, { pins: false }).toDataURL('image/jpeg', 0.86); } catch (e) { DESERT.thumb = null; } }
+  return DESERT.thumb;
+}
 
 /* ---- Lecture d'une carte ouverte (fichier du paquet, atelier des Mod Tools) : tout est vérifié,
    ce qui ne va pas est retiré. La base donne le reste (ambiance, textes, vignette). */
@@ -27687,7 +27770,7 @@ function openNormalize(raw) {
   const y = (v) => (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 2000 ? r3(v) : null);
   const n4 = (nx, nz) => { const a = Math.round(Math.atan2(nx || 0, nz || 0) / (Math.PI / 2)) * (Math.PI / 2); return [Math.round(Math.sin(a)), Math.round(Math.cos(a))]; };
   const face = (f) => (Array.isArray(f) ? n4(f[0], f[1]) : [0, 1]);
-  const list = (k) => (Array.isArray(raw[k]) ? raw[k] : B[k]).slice(0, OPEN_LIMITS[k]);
+  const list = (k) => (Array.isArray(raw[k]) ? raw[k] : B[k] || []).slice(0, OPEN_LIMITS[k]);
   const m = { ...B };
   m.id = typeof raw.id === 'string' && /^[a-z0-9_-]{1,40}$/.test(raw.id) ? raw.id : B.id;
   m.open = true; m.base = B.id; m.format = OPEN_FORMAT; m.w = OW.W; m.h = OW.D;
@@ -27737,6 +27820,30 @@ function openNormalize(raw) {
     if (typeof p.solid === 'boolean') o.solid = p.solid;
     return o;
   });
+  // terrain (niveau 2) : blocs de 32 × 32 points en base64 (Int16 : 2 048 octets, Uint8 : 1 024)
+  const blocks = (o, len) => {
+    const d = o && o.d && typeof o.d === 'object' ? o.d : {}, out = {};
+    let n = 0;
+    for (const k of Object.keys(d)) {
+      if (n >= 2100) break;
+      if (/^\d{1,2},\d{1,2}$/.test(k) && typeof d[k] === 'string' && d[k].length === len && /^[A-Za-z0-9+/]+=*$/.test(d[k])) { out[k] = d[k]; n++; }
+    }
+    return n ? { d: out } : null;
+  };
+  m.terrain = blocks(raw.terrain, 2732);
+  m.ground = blocks(raw.ground, 1368);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  m.roads = list('roads').filter((r) => r && Array.isArray(r.pts)).map((r) => {
+    const kind = r.kind === 'road' ? 'road' : 'track';
+    const pts = r.pts.filter((p) => Array.isArray(p) && inX(p[0]) && inZ(p[1])).slice(0, 300).map((p) => [r1(p[0]), r1(p[1])]);
+    return { kind, w: r1(num(r.w, 3, 14, kind === 'road' ? 8 : 6)), pts };
+  }).filter((r) => r.pts.length >= 2);
+  m.buildings = list('buildings').filter((b) => b && OWBLD[b.type] && inX(b.x) && inZ(b.z)).map((b) => {
+    const o = { type: b.type, x: r1(b.x), z: r1(b.z), rot: Math.round(num(b.rot, 0, 3, 0)) };
+    if (typeof b.y === 'number' && Number.isFinite(b.y) && Math.abs(b.y) < 500) o.y = r3(b.y);
+    return o;
+  });
+  m.locs = list('locs').filter((L) => L && typeof L.name === 'string' && L.name.trim() && inX(L.x) && inZ(L.z)).map((L) => ({ name: L.name.trim().slice(0, 40), x: r1(L.x), z: r1(L.z), r: Math.round(num(L.r, 15, 600, 120)) }));
   m.thumb = typeof raw.thumb === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(raw.thumb) && raw.thumb.length < 400000 ? raw.thumb : B.thumb;
   const mc = raw.menuCam, v3 = (a) => Array.isArray(a) && a.length === 3 && a.every((v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 10000);
   m.menuCam = mc && v3(mc.pos) && v3(mc.look) ? { pos: mc.pos.map(r3), look: mc.look.map(r3), sway: Array.isArray(mc.sway) ? [num(mc.sway[0], 0, 20, 1), num(mc.sway[1], 0, 20, 1)] : [1, 0.6] } : null;
@@ -27756,6 +27863,9 @@ function openSerialize(m) {
   const used = new Set(o.props.map((p) => p.m));
   o.custom = { models: {} };
   for (const id of Object.keys((m.custom && m.custom.models) || {})) if (used.has(id)) o.custom.models[id] = m.custom.models[id];
+  for (const k of ['roads', 'buildings', 'locs']) if ((m[k] || []).length) o[k] = JSON.parse(JSON.stringify(m[k]));
+  if (m.terrain && m.terrain.d && Object.keys(m.terrain.d).length) o.terrain = { d: { ...m.terrain.d } };
+  if (m.ground && m.ground.d && Object.keys(m.ground.d).length) o.ground = { d: { ...m.ground.d } };
   if (m.thumb && m.thumb !== (OPEN_BASES[o.base] || {}).thumb) o.thumb = m.thumb;
   if (m.menuCam && !m.menuCam.auto) o.menuCam = { pos: m.menuCam.pos.slice(), look: m.menuCam.look.slice(), sway: (m.menuCam.sway || [1, 0.6]).slice() };
   return o;
@@ -27768,7 +27878,7 @@ function openValidate(m, deep = false) {
   const E = (msg, at) => errors.push({ msg, at: at || null });
   const W = (msg, at) => warnings.push({ msg, at: at || null });
   if (!m.boxes.length) W('Pas d’emplacement pour la boîte mystère : elle n’apparaîtra pas.');
-  if (!m.breakers.length && !m.rules.powerOn) W('Aucun disjoncteur et pas de courant au départ : atouts, sanctuaire et batterie de l’avion resteront sans courant.');
+  if (!m.breakers.length && !m.rules.powerOn) W(m.base === 'desert' ? 'Aucun disjoncteur et pas de courant au départ : les atouts électriques resteront sans courant.' : 'Aucun disjoncteur et pas de courant au départ : atouts, sanctuaire et batterie de l’avion resteront sans courant.');
   if (!m.vehicles.length) W('Aucun véhicule : la carte fait 4 × 3 km.');
   const seen = new Map();
   for (const p of m.perks) seen.set(p.p, (seen.get(p.p) || 0) + 1);
@@ -27795,8 +27905,354 @@ function openValidate(m, deep = false) {
       if (owWaterAt(v.x, v.z)) E(`${T.name} : dans l’eau.`, [v.x, v.z]);
       else if (!walk(v.x, v.z)) W(`${T.name} : posé sur un obstacle ou une pente trop forte.`, [v.x, v.z]);
     });
+    // bâtiments ajoutés : ni sur un lieu de la base (ou une pyramide), ni dans l'eau, ni l'un sur l'autre
+    const rects = m.buildings.map((b) => owBldRect(b));
+    m.buildings.forEach((b, i) => {
+      const R = rects[i], T = OWBLD[b.type];
+      if (!R) return;
+      let place = false, wet = false;
+      for (let z = R.z0; z < R.z1 && !place; z++) for (let x = R.x0; x < R.x1; x++) { const c = owPlaceRec(OW.surf, x, z); if (c && !c.none && c.kind !== OWK.TERRAIN) { place = true; break; } }
+      for (let z = R.z0; z <= R.z1 && !wet; z += 2) for (let x = R.x0; x <= R.x1; x += 2) if (owWaterAt(x, z)) { wet = true; break; }
+      if (place) E(`${T.name} : empiète sur un lieu ou une pyramide (le terrain n’y est pas aplani).`, [b.x, b.z]);
+      else if (wet) E(`${T.name} : dans l’eau.`, [b.x, b.z]);
+      else if (owRectOnBaseRoad(R.x0, R.z0, R.x1, R.z1)) W(`${T.name} : sur une route d’origine (elle passe dessous).`, [b.x, b.z]);
+      for (let j = 0; j < i; j++) { const Q = rects[j]; if (Q && R.x0 < Q.x1 && Q.x0 < R.x1 && R.z0 < Q.z1 && Q.z0 < R.z1) { W(`${T.name} : chevauche ${OWBLD[m.buildings[j].type].name.toLowerCase()}.`, [b.x, b.z]); break; } }
+    });
   }
   return { errors, warnings };
+}
+
+/* ---------------------------------------------- Terrain d'une carte ouverte --
+   Ce qu'une carte ouverte change au désert de sa base (Mod Tools, niveau 2) :
+     terrain   { d: { "bi,bj": base64 } }   relief : écart à la base en cm (Int16), par blocs de
+                                            32 × 32 points du champ de hauteurs (128 m de côté)
+     ground    { d: { "bi,bj": base64 } }   sol peint : 0 inchangé, sinon matière + 1 (Uint8)
+     roads     [{ kind, w, pts }]           routes et pistes ajoutées (posées comme celles du jeu)
+     buildings [{ type, x, z, rot, y }]     bâtiments ajoutés (catalogue OWBLD), terrain aplani
+     locs      [{ name, x, z, r }]          lieux nommés (mini-carte, nom en entrant)
+   Le terrain généré est gardé tel quel (OW.base0) : chaque chargement, chaque coup de pinceau
+   repart de lui dans la zone touchée. Les lieux de Khamsin, ses routes et les pyramides sont
+   protégés (owProtectMask) : le relief ne bouge pas sous eux.
+   Bases : « khamsin » (le désert et ses sept lieux) et « desert » (le même désert, routes et
+   pyramides comprises, sans les lieux, le sanctuaire, la quête ni le tunnel). */
+const OW_BASES = {
+  khamsin: { name: 'Khamsin', places: true },
+  desert: { name: 'Désert vierge', places: false },
+};
+const OWMOD = { B: 32, on: false, live: false, delta: null, paint: null, cache: new Map() };
+const OW_PAINTS = ['SAND', 'PAD', 'TRACK', 'ROCK', 'WADI', 'PLATEAU', 'OASIS', 'FIELD', 'MUD'];
+
+/* Solides de chaque base : les lieux de Khamsin ne sont pas dans le désert vierge. */
+function owUseBase(id) {
+  if (!OW_BASES[id]) id = 'khamsin';
+  if (!OW.layers) OW.layers = {};
+  if (OW.baseId === id && OW.surf) return;
+  owBoxRelease();
+  owLogUndoAll();
+  let L = OW.layers[id];
+  if (!L) {
+    L = OW.layers[id] = { surf: owNewLayer(OWK.TERRAIN), under: owNewLayer(OWK.ROCK), doors: [] };
+    OW.surf = L.surf; OW.under = L.under; OW.doors = L.doors;
+    owRasterPyramids();
+  }
+  OW.surf = L.surf; OW.under = L.under; OW.doors = L.doors;
+  OW.baseId = id;
+  OWED.tiles.clear(); OWED.meshes = null;
+}
+const owBaseHasPlaces = () => !!(OW_BASES[OW.baseId || 'khamsin'] || OW_BASES.khamsin).places;
+/* Terrain généré, gardé une fois pour toutes. */
+function owTerrainSave() {
+  if (!OW.base0) OW.base0 = { H: OW.H.slice(), bio: OW.bio.slice(), steep: OW.steep.slice(), water: OW.water.slice() };
+}
+
+/* ---- Blocs (base64) */
+function owB64Enc(arr) {
+  const u8 = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
+  let s = '';
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function owB64Dec(str, Type) {
+  const key = `${Type === Int16Array ? 'i' : 'u'}${str}`;
+  let a = OWMOD.cache.get(key);
+  if (a) return a;
+  const bin = atob(str), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  a = new Type(u8.buffer, 0, Math.floor(u8.length / Type.BYTES_PER_ELEMENT));
+  OWMOD.cache.set(key, a);
+  if (OWMOD.cache.size > 400) OWMOD.cache.delete(OWMOD.cache.keys().next().value);
+  return a;
+}
+const owBlocks = (o) => (o && o.d && typeof o.d === 'object' ? o.d : null);
+/* La carte change-t-elle le terrain ? */
+function owModsActive(map) {
+  if (!map) return false;
+  const t = owBlocks(map.terrain), g = owBlocks(map.ground);
+  return !!((t && Object.keys(t).length) || (g && Object.keys(g).length) || (map.roads && map.roads.length) || (map.buildings && map.buildings.length));
+}
+
+/* ---- Protection : 0 sous les lieux de Khamsin, ses routes et les pyramides, 255 ailleurs. */
+function owProtectMask() {
+  const id = OW.baseId || 'khamsin';
+  if (!OW.protect) OW.protect = {};
+  if (OW.protect[id]) return OW.protect[id];
+  const NX = OW.NX, M = new Uint8Array(OW.NX * OW.NZ).fill(255);
+  const put = (k, v) => { const q = Math.round(clamp(v, 0, 1) * 255); if (q < M[k]) M[k] = q; };
+  if (OW_BASES[id].places) {
+    for (const L of KH.locs) owEachPoint(L.x - L.r, L.z - L.r, L.x + L.r, L.z + L.r, (k, x, z) => put(k, owSmoothstep(L.r * 0.6, L.r * 0.95, Math.hypot(x - L.x, z - L.z))));
+  }
+  for (const p of KH.pyramids) {
+    const r = p.side * 0.72;
+    owEachPoint(p.x - r - 30, p.z - r - 30, p.x + r + 30, p.z + r + 30, (k, x, z) => put(k, owSmoothstep(r, r + 30, Math.hypot(x - p.x, z - p.z))));
+  }
+  for (const r of OW.roads || []) {
+    const pts = r.line.pts, a = r.w / 2 + 2, b = r.w / 2 + 12;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const ax = pts[i][0], az = pts[i][1], ex = pts[i + 1][0] - ax, ez = pts[i + 1][1] - az, l2 = ex * ex + ez * ez || 1e-6;
+      owEachPoint(Math.min(ax, ax + ex) - b, Math.min(az, az + ez) - b, Math.max(ax, ax + ex) + b, Math.max(az, az + ez) + b, (k, x, z) => {
+        const t = clamp(((x - ax) * ex + (z - az) * ez) / l2, 0, 1);
+        put(k, owSmoothstep(a, b, Math.hypot(x - ax - ex * t, z - az - ez * t)));
+      });
+    }
+  }
+  // bord du monde (mur de sable, falaises hors carte) : pas de relief au-delà de la zone jouable
+  owEachPoint(OW.X0, OW.Z0, OW.X0 + (OW.NX - 1) * 4, OW.Z0 + (OW.NZ - 1) * 4, (k, x, z) => { if (x < 100 || z < -20 || x > OW.W + 20 || z > OW.D + 20) M[k] = 0; });
+  OW.protect[id] = M;
+  return M;
+}
+
+/* ---- Routes ajoutées : emprise (avec l'aplanissement de part et d'autre) */
+function owRoadReach(r) {
+  // recalculée à chaque fois : les Mod Tools déplacent les points d'une route sans la recréer
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const [x, z] of r.pts) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+  const m = (r.w || 6) / 2 + 80;
+  return [x0 - m, z0 - m, x1 + m, z1 + m];
+}
+const owRectHit = (a, b) => !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+const owRectUnion = (a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+
+/* Applique au terrain les modifications de la carte, dans rect ([x0, z0, x1, z1]) ou partout.
+   La zone grandit aux routes ajoutées et aux bâtiments qui la touchent ; elle est renvoyée. */
+function owApplyMods(map, rect = null) {
+  owTerrainSave();
+  const NX = OW.NX, NZ = OW.NZ, B0 = OW.base0, H = OW.H, bio = OW.bio, steep = OW.steep, water = OW.water;
+  const XM = OW.X0 + (NX - 1) * 4, ZM = OW.Z0 + (NZ - 1) * 4;
+  const roads = (map && map.roads) || [], blds = (map && map.buildings) || [];
+  let R = rect ? rect.slice() : [OW.X0, OW.Z0, XM, ZM];
+  // route ajoutée ou retirée : toutes les routes sont reposées (leurs indices ont changé)
+  if (rect && (!OW.roadsUser || OW.roadsUser.length !== roads.length)) {
+    for (const r of roads) if (r && Array.isArray(r.pts) && r.pts.length >= 2) R = owRectUnion(R, owRoadReach(r));
+  }
+  if (rect) {
+    for (let pass = 0; pass < 4; pass++) {
+      const before = R.join();
+      for (const r of roads) { const bb = owRoadReach(r); if (owRectHit(bb, R)) R = owRectUnion(R, bb); }
+      for (const b of blds) { const Q = owBldRect(b); if (Q) { const bb = [Q.x0 - 10, Q.z0 - 10, Q.x1 + 10, Q.z1 + 10]; if (owRectHit(bb, R)) R = owRectUnion(R, bb); } }
+      if (R.join() === before) break;
+    }
+  }
+  R = [Math.max(OW.X0, R[0]), Math.max(OW.Z0, R[1]), Math.min(XM, R[2]), Math.min(ZM, R[3])];
+  const i0 = clamp(Math.floor((R[0] - OW.X0) / 4), 0, NX - 1), i1 = clamp(Math.ceil((R[2] - OW.X0) / 4), 0, NX - 1);
+  const j0 = clamp(Math.floor((R[1] - OW.Z0) / 4), 0, NZ - 1), j1 = clamp(Math.ceil((R[3] - OW.Z0) / 4), 0, NZ - 1);
+  // 1. la base
+  for (let j = j0; j <= j1; j++) {
+    const a = j * NX + i0, b = j * NX + i1 + 1;
+    H.set(B0.H.subarray(a, b), a); bio.set(B0.bio.subarray(a, b), a); steep.set(B0.steep.subarray(a, b), a); water.set(B0.water.subarray(a, b), a);
+  }
+  // 2. relief et 3. sol peint : grilles de travail des Mod Tools, sinon les blocs de la carte
+  const B = OWMOD.B;
+  if (OWMOD.live && OWMOD.delta) {
+    const Dl = OWMOD.delta, P = OWMOD.paint;
+    for (let j = j0; j <= j1; j++) for (let k = j * NX + i0, e = j * NX + i1; k <= e; k++) { if (Dl[k]) H[k] += Dl[k]; if (P[k]) bio[k] = P[k] - 1; }
+  } else {
+    const each = (blocks, Type, fn) => {
+      for (const key of Object.keys(blocks || {})) {
+        const [bi, bj] = key.split(',').map(Number);
+        if ((bi + 1) * B <= i0 || bi * B > i1 || (bj + 1) * B <= j0 || bj * B > j1) continue;
+        const a = owB64Dec(blocks[key], Type);
+        for (let q = 0; q < B; q++) {
+          const j = bj * B + q;
+          if (j < j0 || j > j1) continue;
+          for (let p = 0; p < B; p++) {
+            const i = bi * B + p;
+            if (i < i0 || i > i1) continue;
+            const v = a[q * B + p];
+            if (v) fn(j * NX + i, v);
+          }
+        }
+      }
+    };
+    each(owBlocks(map && map.terrain), Int16Array, (k, v) => { H[k] += v / 100; });
+    each(owBlocks(map && map.ground), Uint8Array, (k, v) => { bio[k] = v - 1; });
+  }
+  // 4. routes ajoutées (aplanies, matière de route), sans toucher aux lieux protégés
+  const mask = owProtectMask();
+  if (!OW.roadsUser || OW.roadsUser.length !== roads.length) OW.roadsUser = roads.map(() => null);
+  roads.forEach((r, i) => {
+    if (!r || !Array.isArray(r.pts) || r.pts.length < 2) { OW.roadsUser[i] = null; return; }
+    if (!owRectHit(owRoadReach(r), R)) return;
+    OW.roadsUser[i] = owLayRoad({ id: `u${i}`, kind: r.kind === 'road' ? 'road' : 'track', w: r.w || (r.kind === 'road' ? 8 : 6), pts: r.pts }, mask);
+  });
+  if (!OWED.on) { OW._bestD = OW._bestS = null; }
+  // 5. bâtiments : terrain aplani dessous
+  owBldPads(map || {}, R, mask);
+  // 6. pentes raides et eau
+  for (let j = Math.max(1, j0 - 1); j <= Math.min(NZ - 2, j1 + 1); j++) {
+    for (let i = Math.max(1, i0 - 1); i <= Math.min(NX - 2, i1 + 1); i++) {
+      const k = j * NX + i;
+      const s = Math.max(Math.abs(H[k + 1] - H[k - 1]) / 8, Math.abs(H[k + NX] - H[k - NX]) / 8, Math.abs(H[k + 1] - H[k]) / 4, Math.abs(H[k + NX] - H[k]) / 4, Math.abs(H[k] - H[k - 1]) / 4, Math.abs(H[k] - H[k - NX]) / 4);
+      const b = bio[k], paved = b === OWB.ROAD || b === OWB.TRACK || b === OWB.RUNWAY;
+      if (s > 0.82 && !paved) { steep[k] = 1; if (b === OWB.SAND || b === OWB.SEA || b === OWB.PLATEAU || b === OWB.WADI) bio[k] = OWB.ROCK; }
+      else steep[k] = 0;
+    }
+  }
+  OWMOD.on = owModsActive(map);
+  return R;
+}
+
+/* ---- Lieux nommés : ceux de la base (Khamsin) et ceux de la carte (numérotés). */
+function owNamedLocs(map = OW.map) {
+  const out = owBaseHasPlaces() ? KH.locs.slice() : [];
+  ((map && map.locs) || []).forEach((L, i) => out.push({ id: String(i + 1), name: L.name, x: L.x, z: L.z, r: L.r, user: true }));
+  return out;
+}
+/* Lieu nommé le plus proche (dans son cercle : d < 0), ou null. */
+function owNearestNamed(x, z) {
+  let best = null, bd = Infinity;
+  for (const L of OW.locsShown || []) {
+    const d = Math.hypot(x - L.x, z - L.z) - L.r;
+    if (d < bd) { bd = d; best = L; }
+  }
+  return best ? { loc: best, d: bd } : null;
+}
+/* Désert vierge : ni lieux, ni sanctuaire, ni quête, ni tunnel ; leurs états restent au repos. */
+function khInertPlaces(root) {
+  OWL.lamps = [];
+  OW.placesRoot = root;
+  owLightsInit(root);
+  KH.places = {};
+  KHSAN.door = null; KHSAN.under = false; KHSAN.view = 'surface';
+  OW.pit = null;
+  if (KHQ.hud) KHQ.hud.hidden = true;
+  KHQ.items = {}; KHQ.key = null; KHQ.pilot = null; KHQ.cine = null; KHQ.escape = null; KHQ.won = false;
+  KHT.ride = null; KHT.group = null; KHT.cart = null;
+}
+
+/* ------------------------------------------------------ Bâtiments ajoutés --
+   Catalogue des bâtiments qu'une carte ouverte peut poser (Mod Tools, niveau 2) : maisons, atelier,
+   hangar, tentes, conteneur, cuve, abri, ruine, muret. Faits avec les pièces des lieux (owHouse,
+   owTent, owContainer…) : murs, portes, fenêtres et toits sont de vrais solides (on y entre, on y
+   pose des armes au mur, les zombies en font le tour). Le terrain est aplani sous chacun.
+   Un bâtiment de la carte : { type, x, z, rot, y? } — (x, z) : centre de l'emprise, rot : quarts de
+   tour dans le sens des aiguilles d'une montre (vu du plan), y : hauteur du sol (relevée à la pose). */
+const OWBLD = {
+  maison: {
+    name: 'Maison en pisé', w: 8, d: 6, desc: 'Une porte, trois fenêtres, toit plat',
+    house: { h: 3.2, wall: 'kh_mudbrick', roof: 'flat', roofTex: 'kh_mudbrick', parapet: 0.3, floorTex: 'kh_floor', doors: [['s', 3, 2]], wins: [['n', 3, 2, 1.0, 2.1], ['e', 2, 2, 1.0, 2.1], ['w', 2, 2, 1.0, 2.1]] },
+  },
+  maison_blanche: {
+    name: 'Maison blanchie', w: 10, d: 8, desc: 'Deux portes, fenêtres, toit en terrasse',
+    house: { h: 3.4, wall: 'kh_whitewash', roof: 'flat', roofTex: 'kh_whitewash', parapet: 0.5, floorTex: 'kh_floor', doors: [['s', 2, 2], ['n', 6, 2]], wins: [['s', 6, 2, 1.0, 2.2], ['e', 3, 2, 1.0, 2.2], ['w', 3, 2, 1.0, 2.2]] },
+  },
+  atelier: {
+    name: 'Atelier en tôle', w: 12, d: 9, desc: 'Grande porte, toit à deux pans',
+    house: { h: 4.2, wall: 'kh_concrete', roof: 'gable', rise: 1.4, roofTex: 'kh_sheet', floorTex: 'kh_floor', doors: [['w', 2, 5, 3.6]], wins: [['n', 4, 4, 2.4, 3.4], ['s', 4, 4, 2.4, 3.4]] },
+  },
+  hangar: {
+    name: 'Hangar', w: 20, d: 14, desc: 'Grand portail (12 m), toit à deux pans',
+    house: { h: 6, wall: 'kh_sheet', wallHex: 0xd8d0c0, roof: 'gable', rise: 2.2, roofTex: 'kh_sheet', floorTex: 'kh_floor', doors: [['s', 4, 12, 5], ['n', 9, 2]], wins: [['e', 5, 4, 3.6, 4.8], ['w', 5, 4, 3.6, 4.8]] },
+  },
+  ruine: {
+    name: 'Ruine', w: 9, d: 8, desc: 'Murs de briques crues sans toit',
+    house: { h: 2.5, wall: 'kh_mudbrick', roof: 'none', floorTex: 'kh_floor', doors: [['s', 3, 2], ['e', 4, 2]], wins: [['n', 3, 2, 0.9, 1.9]] },
+  },
+  tente: { name: 'Tente militaire', w: 6, d: 5, desc: 'Ouverte sur un côté', tent: { h: 2.9, wallH: 1.2, hex: 0xcfbf98 } },
+  grande_tente: { name: 'Tente-réfectoire', w: 14, d: 9, desc: 'Grande tente ouverte', tent: { h: 4.4, wallH: 1.9, hex: 0xdcccaa } },
+  conteneur: { name: 'Conteneur', w: 6, d: 3, desc: 'Portes ouvertes au bout', container: { hex: 0x35607d } },
+  conteneur_rouge: { name: 'Conteneur rouge', w: 12, d: 3, desc: 'Long, portes ouvertes au bout', container: { hex: 0x8d3a28 } },
+  cuve: { name: 'Cuve de carburant', w: 8, d: 3, desc: 'Sur berceaux de béton', tank: { r: 1.3, hex: 0xd8d2c4 } },
+  abri: { name: 'Abri', w: 4, d: 4, desc: 'Toit de tôle sur poteaux', shelter: { h: 2.8 } },
+  muret: { name: 'Muret de sacs de sable', w: 6, d: 1, desc: 'Couvre à hauteur de taille', sandbags: { rows: 3 } },
+};
+const OWBLD_SIDES = ['n', 'e', 's', 'w'];
+/* Emprise d'un bâtiment (mètres entiers) : { x0, z0, x1, z1, w, d } après rotation. */
+function owBldRect(b) {
+  const T = OWBLD[b.type];
+  if (!T) return null;
+  const q = ((b.rot | 0) % 4 + 4) % 4, w = q % 2 ? T.d : T.w, d = q % 2 ? T.w : T.d;
+  const x0 = Math.round(b.x - w / 2), z0 = Math.round(b.z - d / 2);
+  return { x0, z0, x1: x0 + w, z1: z0 + d, w, d, q };
+}
+/* Une ouverture [côté, début, largeur, …] tournée d'un quart de tour (D : profondeur avant le tour). */
+function owBldTurnOpening(op, D) {
+  const [side, s, w] = op, rest = op.slice(3);
+  if (side === 'n') return ['e', s, w, ...rest];
+  if (side === 'e') return ['s', D - s - w, w, ...rest];
+  if (side === 's') return ['w', s, w, ...rest];
+  return ['n', D - s - w, w, ...rest];
+}
+const owBldTurnSide = (side, q) => OWBLD_SIDES[(OWBLD_SIDES.indexOf(side) + q) % 4];
+/* Hauteur du sol d'un bâtiment : celle de la carte, sinon la moyenne du terrain sous lui. */
+function owBldY(b, R = owBldRect(b)) {
+  if (typeof b.y === 'number' && Number.isFinite(b.y)) return b.y;
+  return R ? owPadY(R.x0, R.z0, R.x1, R.z1) : 0;
+}
+/* Construit les bâtiments de la carte (cases dans le journal B, un groupe par bâtiment). */
+function owBuildBuildings(root, map) {
+  (map.buildings || []).forEach((b, i) => {
+    const T = OWBLD[b.type], R = owBldRect(b);
+    if (!T || !R) return;
+    const y = owBldY(b, R);
+    const K = owKit(`bâtiment ${i + 1}`);
+    if (T.house) {
+      let doors = T.house.doors || [], wins = T.house.wins || [], D = T.d;
+      for (let k = 0; k < R.q; k++) {
+        doors = doors.map((op) => owBldTurnOpening(op, D));
+        wins = wins.map((op) => owBldTurnOpening(op, D));
+        D = D === T.d ? T.w : T.d;
+      }
+      owHouse(K, { ...T.house, x0: R.x0, z0: R.z0, x1: R.x1, z1: R.z1, y, doors, wins });
+    } else if (T.tent) {
+      owTent(K, R.x0, R.z0, R.x1, R.z1, y, T.tent.h, T.tent.wallH, owBldTurnSide('s', R.q), T.tent.hex);
+    } else if (T.container) {
+      owContainer(K, R.x0, R.z0, R.x1, R.z1, y, T.container.hex, '', R.q >= 2 ? 1 : 0);
+    } else if (T.tank) {
+      owTank(K, (R.x0 + R.x1) / 2, y, (R.z0 + R.z1) / 2, T.tank.r, Math.max(R.w, R.d) - 0.4, R.w >= R.d, T.tank.hex);
+    } else if (T.shelter) {
+      const h = T.shelter.h;
+      for (const [px, pz] of [[R.x0 + 0.2, R.z0 + 0.2], [R.x1 - 0.35, R.z0 + 0.2], [R.x0 + 0.2, R.z1 - 0.35], [R.x1 - 0.35, R.z1 - 0.35]]) K.box('kh_planks', 0x6b4a30, px, y, pz, px + 0.15, y + h, pz + 0.15);
+      K.box('kh_sheet', 0xffffff, R.x0 - 0.3, y + h, R.z0 - 0.3, R.x1 + 0.3, y + h + 0.12, R.z1 + 0.3);
+      K.box('kh_concrete', 0xd8d0c0, R.x0, y - 0.25, R.z0, R.x1, y + 0.05, R.z1, { skip: ['bottom'] });
+      K.solid(R.x0, R.z0, R.x1, R.z1, OWK.FLOOR, { base: y + 0.05, ceil: y + h, roof: y + h + 0.12, mat: OWM.STONE });
+    } else if (T.sandbags) {
+      if (R.w >= R.d) owSandbags(K, R.x0, (R.z0 + R.z1) / 2, R.x1, (R.z0 + R.z1) / 2, y, T.sandbags.rows);
+      else owSandbags(K, (R.x0 + R.x1) / 2, R.z0, (R.x0 + R.x1) / 2, R.z1, y, T.sandbags.rows);
+    }
+    const g = K.build(root);
+    g.userData.at = [b.x, y, b.z];
+    owTagEl(g, 'building', i);
+  });
+}
+/* Terrain aplani sous les bâtiments (avant les morceaux du terrain) : rect, la zone à refaire. */
+function owBldPads(map, rect, mask) {
+  for (const b of map.buildings || []) {
+    const R = owBldRect(b);
+    if (!R) continue;
+    if (rect && (R.x1 + 8 < rect[0] || R.x0 - 8 > rect[2] || R.z1 + 8 < rect[1] || R.z0 - 8 > rect[3])) continue;
+    const y = owBldY(b, R);
+    owLevelMasked(R.x0 - 1, R.z0 - 1, R.x1 + 1, R.z1 + 1, y - 0.08, 6, mask);
+  }
+}
+/* owLevel, sans toucher aux points protégés (mask : 0 protégé, 255 libre). */
+function owLevelMasked(x0, z0, x1, z1, y, blend, mask) {
+  const H = OW.H;
+  owEachPoint(x0 - blend, z0 - blend, x1 + blend, z1 + blend, (k, x, z) => {
+    const dx = Math.max(x0 - x, 0, x - x1), dz = Math.max(z0 - z, 0, z - z1), d = Math.hypot(dx, dz);
+    let w = 1 - owSmoothstep(0, blend, d);
+    if (mask) w *= mask[k] / 255;
+    if (w > 0) H[k] = lerp(H[k], y, w);
+  });
 }
 
 /* ----------------------------------------------------------- Véhicules --
@@ -29575,8 +30031,11 @@ function owBuildElements(root, map, opts = {}) {
   const g = new THREE.Group();
   g.name = 'carte';
   OW.elemRoot = g;
-  OW.elObjs = { wallbuy: [], perk: [], box: [], fuel: [], breaker: [], vehicle: [] };
-  owLogBegin();
+  OW.elObjs = { wallbuy: [], perk: [], box: [], fuel: [], breaker: [], vehicle: [], building: [] };
+  // bâtiments ajoutés d'abord (journal B) : les éléments se posent sur leurs murs et leurs sols
+  owLogBegin(OWLOGB);
+  try { owBuildBuildings(g, map); } finally { owLogEnd(); }
+  owLogBegin(OWLOG);
   try {
     owBuildFeatures(g, map);
     OW.propsRoot = owBuildProps(g, map, !!opts.perProp);
@@ -29599,7 +30058,7 @@ function owRebuildElements(map, opts = {}) {
   Features.perkMachines = [];
   Features.box = null;
   owBoxRelease();
-  owLogUndo();
+  owLogUndoAll();
   registerCustomModels(map);
   const g = owBuildElements(World.root, map, opts);
   linearizeTree(g);
@@ -29617,11 +30076,28 @@ const OWED = { on: false, map: null, plan: null, planKey: '', tiles: new Map(), 
 function owEditorLoad(map) {
   clearZombies();
   const t0 = performance.now();
+  // grilles de travail du relief et du sol (après la création du terrain, la première fois)
+  if (OW.H) owEditorSyncMods(map);
   owLoad(map, { editor: true });
+  if (!OWMOD.live) owEditorSyncMods(map);
+  // plan d'une autre base ou d'un autre terrain : refait (sinon gardé, il suit les coups de pinceau)
+  const sig = owEditorSig(map);
+  if (sig !== OWED.planSig) { OWED.plan = null; OWED.planKey = ''; OWED_RELIEF.clear(); OWED.planSig = sig; }
   OWED.on = true; OWED.map = map;
   OWED.tiles.clear(); OWED.tilesRev++;
   OWED.meshes = null;
   return { terrain: !!OW.H, chunks: OW.surf.n, ms: Math.round(performance.now() - t0) };
+}
+/* Empreinte du terrain d'une carte (base, blocs de relief et de sol, routes, bâtiments). */
+function owEditorSig(map) {
+  let h = 0;
+  const add = (str) => { for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) | 0; h = (Math.imul(h, 31) + str.length) | 0; };
+  for (const o of [owBlocks(map && map.terrain), owBlocks(map && map.ground)]) {
+    if (!o) { add('-'); continue; }
+    for (const k of Object.keys(o).sort()) { add(k); add(o[k]); }
+  }
+  add(JSON.stringify([(map && map.roads) || [], (map && map.buildings) || []]));
+  return `${OW.baseId || 'khamsin'}|${h}`;
 }
 /* Refait les éléments (armes, atouts, boîte, jerricans, disjoncteurs, objets, véhicules). */
 function owEditorRebuild(map) {
@@ -29651,7 +30127,7 @@ function owEditorRay(ox, oy, oz, dx, dy, dz, maxT = 4000) {
 function owEditorPlan(w, h) {
   const key = `${w}x${h}`;
   if (OWED.plan && OWED.planKey === key) return OWED.plan;
-  OWED.plan = khPlanCanvas(w, h, { relief: true, corridor: false, pins: false });
+  OWED.plan = khPlanCanvas(w, h, { relief: true, corridor: false, pins: false, userRoads: false });
   OWED.planKey = key;
   return OWED.plan;
 }
@@ -29669,15 +30145,46 @@ function owEditorRelief(tx, tz) {
   if (d) { OWED_RELIEF.delete(k); OWED_RELIEF.set(k, d); return d; }
   d = new Uint8ClampedArray(4096 * 4);
   const col = new THREE.Color();
+  // couleur de chaque point du champ de hauteurs autour du morceau (tous les 4 m), puis mélange
+  // bilinéaire : le plan ressemble au terrain 3D (couleurs des sommets) au lieu de carrés de 4 m
+  const NX = OW.NX, NZ = OW.NZ, N = 19;
+  const i0 = Math.floor((tx * 64 - OW.X0) / 4) - 1, j0 = Math.floor((tz * 64 - OW.Z0) / 4) - 1;
+  const pc = new Float32Array(N * N * 4), H = OW.H;
+  for (let b = 0; b < N; b++) {
+    for (let a = 0; a < N; a++) {
+      const i = clamp(i0 + a, 0, NX - 1), j = clamp(j0 + b, 0, NZ - 1), kk = j * NX + i, bk = OW.bio[kk];
+      if (bk === OWB.RIVER || (OW.water[kk] && bk === OWB.MUD)) col.setHex(0x1f5b73);
+      else if ((bk === OWB.ROAD || bk === OWB.TRACK || bk === OWB.RUNWAY) && !(OWMOD.paint && OWMOD.paint[kk] === bk + 1)) {
+        // routes, pistes, piste d'envol : le plan les trace en vecteurs par-dessus ; dessous, du sable tassé
+        OW.bio[kk] = OWB.PAD; owGroundColor(kk, OW.X0 + i * 4, OW.Z0 + j * 4, col); OW.bio[kk] = bk; col.convertLinearToSRGB();
+      } else { owGroundColor(kk, OW.X0 + i * 4, OW.Z0 + j * 4, col); col.convertLinearToSRGB(); }
+      const q = (b * N + a) * 4;
+      pc[q] = col.r; pc[q + 1] = col.g; pc[q + 2] = col.b;
+      // ombrage depuis le nord-ouest, par point (mélangé comme les couleurs : pas de facettes de 4 m)
+      const ia = Math.max(0, i - 1), ib = Math.min(NX - 1, i + 1), ja = Math.max(0, j - 1), jb = Math.min(NZ - 1, j + 1);
+      pc[q + 3] = clamp(1 + (H[jb * NX + ib] - H[ja * NX + ia]) * 0.08, 0.55, 1.35);
+    }
+  }
   for (let pz = 0; pz < 64; pz++) {
     for (let px = 0; px < 64; px++) {
       const x = tx * 64 + px + 0.5, z = tz * 64 + pz + 0.5, p = (pz * 64 + px) * 4;
       if (x > OW.W || z > OW.D) { d[p] = 13; d[p + 1] = 11; d[p + 2] = 9; d[p + 3] = 255; continue; }
-      const kk = owPointIndex(x, z), bk = OW.bio[kk];
-      if (bk === OWB.RIVER || (OW.water[kk] && bk === OWB.MUD)) col.setHex(0x1f5b73);
-      else { owGroundColor(kk, x, z, col); col.convertLinearToSRGB(); }
-      const shade = clamp(1 + (owH(x + 2, z + 2) - owH(x - 2, z - 2)) * 0.16, 0.55, 1.35);
-      d[p] = col.r * 255 * shade; d[p + 1] = col.g * 255 * shade; d[p + 2] = col.b * 255 * shade; d[p + 3] = 255;
+      const kk = owPointIndex(x, z);
+      const fx = (x - OW.X0) / 4 - i0, fz = (z - OW.Z0) / 4 - j0, a = Math.floor(fx), b = Math.floor(fz), u = fx - a, v = fz - b;
+      const q00 = (b * N + a) * 4, q10 = q00 + 4, q01 = q00 + N * 4, q11 = q01 + 4;
+      const w00 = (1 - u) * (1 - v), w10 = u * (1 - v), w01 = (1 - u) * v, w11 = u * v;
+      let r, gg, bb;
+      if (OW.bio[kk] === OWB.FIELD) {
+        // champs : parcelles et sentiers au mètre
+        owGroundColor(kk, x, z, col); col.convertLinearToSRGB();
+        r = col.r; gg = col.g; bb = col.b;
+      } else {
+        r = pc[q00] * w00 + pc[q10] * w10 + pc[q01] * w01 + pc[q11] * w11;
+        gg = pc[q00 + 1] * w00 + pc[q10 + 1] * w10 + pc[q01 + 1] * w01 + pc[q11 + 1] * w11;
+        bb = pc[q00 + 2] * w00 + pc[q10 + 2] * w10 + pc[q01 + 2] * w01 + pc[q11 + 2] * w11;
+      }
+      const shade = pc[q00 + 3] * w00 + pc[q10 + 3] * w10 + pc[q01 + 3] * w01 + pc[q11 + 3] * w11;
+      d[p] = r * 255 * shade; d[p + 1] = gg * 255 * shade; d[p + 2] = bb * 255 * shade; d[p + 3] = 255;
     }
   }
   OWED_RELIEF.set(k, d);
@@ -29823,6 +30330,7 @@ function owEditorPose(kind, i, e) {
     case 'box': o.position.set(e.x - e.face[0] * 0.05, yOf(e.x, e.z), e.z - e.face[1] * 0.05); o.rotation.y = Math.atan2(e.face[0], e.face[1]); break;
     case 'fuel': { const at = o.userData.at || [0, 0, 0]; o.position.set(e.x - at[0], yOf(e.x, e.z) - at[1], e.z - at[2]); break; }
     case 'vehicle': { const V = VEH.list[i]; if (!V) return false; V.x = e.x; V.z = e.z; V.yaw = e.yaw || 0; vehPose(V, 0, true); break; }
+    case 'building': { const at = o.userData.at || [e.x, 0, e.z]; o.position.set(e.x - at[0], (Number.isFinite(e.y) ? e.y : at[1]) - at[1], e.z - at[2]); break; }
     default: return false;
   }
   o.updateMatrixWorld(true);
@@ -29839,6 +30347,193 @@ function owEditorPoseProp(i, pr) {
   g.scale.setScalar(pr.s || 1);
   g.updateMatrixWorld(true);
   return true;
+}
+
+/* ======================================================= Niveau 2 : terrain ==
+   Relief et sol peints au pinceau, routes et bâtiments ajoutés. Les grilles de travail (OWMOD.delta :
+   écart à la base en m ; OWMOD.paint : matière + 1) suivent la carte : relues de ses blocs au
+   chargement et après « annuler », écrites dans ses blocs à la fin de chaque coup de pinceau. */
+function owEditorSyncMods(map) {
+  const n = OW.NX * OW.NZ, B = OWMOD.B, NX = OW.NX, NZ = OW.NZ;
+  if (!OWMOD.delta || OWMOD.delta.length !== n) { OWMOD.delta = new Float32Array(n); OWMOD.paint = new Uint8Array(n); }
+  else { OWMOD.delta.fill(0); OWMOD.paint.fill(0); }
+  const put = (blocks, Type, fn) => {
+    for (const key of Object.keys(blocks || {})) {
+      const [bi, bj] = key.split(',').map(Number), a = owB64Dec(blocks[key], Type);
+      for (let q = 0; q < B; q++) { const j = bj * B + q; if (j >= NZ) break; for (let p = 0; p < B; p++) { const i = bi * B + p; if (i >= NX) break; if (a[q * B + p]) fn(j * NX + i, a[q * B + p]); } }
+    }
+  };
+  put(owBlocks(map.terrain), Int16Array, (k, v) => { OWMOD.delta[k] = v / 100; });
+  put(owBlocks(map.ground), Uint8Array, (k, v) => { OWMOD.paint[k] = v; });
+  OWMOD.live = true;
+}
+/* Zone (rect) de tout ce que la carte change au terrain, ou null. */
+function owModsRect(map) {
+  let R = null;
+  const add = (q) => { R = R ? owRectUnion(R, q) : q.slice(); };
+  const B = OWMOD.B * 4;
+  for (const o of [owBlocks(map.terrain), owBlocks(map.ground)]) for (const key of Object.keys(o || {})) { const [bi, bj] = key.split(',').map(Number); add([OW.X0 + bi * B - 4, OW.Z0 + bj * B - 4, OW.X0 + (bi + 1) * B + 4, OW.Z0 + (bj + 1) * B + 4]); }
+  for (const r of map.roads || []) add(owRoadReach(r));
+  for (const b of map.buildings || []) { const Q = owBldRect(b); if (Q) add([Q.x0 - 10, Q.z0 - 10, Q.x1 + 10, Q.z1 + 10]); }
+  return R;
+}
+/* Pinceau de relief en (x, z), rayon r (m) : 'raise' | 'lower' (s : m par passage au centre),
+   'flatten' (vers la hauteur target), 'smooth', 'reset' (retour à la base). Les lieux de la base,
+   ses routes et les pyramides ne bougent pas. Renvoie la zone touchée. */
+function owEditorSculpt(op, x, z, r, s, target) {
+  const D = OWMOD.delta, H = OW.H, B0 = OW.base0.H, M = owProtectMask(), NX = OW.NX;
+  const pts = [];
+  owEachPoint(x - r, z - r, x + r, z + r, (k, px, pz) => {
+    const d = Math.hypot(px - x, pz - z);
+    if (d > r) return;
+    const f = (1 - owSmoothstep(r * 0.3, r, d)) * (M[k] / 255);
+    if (f > 0.002) pts.push(k, f);
+  });
+  let avg = null;
+  if (op === 'smooth') {
+    avg = new Float32Array(pts.length / 2);
+    for (let q = 0; q < pts.length; q += 2) {
+      const k = pts[q];
+      avg[q / 2] = (B0[k - 1] + D[k - 1] + B0[k + 1] + D[k + 1] + B0[k - NX] + D[k - NX] + B0[k + NX] + D[k + NX] + (B0[k] + D[k]) * 2) / 6;
+    }
+  }
+  for (let q = 0; q < pts.length; q += 2) {
+    const k = pts[q], f = pts[q + 1];
+    let v = D[k];
+    if (op === 'raise') v += s * f;
+    else if (op === 'lower') v -= s * f;
+    else if (op === 'flatten') v += (target - (B0[k] + v)) * Math.min(1, f * s);
+    else if (op === 'smooth') v += (avg[q / 2] - (B0[k] + v)) * Math.min(1, f * s);
+    else if (op === 'reset') v *= 1 - Math.min(1, f * s);
+    D[k] = clamp(v, -60, 60);
+    if (Math.abs(D[k]) < 0.005) D[k] = 0;
+    H[k] = B0[k] + D[k];
+  }
+  return [x - r - 4, z - r - 4, x + r + 4, z + r + 4];
+}
+/* Pinceau de sol : v (OWB) ou -1 (sol de la base). Pas sur l'eau, les routes ni les pistes. */
+function owEditorPaint(v, x, z, r) {
+  const P = OWMOD.paint, bio = OW.bio, b0 = OW.base0.bio;
+  owEachPoint(x - r, z - r, x + r, z + r, (k, px, pz) => {
+    if (Math.hypot(px - x, pz - z) > r) return;
+    const cur = bio[k];
+    // pas sur l'eau ni sur les routes (un sol damé peint se repeint)
+    if (b0[k] === OWB.RIVER || ((cur === OWB.ROAD || cur === OWB.TRACK || cur === OWB.RUNWAY) && P[k] !== cur + 1)) return;
+    P[k] = v < 0 ? 0 : v + 1;
+    bio[k] = v < 0 ? b0[k] : v;
+  });
+  return [x - r - 4, z - r - 4, x + r + 4, z + r + 4];
+}
+/* Terrain changé dans une zone : morceaux du rendu, plan (fond et morceaux), mini-carte. */
+function owEditorAfterTerrain(rect, opts = {}) {
+  const R = rect || [OW.X0, OW.Z0, OW.X0 + (OW.NX - 1) * 4, OW.Z0 + (OW.NZ - 1) * 4];
+  owTerrainInvalidate(R);
+  owUpdateTerrainLod(true);
+  // morceaux du plan
+  const tx0 = Math.floor(R[0] / 64), tx1 = Math.floor(R[2] / 64), tz0 = Math.floor(R[1] / 64), tz1 = Math.floor(R[3] / 64);
+  for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) { OWED_RELIEF.delete(tz * 64 + tx); OWED.tiles.delete(tz * 64 + tx); }
+  OWED.tilesRev++;
+  // fond du plan : seulement la zone (sauf pendant un coup de pinceau)
+  if (OWED.plan && !opts.live) {
+    const c = OWED.plan, s = Math.min(c.width / 4000, c.height / 3000), ox = (c.width - 4000 * s) / 2, oz = (c.height - 3000 * s) / 2;
+    const px0 = clamp(Math.floor(ox + R[0] * s) - 2, 0, c.width), px1 = clamp(Math.ceil(ox + R[2] * s) + 2, 0, c.width);
+    const py0 = clamp(Math.floor(oz + R[1] * s) - 2, 0, c.height), py1 = clamp(Math.ceil(oz + R[3] * s) + 2, 0, c.height);
+    if (px1 > px0 && py1 > py0) khPlanDraw(c, { relief: true, corridor: false, pins: false, userRoads: false }, [px0, py0, px1, py1]);
+    OWED.planRev = (OWED.planRev || 0) + 1;
+  }
+  OWH.bg = null;
+}
+/* Fin d'un coup de pinceau : les grilles de travail vont dans les blocs de la carte, puis le
+   terrain de la zone est refait au propre (routes, bâtiments, pentes). Renvoie la zone refaite. */
+function owEditorCommitTerrain(map, rect) {
+  const B = OWMOD.B, NX = OW.NX, NZ = OW.NZ;
+  const i0 = clamp(Math.floor((rect[0] - OW.X0) / 4), 0, NX - 1), i1 = clamp(Math.ceil((rect[2] - OW.X0) / 4), 0, NX - 1);
+  const j0 = clamp(Math.floor((rect[1] - OW.Z0) / 4), 0, NZ - 1), j1 = clamp(Math.ceil((rect[3] - OW.Z0) / 4), 0, NZ - 1);
+  const T = { ...(owBlocks(map.terrain) || {}) }, P = { ...(owBlocks(map.ground) || {}) };
+  for (let bj = Math.floor(j0 / B); bj <= Math.floor(j1 / B); bj++) {
+    for (let bi = Math.floor(i0 / B); bi <= Math.floor(i1 / B); bi++) {
+      const dt = new Int16Array(B * B), dp = new Uint8Array(B * B);
+      let any = false, anyP = false;
+      for (let q = 0; q < B; q++) {
+        const j = bj * B + q;
+        if (j >= NZ) break;
+        for (let p = 0; p < B; p++) {
+          const i = bi * B + p;
+          if (i >= NX) break;
+          const k = j * NX + i, v = Math.round(OWMOD.delta[k] * 100);
+          if (v) { dt[q * B + p] = clamp(v, -32000, 32000); any = true; }
+          if (OWMOD.paint[k]) { dp[q * B + p] = OWMOD.paint[k]; anyP = true; }
+        }
+      }
+      const key = `${bi},${bj}`;
+      if (any) T[key] = owB64Enc(dt); else delete T[key];
+      if (anyP) P[key] = owB64Enc(dp); else delete P[key];
+    }
+  }
+  map.terrain = Object.keys(T).length ? { d: T } : null;
+  map.ground = Object.keys(P).length ? { d: P } : null;
+  return owEditorApply(map, rect);
+}
+/* Carte changée (routes, bâtiments, blocs) : terrain refait dans rect (null : partout), routes
+   ajoutées refaites. Renvoie la zone refaite. */
+function owEditorApply(map, rect) {
+  const R = owApplyMods(map, rect);
+  OW.locsShown = owNamedLocs(map);
+  owEditorAfterTerrain(R);
+  if (World.root) owBuildUserRoads(World.root);
+  return R;
+}
+/* Après « annuler » : les grilles relues de la carte, le terrain refait là où l'une ou l'autre
+   version le change. */
+function owEditorReapply(map, prev) {
+  owEditorSyncMods(map);
+  const a = owModsRect(map), b = prev ? owModsRect(prev) : null;
+  const R = a && b ? owRectUnion(a, b) : a || b;
+  if (!R && !OWMOD.on) return null;
+  return owEditorApply(map, R);
+}
+/* Place d'un bâtiment du catalogue (centre près de (x, z), rot quarts de tour) : emprise calée sur
+   le mètre, sol relevé (relief de la carte, sans l'aplanissement des bâtiments), lieux évités. */
+function owEditorBuildingPlace(type, x, z, rot) {
+  const T = OWBLD[type];
+  if (!T) return { ok: false, why: 'Bâtiment inconnu.' };
+  const q = ((rot | 0) % 4 + 4) % 4, w = q % 2 ? T.d : T.w, d = q % 2 ? T.w : T.d;
+  const x0 = Math.round(x - w / 2), z0 = Math.round(z - d / 2), cx = x0 + w / 2, cz = z0 + d / 2;
+  const b = { type, x: cx, z: cz, rot: q };
+  if (x0 < 120 || z0 < 20 || x0 + w > OW.W - 20 || z0 + d > OW.D - 20) return { ok: false, b, why: 'Hors de la zone jouable.' };
+  // sol : moyenne du relief de la carte (base + écart), sans les bâtiments déjà posés
+  const B0 = OW.base0.H, D = OWMOD.delta;
+  let sum = 0, n = 0, wet = false, place = false;
+  owEachPoint(x0, z0, x0 + w, z0 + d, (k) => { sum += B0[k] + (D ? D[k] : 0); n++; if (OW.water[k]) wet = true; });
+  for (let zz = z0; zz < z0 + d && !place; zz++) for (let xx = x0; xx < x0 + w; xx++) { const c = owPlaceRec(OW.surf, xx, zz); if (c && !c.none && c.kind !== OWK.TERRAIN) { place = true; break; } }
+  b.y = Math.round((n ? sum / n : owH(cx, cz)) * 1000) / 1000;
+  if (place) return { ok: false, b, why: 'Sur un lieu ou une pyramide.' };
+  if (wet) return { ok: false, b, why: 'Pas dans l’eau.' };
+  if (owRectOnBaseRoad(x0, z0, x0 + w, z0 + d)) return { ok: false, b, why: 'Sur une route d’origine.' };
+  return { ok: true, b, rect: [x0, z0, x0 + w, z0 + d] };
+}
+/* Un rectangle touche-t-il la chaussée d'une route de la base (largeur + 1 m) ? */
+function owRectOnBaseRoad(x0, z0, x1, z1) {
+  for (const r of OW.roads || []) {
+    const pts = r.line.pts, m = r.w / 2 + 1;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
+      if (Math.max(ax, bx) < x0 - m || Math.min(ax, bx) > x1 + m || Math.max(az, bz) < z0 - m || Math.min(az, bz) > z1 + m) continue;
+      // distance du segment au rectangle : points du segment tous les mètres
+      const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(L));
+      for (let k = 0; k <= n; k++) {
+        const x = ax + ((bx - ax) * k) / n, z = az + ((bz - az) * k) / n;
+        const dx = Math.max(x0 - x, 0, x - x1), dz = Math.max(z0 - z, 0, z - z1);
+        if (dx * dx + dz * dz < m * m) return true;
+      }
+    }
+  }
+  return false;
+}
+/* Hauteur du relief de la carte (base + écart des pinceaux), sans routes ni bâtiments. */
+function owEditorReliefAt(x, z) {
+  const k = owPointIndex(x, z);
+  return OW.base0 ? OW.base0.H[k] + (OWMOD.delta ? OWMOD.delta[k] : 0) : owH(x, z);
 }
 
 /* ------------------------------------------------------------ Tempêtes --
@@ -32833,13 +33528,24 @@ const khBreakersWord = (n) => `${KH_NUM[n] || n} disjoncteur${n > 1 ? 's' : ''}`
 /* Consigne du courant : celle de Khamsin tant que ses disjoncteurs n'ont pas bougé ; sinon leur
    nombre et les lieux où ils sont (une carte des Mod Tools). */
 function khPowerTip(map) {
-  const B = map.breakers || [];
-  if (map.rules && map.rules.powerOn) return 'Courant rétabli dès le départ\u00a0: les atouts, le sanctuaire et la batterie de l’avion sont alimentés.';
-  if (!B.length) return 'Pas de disjoncteur sur cette carte\u00a0: atouts électriques, sanctuaire et batterie de l’avion restent sans courant.';
-  if (JSON.stringify(B) === JSON.stringify(KHAMSIN.breakers)) return KH_TIPS.power;
-  const where = [...new Set(B.map((b) => khNearestLoc(b.x, b.z).loc.name))].join(', ');
+  const B = map.breakers || [], desert = map.base === 'desert';
+  const fed = desert ? 'les atouts' : 'les atouts, le sanctuaire et la batterie de l’avion';
+  if (map.rules && map.rules.powerOn) return `Courant rétabli dès le départ\u00a0: ${fed} sont alimentés.`;
+  if (!B.length) return desert ? 'Pas de disjoncteur sur cette carte\u00a0: les atouts électriques restent sans courant.' : 'Pas de disjoncteur sur cette carte\u00a0: atouts électriques, sanctuaire et batterie de l’avion restent sans courant.';
+  if (!desert && JSON.stringify(B) === JSON.stringify(KHAMSIN.breakers)) return KH_TIPS.power;
+  const named = owNamedLocsOf(map);
+  const where = [...new Set(B.map((b) => { let best = null, bd = Infinity; for (const L of named) { const d = Math.hypot(b.x - L.x, b.z - L.z) - L.r; if (d < bd) { bd = d; best = L; } } return best && bd < 200 ? best.name : null; }).filter(Boolean))].join(', ');
   const w = khBreakersWord(B.length);
-  return `${w[0].toUpperCase()}${w.slice(1)} (${where})\u00a0: le courant alimente les atouts, ouvre le sanctuaire et charge la batterie de l’avion.`;
+  return `${w[0].toUpperCase()}${w.slice(1)}${where ? ` (${where})` : ''}\u00a0: le courant alimente ${desert ? 'les atouts' : 'les atouts, ouvre le sanctuaire et charge la batterie de l’avion'}.`;
+}
+/* Lieux nommés d'une carte sans la charger (ceux de Khamsin si sa base les a, puis les siens). */
+function owNamedLocsOf(map) {
+  return [...(map.base === 'desert' ? [] : KH.locs), ...((map.locs || []).map((L) => ({ name: L.name, x: L.x, z: L.z, r: L.r })))];
+}
+/* Tempêtes : toutes les N manches (règle de la carte), aucune avec 0. */
+function khStormTip(n) {
+  if (n === 1) return 'À chaque manche, une tempête de sable\u00a0: abritez-vous sous un toit.';
+  return `Toutes les ${KH_NUM[n] || n} manches, une tempête de sable\u00a0: abritez-vous sous un toit.`;
 }
 function khMenuTips(map) {
   const kh = !!(map && map.open);
@@ -32850,6 +33556,9 @@ function khMenuTips(map) {
   $('tip-box').textContent = KH_TIPS.box();
   $('tip-power').hidden = false;
   $('tip-power').textContent = khPowerTip(map);
+  const n = map.rules && Number.isFinite(map.rules.storms) ? map.rules.storms : 4;
+  $('tip-storm').hidden = !n;
+  if (n) $('tip-storm').textContent = khStormTip(n);
 }
 
 /* ====================================================== fin du monde ouvert == */
@@ -32872,7 +33581,7 @@ function registerMap(raw, source) {
   // carte ouverte (Khamsin) : pas de grille ; ses éléments viennent du fichier (Mod Tools) ou de la carte intégrée
   const m = raw.open ? openNormalize(raw) : normalizeMap(raw);
   if (m === KHAMSIN) khThumb();
-  else if (m.open && !m.thumb) m.thumb = khThumb();
+  else if (m.open && !m.thumb) m.thumb = owBaseThumb(m.base);
   m.source = source;
   MAPS.byId[m.id] = m;
   return m;
@@ -34211,6 +34920,11 @@ window.ZS = {
     get vehicles() { return VEH.list; }, get box() { return Features.box; },
     pose: owEditorPose, poseProp: owEditorPoseProp, surface: owEditorSurface, get objs() { return OW.elObjs; }, roads: owEditorRoads,
     height: (x, z) => owGroundAt(0, x, z),   // sol avec les éléments (dessus d'un objet plein)
+    /* niveau 2 : terrain, routes, bâtiments, lieux, désert vierge */
+    BASES: OW_BASES, BUILDINGS: OWBLD, PAINTS: OW_PAINTS.map((id) => ({ id, v: OWB[id] })), bldRect: owBldRect, namedLocs: () => owNamedLocs(OW.map),
+    sculpt: owEditorSculpt, paint: owEditorPaint, afterTerrain: owEditorAfterTerrain, commitTerrain: owEditorCommitTerrain,
+    apply: owEditorApply, reapply: owEditorReapply, syncMods: owEditorSyncMods, modsRect: owModsRect, buildingPlace: owEditorBuildingPlace,
+    reliefAt: owEditorReliefAt, protectAt: (x, z) => owProtectMask()[owPointIndex(x, z)] / 255, get baseId() { return OW.baseId; }, baseThumb: owBaseThumb,
     get far() { return camera.far; }, get spawnY() { return OW.on && CUR.map ? owEditorGround(CUR.map.spawn.pos[0], CUR.map.spawn.pos[1]) : 0; },
   }, World, Features, G, LAYOUT_REF: () => LAYOUT,
   normalizeMap, serializeMap, validateMap, analyzeMap, blankMap, buildWorld, disposeWorld, textureThumb, modelParts, PropBatch,

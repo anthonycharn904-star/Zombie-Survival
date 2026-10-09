@@ -63,14 +63,21 @@
     const wI = h('input', { type: 'number', class: 'f-num', value: 40, min: ZS.MAP_MIN, max: ZS.MAP_MAX });
     const hI = h('input', { type: 'number', class: 'f-num', value: 30, min: ZS.MAP_MIN, max: ZS.MAP_MAX });
     const all = MT.gameMaps();
-    const sources = [['room', 'Une pièce de départ (prête à tester)'], ['empty', 'Terrain vide'], ...[...new Set([...S.known.map((k) => k.id), ...Object.keys(all.byId)])].map((id) => [`copy:${id}`, `Copie de « ${(S.known.find((k) => k.id === id) || all.byId[id] || { name: id }).name} »${all.byId[id] && all.byId[id].open ? ' (monde ouvert)' : ''}`])];
+    const desert = MT.ow.ok2() ? [['desert', 'Désert vierge (monde ouvert 4 × 3 km, sans les lieux de Khamsin)']] : [];
+    const sources = [['room', 'Une pièce de départ (prête à tester)'], ['empty', 'Terrain vide'], ...desert, ...[...new Set([...S.known.map((k) => k.id), ...Object.keys(all.byId)])].map((id) => [`copy:${id}`, `Copie de « ${(S.known.find((k) => k.id === id) || all.byId[id] || { name: id }).name} »${all.byId[id] && all.byId[id].open ? ' (monde ouvert)' : ''}`])];
     const srcS = h('select', { class: 'f-select' }, sources.map(([v, l]) => h('option', { value: v }, l)));
     const sizeRow = h('div', null, UI.f.field('Largeur (x)', wI), UI.f.field('Hauteur (z)', hI));
-    srcS.addEventListener('change', () => { sizeRow.hidden = srcS.value.startsWith('copy:'); });
+    const NOTE_GRID = '1 case = 1 m. Bunker 7 fait 52 × 31. Vous pourrez redimensionner plus tard (onglet Carte).';
+    const NOTE_OPEN = 'Monde ouvert de 4 × 3 km. Relief (T), sol (P), routes (L), bâtiments (B) et éléments de jeu (G) se posent dans le plan ou en 3D. Les routes d’origine et les pyramides restent en place.';
+    const note = h('p', { class: 'p-note' }, NOTE_GRID);
+    srcS.addEventListener('change', () => {
+      const v = srcS.value, open = v === 'desert' || (v.startsWith('copy:') && all.byId[v.slice(5)] && all.byId[v.slice(5)].open);
+      sizeRow.hidden = v.startsWith('copy:') || v === 'desert';
+      note.textContent = open ? NOTE_OPEN : NOTE_GRID;
+    });
     UI.modal({
       title: 'Nouvelle carte',
-      body: h('div', null, UI.f.field('Nom', nameI), UI.f.field('Départ', srcS), sizeRow,
-        h('p', { class: 'p-note' }, '1 case = 1 m. Bunker 7 fait 52 × 31. Vous pourrez redimensionner plus tard (onglet Carte).')),
+      body: h('div', null, UI.f.field('Nom', nameI), UI.f.field('Départ', srcS), sizeRow, note),
       buttons: [{ label: 'Annuler' }, { label: 'Créer', kind: 'primary', onClick: async () => {
         const name = nameI.value.trim() || 'Nouvelle carte';
         const W = clamp(parseInt(wI.value, 10) || 40, ZS.MAP_MIN, ZS.MAP_MAX), H = clamp(parseInt(hI.value, 10) || 30, ZS.MAP_MIN, ZS.MAP_MAX);
@@ -82,6 +89,12 @@
           map.name = name;
           map.thumb = map.open && all.byId[map.base] ? all.byId[map.base].thumb : null;
           map.menuCam = map.menuCam || null;
+        } else if (src === 'desert') {
+          try { map = ZS.openNormalize({ base: 'desert', id: 'desert', name }); } catch (e) { MT.toast(e.message, 'error'); return false; }
+          map = MT.copyOfMap(map);
+          map.name = name;
+          map.thumb = ZS.ow.baseThumb ? ZS.ow.baseThumb('desert') : null;
+          map.menuCam = null;
         } else if (src === 'empty') {
           const grid = Array.from({ length: H }, () => ' '.repeat(W));
           map = ZS.normalizeMap({ id: 'nouvelle', name, grid, spawn: { pos: [W / 2, H / 2], yaw: 0 }, seed: Math.floor(Math.random() * 1e9) });
@@ -96,6 +109,7 @@
         MT.openMap(map, { id, source: 'new' });
         MT.setTool(src === 'empty' ? 'build' : 'select');
         if (src === 'empty') { S.opts.build.shape = 'room'; MT.emit('tool-opts'); MT.toast('Glissez dans le plan pour tracer une première pièce.', 'info'); }
+        if (src === 'desert') MT.toast('Désert vierge : T relief · P sol · L routes · B bâtiments · G éléments de jeu (départ, armes, atouts, boîte…).', 'info');
         return true;
       } }],
     });
@@ -151,8 +165,11 @@
       let v = null;
       try { if (map) v = map.open ? (map === S.map ? S.issues : ZS.openValidate(map)) : ZS.validateMap(map); } catch (err) { v = null; }
       const inPub = S.publish.maps.includes(e.id);
+      // carte ouverte sans vignette à elle : celle de sa base (plan du désert)
+      let thumb = map ? map.thumb : null;
+      if (!thumb && map && map.open && ZS.ow && ZS.ow.baseThumb) { try { thumb = ZS.ow.baseThumb(map.base); } catch (err) { thumb = null; } }
       detail.append(
-        h('div', { class: 'mm-thumb' }, map && map.thumb ? h('img', { src: map.thumb, alt: '' }) : h('span', null, 'Pas de vignette')),
+        h('div', { class: 'mm-thumb' }, thumb ? h('img', { src: thumb, alt: '' }) : h('span', null, 'Pas de vignette')),
         h('h3', null, map ? map.name : e.name),
         h('p', { class: 'mm-sub' }, `${e.id}${map ? (map.open ? ` · monde ouvert · ${MT.ow.summary(map)}` : ` · ${map.w} × ${map.h} · ${map.props.length} objets · ${map.lights.length} lumières`) : ''}`),
         map && map.description ? h('p', { class: 'mm-desc' }, map.description) : null,

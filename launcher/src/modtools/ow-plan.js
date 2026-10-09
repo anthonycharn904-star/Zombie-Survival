@@ -22,7 +22,7 @@
     if (PL.base || PL.baseBusy || !ZS.ow.on || !(MT.v3 && MT.v3.owLoaded)) return;
     PL.baseBusy = true;
     setTimeout(() => {
-      try { PL.base = ZS.ow.plan(2000, 1500); PL.locs = ZS.ow.locs(); } catch (e) { console.error(e); }
+      try { PL.base = ZS.ow.plan(2000, 1500); PL.locs = O.baseLocs(); } catch (e) { console.error(e); }
       PL.baseBusy = false;
       P.need = true;
     }, 30);
@@ -124,6 +124,7 @@
         text(g, L.name, sx, Z >= 1.5 ? sy - L.r * Z * 0.72 : sy - clamp(L.r * Z * 0.6, 14, 40), { size: clamp(11 + Z * 2, 11, 17), color: '#ffe7b0' });
       }
     }
+    if (O.terrain) O.terrain.drawPlan(P, g, m, vis);
     if (P.showProps !== false) drawProps(P, g, m, vis);
     drawElements(P, g, m, vis);
     drawSelection(P, g, m);
@@ -322,6 +323,6 @@
     g.closePath(); g.fill(); g.stroke();
   }
 
-  MT.on('map', () => { PL.locs = PL.locs || null; });
-  MT.on('ow-world', () => { if (!PL.locs) PL.locs = ZS.ow.locs(); });
+  // monde chargé (autre carte, autre base, retour d'un test) : fond, lieux et routes relus
+  MT.on('ow-world', () => { PL.base = null; PL.locs = O.baseLocs(); PL.roads = null; if (MT.plan) MT.plan.need = true; });
 })();

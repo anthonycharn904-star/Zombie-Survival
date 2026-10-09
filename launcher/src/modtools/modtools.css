@@ -336,3 +336,9 @@ code { font: 400 13px var(--font-type); color: #d8cfb6; background: #0a0d0e; pad
 .ow-count i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.6); }
 .ow-count span { font-size: 14px; }
 .ow-count b { font: 600 14px var(--font-type); color: var(--mt-brass-hi); min-width: 2ch; text-align: right; }
+.ow-blds { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ow-bld { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 8px; border: 1px solid var(--mt-line); background: #141819; border-radius: 2px; cursor: pointer; text-align: left; color: inherit; }
+.ow-bld b { font-weight: 600; font-size: 14px; }
+.ow-bld small { font-size: 11px; color: var(--mt-dim); line-height: 1.2; }
+.ow-bld:hover { border-color: var(--mt-line2); background: #1a2021; }
+.ow-bld.on { border-color: var(--mt-brass); background: rgba(214, 173, 87, 0.14); color: var(--mt-brass-hi); }

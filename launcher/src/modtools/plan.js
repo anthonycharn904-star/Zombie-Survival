@@ -42,7 +42,7 @@
     return { x: Math.floor(w.x), z: Math.floor(w.z), wx: w.x, wz: w.z, wy: 0, face: null, view: 'plan', sx, sy };
   }
   const evInfo = (e) => ({ button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, alt: e.altKey, view: 'plan' });
-  const usesRight = () => S.tool === 'build' || S.tool === 'paint' || S.tool === 'elements' || S.tool === 'stairs';
+  const usesRight = () => S.tool === 'build' || S.tool === 'paint' || S.tool === 'elements' || S.tool === 'stairs' || S.tool === 'terrain' || S.tool === 'ground';
 
   const OWP = () => (S.map && S.map.open && MT.ow && MT.ow.plan ? MT.ow.plan : null);
   P.fit = () => {

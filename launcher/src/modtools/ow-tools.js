@@ -11,12 +11,14 @@
   const S = MT.state;
   const O = MT.ow;
 
-  O.toolList = [
+  const BASE_TOOLS = [
     { id: 'select', name: 'Sélection', key: 'KeyV', label: 'V', hint: 'Clic : sélectionner · glisser : déplacer · Maj+clic : ajouter des objets · Suppr : supprimer · R : tourner' },
     { id: 'props', name: 'Objets', key: 'KeyO', label: 'O', hint: 'Clic : poser · R : tourner · Alt+clic : pipette · Échap : sélection' },
-    { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser · clic droit : retirer · R : tourner · 1 à 7 : genre' },
+    { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser · clic droit : retirer · R : tourner · 1 à 8 : genre' },
   ];
-  O.KIND_KEYS = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker'];
+  /* Outils des cartes ouvertes : ceux du niveau 2 (relief, sol, routes, bâtiments) si le moteur les a. */
+  Object.defineProperty(O, 'toolList', { get: () => BASE_TOOLS.concat(O.terrain && O.ok2() ? O.terrain.tools : []), configurable: true });
+  O.KIND_KEYS = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'loc'];
 
   const snapV = (v, step) => (step > 0 ? Math.round(v / step) * step : v);
   const zoom = () => (MT.plan ? MT.plan.cam.zoom : 4);
@@ -30,7 +32,8 @@
       if (p.el && O.get(p.el)) return { ...p.el };
       if (typeof p.prop === 'number' && m.props[p.prop]) return { kind: 'prop', i: p.prop };
       if (p.mt) return { ...p.mt };
-      return null;
+      const t = O.terrain ? O.terrain.hitTest(p) : null;
+      return t && t.kind !== 'building' ? t : null;
     }
     const Z = zoom(), px = 9 / Z;
     let best = null, bd = Infinity;
@@ -45,9 +48,10 @@
     m.vehicles.forEach((e, i) => { const T = ZS.VEH_TYPES[e.type]; test('vehicle', i, e.x, e.z, T ? T.wid * 0.5 : 1); });
     m.fuel.forEach((e, i) => test('fuel', i, e.x, e.z, 0.3));
     m.breakers.forEach((e, i) => test('breaker', i, e.x + e.nx * 0.2, e.z + e.nz * 0.2, 0.3));
+    (m.locs || []).forEach((L, i) => test('loc', i, L.x, L.z));
     if (best) return best;
-    if (Z < 0.6) return null;
     let bi = -1, bestArea = Infinity;
+    if (Z < 0.6) return O.terrain ? O.terrain.hitTest(p) : null;
     for (let i = m.props.length - 1; i >= 0; i--) {
       const pr = m.props[i];
       if (Math.abs(pr.x - p.wx) > 30 || Math.abs(pr.z - p.wz) > 30) continue;
@@ -55,7 +59,8 @@
       const b = MT.modelBox(pr.m), area = (b.max.x - b.min.x) * (b.max.z - b.min.z) * (pr.s || 1) ** 2;
       if (area < bestArea) { bi = i; bestArea = area; }
     }
-    return bi >= 0 ? { kind: 'prop', i: bi } : null;
+    if (bi >= 0) return { kind: 'prop', i: bi };
+    return O.terrain ? O.terrain.hitTest(p) : null;
   };
 
   /* ------------------------------------------------------- Sélection -- */
@@ -67,13 +72,14 @@
       return;
     }
     const e = O.get(sel);
-    if (!e) return;
+    if (!e || sel.kind === 'road') return;
     MT.begin('Déplacer');
-    MT.tools.drag = { mode: 'ow-el', sel: { ...sel }, start: [p.wx, p.wz], orig: O.posOf(sel.kind, e), moved: false };
+    MT.tools.drag = { mode: 'ow-el', sel: { ...sel }, start: [p.wx, p.wz], orig: O.posOf(sel.kind, e), moved: false, before: sel.kind === 'building' ? O.terrainRect('building', { ...e }) : null };
   }
   function dragMove(p, ev) {
     const d = MT.tools.drag, m = S.map;
     if (!d || !p) return;
+    if (d.mode === 'ow-handle') { O.terrain.dragHandle(p); return; }
     let dx = p.wx - d.start[0], dz = p.wz - d.start[1];
     if (!d.moved && Math.hypot(dx, dz) < Math.max(0.06, 2 / zoom())) return;
     if (d.mode === 'ow-props') {
@@ -91,6 +97,9 @@
   const select = {
     down(p, ev) {
       if (ev.button !== 0) return false;
+      // point d'une route sélectionnée : on le glisse
+      const hk = O.terrain && p.view === 'plan' ? O.terrain.roadHandleAt(p) : -1;
+      if (hk >= 0) { O.terrain.startHandle(S.sel.i, hk, p); return true; }
       const hit = ev.alt ? null : O.hitTest(p);
       if (hit && hit.kind === 'prop') {
         const cur = MT.selectedProps();
@@ -136,8 +145,13 @@
         if (merged.length) MT.toast(`${merged.length} objet${merged.length > 1 ? 's' : ''} sélectionné${merged.length > 1 ? 's' : ''}`);
         return;
       }
-      // fin du glisser : les cases (solides) suivent
-      if (d.moved && d.mode === 'ow-el') MT.touch('ow-el', { kind: d.sel.kind, i: d.sel.i });
+      // fin du glisser : les cases (solides) suivent ; un bâtiment refait le terrain sous lui
+      if (d.mode === 'ow-handle') { O.terrain.endHandle(); return; }
+      if (d.moved && d.mode === 'ow-el') {
+        if (d.sel.kind === 'building') MT.touch('ow-terrain', { rect: O.unionRect(d.before, O.terrainRect('building', O.get(d.sel))) });
+        else if (d.sel.kind === 'loc') MT.touch('settings');
+        else MT.touch('ow-el', { kind: d.sel.kind, i: d.sel.i });
+      }
       if (d.moved && d.mode === 'ow-props') MT.touch('props', { list: d.list });
     },
     hover() { MT.preview.ow = null; MT.preview.ghost = null; },

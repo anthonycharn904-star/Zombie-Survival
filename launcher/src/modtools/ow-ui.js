@@ -37,11 +37,63 @@
   OU.toolPanel = () => {
     if (S.tool === 'props') return UI.panels.propsPanel();
     if (S.tool === 'elements') return elementsPanel();
+    if (S.tool === 'terrain') return terrainPanel();
+    if (S.tool === 'ground') return groundPanel();
+    if (S.tool === 'roads') return roadsPanel();
+    if (S.tool === 'buildings') return buildingsPanel();
     return selectPanel();
   };
+  /* ---- niveau 2 : relief, sol, routes, bâtiments */
+  function terrainPanel() {
+    const b = S.opts.ow.brush, TR = O.terrain;
+    return [
+      section('Pinceau',
+        seg(b.op, TR.OPS, (v) => { b.op = v; MT.emit('tool-opts'); }),
+        field('Taille', slider({ value: b.size, min: 4, max: 160, step: 1, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => { b.size = Math.round(v); MT.emit('preview'); } }), '[ et ] pour changer'),
+        field('Force', slider({ value: b.strength, min: 0.05, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)} %`, onCommit: (v) => { b.strength = v; } })),
+        h('p', { class: 'p-note' }, b.op === 'flatten' ? 'Aplanir : vers la hauteur du point où l’on commence à peindre.' : b.op === 'smooth' ? 'Adoucir : arrondit les creux et les bosses.' : b.op === 'reset' ? 'Effacer : rend au terrain sa forme d’origine (celle du jeu).' : 'Clic droit : l’inverse. Tenir le pinceau immobile continue de monter ou de creuser.')),
+      section('Protégé',
+        h('p', { class: 'p-note' }, S.map.base === 'desert' ? 'Les routes du désert et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus).' : 'Les sept lieux de Khamsin, ses routes et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus) : leurs bâtiments y sont posés.'),
+        h('p', { class: 'p-note' }, 'Les routes et bâtiments ajoutés suivent : le terrain est aplani sous eux après chaque coup de pinceau.')),
+    ];
+  }
+  function groundPanel() {
+    const o = S.opts.ow.paint, TR = O.terrain;
+    const sw = h('div', { class: 'kinds' }, Object.entries(TR.PAINT).map(([id, [name, col]]) => h('button', {
+      type: 'button', class: `kind-btn ${o.bio === id ? 'on' : ''}`, onclick: () => { o.bio = id; MT.emit('tool-opts'); },
+    }, h('i', { style: { background: col, borderRadius: '2px' } }), h('span', null, name))));
+    return [
+      section('Sol', sw, h('p', { class: 'p-note' }, 'Couleur du terrain et conduite des véhicules (le sable damé et les graviers roulent mieux que le sable). Clic droit : sol d’origine. L’eau, les routes et les pistes ne se peignent pas.')),
+      section('Pinceau', field('Taille', slider({ value: o.size, min: 4, max: 160, step: 1, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => { o.size = Math.round(v); MT.emit('preview'); } }), '[ et ] pour changer')),
+    ];
+  }
+  function roadsPanel() {
+    const o = S.opts.ow.road;
+    return [
+      section('Tracé',
+        seg(o.kind, [['road', 'Route goudronnée'], ['track', 'Piste']], (v) => { o.kind = v; o.w = v === 'road' ? 8 : 6; MT.emit('tool-opts'); }),
+        field('Largeur', slider({ value: o.w, min: 3, max: 14, step: 0.5, fmt: (v) => `${v} m`, onCommit: (v) => { o.w = v; } })),
+        h('p', { class: 'p-note' }, 'Cliquez point par point, dans le plan ou en 3D ; double-clic ou Entrée pour finir. Le terrain est aplani le long de la route (pente bornée), sauf sous les lieux de la base.'),
+        MT.preview.road ? h('div', { class: 'p-actions' }, btn(`Finir (${MT.preview.road.pts.length} points)`, () => O.terrain.finishRoad(), { kind: 'primary' }), btn('Annuler', () => O.terrain.cancelRoad())) : null),
+      section('Routes de la carte', h('p', { class: 'p-note' }, `${(S.map.roads || []).length} sur ${ZS.OPEN_LIMITS.roads}. Outil Sélection : cliquez une route pour glisser ses points, changer sa largeur ou la supprimer.`)),
+    ];
+  }
+  function buildingsPanel() {
+    const o = S.opts.ow.bld, cat = ZS.ow.BUILDINGS;
+    const list = h('div', { class: 'ow-blds' }, Object.entries(cat).map(([id, T]) => h('button', {
+      type: 'button', class: `ow-bld ${o.type === id ? 'on' : ''}`, onclick: () => { o.type = id; MT.emit('tool-opts'); MT.emit('preview'); },
+    }, h('b', null, T.name), h('small', null, `${T.w} × ${T.d} m · ${T.desc}`))));
+    return [
+      section('Catalogue', list),
+      section('Pose',
+        field('Orientation', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, ['entrée au sud', 'entrée à l’ouest', 'entrée au nord', 'entrée à l’est'][o.rot]), btn('Tourner', () => O.terrain.rotateTool(1), { ic: 'rotate', title: 'R' }))),
+        h('p', { class: 'p-note' }, 'Le terrain est aplani sous le bâtiment. Murs, portes, fenêtres et toits sont pleins : on y entre, les zombies en font le tour, on pose des armes sur ses murs (outil Éléments).'),
+        h('p', { class: 'p-note' }, `${(S.map.buildings || []).length} sur ${ZS.OPEN_LIMITS.buildings}. Pas sur un lieu de la base, une route d’origine ni dans l’eau.`)),
+    ];
+  }
   function selectPanel() {
     const m = S.map;
-    const rows = ELKINDS.map((k) => {
+    const rows = ELKINDS.concat(O.ok2() ? ['building', 'road', 'loc'] : []).map((k) => {
       const arr = O.arr(k), cur = S.sel && S.sel.kind === k ? S.sel.i : -1;
       const go = (d) => {
         if (!arr.length) return;
@@ -60,11 +112,13 @@
           btn('Départ du joueur', () => { MT.select({ kind: 'spawn' }); OU.focusSel(); }, { ic: 'walk' }),
           btn(`Tous les objets (${m.props.length})`, () => { if (m.props.length) MT.select({ kind: 'prop', list: m.props.map((_, i) => i) }); }, { disabled: !m.props.length }))),
       section('Carte ouverte',
-        h('p', { class: 'p-note' }, `Relief, routes, bâtiments, sanctuaire et quête viennent du jeu (base : ${baseName(m)}). Vous placez ici les éléments de jeu, les objets de la bibliothèque, le départ et les règles.`),
+        h('p', { class: 'p-note' }, O.ok2()
+          ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; les lieux, les routes d’origine et les pyramides restent fixes. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
+          : `Relief, routes, bâtiments, sanctuaire et quête viennent du jeu (base : ${baseName(m)}). Vous placez ici les éléments de jeu, les objets de la bibliothèque, le départ et les règles.`),
         h('p', { class: 'p-note' }, 'Plan : molette pour le zoom (de 4 km à quelques mètres), double-clic pour y aller en 3D. 3D : ZQSD/WASD pour voler (Maj : très vite), molette pour avancer vers le curseur.')),
     ];
   }
-  const baseName = (m) => (m.base === 'khamsin' ? 'Khamsin' : m.base);
+  const baseName = (m) => (m.base === 'khamsin' ? 'Khamsin' : m.base === 'desert' ? 'Désert vierge' : m.base);
 
   function elementsPanel() {
     const o = S.opts.ow;
@@ -84,6 +138,7 @@
           field('Cap', num({ value: degOf(o.yaw), min: 0, max: 360, step: 15, unit: '°', digits: 1, onCommit: (v) => { o.yaw = round(wrapRad(rad(v)), 4); MT.emit('preview'); } }), 'R : +15° · Maj+R : +90°'), count('vehicle'));
         break;
       case 'fuel': opts.push(count('fuel')); break;
+      case 'loc': opts.push(count('loc')); break;
       case 'breaker': opts.push(faceRow(), count('breaker'), h('p', { class: 'p-note' }, 'Le courant revient quand tous les disjoncteurs de la carte sont enclenchés (F maintenue 4 s chacun). Aucun disjoncteur : cochez « Courant allumé dès le départ » (onglet Carte), sinon atouts électriques, sanctuaire et batterie de l’avion restent sans courant.')); break;
       default: break;
     }
@@ -142,6 +197,34 @@
           T ? h('p', { class: 'p-note' }, `${fmt(T.len, 1)} × ${fmt(T.wid, 1)} m · réservoir ${Math.round(T.fuel / 1000)} km${T.cost ? ` · à acheter (${T.cost} pts)` : ''}${e.type === 'truck' ? ' · démarre avec le courant' : ''}.`) : null)];
       }
       case 'fuel': return [head('Jerricans', `n° ${s.i + 1} sur ${m.fuel.length}${where(e.x, e.z)}`, [delBtn()]), section('Infos', h('p', { class: 'p-note' }, 'Font le plein du véhicule le plus proche (à moins de 14 m) quand on appuie sur F.'))];
+      case 'loc': return [head('Lieu nommé', `x ${fmt(e.x)} · z ${fmt(e.z)}`, [delBtn()]), section('Réglages',
+        field('Nom', text({ value: e.name, maxLength: 40, onCommit: (v) => commit('Nom du lieu', 'settings', (mm) => { const L = mm.locs[s.i]; L.name = v.trim().slice(0, 40) || L.name; }) }), 'Affiché en entrant dans le cercle, et sur la mini-carte (numéro)'),
+        field('Rayon', slider({ value: e.r, min: 15, max: 600, step: 5, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => commit('Rayon du lieu', 'settings', (mm) => { mm.locs[s.i].r = Math.round(v); }) })),
+        h('p', { class: 'p-note' }, 'Glissez le centre (outil Sélection) pour le déplacer.'))];
+      case 'road': {
+        const len = e.pts.reduce((a, p, k) => (k ? a + Math.hypot(p[0] - e.pts[k - 1][0], p[1] - e.pts[k - 1][1]) : 0), 0);
+        const tset = (label, fn) => { const before = O.terrainRect('road', { ...e, pts: e.pts.map((p) => p.slice()) }); commit(label, 'ow-terrain', (mm) => fn(mm.roads[s.i]), { rect: O.unionRect(before, O.terrainRect('road', e)) }); };
+        return [head(e.kind === 'road' ? 'Route goudronnée' : 'Piste', `${e.pts.length} points · ${Math.round(len)} m`, [delBtn()]), section('Réglages',
+          field('Genre', seg(e.kind, [['road', 'Route'], ['track', 'Piste']], (v) => tset('Genre de la route', (r) => { r.kind = v; }))),
+          field('Largeur', slider({ value: e.w, min: 3, max: 14, step: 0.5, fmt: (v) => `${v} m`, onCommit: (v) => tset('Largeur de la route', (r) => { r.w = v; }) })),
+          h('div', { class: 'p-actions' },
+            btn('Enlever le dernier point', () => { if (e.pts.length > 2) tset('Raccourcir la route', (r) => { r.pts.pop(); }); }, { disabled: e.pts.length <= 2 }),
+            btn('Inverser le sens', () => tset('Inverser la route', (r) => { r.pts.reverse(); }))),
+          h('p', { class: 'p-note' }, 'Glissez ses points dans le plan (points jaunes). Pour la prolonger : outil Routes, une nouvelle route depuis son bout.'))];
+      }
+      case 'building': {
+        const T = ZS.ow.BUILDINGS[e.type] || { name: e.type, w: 0, d: 0 };
+        return [head(T.name, `${T.w} × ${T.d} m · sol à ${fmt(e.y, 2)} m${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
+          field('Modèle', select({ value: e.type, options: Object.entries(ZS.ow.BUILDINGS).map(([id, x]) => [id, `${x.name} (${x.w} × ${x.d} m)`]), onChange: (v) => {
+            const r = ZS.ow.buildingPlace(v, e.x, e.z, e.rot);
+            if (!r.ok) { MT.toast(r.why, 'warn'); UI.renderPanel(); return; }
+            const before = O.terrainRect('building', { ...e });
+            commit('Modèle du bâtiment', 'ow-terrain', (mm) => { Object.assign(mm.buildings[s.i], { type: v, x: r.b.x, z: r.b.z, y: r.b.y }); }, { rect: O.unionRect(before, O.terrainRect('building', r.b)) });
+          } })),
+          field('Orientation', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, ['entrée au sud', 'entrée à l’ouest', 'entrée au nord', 'entrée à l’est'][e.rot]), rotBtn())),
+          field('Hauteur du sol', num({ value: e.y, min: -10, max: 120, step: 0.1, unit: 'm', onCommit: (v) => commit('Hauteur du bâtiment', 'ow-terrain', (mm) => { mm.buildings[s.i].y = round(v, 3); }, { rect: O.terrainRect('building', e) }) }), 'Relevée à la pose ; le terrain est aplani à cette hauteur'),
+          h('p', { class: 'p-note' }, 'Glissez-le pour le déplacer (le terrain suit). Posez des armes au mur, des atouts, la boîte… dedans avec l’outil Éléments.'))];
+      }
       case 'breaker': return [head('Disjoncteur', `${s.i + 1} sur ${m.breakers.length} · face ${FACE_NAME([e.nx, e.nz])}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         field('Nom', text({ value: e.name, maxLength: 40, onCommit: (v) => set('Nom du disjoncteur', (x) => { x.name = v.trim().slice(0, 40) || x.name; }) }), 'Affiché quand on le vise : « Maintenez F pour enclencher le disjoncteur (…) »'),
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME([e.nx, e.nz])), rotBtn())),
@@ -161,9 +244,12 @@
   OU.mapPanel = () => {
     const m = S.map, r = m.rules;
     const set = (label, fn) => commit(label, 'settings', fn);
-    const thumb = h('div', { class: 'map-thumb' }, m.thumb ? h('img', { src: m.thumb, alt: '' }) : h('span', null, 'Pas de vignette'));
     const base = ZS.MAPS_ALL && ZS.MAPS_ALL.byId[m.base];
-    const baseThumb = base && base.thumb;
+    let baseThumb = base && base.thumb;
+    if (!baseThumb && ZS.ow && ZS.ow.baseThumb) { try { baseThumb = ZS.ow.baseThumb(m.base); } catch (e) { baseThumb = null; } }
+    // sans vignette à elle, le menu du jeu montre celle de la base (plan du désert)
+    const shown = m.thumb || baseThumb;
+    const thumb = h('div', { class: 'map-thumb' }, shown ? h('img', { src: shown, alt: '' }) : h('span', null, 'Pas de vignette'));
     return [
       section('Carte',
         field('Nom', text({ value: m.name, maxLength: 60, onCommit: (v) => set('Nom de la carte', (mm) => { mm.name = v.trim() || mm.name; }) })),
@@ -172,7 +258,7 @@
         field('Surtitre', text({ value: m.eyebrow, maxLength: 80, onCommit: (v) => set('Surtitre', (mm) => { mm.eyebrow = v.trim() || mm.eyebrow; }) }), 'Au-dessus du nom, dans le dossier du menu'),
         field('Consigne', h('textarea', { class: 'f-text', rows: 3, maxLength: 300, value: m.lead, onchange: (e) => set('Consigne', (mm) => { mm.lead = e.target.value.slice(0, 300) || mm.lead; }) }), 'Le but de la partie, dans le dossier du menu'),
         field('Auteur', text({ value: m.author, maxLength: 60, placeholder: 'Votre pseudo', onCommit: (v) => set('Auteur', (mm) => { mm.author = v.trim(); }) })),
-        field('Monde', h('span', { class: 'f-hint' }, `${baseName(m)} · ${fmt(m.w / 1000, 1)} × ${fmt(m.h / 1000, 1)} km · relief, routes, lieux, sanctuaire et quête du jeu`))),
+        field('Monde', h('span', { class: 'f-hint' }, `${baseName(m)} · ${fmt(m.w / 1000, 1)} × ${fmt(m.h / 1000, 1)} km · ${m.base === 'desert' ? 'relief, Nil, oasis, routes d’origine et pyramides du jeu, sans les lieux' : 'relief, routes, lieux, sanctuaire et quête du jeu'}`))),
       section('Règles de la partie',
         field('Points au départ', num({ value: r.startPoints, min: 0, max: 1000000, step: 100, unit: 'pts', digits: 0, onCommit: (v) => set('Points au départ', (mm) => { mm.rules.startPoints = Math.round(v); }) })),
         field('Arme de départ', select({ value: r.startWeapon, options: Object.entries(ZS.WEAPONS).map(([id, w]) => [id, w.name]), onChange: (v) => set('Arme de départ', (mm) => { mm.rules.startWeapon = v; }) })),

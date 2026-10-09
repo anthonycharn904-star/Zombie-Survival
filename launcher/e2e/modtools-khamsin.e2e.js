@@ -67,7 +67,7 @@ async function run(userData) {
       same: JSON.stringify(MT.ow.exportObject(MT.util.deep(MT.state.map)).wallbuys) === JSON.stringify(ZS.openSerialize(ZS.MAPS_ALL.byId.khamsin).wallbuys),
       far: MT.v3.cam.far,
     }));
-    ok(open.tools === 'select,props,elements' && open.cls && open.levels && open.on && open.editor && open.issues === 0 && /4 × 3 km · 0 objet · 35 éléments/.test(open.st) && open.same && open.far > 3000,
+    ok(open.tools === 'select,props,elements,terrain,ground,roads,buildings' && open.cls && open.levels && open.on && open.editor && open.issues === 0 && /4 × 3 km · 0 objet · 35 éléments/.test(open.st) && open.same && open.far > 3000,
       `Khamsin ouverte dans les Mod Tools (${((Date.now() - t0) / 1000).toFixed(0)} s) : monde du jeu, 35 éléments, aucun problème ${JSON.stringify(open)}`);
     const rt = await mt.evaluate(() => {
       const a = JSON.stringify({ ...ZS.openSerialize(ZS.MAPS_ALL.byId.khamsin), updated: '' });

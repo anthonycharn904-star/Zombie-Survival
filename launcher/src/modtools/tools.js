@@ -26,7 +26,7 @@
      a les siens (ow-tools.js). */
   T.available = () => (MT.isOpen() && MT.ow && MT.ow.toolList ? MT.ow.toolList : T.list.filter((t) => !t.multi || MT.multiOk()));
   T.info = (id = S.tool) => T.available().find((t) => t.id === id) || null;
-  const toolImpl = () => (MT.isOpen() && MT.ow && MT.ow.TOOLS ? MT.ow.TOOLS[S.tool] : TOOLS[S.tool]);
+  const toolImpl = () => (MT.isOpen() && MT.ow && MT.ow.TOOLS ? MT.ow.TOOLS[S.tool] || (MT.ow.TOOLS2 || {})[S.tool] : TOOLS[S.tool]);
   T.drag = null;
   MT.preview = { cells: null, tone: 'paint', ghost: null, face: null, rect: null, stair: null };
 
@@ -111,7 +111,7 @@
 
   /* ----------------------------------------------------- gestes --- */
   T.cancel = () => {
-    if (T.drag) { MT.cancelGesture(); T.drag = null; }
+    if (T.drag) { if (T.drag.onCancel) { try { T.drag.onCancel(); } catch (e) { console.error(e); } } MT.cancelGesture(); T.drag = null; }
     MT.preview.cells = null; MT.preview.rect = null; MT.preview.stair = null;
     MT.emit('preview');
   };

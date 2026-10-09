@@ -54,6 +54,10 @@
     tag: '<path d="M3 12.5V4h8.5L21 13.5 13.5 21z"/><circle cx="7.5" cy="8" r="1.4"/>',
     stairs: '<path d="M3 20h5v-4.5h4.5V11H17V6.5h4"/><path d="M3 20V9.5"/>',
     layers: '<path d="M12 3.5l9 4.5-9 4.5-9-4.5z"/><path d="M3 12l9 4.5 9-4.5M3 16l9 4.5 9-4.5"/>',
+    terrain: '<path d="M2.5 19.5l6-10 4 6 3-4 6 8z"/><path d="M8.5 9.5l1.6 2.6"/>',
+    ground: '<path d="M14 4l6 6-8.5 8.5a2.5 2.5 0 0 1-3.5 0L5.5 16a2.5 2.5 0 0 1 0-3.5z"/><path d="M3 21h8"/>',
+    roads: '<path d="M8.5 3L5 21M15.5 3L19 21"/><path d="M12 4v3M12 10.5v3M12 17v3"/>',
+    buildings: '<path d="M3.5 20.5V10l8.5-6 8.5 6v10.5z"/><path d="M9.5 20.5V14h5v6.5"/>',
   };
   function icon(name, cls = '') {
     const s = h('span', { class: `ic ${cls}`, 'aria-hidden': 'true' });
@@ -564,7 +568,7 @@
   }
   function refreshToolbar() {
     for (const b of document.querySelectorAll('.mt-tool')) b.classList.toggle('on', b.dataset.tool === S.tool);
-    const cls = ['tool-select', 'tool-build', 'tool-paint', 'tool-props', 'tool-elements', 'tool-stairs'];
+    const cls = ['tool-select', 'tool-build', 'tool-paint', 'tool-props', 'tool-elements', 'tool-stairs', 'tool-terrain', 'tool-ground', 'tool-roads', 'tool-buildings'];
     document.body.classList.remove(...cls);
     document.body.classList.add(`tool-${S.tool}`);
   }
@@ -1452,6 +1456,7 @@
     if (ZS.G.state !== 'editor') return;
     if (UI.modalOpen) { if (e.key === 'Escape' && UI.closeModal) { e.preventDefault(); UI.closeModal(); } return; }
     if (MT.v3.key(e, true)) { e.preventDefault(); return; }
+    if (MT.isOpen() && MT.ow.onKey && !typing(e.target) && !(e.ctrlKey || e.metaKey) && MT.ow.onKey(e)) { e.preventDefault(); return; }
     const ctrl = e.ctrlKey || e.metaKey;
     const t = typing(e.target);
     if (ctrl) {
@@ -1535,7 +1540,8 @@
       ['3D', 'clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · Maj : vite · molette : avancer vers le curseur · clic milieu : glisser · Alt+glisser : tourner autour · F : montrer la sélection · H : vue de dessus'],
       ['Construire', '1 à 9 : type de case · [ et ] : taille du pinceau · clic droit : effacer · Alt+clic : pipette'],
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
-      ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
+      ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
+      ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, rétablir ; clic droit : l’inverse) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · les sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
     ];
     UI.modal({
       title: 'Aide des Mod Tools', wide: true,

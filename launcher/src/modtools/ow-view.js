@@ -9,7 +9,7 @@
    ========================================================================= */
 (() => {
   const MT = window.MT, ZS = window.ZS, THREE = window.THREE;
-  const { clamp, debounce } = MT.util;
+  const { clamp, debounce, deep } = MT.util;
   const S = MT.state;
   const O = MT.ow;
   const W3 = (O.v3 = { speed: 36, loading: null });
@@ -30,6 +30,7 @@
     const v = V(), t0 = performance.now();
     if (v.worldDirty || !v.owLoaded || !ZS.ow.on) {
       ZS.ow.load(S.map);
+      W3.prevMods = modsOf(S.map);
       v.worldDirty = false; v.owLoaded = true; v.owElDirty = false; v.propsDirty = false;
       v.cam.near = 0.1; v.cam.far = ZS.ow.far || 4300; v.cam.updateProjectionMatrix();
       if (v.power) ZS.powerOnQuiet();
@@ -60,12 +61,28 @@
   };
   const scheduleProps = debounce(() => { V().propsDirty = true; V().rebuildAt = performance.now(); }, 260);
   /* Modifications : objet qui suit (glisser), ou éléments refaits. */
+  /* Ce que la carte change au terrain (pour « annuler » : refaire la zone des deux versions). */
+  const modsOf = (m) => ({ terrain: m.terrain, ground: m.ground, roads: deep(m.roads || []), buildings: deep(m.buildings || []) });
   W3.onChange = (kind, detail) => {
     const v = V();
+    if (kind === 'ow-terrain' && O.ok2()) {
+      // terrain déjà refait (fin d'un coup de pinceau), ou à refaire dans la zone (route, bâtiment)
+      if (!(detail && detail.done)) { try { ZS.ow.apply(S.map, detail && detail.rect ? detail.rect : ZS.ow.modsRect(S.map)); } catch (e) { console.error(e); } }
+      W3.prevMods = modsOf(S.map);
+      v.owElDirty = true; v.helpersDirty = true; v.selDirty = true;
+      v.rebuildAt = performance.now() + 20;
+      MT.plan.need = true;
+      return;
+    }
+    if (detail && detail.history && O.ok2() && W3.prevMods) {
+      // annuler, rétablir : grilles relues, terrain refait là où l'une ou l'autre version le change
+      try { ZS.ow.reapply(S.map, W3.prevMods); } catch (e) { console.error(e); }
+      W3.prevMods = modsOf(S.map);
+    }
     if (kind === 'ow-live' && detail) {
       const e = O.get(detail);
       if (e) {
-        if (detail.kind === 'spawn') v.helpersDirty = true;
+        if (detail.kind === 'spawn' || detail.kind === 'road' || detail.kind === 'loc') v.helpersDirty = true;
         else if (!ZS.ow.pose(detail.kind, detail.i, e)) v.helpersDirty = true;
       }
       v.selDirty = true;
@@ -231,7 +248,7 @@
       group.add(g);
     });
     if (v.labels) {
-      for (const L of ZS.ow.locs()) {
+      for (const L of O.allLocs(m)) {
         const t = label(L.name);
         t.position.set(L.x, groundY(L.x, L.z) + 34, L.z);
         group.add(t);
@@ -271,6 +288,7 @@
   };
   /* Fantôme de l'élément à poser (vert : possible, rouge : impossible). */
   W3.elementGhost = () => {
+    if (O.terrain && ['terrain', 'ground', 'roads', 'buildings'].includes(S.tool)) return O.terrain.ghost3d();
     const pv = MT.preview.ow;
     if (!pv || S.tool !== 'elements') return null;
     const M = mats(), ok = !!pv.ok;
