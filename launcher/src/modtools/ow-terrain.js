@@ -24,8 +24,8 @@
     PLATEAU: ['Calcaire', '#e8d3ad'], OASIS: ['Herbe (oasis)', '#7a8f45'], FIELD: ['Champs', '#5d7d36'], MUD: ['Boue', '#6b5840'],
   };
   TR.tools = [
-    { id: 'terrain', name: 'Relief', key: 'KeyT', label: 'T', hint: 'Glisser : pinceau · clic droit : l’inverse (creuser / monter) · [ et ] : taille · les lieux et routes de la base ne bougent pas' },
-    { id: 'ground', name: 'Sol', key: 'KeyP', label: 'P', hint: 'Glisser : peindre le sol · clic droit : sol d’origine · [ et ] : taille' },
+    { id: 'terrain', name: 'Relief', key: 'KeyT', label: 'T', hint: 'Glisser : pinceau · clic droit (plan) : l’inverse · [ et ] : taille · Échap : annuler le coup · les lieux, routes d’origine et pyramides ne bougent pas' },
+    { id: 'ground', name: 'Sol', key: 'KeyP', label: 'P', hint: 'Glisser : peindre le sol · clic droit (plan) : sol d’origine · [ et ] : taille' },
     { id: 'roads', name: 'Routes', key: 'KeyL', label: 'L', hint: 'Clic : un point · double-clic ou Entrée : finir · Retour arrière : enlever le dernier · Échap : annuler' },
     { id: 'buildings', name: 'Bâtiments', key: 'KeyB', label: 'B', hint: 'Clic : poser · R : tourner d’un quart de tour · Alt+clic : pipette' },
   ];
@@ -57,13 +57,17 @@
         MT.begin(kind === 'terrain' ? `Relief : ${TR.OPS.find((o) => o[0] === op)[1].toLowerCase()}` : 'Peindre le sol');
         const st = { kind, op, erase: kind === 'ground' && ev.button === 2, rect: null, live: null, t: now(), n: 0, last: [p.wx, p.wz], target: ZS.ow.reliefAt(p.wx, p.wz) };
         // Échap pendant le coup : le terrain de la zone revient à la carte (rien n'y est encore écrit)
-        const onCancel = () => { clearInterval(st.timer); st.timer = null; if (st.rect) { try { ZS.ow.syncMods(S.map); ZS.ow.apply(S.map, st.rect); } catch (e) { console.error(e); } MT.plan.need = true; } };
+        const onCancel = () => { clearInterval(st.timer); st.timer = null; st.offBlur(); if (st.rect) { try { ZS.ow.syncMods(S.map); ZS.ow.apply(S.map, st.rect); } catch (e) { console.error(e); } MT.plan.need = true; } };
+        // fenêtre quittée bouton enfoncé (Alt+Tab…) : le relâcher n'arrivera pas ; le coup s'arrête là
+        const onBlur = () => { if (MT.tools.drag && MT.tools.drag.st === st) MT.tools.up(null, {}); };
+        window.addEventListener('blur', onBlur);
+        st.offBlur = () => window.removeEventListener('blur', onBlur);
         MT.tools.drag = { mode: 'ow-stroke', st, onCancel };
         dab(st, p.wx, p.wz);
         // pinceau tenu immobile : il continue (monter, creuser)
         st.timer = setInterval(() => {
           const d = MT.tools.drag;
-          if (!d || d.st !== st) { clearInterval(st.timer); return; }
+          if (!d || d.st !== st) { clearInterval(st.timer); st.offBlur(); return; }
           // tenu immobile : la moitié d'un passage toutes les 110 ms (environ 2 m par seconde à 50 %)
           if (st.op === 'raise' || st.op === 'lower' || st.op === 'smooth') dab(st, st.last[0], st.last[1], 0.5);
         }, 110);
@@ -84,6 +88,7 @@
         if (!d || d.mode !== 'ow-stroke') return;
         const st = d.st;
         clearInterval(st.timer);
+        st.offBlur();
         if (!st.rect) return;
         // la carte reçoit ses blocs ; le terrain de la zone est refait au propre (routes, bâtiments)
         const R = ZS.ow.commitTerrain(S.map, st.rect);

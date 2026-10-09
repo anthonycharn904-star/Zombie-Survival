@@ -1541,7 +1541,7 @@
       ['Construire', '1 à 9 : type de case · [ et ] : taille du pinceau · clic droit : effacer · Alt+clic : pipette'],
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
       ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
-      ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, rétablir ; clic droit : l’inverse) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · les sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
+      ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, effacer ; clic droit dans le plan : l’inverse ; Échap : annuler le coup) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · les sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
     ];
     UI.modal({
       title: 'Aide des Mod Tools', wide: true,

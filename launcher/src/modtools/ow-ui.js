@@ -51,7 +51,7 @@
         seg(b.op, TR.OPS, (v) => { b.op = v; MT.emit('tool-opts'); }),
         field('Taille', slider({ value: b.size, min: 4, max: 160, step: 1, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => { b.size = Math.round(v); MT.emit('preview'); } }), '[ et ] pour changer'),
         field('Force', slider({ value: b.strength, min: 0.05, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)} %`, onCommit: (v) => { b.strength = v; } })),
-        h('p', { class: 'p-note' }, b.op === 'flatten' ? 'Aplanir : vers la hauteur du point où l’on commence à peindre.' : b.op === 'smooth' ? 'Adoucir : arrondit les creux et les bosses.' : b.op === 'reset' ? 'Effacer : rend au terrain sa forme d’origine (celle du jeu).' : 'Clic droit : l’inverse. Tenir le pinceau immobile continue de monter ou de creuser.')),
+        h('p', { class: 'p-note' }, b.op === 'flatten' ? 'Aplanir : vers la hauteur du point où l’on commence à peindre.' : b.op === 'smooth' ? 'Adoucir : arrondit les creux et les bosses.' : b.op === 'reset' ? 'Effacer : rend au terrain sa forme d’origine (celle du jeu).' : 'Clic droit dans le plan : l’inverse (en 3D, il sert à regarder). Tenir le pinceau immobile continue de monter ou de creuser.')),
       section('Protégé',
         h('p', { class: 'p-note' }, S.map.base === 'desert' ? 'Les routes du désert et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus).' : 'Les sept lieux de Khamsin, ses routes et les pyramides ne bougent pas (le cercle du pinceau devient rouge au-dessus) : leurs bâtiments y sont posés.'),
         h('p', { class: 'p-note' }, 'Les routes et bâtiments ajoutés suivent : le terrain est aplani sous eux après chaque coup de pinceau.')),
@@ -63,7 +63,7 @@
       type: 'button', class: `kind-btn ${o.bio === id ? 'on' : ''}`, onclick: () => { o.bio = id; MT.emit('tool-opts'); },
     }, h('i', { style: { background: col, borderRadius: '2px' } }), h('span', null, name))));
     return [
-      section('Sol', sw, h('p', { class: 'p-note' }, 'Couleur du terrain et conduite des véhicules (le sable damé et les graviers roulent mieux que le sable). Clic droit : sol d’origine. L’eau, les routes et les pistes ne se peignent pas.')),
+      section('Sol', sw, h('p', { class: 'p-note' }, 'Couleur du terrain et conduite des véhicules (le sable damé et les graviers roulent mieux que le sable). Clic droit dans le plan : sol d’origine. L’eau, les routes et les pistes ne se peignent pas.')),
       section('Pinceau', field('Taille', slider({ value: o.size, min: 4, max: 160, step: 1, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => { o.size = Math.round(v); MT.emit('preview'); } }), '[ et ] pour changer')),
     ];
   }
