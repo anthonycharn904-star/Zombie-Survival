@@ -288,9 +288,11 @@
     const e = O.get(s);
     if (!e) return;
     if (s.kind === 'place') {
-      // pièce du décor de la base (jeu 2.0.3) : son empreinte au sol ; ce qu'elle porte, en plus fin
-      const Z = P.cam.zoom, out = (q, lw, dash) => { if (!q || q.hidden || !q.foot) return; g.setLineDash(dash); poly(g, q.foot.map(([x, z]) => P.toScreen(x, z)), q === e ? 'rgba(255,210,122,0.12)' : null, '#ffd27a', lw); g.setLineDash([]); };
-      for (const k of e.kids || []) out(O.get({ kind: 'place', i: k }), 1, [3, 3]);
+      // décor de la base (jeu 2.0.3) : son empreinte au sol ; les pièces qu'il porte, en plus fin ;
+      // une surface : aussi la pièce dont elle fait partie, en pointillé léger
+      const Z = P.cam.zoom, D = O.placeDesc(), out = (q, lw, dash, col = '#ffd27a') => { if (!q || q.hidden || !q.foot) return; g.setLineDash(dash); poly(g, q.foot.map(([x, z]) => P.toScreen(x, z)), q === e ? 'rgba(255,210,122,0.12)' : null, col, lw); g.setLineDash([]); };
+      if (e.surf && e.parent >= 0) out(O.get({ kind: 'place', i: e.parent }), 1, [2, 4], 'rgba(255,210,122,0.55)');
+      for (const k of e.kids || []) if (D[k] && !D[k].surf) out(O.get({ kind: 'place', i: k }), 1, [3, 3]);
       out(e, 2.5, [6, 4]);
       const [sx, sy] = P.toScreen(e.x, e.z);
       marker(g, sx, sy, Math.max(3, Math.min(6, 0.3 * Z)), e.locked ? '#9a8f7a' : '#ffd27a', '#1b1408');

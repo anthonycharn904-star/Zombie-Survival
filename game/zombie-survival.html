@@ -1047,7 +1047,7 @@ const pressed = (c) => !!Input.down[c];
 /* Numéro de version du jeu : à augmenter à chaque publication (launcher). */
 const GAME_VERSION = '2.0.3';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
-const EDITOR_API = 6;                       // 3 : cartes ouvertes (jeu 2.0.0, Mod Tools du launcher 1.3.0) ; 4 : la Lune (Ombre éternelle, Lune vierge ; launcher 1.3.1) ; 5 : tailles et 6 : décor des lieux (jeu 2.0.3, launcher 1.3.2)
+const EDITOR_API = 7;                       // 3 : cartes ouvertes (jeu 2.0.0, Mod Tools du launcher 1.3.0) ; 4 : la Lune (Ombre éternelle, Lune vierge ; launcher 1.3.1) ; 5 : tailles, 6 : décor des lieux, 7 : surfaces du décor, matières, plus de pièce fixe (jeu 2.0.3, launcher 1.3.2)
 
 /* ================================================================ 01 DONNÉES ==
    Les cartes sont des données (voir « Cartes » plus bas). Bunker 7 est la
@@ -26127,16 +26127,16 @@ function owChunk(L, cx, cz, make) {
   return ch;
 }
 const owIdx = (cx, cz) => ((cz & 63) << 6) | (cx & 63);
-/* Jeu 2.0.3 : pièce du décor des lieux en construction (voir « Décor des lieux »). cells : ses cases
-   sont relevées (écrites plus tard, à leur place) ; sinon (pièce fixe) écrites, avec leur propriétaire. */
+/* Jeu 2.0.3 : pièce du décor des lieux en construction (voir « Décor des lieux ») : ses cases sont
+   relevées (écrites plus tard, à leur place, avec ses surfaces). */
 const OWCAP = { cur: null };
 /* Écrit une case. o : { base, top, lo, hi, ceil, roof, dir, mat, door } (absolus, en m). */
 function owSet(L, cx, cz, kind, o) {
   const C = OWCAP.cur;
-  if (C) {
+  if (C && C.cells) {
     if (cx < 0 || cz < 0 || cx >= 4096 || cz >= 3072) return;
-    if (C.cells) { C.cells.set((L === OW.under ? 16777216 : 0) + cz * 4096 + cx, owCapRec(L, cx, cz, kind, o)); return; }
-    if (L === OW.surf) OWPI.ownL.set(cz * 4096 + cx, C.own.i);
+    C.cells.set((L === OW.under ? 16777216 : 0) + cz * 4096 + cx, owCapRec(L, cx, cz, kind, o));
+    return;
   }
   if (OWJ.cur) owLogCell(L, cx, cz);
   const ch = owChunk(L, cx, cz, true);
@@ -27533,6 +27533,7 @@ function owLoad(map, opts = {}) {
   owBoxRelease();
   owLogUndoAll();
   registerCustomModels(map);
+  registerCustomTextures(map);                          // jeu 2.0.3 : images des surfaces du décor
   KHS.every = map.rules && Number.isFinite(map.rules.storms) ? map.rules.storms : 4;
   // terrain de la carte (relief, sol peint, routes et bâtiments ajoutés) : refait s'il change, ou si
   // la carte d'avant le changeait (les Mod Tools tiennent leurs grilles de travail à jour)
@@ -27832,14 +27833,16 @@ function owResetWorld() {
      thumb     vignette du menu (absente : le plan en relief)
      terrain, ground, roads, buildings, locs          relief, sol, routes, bâtiments et lieux ajoutés (voir
                                                        « Terrain d'une carte ouverte »)
-     placeEdits { id: { x, z, dy, r, s, hide } }     jeu 2.0.3 : pièces du décor des lieux de la base
-                                                       déplacées, tournées, mises à l'échelle ou retirées
-                                                       (voir « Décor des lieux »)
+     placeEdits { id: { x, z, dy, r, s, hide, m } }  jeu 2.0.3 : pièces et surfaces du décor des lieux de
+                                                       la base déplacées, tournées, mises à l'échelle,
+                                                       retirées, autres matières (voir « Décor des lieux »)
+     custom    { models, textures }                   modèles .glb et images importés (textures des surfaces
+                                                       du décor : u_… = { name, data, size, rough })
    Bases : « khamsin » (Khamsin et ses sept lieux) ou « desert » (désert vierge, sans les lieux).
    y : hauteur du sol sous l'élément, recalculée par les Mod Tools quand il bouge (un sol de tombeau
    sous la falaise, un plancher de bâtiment : le terrain seul ne suffit pas à la retrouver). */
 const OPEN_FORMAT = 1;
-const OPEN_LIMITS = { wallbuys: 80, perks: 24, boxes: 24, vehicles: 24, fuel: 24, breakers: 12, props: 4000, roads: 60, buildings: 300, locs: 24, placeEdits: 3000 };
+const OPEN_LIMITS = { wallbuys: 80, perks: 24, boxes: 24, vehicles: 24, fuel: 24, breakers: 12, props: 4000, roads: 60, buildings: 300, locs: 24, placeEdits: 20000 };
 const OPEN_KINDS = ['wallbuys', 'perks', 'boxes', 'vehicles', 'fuel', 'breakers', 'props'];
 const OPEN_RULES = { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null, storms: 4 };
 
@@ -27983,8 +27986,22 @@ function openNormalize(raw) {
   const gl = raw.glas === undefined ? B.glas : raw.glas;
   m.glas = gl && typeof gl === 'object' && inX(gl.x) && inZ(gl.z) ? withK({ x: r3(gl.x), y: y(gl.y), z: r3(gl.z), face: face(gl.face) }, gl.k) : null;
   const cm = raw.custom && raw.custom.models && typeof raw.custom.models === 'object' ? raw.custom.models : {};
-  m.custom = { models: {} };
+  m.custom = { models: {}, textures: {} };
   for (const id of Object.keys(cm)) if (/^u_[\w-]{1,40}$/.test(id) && cm[id] && typeof cm[id].data === 'string') m.custom.models[id] = cm[id];
+  // jeu 2.0.3 : images importées (textures des surfaces du décor), comme sur une carte à grille
+  const ct = raw.custom && raw.custom.textures && typeof raw.custom.textures === 'object' ? raw.custom.textures : {};
+  let tot = 0;
+  for (const id of Object.keys(ct).slice(0, 64)) {
+    const t = ct[id];
+    if (!/^u_[\w-]{1,40}$/.test(id) || !t || typeof t.data !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(t.data)) continue;
+    tot += t.data.length;
+    if (tot > 12e6) break;
+    m.custom.textures[id] = {
+      name: str(t.name, 60).trim() || 'Image importée', data: t.data,
+      size: Array.isArray(t.size) ? [num(t.size[0], 0.25, 20, 2), num(t.size[1], 0.25, 20, 2)] : [2, 2],
+      rough: num(t.rough, 0, 1, 0.85), fit: !!t.fit,
+    };
+  }
   m.props = list('props').filter((p) => p && typeof p.m === 'string' && (MODELS[p.m] || m.custom.models[p.m]) && inX(p.x) && inZ(p.z)).map((p) => {
     const o = { m: p.m, x: r3(p.x), z: r3(p.z) };
     if (typeof p.y === 'number' && Number.isFinite(p.y) && Math.abs(p.y) > 1e-4) o.y = r3(clamp(p.y, -20, 60));
@@ -28041,6 +28058,11 @@ function openSerialize(m) {
   const used = new Set(o.props.map((p) => p.m));
   o.custom = { models: {} };
   for (const id of Object.keys((m.custom && m.custom.models) || {})) if (used.has(id)) o.custom.models[id] = m.custom.models[id];
+  // images importées : celles que portent les matières des surfaces du décor
+  const usedT = new Set();
+  for (const e of Object.values(m.placeEdits || {})) for (const q of Object.values((e && e.m) || {})) if (q && typeof q.t === 'string' && q.t.startsWith('u_')) usedT.add(q.t);
+  const CT = (m.custom && m.custom.textures) || {};
+  for (const id of usedT) if (CT[id]) (o.custom.textures || (o.custom.textures = {}))[id] = CT[id];
   for (const k of ['roads', 'buildings', 'locs']) if ((m[k] || []).length) o[k] = JSON.parse(JSON.stringify(m[k]));
   if (m.placeEdits && Object.keys(m.placeEdits).length) o.placeEdits = JSON.parse(JSON.stringify(m.placeEdits));
   if (m.terrain && m.terrain.d && Object.keys(m.terrain.d).length) o.terrain = { d: { ...m.terrain.d } };
@@ -28108,18 +28130,28 @@ function openValidate(m, deep = false) {
       else if (owRectOnBaseRoad(R.x0, R.z0, R.x1, R.z1)) W(`${T.name} : sur une route d’origine (elle passe dessous).`, [b.x, b.z]);
       for (let j = 0; j < i; j++) { const Q = rects[j]; if (Q && R.x0 < Q.x1 && Q.x0 < R.x1 && R.z0 < Q.z1 && Q.z0 < R.z1) { W(`${T.name} : chevauche ${OWBLD[m.buildings[j].type].name.toLowerCase()}.`, [b.x, b.z]); break; } }
     });
-    // décor des lieux retouché (jeu 2.0.3) : retouches sans pièce, pièce déplacée hors de la carte ou dans l'eau
+    // décor des lieux retouché (jeu 2.0.3) : retouches sans pièce, pièce déplacée hors de la carte ou dans
+    // l'eau, texture inconnue, pièce de la quête retirée
     const PE = m.placeEdits || {}, ids = Object.keys(PE);
     if (ids.length && OWPI.list.length && OW.baseId === m.base) {
       const lost = ids.filter((id) => !OWPI.byId.has(id)).length;
-      if (lost) W(`Décor de la base : ${lost} retouche${lost > 1 ? 's' : ''} sans pièce correspondante (ignorée${lost > 1 ? 's' : ''}).`);
+      if (lost) W(`Décor de la base : ${lost} retouche${lost > 1 ? 's' : ''} sans pièce ni surface correspondante (ignorée${lost > 1 ? 's' : ''}).`);
       const R = owItemsCompute(PE), v = new THREE.Vector3();
       for (const it of OWPI.list) {
         const e = PE[it.id];
-        if (it.parent || !e || e.hide || e.x === undefined || !R[it.i].M) continue;
-        v.set(it.ax, it.ay, it.az).applyMatrix4(R[it.i].M);
+        if (it.parent || !e || e.hide || e.x === undefined || !R.it[it.i].M) continue;
+        v.set(it.ax, it.ay, it.az).applyMatrix4(R.it[it.i].M);
         if (v.x < 0 || v.z < 0 || v.x > OW.W || v.z > OW.D) E(`${it.title} (décor de la base) : hors de la carte.`, [clamp(v.x, 0, OW.W), clamp(v.z, 0, OW.D)]);
         else if (owWaterAt(v.x, v.z)) W(`${it.title} (décor de la base) : dans l’eau.`, [v.x, v.z]);
+      }
+      const CT = (m.custom && m.custom.textures) || {};
+      let badTex = 0;
+      for (const e of Object.values(PE)) for (const q of Object.values((e && e.m) || {})) if (q && q.t && !TEXLIB[q.t] && !CT[q.t]) badTex++;
+      if (badTex) W(`Décor de la base : ${badTex} texture${badTex > 1 ? 's' : ''} introuvable${badTex > 1 ? 's' : ''} (la matière d’origine reste).`);
+      // pièces dont dépend la quête (ou l'air) : retirées, la partie ne peut plus se finir
+      for (const it of OWPI.list) {
+        if (!it.logic || !R.it[it.i].hidden || (it.parent && R.it[it.parent.i].hidden)) continue;
+        W(`Décor de la base : « ${it.title} » est retiré alors que la partie s’en sert (${it.logic.replace(/\.$/, '')}).`, [it.ax, it.az]);
       }
     }
   }
@@ -29355,14 +29387,77 @@ function owKit(name) {
   };
   K.cyl = (tex, hex, x, y, z, r, h, seg = 16, rx = 0, rz = 0) => K.geo(tex, hex, new THREE.CylinderGeometry(r, r, h, seg), mtx(x, y, z, rx, 0, rz));
   K.add = (obj) => { extra.push(obj); return K; };
+  /* Jeu 2.0.3 (interface 7) : surfaces d'une pièce du décor. Dans le kit d'une pièce (cap), chaque appel
+     de premier niveau (face, boîte, toit, forme, cylindre, objet) est une surface : ses sommets dans
+     chaque matière [tex, début, fin), ses objets [début, fin). K.group(nom, fn) en fait une seule. */
+  let depth = 0;
+  K.cap = null; K.cur = null; K.lastPrim = null;
+  const pOpen = (kind) => {
+    if (!K.cap || depth++ > 0) return;
+    const at = new Map();
+    for (const [tex, b] of parts) at.set(tex, b.pos.length / 3);
+    K.cur = { kind, title: '', at, ex: extra.length, ranges: null, exr: null, geo: '', node: null };
+  };
+  const pClose = () => {
+    if (!K.cap || --depth > 0) return;
+    const r = K.cur;
+    K.cur = null;
+    if (!r) return;
+    r.ranges = [];
+    for (const [tex, b] of parts) { const s = r.at.get(tex) || 0, e = b.pos.length / 3; if (e > s) r.ranges.push([tex, s, e]); }
+    r.exr = [r.ex, extra.length];
+    r.at = null;
+    if (!r.ranges.length && r.exr[1] === r.exr[0]) return;     // rien de dessiné
+    K.cap.prims.push(r);
+    K.lastPrim = r;
+  };
+  for (const k of ['quad', 'tri', 'box', 'gable', 'geo', 'cyl', 'add']) {
+    const f = K[k];
+    K[k] = (...a) => {
+      if (!K.cap) return f(...a);
+      pOpen(k);
+      try {
+        if (k === 'geo' && K.cur && depth === 1) K.cur.geo = a[2] === GEO.box ? 'beam' : (a[2] && a[2].type) || '';
+        f(...a);
+      } finally { pClose(); }
+      return K;
+    };
+  }
+  K.group = (title, fn) => {
+    if (!K.cap) { fn(K); return K; }
+    pOpen('group');
+    if (K.cur && depth === 1) K.cur.title = title;
+    try { fn(K); } finally { pClose(); }
+    return K;
+  };
   /* Cases de la grille des solides. */
   K.solid = (x0, z0, x1, z1, kind, o) => { owFill(OW.surf, x0, z0, x1, z1, kind, o); return K; };
   /* Jeu 2.0.3 : pièce du décor des lieux (genre, nom, pied x y z, construction fn(K) dans un kit à
      elle) ; les Mod Tools la sélectionnent, une carte la déplace, la tourne, la met à l'échelle ou la
-     retire. Voir « Décor des lieux ». */
+     retire. Voir « Décor des lieux ». K.lastItem : la dernière pièce posée par ce kit. */
   K.mk = owKit;
-  K.item = (kind, title, x, y, z, fn, o) => { owItem(K, kind, title, x, y, z, fn, o); return K; };
+  K.item = (kind, title, x, y, z, fn, o) => { K.lastItem = owItem(K, kind, title, x, y, z, fn, o); return K; };
   K.dump = () => ({ parts, extra });
+  /* Sommets [s, e) d'une matière d'un autre kit (src : { pos, nor, uv, col }), transformés par M
+     (null : tels quels ; nm : sa matrice des normales), vers la matière tex ; uv × k ; col : couleur
+     imposée [r, g, b] (null : la leur). Renvoie [début, fin) dans ce kit. */
+  const _kv = new THREE.Vector3();
+  K.mergeRange = (src, s, e, tex, M, nm, k, col) => {
+    const b = bucket(tex), at = b.pos.length / 3, v = _kv;
+    for (let i = s; i < e; i++) {
+      const i3 = i * 3, i2 = i * 2;
+      if (M) {
+        v.set(src.pos[i3], src.pos[i3 + 1], src.pos[i3 + 2]).applyMatrix4(M); b.pos.push(v.x, v.y, v.z);
+        v.set(src.nor[i3], src.nor[i3 + 1], src.nor[i3 + 2]).applyMatrix3(nm).normalize(); b.nor.push(v.x, v.y, v.z);
+      } else {
+        b.pos.push(src.pos[i3], src.pos[i3 + 1], src.pos[i3 + 2]);
+        b.nor.push(src.nor[i3], src.nor[i3 + 1], src.nor[i3 + 2]);
+      }
+      b.uv.push(src.uv[i2] * k[0], src.uv[i2 + 1] * k[1]);
+      if (col) b.col.push(col[0], col[1], col[2]); else b.col.push(src.col[i3], src.col[i3 + 1], src.col[i3 + 2]);
+    }
+    return [at, b.pos.length / 3];
+  };
   /* Ajoute la géométrie d'un autre kit (une pièce), transformée par la matrice M (null : telle quelle). */
   K.merge = (Ki, M = null) => {
     const d = Ki.dump(), v = new THREE.Vector3(), nm = M ? new THREE.Matrix3().getNormalMatrix(M) : null;
@@ -29394,6 +29489,7 @@ function owKit(name) {
       geo.computeBoundingSphere();
       const mat = VMAT[tex] || levelMaterial(tex);
       const m = new THREE.Mesh(geo, mat);
+      m.userData.tex = tex;                                // surfaces du décor (Mod Tools : quelle surface sous la souris)
       m.matrixAutoUpdate = false;
       m.castShadow = true; m.receiveShadow = true;
       g.add(m);
@@ -29417,8 +29513,9 @@ function owHouse(K, o) {
   const winsOn = (side) => (o.wins || []).filter((d) => d[0] === side);
   // sol et plafond (cases intérieures : FLOOR avec plafond, le toit arrête les rayons)
   const roofY = top + (o.roof === 'flat' ? 0.25 : 0.1);
+  const SIDE = { n: 'nord', s: 'sud', w: 'ouest', e: 'est' };       // noms des surfaces (Mod Tools)
   K.solid(x0 + 1, z0 + 1, x1 - 1, z1 - 1, OWK.FLOOR, { base: y, ceil: o.roof === 'none' ? 0 : top, roof: roofY, mat: OWM.STONE });
-  if (!o.noFloor) K.box(o.floorTex || 'kh_floor', 0xffffff, x0 + 1, y - 0.3, z0 + 1, x1 - 1, y, z1 - 1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+  if (!o.noFloor) K.group('Sol', () => K.box(o.floorTex || 'kh_floor', 0xffffff, x0 + 1, y - 0.3, z0 + 1, x1 - 1, y, z1 - 1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] }));
   // murs : côté par côté, en segments entre les ouvertures
   const sides = [
     ['n', x0, x1, (a, b) => [a, z0, b, z0 + 1], true],
@@ -29431,20 +29528,20 @@ function owHouse(K, o) {
       .concat(winsOn(side).map((w) => ({ s: (alongX ? x0 : z0) + w[1], e: (alongX ? x0 : z0) + w[1] + w[2], lo: y + w[3], hi: y + w[4], door: false })))
       .sort((p, q) => p.s - q.s);
     let cur = a0;
-    const seg = (s, e, lo, hi) => {
+    const seg = (s, e, lo, hi, what = 'Mur') => {
       if (e - s <= 0.01 || hi - lo <= 0.01) return;
       const [rx0, rz0, rx1, rz1] = rect(s, e);
-      K.box(wt, hex, rx0, lo, rz0, rx1, hi, rz1, { top: o.capTex || wt });
+      K.group(`${what} ${SIDE[side]}`, () => K.box(wt, hex, rx0, lo, rz0, rx1, hi, rz1, { top: o.capTex || wt }));
     };
     for (const op of opens) {
       seg(cur, op.s, y - 0.3, top);
-      seg(op.s, op.e, op.hi, top);                             // linteau
-      if (!op.door) seg(op.s, op.e, y - 0.3, op.lo);           // allège
+      seg(op.s, op.e, op.hi, top, op.door ? 'Linteau de la porte' : 'Linteau de la fenêtre');
+      if (!op.door) seg(op.s, op.e, y - 0.3, op.lo, 'Allège');
       const [rx0, rz0, rx1, rz1] = rect(op.s, op.e);
       if (op.door) K.solid(rx0, rz0, rx1, rz1, OWK.FLOOR, { base: y, ceil: op.hi, roof: top, mat: OWM.STONE });
       else K.solid(rx0, rz0, rx1, rz1, OWK.WINDOW, { base: y - 0.3, top, lo: op.lo, hi: op.hi, mat: OWM.STONE });
       // encadrement (bois sombre)
-      K.box('kh_planks', 0x6b4a30, ...(alongX ? [op.s, op.hi, rz0 - 0.04, op.e, op.hi + 0.12, rz1 + 0.04] : [rx0 - 0.04, op.hi, op.s, rx1 + 0.04, op.hi + 0.12, op.e]));
+      K.group(`Encadrement ${SIDE[side]}`, () => K.box('kh_planks', 0x6b4a30, ...(alongX ? [op.s, op.hi, rz0 - 0.04, op.e, op.hi + 0.12, rz1 + 0.04] : [rx0 - 0.04, op.hi, op.s, rx1 + 0.04, op.hi + 0.12, op.e])));
       cur = op.e;
     }
     seg(cur, a1, y - 0.3, top);
@@ -29457,16 +29554,16 @@ function owHouse(K, o) {
   }
   // toit
   if (o.roof === 'flat') {
-    K.box(o.roofTex || wt, o.roofHex || hex, x0 - 0.15, top, z0 - 0.15, x1 + 0.15, top + 0.25, z1 + 0.15);
+    K.group('Toit', () => K.box(o.roofTex || wt, o.roofHex || hex, x0 - 0.15, top, z0 - 0.15, x1 + 0.15, top + 0.25, z1 + 0.15));
     if (o.parapet) {
       const p = o.parapet, t2 = top + 0.25;
-      K.box(wt, hex, x0, t2, z0, x1, t2 + p, z0 + 0.3).box(wt, hex, x0, t2, z1 - 0.3, x1, t2 + p, z1)
-        .box(wt, hex, x0, t2, z0 + 0.3, x0 + 0.3, t2 + p, z1 - 0.3).box(wt, hex, x1 - 0.3, t2, z0 + 0.3, x1, t2 + p, z1 - 0.3);
+      K.group('Acrotère nord', () => K.box(wt, hex, x0, t2, z0, x1, t2 + p, z0 + 0.3)).group('Acrotère sud', () => K.box(wt, hex, x0, t2, z1 - 0.3, x1, t2 + p, z1))
+        .group('Acrotère ouest', () => K.box(wt, hex, x0, t2, z0 + 0.3, x0 + 0.3, t2 + p, z1 - 0.3)).group('Acrotère est', () => K.box(wt, hex, x1 - 0.3, t2, z0 + 0.3, x1, t2 + p, z1 - 0.3));
     }
   } else if (o.roof === 'gable') {
     const along = x1 - x0 >= z1 - z0;
-    K.gable(o.roofTex || 'kh_sheet', o.roofHex || 0xffffff, x0 - 0.3, z0 - 0.3, x1 + 0.3, z1 + 0.3, top, o.rise || 1.5, along, wt, hex);
-    K.box(o.ceilTex || 'kh_planks', 0xcfc2ad, x0 + 1, top - 0.05, z0 + 1, x1 - 1, top, z1 - 1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] });
+    K.group('Toit à deux pans', () => K.gable(o.roofTex || 'kh_sheet', o.roofHex || 0xffffff, x0 - 0.3, z0 - 0.3, x1 + 0.3, z1 + 0.3, top, o.rise || 1.5, along, wt, hex));
+    K.group('Plafond', () => K.box(o.ceilTex || 'kh_planks', 0xcfc2ad, x0 + 1, top - 0.05, z0 + 1, x1 - 1, top, z1 - 1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] }));
   }
   return K;
 }
@@ -29491,13 +29588,13 @@ function owLevel(x0, z0, x1, z1, y, blend = 6) {
    Caisses, fûts, sacs de sable, tables, tentes, conteneurs, cuves, lampadaires (lumières mises en
    commun : quelques vraies lumières suivent le joueur de lampe en lampe, les autres brillent). */
 function owCrate(K, x, y, z, s = 1, hex = 0xb08a5c) {
-  K.box('kh_planks', hex, x - s / 2, y, z - s / 2, x + s / 2, y + s, z + s / 2);
-  K.box('kh_planks', 0x7a5a3a, x - s / 2 - 0.02, y + s * 0.42, z - s / 2 - 0.02, x + s / 2 + 0.02, y + s * 0.58, z + s / 2 + 0.02);
+  K.group('Caisse', () => K.box('kh_planks', hex, x - s / 2, y, z - s / 2, x + s / 2, y + s, z + s / 2));
+  K.group('Ceinture de la caisse', () => K.box('kh_planks', 0x7a5a3a, x - s / 2 - 0.02, y + s * 0.42, z - s / 2 - 0.02, x + s / 2 + 0.02, y + s * 0.58, z + s / 2 + 0.02));
   if (s >= 0.9) K.solid(x - s / 2 + 0.2, z - s / 2 + 0.2, x + s / 2 - 0.2, z + s / 2 - 0.2, OWK.LOW, { base: y, top: y + s, mat: OWM.WOOD });
 }
 function owBarrel(K, x, y, z, hex = 0x8d3a28) {
-  K.cyl('kh_sheet', hex, x, y + 0.45, z, 0.3, 0.9, 12);
-  K.cyl('kh_sheet', 0x4a4440, x, y + 0.91, z, 0.31, 0.03, 12).cyl('kh_sheet', 0x4a4440, x, y + 0.3, z, 0.31, 0.03, 12).cyl('kh_sheet', 0x4a4440, x, y + 0.62, z, 0.31, 0.03, 12);
+  K.group('Fût', () => K.cyl('kh_sheet', hex, x, y + 0.45, z, 0.3, 0.9, 12));
+  K.group('Cercles du fût', () => K.cyl('kh_sheet', 0x4a4440, x, y + 0.91, z, 0.31, 0.03, 12).cyl('kh_sheet', 0x4a4440, x, y + 0.3, z, 0.31, 0.03, 12).cyl('kh_sheet', 0x4a4440, x, y + 0.62, z, 0.31, 0.03, 12));
 }
 function owSandbags(K, x0, z0, x1, z1, y, rows = 3) {
   const along = Math.abs(x1 - x0) >= Math.abs(z1 - z0), L = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(L / 0.62));
@@ -29505,79 +29602,79 @@ function owSandbags(K, x0, z0, x1, z1, y, rows = 3) {
     for (let i = 0; i < n - (r % 2); i++) {
       const t = (i + 0.5 + (r % 2) * 0.5) / n, x = lerp(x0, x1, t), z = lerp(z0, z1, t);
       const hx = along ? 0.31 : 0.2, hz = along ? 0.2 : 0.31;
-      K.box('kh_canvas', [0xa8916a, 0x9c8660, 0xb39a70][(i + r) % 3], x - hx, y + r * 0.22, z - hz, x + hx, y + r * 0.22 + 0.24, z + hz);
+      K.group('Sac de sable', () => K.box('kh_canvas', [0xa8916a, 0x9c8660, 0xb39a70][(i + r) % 3], x - hx, y + r * 0.22, z - hz, x + hx, y + r * 0.22 + 0.24, z + hz));
     }
   }
   owLine(OW.surf, x0, z0, x1, z1, OWK.LOW, { base: y, top: y + rows * 0.22 + 0.05, mat: OWM.CLOTH });
 }
 function owTable(K, x, y, z, w = 1.8, d = 0.9, hex = 0x8a6440) {
-  K.box('kh_planks', hex, x - w / 2, y + 0.72, z - d / 2, x + w / 2, y + 0.78, z + d / 2);
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.box('kh_planks', 0x6b4a30, x + sx * (w / 2 - 0.08) - 0.03, y, z + sz * (d / 2 - 0.08) - 0.03, x + sx * (w / 2 - 0.08) + 0.03, y + 0.72, z + sz * (d / 2 - 0.08) + 0.03);
+  K.group('Plateau de la table', () => K.box('kh_planks', hex, x - w / 2, y + 0.72, z - d / 2, x + w / 2, y + 0.78, z + d / 2));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.group('Pied de la table', () => K.box('kh_planks', 0x6b4a30, x + sx * (w / 2 - 0.08) - 0.03, y, z + sz * (d / 2 - 0.08) - 0.03, x + sx * (w / 2 - 0.08) + 0.03, y + 0.72, z + sz * (d / 2 - 0.08) + 0.03));
 }
 /* Tente (toile tendue sur un faîtage) : x0..x1 le long du faîtage ; open : côté ouvert ('n', 's', 'w', 'e') ; murs bas. */
 function owTent(K, x0, z0, x1, z1, y, h = 3.2, wallH = 1.4, open = 's', hex = 0xd8c8a2) {
   const along = x1 - x0 >= z1 - z0;
-  K.gable('kh_canvas', hex, x0, z0, x1, z1, y + wallH, h - wallH, along, 'kh_canvas', hex);
+  K.group('Toile du toit', () => K.gable('kh_canvas', hex, x0, z0, x1, z1, y + wallH, h - wallH, along, 'kh_canvas', hex));
   const sides = { n: [x0, z0, x1, z0 + 0.06], s: [x0, z1 - 0.06, x1, z1], w: [x0, z0, x0 + 0.06, z1], e: [x1 - 0.06, z0, x1, z1] };
+  const SIDE = { n: 'nord', s: 'sud', w: 'ouest', e: 'est' };
   for (const sd of ['n', 's', 'w', 'e']) {
     const [a, b, c, d] = sides[sd];
     if (sd === open) {
       // pans relevés de l'entrée
-      if (sd === 'n' || sd === 's') { K.box('kh_canvas', hex, a, y, b, a + 1.2, y + wallH, d); K.box('kh_canvas', hex, c - 1.2, y, b, c, y + wallH, d); owFill(OW.surf, a, b - 0.5, a + 1, d + 0.5, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH }); owFill(OW.surf, c - 1, b - 0.5, c, d + 0.5, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH }); }
-      else { K.box('kh_canvas', hex, a, y, b, c, y + wallH, b + 1.2); K.box('kh_canvas', hex, a, y, d - 1.2, c, y + wallH, d); }
+      if (sd === 'n' || sd === 's') { K.group(`Pan relevé ${SIDE[sd]}`, () => K.box('kh_canvas', hex, a, y, b, a + 1.2, y + wallH, d)); K.group(`Pan relevé ${SIDE[sd]}`, () => K.box('kh_canvas', hex, c - 1.2, y, b, c, y + wallH, d)); owFill(OW.surf, a, b - 0.5, a + 1, d + 0.5, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH }); owFill(OW.surf, c - 1, b - 0.5, c, d + 0.5, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH }); }
+      else { K.group(`Pan relevé ${SIDE[sd]}`, () => K.box('kh_canvas', hex, a, y, b, c, y + wallH, b + 1.2)); K.group(`Pan relevé ${SIDE[sd]}`, () => K.box('kh_canvas', hex, a, y, d - 1.2, c, y + wallH, d)); }
       continue;
     }
-    K.box('kh_canvas', hex, a, y, b, c, y + wallH, d);
+    K.group(`Pan ${SIDE[sd]}`, () => K.box('kh_canvas', hex, a, y, b, c, y + wallH, d));
     // cases pleines le long du côté
     if (sd === 'n' || sd === 's') owFill(OW.surf, x0, sd === 'n' ? z0 : z1 - 1, x1, sd === 'n' ? z0 + 1 : z1, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH });
     else owFill(OW.surf, sd === 'w' ? x0 : x1 - 1, z0, sd === 'w' ? x0 + 1 : x1, z1, OWK.SOLID, { base: y, top: y + h * 0.8, mat: OWM.CLOTH });
   }
   // mâts et faîtage
-  if (along) { K.box('kh_planks', 0x6b4a30, x0 + 0.1, y, (z0 + z1) / 2 - 0.05, x0 + 0.2, y + h, (z0 + z1) / 2 + 0.05).box('kh_planks', 0x6b4a30, x1 - 0.2, y, (z0 + z1) / 2 - 0.05, x1 - 0.1, y + h, (z0 + z1) / 2 + 0.05); }
-  else { K.box('kh_planks', 0x6b4a30, (x0 + x1) / 2 - 0.05, y, z0 + 0.1, (x0 + x1) / 2 + 0.05, y + h, z0 + 0.2).box('kh_planks', 0x6b4a30, (x0 + x1) / 2 - 0.05, y, z1 - 0.2, (x0 + x1) / 2 + 0.05, y + h, z1 - 0.1); }
+  if (along) { K.group('Mât', () => K.box('kh_planks', 0x6b4a30, x0 + 0.1, y, (z0 + z1) / 2 - 0.05, x0 + 0.2, y + h, (z0 + z1) / 2 + 0.05)).group('Mât', () => K.box('kh_planks', 0x6b4a30, x1 - 0.2, y, (z0 + z1) / 2 - 0.05, x1 - 0.1, y + h, (z0 + z1) / 2 + 0.05)); }
+  else { K.group('Mât', () => K.box('kh_planks', 0x6b4a30, (x0 + x1) / 2 - 0.05, y, z0 + 0.1, (x0 + x1) / 2 + 0.05, y + h, z0 + 0.2)).group('Mât', () => K.box('kh_planks', 0x6b4a30, (x0 + x1) / 2 - 0.05, y, z1 - 0.2, (x0 + x1) / 2 + 0.05, y + h, z1 - 0.1)); }
   // intérieur : sol de planches, plafond de toile (arrête les rayons)
   owFill(OW.surf, x0 + 1, z0 + 1, x1 - 1, z1 - 1, OWK.FLOOR, { base: y + 0.05, ceil: y + h - 0.35, roof: y + h, mat: OWM.CLOTH });
-  K.box('kh_planks', 0xa08060, x0 + 0.1, y, z0 + 0.1, x1 - 0.1, y + 0.05, z1 - 0.1, { skip: ['bottom'] });
+  K.group('Plancher', () => K.box('kh_planks', 0xa08060, x0 + 0.1, y, z0 + 0.1, x1 - 0.1, y + 0.05, z1 - 0.1, { skip: ['bottom'] }));
 }
 /* Conteneur maritime (x0..x1 le long de x ou z), porte ouverte au bout (doorEnd : 0 début, 1 fin). */
 function owContainer(K, x0, z0, x1, z1, y, hex, label, doorEnd = 0) {
   const h = 2.6, along = x1 - x0 >= z1 - z0, t = 0.1;
   // parois (tôle peinte), toit, plancher
   if (along) {
-    K.box('kh_sheet_red', hex, x0, y, z0, x1, y + h, z0 + t).box('kh_sheet_red', hex, x0, y, z1 - t, x1, y + h, z1);
-    K.box('kh_sheet_red', hex, x0, y + h - t, z0, x1, y + h, z1);
-    K.box('kh_sheet_red', hex, doorEnd ? x0 : x1 - t, y, z0, doorEnd ? x0 + t : x1, y + h, z1);
+    K.group('Paroi', () => K.box('kh_sheet_red', hex, x0, y, z0, x1, y + h, z0 + t)).group('Paroi', () => K.box('kh_sheet_red', hex, x0, y, z1 - t, x1, y + h, z1));
+    K.group('Toit', () => K.box('kh_sheet_red', hex, x0, y + h - t, z0, x1, y + h, z1));
+    K.group('Fond', () => K.box('kh_sheet_red', hex, doorEnd ? x0 : x1 - t, y, z0, doorEnd ? x0 + t : x1, y + h, z1));
     // portes ouvertes rabattues
     const xd = doorEnd ? x1 : x0;
-    K.box('kh_sheet_red', hex, xd - 0.05, y, z0 - 1.2, xd + 0.05, y + h, z0).box('kh_sheet_red', hex, xd - 0.05, y, z1, xd + 0.05, y + h, z1 + 1.2);
+    K.group('Porte', () => K.box('kh_sheet_red', hex, xd - 0.05, y, z0 - 1.2, xd + 0.05, y + h, z0)).group('Porte', () => K.box('kh_sheet_red', hex, xd - 0.05, y, z1, xd + 0.05, y + h, z1 + 1.2));
     owFill(OW.surf, x0, z0, x1, z0 + 1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
     owFill(OW.surf, x0, z1 - 1, x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
     owFill(OW.surf, doorEnd ? x0 : x1 - 1, z0, doorEnd ? x0 + 1 : x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
     owFill(OW.surf, doorEnd ? x0 + 1 : x0, z0 + 1, doorEnd ? x1 : x1 - 1, z1 - 1, OWK.FLOOR, { base: y + 0.12, ceil: y + h - 0.1, roof: y + h, mat: OWM.METAL });
   } else {
-    K.box('kh_sheet_red', hex, x0, y, z0, x0 + t, y + h, z1).box('kh_sheet_red', hex, x1 - t, y, z0, x1, y + h, z1);
-    K.box('kh_sheet_red', hex, x0, y + h - t, z0, x1, y + h, z1);
-    K.box('kh_sheet_red', hex, x0, y, doorEnd ? z0 : z1 - t, x1, y + h, doorEnd ? z0 + t : z1);
+    K.group('Paroi', () => K.box('kh_sheet_red', hex, x0, y, z0, x0 + t, y + h, z1)).group('Paroi', () => K.box('kh_sheet_red', hex, x1 - t, y, z0, x1, y + h, z1));
+    K.group('Toit', () => K.box('kh_sheet_red', hex, x0, y + h - t, z0, x1, y + h, z1));
+    K.group('Fond', () => K.box('kh_sheet_red', hex, x0, y, doorEnd ? z0 : z1 - t, x1, y + h, doorEnd ? z0 + t : z1));
     owFill(OW.surf, x0, z0, x0 + 1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
     owFill(OW.surf, x1 - 1, z0, x1, z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
     owFill(OW.surf, x0, doorEnd ? z0 : z1 - 1, x1, doorEnd ? z0 + 1 : z1, OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
     owFill(OW.surf, x0 + 1, doorEnd ? z0 + 1 : z0, x1 - 1, doorEnd ? z1 : z1 - 1, OWK.FLOOR, { base: y + 0.12, ceil: y + h - 0.1, roof: y + h, mat: OWM.METAL });
   }
-  K.box('kh_planks', 0x7a6248, x0 + t, y, z0 + t, x1 - t, y + 0.12, z1 - t, { skip: ['bottom'] });
+  K.group('Plancher', () => K.box('kh_planks', 0x7a6248, x0 + t, y, z0 + t, x1 - t, y + 0.12, z1 - t, { skip: ['bottom'] }));
   if (label) {
     const d = vehDecal([[label, 0.62, 0.52, 800]], along ? 3.2 : 1.6, 0.9, '#f2e6cf');
     if (along) { d.position.set((x0 + x1) / 2, y + 1.55, z1 + 0.012); }
     else { d.position.set(x1 + 0.012, y + 1.55, (z0 + z1) / 2); d.rotation.y = Math.PI / 2; }
-    K.add(d);
+    K.group('Inscription', () => K.add(d));
   }
 }
 /* Cuve horizontale (carburant) sur berceaux. */
 function owTank(K, x, y, z, r, len, alongX = true, hex = 0xd8d2c4) {
-  if (alongX) K.cyl('kh_paint', hex, x, y + r + 0.4, z, r, len, 18, 0, Math.PI / 2);
-  else K.cyl('kh_paint', hex, x, y + r + 0.4, z, r, len, 18, Math.PI / 2, 0);
+  K.group('Cuve', () => { if (alongX) K.cyl('kh_paint', hex, x, y + r + 0.4, z, r, len, 18, 0, Math.PI / 2); else K.cyl('kh_paint', hex, x, y + r + 0.4, z, r, len, 18, Math.PI / 2, 0); });
   for (const s of [-0.35, 0.35]) {
     const ox = alongX ? s * len : 0, oz = alongX ? 0 : s * len;
-    K.box('kh_concrete', 0xbdb5a5, x + ox - (alongX ? 0.25 : r * 0.9), y, z + oz - (alongX ? r * 0.9 : 0.25), x + ox + (alongX ? 0.25 : r * 0.9), y + 0.55, z + oz + (alongX ? r * 0.9 : 0.25));
+    K.group('Berceau', () => K.box('kh_concrete', 0xbdb5a5, x + ox - (alongX ? 0.25 : r * 0.9), y, z + oz - (alongX ? r * 0.9 : 0.25), x + ox + (alongX ? 0.25 : r * 0.9), y + 0.55, z + oz + (alongX ? r * 0.9 : 0.25)));
   }
   const hx = alongX ? len / 2 : r, hz = alongX ? r : len / 2;
   owFill(OW.surf, x - hx + 0.3, z - hz + 0.3, x + hx - 0.3, z + hz - 0.3, OWK.SOLID, { base: y, top: y + 2 * r + 0.4, mat: OWM.METAL });
@@ -29591,14 +29688,15 @@ function owLamp(K, x, y, z, color = 0xffd7a0, power = false, size = 1) {
   bulb.position.set(x, y, z); bulb.scale.setScalar(0.12 * size);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
   halo.position.set(x, y, z); halo.scale.set(2.2 * size, 2.2 * size, 1);
-  K.add(bulb); K.add(halo);
-  const L = { x, y, z, color: new THREE.Color(color), power, bulb, halo, mat, on: !power, size };
+  const L = { x, y, z, color: new THREE.Color(color), power, bulb, halo, mat, on: !power, size, pr: null };
+  // jeu 2.0.3 : une surface « Lampe » (ampoule, halo, lumière) ; sa lumière la suit
+  K.group('Lampe', () => { K.add(bulb); K.add(halo); L.pr = K.cur || null; });
   OWL.lamps.push(L);
   return L;
 }
 function owLampPost(K, x, y, z, h = 5, color = 0xffc070, power = false, arm = [0.8, 0]) {
-  K.cyl('kh_sheet', 0x3a3631, x, y + h / 2, z, 0.07, h, 8);
-  K.box('kh_sheet', 0x3a3631, Math.min(x, x + arm[0]) - 0.04, y + h - 0.05, Math.min(z, z + arm[1]) - 0.04, Math.max(x, x + arm[0]) + 0.04, y + h + 0.03, Math.max(z, z + arm[1]) + 0.04);
+  K.group('Poteau', () => K.cyl('kh_sheet', 0x3a3631, x, y + h / 2, z, 0.07, h, 8));
+  K.group('Bras du lampadaire', () => K.box('kh_sheet', 0x3a3631, Math.min(x, x + arm[0]) - 0.04, y + h - 0.05, Math.min(z, z + arm[1]) - 0.04, Math.max(x, x + arm[0]) + 0.04, y + h + 0.03, Math.max(z, z + arm[1]) + 0.04));
   owSet(OW.surf, Math.floor(x), Math.floor(z), OWK.SOLID, { base: y, top: y + h, mat: OWM.METAL });
   return owLamp(K, x + arm[0], y + h - 0.2, z + arm[1], color, power);
 }
@@ -29647,8 +29745,9 @@ function owLightsUpdate(dt) {
      génération ; les maillages à chaque chargement.
    Jeu 2.0.3 : chaque pièce du décor est une pièce de la base (K.item : genre, nom, pied), que les
    Mod Tools sélectionnent et qu'une carte peut retoucher ; ce qui est posé dans une pièce (tables
-   d'une tente, lanternes d'une maison) la suit. Fixes : la tranchée du sceau, le kiosque du
-   sanctuaire, la cuve d'aviation, le poste de commande et les tombeaux (quête). */
+   d'une tente, lanternes d'une maison) la suit ; chaque surface (mur, toit, poteau…) se retouche
+   aussi seule. Plus de pièce fixe : ce que la quête et le sanctuaire posent dans le kiosque, la cuve
+   d'aviation, le poste de commande et les tombeaux suit leur pose (nœuds dans KH.places). */
 /* Maillage posé (position, rotation). */
 function owMeshAt(geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) {
   const m = new THREE.Mesh(geo, mat);
@@ -29709,7 +29808,7 @@ function khPlaceA(K) {
     for (const x of [2229, 2241]) for (const z of [1899.6, 1908.4]) K.box('kh_planks', 0x6b4a30, x - 0.1, yt, z - 0.1, x + 0.1, y + 1.0, z + 0.1);
     const seal = khSeal(1.6);
     seal.position.set(2236, yt + 0.06, 1904); K.add(seal);
-  }, { locked: 'Le sceau du sanctuaire est au fond de la fosse, creusée dans le terrain : la tranchée reste à sa place.' });
+  });
   P.seal = { x: 2236, y: yt, z: 1904 };
   // auvent de la boîte mystère, groupe électrogène, caisses, fûts, sacs de sable
   K.item('auvent', 'Auvent de la boîte mystère', 2329, y, 1940, (K) => {
@@ -29768,8 +29867,8 @@ function khPlaceB(K) {
   // kiosque du sanctuaire (porte scellée jusqu'au courant), entre les deux grandes pyramides
   const yk = owH(2190, 1396) + 0.05;
   K.item('kiosque', 'Kiosque du sanctuaire', 2190, yk, 1396, (K) => owHouse(K, { x0: 2184, z0: 1390, x1: 2196, z1: 1402, y: yk, h: 4.6, wall: 'kh_sandstone', roof: 'flat', roofTex: 'kh_sandstone', parapet: 0.6, noFloor: true, doors: [['s', 5, 2, 3.2]] }),   // sol percé de l'escalier (sanctuaire)
-    { locked: 'Sa porte scellée et l’escalier du sanctuaire, dessous, font partie de la quête : le kiosque reste à sa place.' });
-  P.kiosk = { x: 2190, y: yk, z: 1402, door: [2189, 1401, 2191, 1402] };
+    { logic: 'L’escalier du sanctuaire et sa porte scellée suivent le kiosque (le sanctuaire reste 40 m sous le plateau).' });
+  P.kiosk = { x: 2190, y: yk, z: 1402, door: [2189, 1401, 2191, 1402], node: K.lastItem };
   // petit camp de l'équipe (tentes et groupe électrogène)
   const yc = owH(2246, 1560);
   K.item('tente', 'Tente', 2244, yc, 1554.5, (K) => owTent(K, 2240, 1552, 2248, 1557, yc, 3, 1.3, 's', 0xd2c29c));
@@ -29829,8 +29928,8 @@ function khPlaceC(K) {
   });
   // cuve de carburant d'aviation (pièce ①) derrière le garage : fixe
   K.item('cuve', 'Cuve de carburant d’aviation', 1419, y, 2601, (K) => owTank(K, 1419, y, 2601, 1.5, 7, true, 0xe2dccc),
-    { locked: 'Pièce ① de l’avion : la vanne et le fût de la quête sont posés sur cette cuve.' });
-  P.fuelTank = { x: 1419, y: y + 1.9, z: 2599.2 };
+    { logic: 'Pièce ① de l’avion : la vanne et le fût de la quête suivent la cuve.' });
+  P.fuelTank = { x: 1419, y: y + 1.9, z: 2599.2, node: K.lastItem };
   // jerricans (faire le plein), borne kilométrique
   const ym = owH(1446, 2541);
   K.item('borne', 'Borne kilométrique', 1446, ym, 2541, (K) => khMilestone(K, 1446, ym, 2541, '47'));
@@ -29913,7 +30012,8 @@ function khPlaceE(K) {
     K.box('kh_sheet', 0x6c7a72, 3531.5, y, 1611.2, 3532.9, y + 2, 1618.8);           // pupitre
     K.solid(3531, 1611, 3533, 1619, OWK.LOW, { base: y, top: y + 1.2, mat: OWM.METAL });
     owLamp(K, 3529, y + 3.3, 1615, 0xfff0d0, true, 0.8);
-  }, { locked: 'Le chargeur de la batterie (pièce ② de l’avion) est dans ce poste.' });
+  }, { logic: 'Le chargeur de la batterie (pièce ② de l’avion) suit le poste.' });
+  const posteNode = K.lastItem;
   // parc des transformateurs (grillage : on tire au travers, on ne passe pas)
   K.item('grillage', 'Parc des transformateurs', 3550, y, 1618, (K) => {
     const fence = (x0, z0, x1, z1) => {
@@ -29948,7 +30048,7 @@ function khPlaceE(K) {
   for (const [x, z, a] of [[3516, 1584, [0, -0.8]], [3516, 1606, [0.8, 0]], [3538, 1606, [0, 0.8]], [3556, 1606, [0, 0.8]], [3517, 1630, [0.8, 0]], [3500, 1660, [0, -0.8]]]) {
     K.item('lampadaire', 'Lampadaire', x, y, z, (K) => owLampPost(K, x, y, z, 6, 0xffa850, false, a));
   }
-  P.battery = { x: 3527.5, y, z: 1618.7 };
+  P.battery = { x: 3527.5, y, z: 1618.7, node: posteNode };
   P.refuge = [{ x0: 3525, z0: 1611, x1: 3533, z1: 1619, name: 'poste de commande' }, { x0: 3521, z0: 1587, x1: 3551, z1: 1601, name: 'salle des turbines' }];
 }
 /* Grillage : panneaux transparents (texture de mailles). */
@@ -29997,8 +30097,8 @@ function khPlaceF(K) {
       K.box('kh_sandstone', 0xcdb08a, cx - 1.1, y, z0 + 1.6, cx + 1.1, y + 1.0, z0 + 2.6);
       K.solid(cx - 1.1, z0 + 1.6, cx + 1.1, z0 + 2.6, OWK.LOW, { base: y, top: y + 1, mat: OWM.STONE });
       owLamp(K, cx, y + 2.6, z0 + 3.5, 0xffa040, false, 0.7);
-    }, { locked: 'Taillé dans la falaise ; les fragments du Sceptre et le tunnel de la quête y sont liés.' });
-    P.tombs.push({ x0, z0, x1, z1, y, big });
+    }, { logic: big ? 'Le quai de la draisine (vers le sanctuaire) suit le grand tombeau.' : 'Le fragment du Sceptre posé sur le sarcophage suit le tombeau.' });
+    P.tombs.push({ x0, z0, x1, z1, y, big, node: K.lastItem });
   }
   const T = P.tombs[2];
   P.refuge = P.tombs.map((t) => ({ x0: t.x0 + 1, z0: t.z0 + 1, x1: t.x1 - 1, z1: t.z1 - 1, name: 'tombeau' }));
@@ -30474,7 +30574,7 @@ function owRebuildElements(map, opts = {}) {
   Features.box = null;
   owBoxRelease();
   owLogUndoAll();
-  if (opts.places) owItemsApply(map);                  // jeu 2.0.3 : décor des lieux retouché (Mod Tools)
+  if (opts.places) { registerCustomTextures(map); owItemsApply(map); }   // jeu 2.0.3 : décor des lieux retouché (Mod Tools)
   registerCustomModels(map);
   const g = owBuildElements(World.root, map, opts);
   linearizeTree(g);
@@ -30633,7 +30733,7 @@ function owEditorTile(tx, tz, make = true) {
    tente, un panneau, un enduit sont parfois en avant ou en retrait de la case : un rayon horizontal
    part du sol devant (1,4 m de haut) vers le mur et s'arrête sur la première face tournée vers lui. */
 const OWED_RC = new THREE.Raycaster();
-const OWED_WALLS = new Set(['lieux', 'lieux-décor', 'sanctuaire', 'quête', 'tunnel', 'tunnel-f', 'pyramide', 'lune-lieux', 'lune-base']);
+const OWED_WALLS = new Set(['lieux', 'lieux-décor', 'sanctuaire', 'kiosque-escalier', 'quête', 'tunnel', 'tunnel-f', 'pyramide', 'lune-lieux', 'lune-base']);
 function owEditorMeshes() {
   if (OWED.meshes && OWED.meshesRoot === World.root) return OWED.meshes;
   const out = [];
@@ -32101,8 +32201,8 @@ function owBuildSanctuary(root) {
   }
   // autel et faisceau
   khAltarBuild(K);
-  // kiosque : escalier, porte scellée
-  khKioskBuild(K);
+  // kiosque : escalier, porte scellée (jeu 2.0.3 : dans un kit à part, qui suit le kiosque)
+  khKioskBuild(K, root);
   const g = K.build(root);
   g.name = 'sanctuaire';
   KHSAN.group = g;
@@ -32215,9 +32315,25 @@ function khAltarBuild(K) {
   khUnderFill(A.x - 1.3, A.z - 0.65, A.x + 1.3, A.z + 0.65, OWK.LOW, { base: E, top, mat: OWM.STONE });
   KHSAN.altarTop = top;
 }
-/* Kiosque du plateau : escalier qui descend (fondu vers le sanctuaire), porte scellée. */
-function khKioskBuild(K) {
-  const P = KH.places.B.kiosk, y = P.y;
+/* Kiosque du plateau : escalier qui descend (fondu vers le sanctuaire), porte scellée. Jeu 2.0.3 :
+   géométrie (kit « kiosque-escalier »), cases (avec le kiosque) et passages suivent le kiosque. */
+function khKioskBuild(K0, root) {
+  const P = KH.places.B.kiosk, y = P.y, N = P.node, K = owKit('kiosque-escalier');
+  owLate(N, () => khKioskParts(K, P, y));
+  const g = K.build(root);
+  g.name = 'kiosque-escalier';
+  owFollow(N, g);
+  // le passage vers le sanctuaire et la sortie, à la pose du kiosque
+  const k = KHSAN.kiosk, a = owPt(N, k.x, k.y, k.z), b = owPt(N, k.x, k.y, k.z + 1.6);
+  KHSAN.kioskW = { x: a.x, y: a.y, z: a.z, out: { x: b.x, z: b.z, yaw: Math.PI + owYaw(N) } };
+  // fosse sous le kiosque (maillage fin du terrain) : l'escalier s'y enfonce
+  OW.pit = new Map();
+  for (const px of [2188, 2192]) for (const pz of [1392, 1396, 1400]) {
+    const q = owPt(N, px, 0, pz), gx = Math.round((q.x - OW.X0) / 4), gz = Math.round((q.z - OW.Z0) / 4);
+    if (gx >= 0 && gz >= 0 && gx < OW.NX && gz < OW.NZ) OW.pit.set(gz * OW.NX + gx, -6);
+  }
+}
+function khKioskParts(K, P, y) {
   // trémie de l'escalier (2 × 6 m) au milieu du kiosque, bordée d'une balustrade de pierre
   const x0 = 2189, x1 = 2191, za = 1392, zb = 1398;
   // sol du kiosque autour de la trémie
@@ -32239,9 +32355,6 @@ function khKioskBuild(K) {
   let di = OW.doors.findIndex((d) => d.id === 'sanctuaire');
   if (di < 0) { di = OW.doors.length; OW.doors.push({ open: false, id: 'sanctuaire' }); }
   for (let x = dx0; x < dx1; x++) owSet(OW.surf, x, dz0, OWK.DOOR, { base: y, top: y + 3.2, ceil: y + 3.2, roof: y + 4.6, door: di, mat: OWM.STONE });
-  // fosse sous le kiosque (maillage fin du terrain seulement) : l'escalier s'y enfonce
-  OW.pit = new Map();
-  for (const px of [2188, 2192]) for (const pz of [1392, 1396, 1400]) OW.pit.set(((pz - OW.Z0) / 4) * OW.NX + (px - OW.X0) / 4, -6);
   const slab = new THREE.Group();
   const stone = new THREE.Mesh(new THREE.BoxGeometry(dx1 - dx0, 3.2, 0.5), levelMaterial('kh_sandstone'));
   stone.position.y = 1.6; slab.add(stone);
@@ -32461,7 +32574,7 @@ function khSetUnder(on) {
   if (Features.amp && Features.amp.altar) khAltarAnimate(Features.amp, 0);
 }
 function khPortalInteractables() {
-  const K = KHSAN.kiosk, F = KHSAN.stairFoot;
+  const K = KHSAN.kioskW || KHSAN.kiosk, F = KHSAN.stairFoot, out = K.out || { x: K.x, z: K.z + 1.6, yaw: Math.PI };
   Features.interactables.push({
     kind: 'portal', x: K.x, z: K.z, y: K.y, r: 1.5,
     prompt() { return { text: 'Appuyez sur F pour descendre au sanctuaire', sub: '40 m sous le plateau' }; },
@@ -32470,12 +32583,12 @@ function khPortalInteractables() {
   Features.interactables.push({
     kind: 'portal', x: F.x, z: F.z, y: F.y, r: 1.8, layer: 1,
     prompt() { return { text: 'Appuyez sur F pour remonter au plateau', sub: 'Kiosque du sanctuaire' }; },
-    use() { khPortal({ x: K.x, z: K.z + 1.6, layer: 0, yaw: Math.PI }, KH.locs[1].name); },
+    use() { khPortal({ x: out.x, z: out.z, layer: 0, yaw: out.yaw }, KH.locs[1].name); },
   });
   // porte du kiosque : scellée jusqu'au courant
-  const D = KHSAN.door, P = KH.places.B.kiosk;
+  const D = KHSAN.door, P = KH.places.B.kiosk, sq = owPt(P.node, (P.door[0] + P.door[2]) / 2, P.y, P.door[3] + 0.9);
   Features.interactables.push({
-    kind: 'seal', x: (P.door[0] + P.door[2]) / 2, z: P.door[3] + 0.9, y: P.y, r: 1.6,
+    kind: 'seal', x: sq.x, z: sq.z, y: sq.y, r: 1.6,
     prompt() { return OW.doors[D.i].open || D.opening ? null : { text: 'Porte scellée : rétablissez le courant à la centrale du Nil', disabled: true }; },
     use() {},
   });
@@ -32492,7 +32605,7 @@ function khSanctuaryUpdate(dt) {
       D.t += dt;
       const k = clamp(D.t / 2.6, 0, 1);
       D.slab.position.y = D.y - 3.25 * smooth(k);
-      if (Math.random() < dt * 10 && k < 1) owSandBurst(D.slab.position.x + rand(-1, 1), D.slab.position.z + 0.4, D.y);
+      if (Math.random() < dt * 10 && k < 1) { const q = owPt(KH.places.B.kiosk.node, D.slab.position.x + rand(-1, 1), D.y, D.slab.position.z + 0.4); owSandBurst(q.x, q.z, q.y); }
       if (k >= 1) { D.opening = false; OW.doors[D.i].open = true; }
     }
   }
@@ -33313,16 +33426,17 @@ function owBuildQuest(root) {
   const P = KH.places, std = (hex, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: hex, roughness: 0.6, metalness: 0.2 }, o));
   const at = (geo, mat, x, y, z, ry = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = true; g.add(m); return m; };
   KHQ.items = {};
-  // ① vanne et flexible sur la cuve d'aviation (relais) ; le fût rempli
+  // ① vanne et flexible sur la cuve d'aviation (relais) ; le fût rempli (jeu 2.0.3 : ils suivent la cuve)
   {
-    const T = P.C.fuelTank, y = P.C.y;
-    at(new THREE.CylinderGeometry(0.06, 0.06, 1.1, 8), std(0x6a6a64, { metalness: 0.6 }), T.x, y + 0.85, T.z + 0.2);
-    const wheel = at(new THREE.TorusGeometry(0.16, 0.025, 6, 16), std(0xb03a28), T.x, y + 1.1, T.z - 0.02);
-    const drum = at(new THREE.CylinderGeometry(0.3, 0.3, 0.88, 14), std(0x9c2f22, { metalness: 0.35 }), T.x - 1.4, y + 0.44, T.z - 0.9);
+    const T = P.C.fuelTank, y = P.C.y, N = T.node, f = (m) => owFollow(N, m);
+    f(at(new THREE.CylinderGeometry(0.06, 0.06, 1.1, 8), std(0x6a6a64, { metalness: 0.6 }), T.x, y + 0.85, T.z + 0.2));
+    const wheel = f(at(new THREE.TorusGeometry(0.16, 0.025, 6, 16), std(0xb03a28), T.x, y + 1.1, T.z - 0.02));
+    const drum = f(at(new THREE.CylinderGeometry(0.3, 0.3, 0.88, 14), std(0x9c2f22, { metalness: 0.35 }), T.x - 1.4, y + 0.44, T.z - 0.9));
     drum.visible = false;
     KHQ.items.wheel = wheel; KHQ.items.drum = drum;
+    const q = owPt(N, T.x, y, T.z - 1.3);
     Features.interactables.push({
-      kind: 'quest', x: T.x, z: T.z - 1.3, y, r: 1.6, hold: true,
+      kind: 'quest', x: q.x, z: q.z, y: q.y, r: 1.6, hold: true,
       prompt() {
         if (KHQ.have.fuel || KHQ.placed.fuel) return null;
         return { text: 'Maintenez F pour remplir un fût de carburant d’aviation', sub: `Pièce ① de l’avion · ${Math.round(((KHQ.fillT || 0) / KHQ_RULES.fill) * 100)} %` };
@@ -33336,17 +33450,18 @@ function owBuildQuest(root) {
       },
     });
   }
-  // ② chargeur de la batterie (poste de commande de la centrale)
+  // ② chargeur de la batterie (poste de commande de la centrale) : il suit le poste (jeu 2.0.3)
   {
-    const B = P.E.battery, y = B.y;
-    at(new THREE.BoxGeometry(1.2, 0.8, 0.6), std(0x4a5a52, { metalness: 0.5 }), B.x, y + 0.4, B.z);
-    const bat = at(new THREE.BoxGeometry(0.62, 0.34, 0.36), std(0x22282c, { metalness: 0.3 }), B.x, y + 0.97, B.z);
-    for (const s of [-1, 1]) at(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), std(s > 0 ? 0xb03a28 : 0x222222), B.x + s * 0.2, y + 1.17, B.z);
-    const lamp = at(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a1a }), B.x + 0.45, y + 0.7, B.z + 0.31);
-    owFill(OW.surf, B.x - 0.6, B.z - 0.3, B.x + 0.6, B.z + 0.3, OWK.LOW, { base: y, top: y + 0.8, mat: OWM.METAL });
+    const B = P.E.battery, y = B.y, N = B.node, f = (m) => owFollow(N, m);
+    f(at(new THREE.BoxGeometry(1.2, 0.8, 0.6), std(0x4a5a52, { metalness: 0.5 }), B.x, y + 0.4, B.z));
+    const bat = f(at(new THREE.BoxGeometry(0.62, 0.34, 0.36), std(0x22282c, { metalness: 0.3 }), B.x, y + 0.97, B.z));
+    for (const s of [-1, 1]) f(at(new THREE.CylinderGeometry(0.04, 0.04, 0.06, 8), std(s > 0 ? 0xb03a28 : 0x222222), B.x + s * 0.2, y + 1.17, B.z));
+    const lamp = f(at(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2a1a }), B.x + 0.45, y + 0.7, B.z + 0.31));
+    owLate(N, () => owFill(OW.surf, B.x - 0.6, B.z - 0.3, B.x + 0.6, B.z + 0.3, OWK.LOW, { base: y, top: y + 0.8, mat: OWM.METAL }));
     KHQ.items.bat = bat; KHQ.items.batLamp = lamp;
+    const q = owPt(N, B.x, y, B.z - 0.9);
     Features.interactables.push({
-      kind: 'quest', x: B.x, z: B.z - 0.9, y, r: 1.5,
+      kind: 'quest', x: q.x, z: q.z, y: q.y, r: 1.5,
       prompt() {
         if (KHQ.have.battery || KHQ.placed.battery) return null;
         if (!G.power) return { text: KHF.breakers.length ? `Batterie de démarrage déchargée : rétablissez le courant (${khBreakersWord(KHF.breakers.length)})` : 'Batterie de démarrage déchargée : pas de courant sur cette carte', disabled: true };
@@ -33367,13 +33482,16 @@ function owBuildQuest(root) {
     halo.scale.set(1.4, 1.4, 1); fr.add(halo);
     fr.position.set(cx, y + 1.45, z);
     g.add(fr);
+    owFollow(T.node, fr);                              // jeu 2.0.3 : le fragment suit son tombeau
     // la tombe brille (visible de loin dans la poussière)
     const door = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ff2e2, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
     door.position.set(cx, y + 1.6, T.z1 + 0.6); door.scale.set(7, 5, 1);
     g.add(door);
+    owFollow(T.node, door);
     KHQ.fragMeshes.push({ fr, shard, halo, door, i });
+    const q = owPt(T.node, cx, y, T.z0 + 3.3);
     Features.interactables.push({
-      kind: 'quest', x: cx, z: T.z0 + 3.3, y, r: 1.6,
+      kind: 'quest', x: q.x, z: q.z, y: q.y, r: 1.6,
       prompt() {
         if (KHQ.frags[i] || !KHS.on) return null;
         return { text: 'Appuyez sur F pour prendre le fragment du Sceptre', sub: `${KHQ.frags.filter(Boolean).length + 1} / 3 · dégâts doublés sur le Gardien une fois reconstitué` };
@@ -33678,8 +33796,8 @@ function khQuestMapMarks(g, X, Z, S) {
     if (txt) { g.fillStyle = '#120e0b'; g.font = `700 9px ${FONT_HUD}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, px, pz + 0.5); }
   };
   const P = KH.places;
-  if (!KHQ.have.fuel && !KHQ.placed.fuel) mark(P.C.fuelTank.x, P.C.fuelTank.z, '#f5c88d', '1');
-  if (!KHQ.have.battery && !KHQ.placed.battery) mark(P.E.battery.x, P.E.battery.z, G.power ? '#f5c88d' : '#8a7a64', '2');
+  if (!KHQ.have.fuel && !KHQ.placed.fuel) { const q = owPt(P.C.fuelTank.node, P.C.fuelTank.x, 0, P.C.fuelTank.z); mark(q.x, q.z, '#f5c88d', '1'); }
+  if (!KHQ.have.battery && !KHQ.placed.battery) { const q = owPt(P.E.battery.node, P.E.battery.x, 0, P.E.battery.z); mark(q.x, q.z, G.power ? '#f5c88d' : '#8a7a64', '2'); }
   if (KHQ.pilot && KHQ.pilot.alive) mark(KHQ.pilot.pos.x, KHQ.pilot.pos.z, '#e2402a', '3');
   if (KHQ.key) mark(KHQ.key.g.position.x, KHQ.key.g.position.z, '#f5c88d', '3');
   if (!KHQ.ready || (KHG.dead && KHS.calmT > 0)) mark(P.G.plane.x, P.G.plane.z, '#5fa8ff', '✈');
@@ -33849,11 +33967,13 @@ function owBuildTunnel(root) {
   KHT.group = g;
   // les deux quais : le fond du grand tombeau (F) et la galerie du sanctuaire (B)
   const T = KH.places.F.tombs[2], cx = (T.x0 + T.x1) / 2;
-  KHT.endF = { x: cx + 2.6, y: T.y, z: T.z0 + 1.5, layer: 0, yaw: Math.PI };
+  // jeu 2.0.3 : le quai suit le grand tombeau (place, lacet)
+  const qF = owPt(T.node, cx + 2.6, T.y, T.z0 + 1.5), qP = owPt(T.node, cx + 2.6, T.y, T.z0 + 1.9);
+  KHT.endF = { x: qF.x, y: qF.y, z: qF.z, layer: 0, yaw: Math.PI + owYaw(T.node) };
   KHT.endB = { x: KHSAN.railHead.x + 1.5, y: KHSY, z: KHSAN.railHead.z, layer: 1, yaw: -Math.PI / 2 };
   khTunnelMouthF(T);
   Features.interactables.push({
-    kind: 'portal', x: KHT.endF.x, z: KHT.endF.z + 0.4, y: T.y, r: 1.6,
+    kind: 'portal', x: qP.x, z: qP.z, y: qP.y, r: 1.6,
     prompt() { return { text: 'Appuyez sur F pour prendre la draisine', sub: 'Galerie de fouilles · vers le sanctuaire (1,7 km)' }; },
     use() { khRide(KHT.endB, 1, 'Sanctuaire'); },
   });
@@ -33872,7 +33992,7 @@ function khTunnelMouthF(T) {
   v.rotation.y = 0; K.add(v);
   for (let i = 0; i < 6; i++) K.box('kh_planks', 0x5a4028, cx - 0.55, y, z + 0.3 + i * 0.6, cx + 0.55, y + 0.06, z + 0.44 + i * 0.6);
   for (const s of [-0.3, 0.3]) K.box('kh_sheet', 0x6a645c, cx + s - 0.03, y + 0.06, z + 0.25, cx + s + 0.03, y + 0.13, z + 3.6);
-  K.build(OW.placesRoot || World.root);
+  owFollow(T.node, K.build(OW.placesRoot || World.root));     // jeu 2.0.3 : elle suit le grand tombeau
 }
 /* Le trajet : fondu, vue depuis la draisine dans le tunnel, fondu, arrivée. dir : sens du défilement. */
 function khRide(to, dir, name) {
@@ -34747,6 +34867,7 @@ function luLoad(map, opts = {}) {
   owBoxRelease();
   owLogUndoAll();
   registerCustomModels(map);
+  registerCustomTextures(map);                          // jeu 2.0.3 : images des surfaces du décor
   KHS.every = 0;                                       // pas de tempête sur la Lune
   if (!opts.editor) OWMOD.live = false;
   if (owModsActive(map) || OWMOD.on) { owApplyMods(map); OWH.bg = null; luSunMap(); }
@@ -35277,7 +35398,7 @@ function luComputeFlow() {
   // départ : la case du joueur, sur sa couche (en l'air : la case sous lui) ; au perchoir de la tour,
   // le pied de l'échelle (les morts y vont, puis grimpent)
   let s0 = ((p.layer | 0) === 1 && walk[NN + sj * N + si] ? NN : 0) + sj * N + si;
-  if (luOnTower()) { const La = LUPL.ladder, li = Math.floor(La.fx) - LUNAV.x0, lj = Math.floor(La.fz) - LUNAV.z0; if (li >= 0 && lj >= 0 && li < N && lj < N) s0 = lj * N + li; }
+  if (luOnTower()) { const F = luLadderFoot(), li = Math.floor(F.x) - LUNAV.x0, lj = Math.floor(F.z) - LUNAV.z0; if (li >= 0 && lj >= 0 && li < N && lj < N) s0 = lj * N + li; }
   flow[s0] = 0; push(s0, 0);
   while (n > 0) {
     const u = hI[0], d = hD[0];
@@ -35383,11 +35504,16 @@ function luFlowDir(k, x, z, out) {
   return true;
 }
 
-/* Le joueur est-il au perchoir (plate-forme de la tour relais) ? */
+/* Le joueur est-il au perchoir (plate-forme de la tour relais) ? Jeu 2.0.3 : la plate-forme à sa pose. */
+const _luTw = new THREE.Vector3();
 function luOnTower() {
-  const T = LUPL.tower, p = player;
-  return !!(T && LUPL.ladder && Math.abs(p.pos.x - T.x) < 4.2 && Math.abs(p.pos.z - T.z) < 4.2 && p.gy > T.top - 1.5);
+  const T = LUPL.tower, p = player, N = LUPL.nodes || {};
+  if (!T || !LUPL.ladder || owNodeHidden(N.platform)) return false;
+  const q = owLoc(N.platform, p.pos.x, p.gy, p.pos.z, _luTw);
+  return Math.abs(q.x - T.x) < 4.2 && Math.abs(q.z - T.z) < 4.2 && q.y > T.top - 1.5;
 }
+/* Pied de l'échelle de la tour (où les morts commencent à grimper), à sa pose : { x, y, z }. */
+function luLadderFoot() { const La = LUPL.ladder; return owPt(LUPL.nodes && LUPL.nodes.ladder, La.fx, La.y0, La.fz); }
 
 /* --------------------------------------------------------- Lune : les lieux --
    A Base Séléné (moyeu octogonal sous coupole, quatre modules cylindriques en croix, deux sas, grande
@@ -35399,9 +35525,10 @@ function luOnTower() {
    sur treillis, du bord ouest au fond), J foreuse à glace (derrick de 30 m), lampadaires des gradins.
    Chaque pièce écrit sa géométrie (kit) et ses cases (solides) ; le pont et le convoyeur sont des
    tabliers (couche 1).
-   Jeu 2.0.3 : pièces du décor (voir « Décor des lieux ») : mâts solaires, poste électrique, abri du
-   plateau, balises, foreuse, lampadaires des gradins se retouchent ; la base, le pont, le convoyeur,
-   la catapulte, la tour, l'atterrisseur, le dépôt et la cabine de la foreuse sont fixes (quête, air). */
+   Jeu 2.0.3 : pièces du décor (voir « Décor des lieux ») : tout se retouche, surface par surface ;
+   ce qui en dépend dans le jeu suit leur pose (LUPL.nodes) : l'air de la base (moyeu et modules),
+   le perchoir, l'échelle et l'ascenseur de la tour, la quête (tour, cabine, atterrisseur), le dépôt
+   (explosion, sphères), la catapulte (capsules) et le convoyeur (sens de la bande). */
 (function luTextures() {
   defTex('lu_panel', 'Panneaux blancs (Lune)', 'metal', { size: [2, 2], rough: 0.55, metal: 0.15 }, tgPanels({ tile: 2, color: [214, 214, 208], panel: 0.66, screws: true }));
   defTex('lu_ceil', 'Plafond acoustique (Lune)', 'metal', { size: [2, 2], rough: 0.92, metal: 0 }, tgPanels({ tile: 2, color: [226, 226, 222], panel: 1, screws: false }));
@@ -35482,19 +35609,20 @@ function luBuildPlaces(root) {
   OWL.lamps = [];
   OW.placesRoot = root;
   owItemsBegin();
+  LUPL.nodes = { arm: {} };
   const K = luKit('lune-lieux');
-  // pièce fixe d'un lieu (jeu 2.0.3 : sélectionnable, pas retouchable)
-  const fixed = (place, kind, title, L, fn, why) => { OWPI.place = place; K.item(kind, title, L.x, owH(L.x, L.z), L.z, fn, { locked: why }); };
+  // grande pièce d'un lieu (jeu 2.0.3 : retouchable ; logic : ce qui la suit dans le jeu)
+  const piece = (place, kind, title, L, fn, logic) => { OWPI.place = place; K.item(kind, title, L.x, owH(L.x, L.z), L.z, fn, { logic }); return K.lastItem; };
   const loc = (id) => LU.locs.find((L) => L.id === id);
   const B = luBaseGeo();
-  fixed('A', 'base', 'Base Séléné', { x: B.x, z: B.z }, (K) => luBase(K), 'Départ, sas et air respirable de la mine : la base reste à sa place.');
-  fixed('C', 'pont', 'Pont suspendu', loc('C'), (K) => luBridge(K), 'Tablier pris dans les gradins de la fosse : le pont reste à sa place.');
-  fixed('I', 'convoyeur', 'Convoyeur', loc('I'), (K) => luConveyor(K), 'Raccourci du fond, posé sur les gradins : le convoyeur reste à sa place.');
-  fixed('D', 'catapulte', 'Catapulte électromagnétique', loc('D'), (K) => luCatapult(K, root), 'Voie et capsules animées : la catapulte reste à sa place.');
+  LUPL.nodes.base = piece('A', 'base', 'Base Séléné', { x: B.x, z: B.z }, (K) => luBase(K), 'Air respirable, sas et éclairage suivent le moyeu et chaque module (le départ et ce qui est posé dedans suivent quand on déplace la base dans les Mod Tools).');
+  LUPL.nodes.bridge = piece('C', 'pont', 'Pont suspendu', loc('C'), (K) => luBridge(K), 'Le tablier (où l’on marche) suit le pont.');
+  LUPL.nodes.conv = piece('I', 'convoyeur', 'Convoyeur', loc('I'), (K) => luConveyor(K), 'La bande et son sens de marche suivent le convoyeur (la tranchée creusée dans les gradins reste où elle est).');
+  LUPL.nodes.cata = piece('D', 'catapulte', 'Catapulte électromagnétique', loc('D'), (K) => luCatapult(K, root), 'Les capsules partent le long de la voie, où qu’elle soit.');
   luMasts(K);
-  fixed('F', 'tour', 'Tour relais', loc('F'), (K) => luTower(K), 'Ascenseur et centrale inertielle (pièce ① de la quête) : la tour reste à sa place.');
+  LUPL.nodes.tower = piece('F', 'tour', 'Tour relais', loc('F'), (K) => luTower(K), 'Perchoir, échelle, ascenseur et centrale inertielle (pièce ①) suivent la tour, chacun avec sa surface.');
   luPlateau(K);
-  fixed('H', 'depot', 'Dépôt d’oxygène', loc('H'), (K) => luDepot(K, root), 'Il saute à la manche 1 (anomalie) : le dépôt reste à sa place.');
+  LUPL.nodes.depot = piece('H', 'depot', 'Dépôt d’oxygène', loc('H'), (K) => luDepot(K, root), 'L’explosion de la manche 1 part des sphères, où qu’elles soient.');
   luDrill(K); luPitLamps(K); luPads(K, root);
   owItemsBuild(K, root);
   K.build(root);
@@ -35511,12 +35639,25 @@ function luBaseGeo() {
   return LUPL.base;
 }
 const LU_OCT = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => { const a = (i * Math.PI) / 4; return [Math.sin(a), -Math.cos(a)]; });   // faces N, NE, E, SE, S, SO, O, NO (normales)
+const LU_DIR8 = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
+const LU_DOOR_SIDES = { 0: ['ouest', 'est'], 2: ['nord', 'sud'], 4: ['est', 'ouest'], 6: ['sud', 'nord'] };   // de part et d'autre des portes du moyeu
 function luOctD(dx, dz) {
   let d = -Infinity, f = 0;
   for (let i = 0; i < 8; i++) { const v = dx * LU_OCT[i][0] + dz * LU_OCT[i][1]; if (v > d) { d = v; f = i; } }
   return [d, f];
 }
+/* Jeu 2.0.3 : la base en éléments (le moyeu, chaque module avec son sas) ; l'air suit chacun. */
 function luBase(K) {
+  const B = luBaseGeo(), { x, z, y } = B, ext = B.ap + B.wall, sm = (ext - 0.3 + ext + B.arm) / 2;
+  K.item('moyeu', 'Moyeu (coupole, baie, console)', x, y, z, (K) => luHub(K), { ground: false, logic: 'L’air respirable du moyeu le suit.' });
+  LUPL.nodes.hub = K.lastItem;
+  const NAMES = { n: 'nord', e: 'est', s: 'sud', o: 'ouest' };
+  for (const [dir, nx, nz] of [['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['o', -1, 0]]) {
+    K.item('module', `Module ${NAMES[dir]}${dir === 'n' || dir === 'o' ? ' et son sas' : ''}`, x + nx * sm, y, z + nz * sm, (K) => luArm(K, B, dir, nx, nz), { ground: false, logic: 'L’air respirable du module (et de son sas) le suit.' });
+    LUPL.nodes.arm[dir] = K.lastItem;
+  }
+}
+function luHub(K) {
   const B = luBaseGeo(), { x, z, y, ap, wall, h } = B, top = y + h;
   const ext = ap + wall;
   // --- moyeu : cases (sol couvert, murs ; portes N, E, S, O ; baie au sud-ouest)
@@ -35538,16 +35679,16 @@ function luBase(K) {
     // sol intérieur (octogone en éventail)
     const pts = [];
     for (let i = 0; i < 8; i++) pts.push(corner(i, r8));
-    for (let i = 0; i < 8; i++) { const a = pts[i], b = pts[(i + 1) % 8]; K.tri('lu_floor', 0xffffff, [x, y, z], [b[0], y, b[1]], [a[0], y, a[1]], [0, 1, 0], (p) => [p[0], p[2]]); }
+    K.group('Sol du moyeu', () => { for (let i = 0; i < 8; i++) { const a = pts[i], b = pts[(i + 1) % 8]; K.tri('lu_floor', 0xffffff, [x, y, z], [b[0], y, b[1]], [a[0], y, a[1]], [0, 1, 0], (p) => [p[0], p[2]]); } });
     // plafond intérieur (vu d'en dessous)
-    for (let i = 0; i < 8; i++) { const a = pts[i], b = pts[(i + 1) % 8]; K.tri('lu_ceil', 0xffffff, [x, top, z], [a[0], top, a[1]], [b[0], top, b[1]], [0, -1, 0], (p) => [p[0], p[2]]); }
+    K.group('Plafond du moyeu', () => { for (let i = 0; i < 8; i++) { const a = pts[i], b = pts[(i + 1) % 8]; K.tri('lu_ceil', 0xffffff, [x, top, z], [a[0], top, a[1]], [b[0], top, b[1]], [0, -1, 0], (p) => [p[0], p[2]]); } });
     // dalles lumineuses (en couronne autour de la coupole)
     const lp = new THREE.MeshBasicMaterial({ color: 0xeef2ff });
-    for (let i = 0; i < 4; i++) { const a = (i * Math.PI) / 2 + Math.PI / 4, m = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 0.5), lp); m.position.set(x + Math.sin(a) * 3.4, top - 0.03, z + Math.cos(a) * 3.4); m.rotation.y = a; K.add(m); }
+    for (let i = 0; i < 4; i++) { const a = (i * Math.PI) / 2 + Math.PI / 4, m = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 0.5), lp); m.position.set(x + Math.sin(a) * 3.4, top - 0.03, z + Math.cos(a) * 3.4); m.rotation.y = a; K.group('Dalle lumineuse', () => K.add(m)); }
   }
   for (let f = 0; f < 8; f++) {
     const [ox0, oz0] = corner(f, R8), [ox1, oz1] = corner(f + 1, R8), [ix0, iz0] = corner(f, r8), [ix1, iz1] = corner(f + 1, r8);
-    const n = LU_OCT[f], door = f % 2 === 0, bay = f === 5;
+    const n = LU_OCT[f], door = f % 2 === 0, bay = f === 5, side = LU_DIR8[f];     // jeu 2.0.3 : surfaces nommées
     const segs = door ? [[0, 0.5 - B.aw / (2 * Math.hypot(ox1 - ox0, oz1 - oz0)) * 1.0], [0.5 + B.aw / (2 * Math.hypot(ox1 - ox0, oz1 - oz0)), 1]] : [[0, 1]];
     for (const [t0, t1] of segs) {
       const P = (ax, az, bx, bz, t) => [lerp(ax, bx, t), lerp(az, bz, t)];
@@ -35555,17 +35696,18 @@ function luBase(K) {
       if (bay) {
         // baie : allège, vitrage (de 1 m à 3,4 m), linteau
         const yl = y + 1.0, yh = y + 3.4;
-        K.quad('lu_panel', 0xffffff, [a0x, y - 0.6, a0z], [a1x, y - 0.6, a1z], [a1x, yl, a1z], [a0x, yl, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]);
-        K.quad('lu_panel', 0xffffff, [a0x, yh, a0z], [a1x, yh, a1z], [a1x, top, a1z], [a0x, top, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]);
-        K.quad('lu_panel', 0xe6e6e0, [b1x, y, b1z], [b0x, y, b0z], [b0x, yl, b0z], [b1x, yl, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]);
-        K.quad('lu_panel', 0xe6e6e0, [b1x, yh, b1z], [b0x, yh, b0z], [b0x, top, b0z], [b1x, top, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]);
+        K.group('Allège de la baie (dehors)', () => K.quad('lu_panel', 0xffffff, [a0x, y - 0.6, a0z], [a1x, y - 0.6, a1z], [a1x, yl, a1z], [a0x, yl, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]));
+        K.group('Linteau de la baie (dehors)', () => K.quad('lu_panel', 0xffffff, [a0x, yh, a0z], [a1x, yh, a1z], [a1x, top, a1z], [a0x, top, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]));
+        K.group('Allège de la baie (dedans)', () => K.quad('lu_panel', 0xe6e6e0, [b1x, y, b1z], [b0x, y, b0z], [b0x, yl, b0z], [b1x, yl, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]));
+        K.group('Linteau de la baie (dedans)', () => K.quad('lu_panel', 0xe6e6e0, [b1x, yh, b1z], [b0x, yh, b0z], [b0x, top, b0z], [b1x, top, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]));
         // montants de la baie
-        for (const t of [0.02, 0.36, 0.68, 0.98]) { const [mx, mz] = P(a0x, a0z, a1x, a1z, t), [nx2, nz2] = P(b0x, b0z, b1x, b1z, t); luBeam(K, 'lu_metal', 0x6a6e72, (mx + nx2) / 2, yl, (mz + nz2) / 2, (mx + nx2) / 2, yh, (mz + nz2) / 2, 0.16); }
+        for (const t of [0.02, 0.36, 0.68, 0.98]) { const [mx, mz] = P(a0x, a0z, a1x, a1z, t), [nx2, nz2] = P(b0x, b0z, b1x, b1z, t); K.group('Montant de la baie', () => luBeam(K, 'lu_metal', 0x6a6e72, (mx + nx2) / 2, yl, (mz + nz2) / 2, (mx + nx2) / 2, yh, (mz + nz2) / 2, 0.16)); }
         LUPL.bay = { a: [a0x, a0z], b: [a1x, a1z], yl, yh, n };
       } else {
         const hi = door && (t0 > 0.01 || t1 < 0.99) ? top : top;
-        K.quad('lu_panel', 0xffffff, [a0x, y - 0.6, a0z], [a1x, y - 0.6, a1z], [a1x, hi, a1z], [a0x, hi, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]);
-        K.quad('lu_panel', 0xe6e6e0, [b1x, y, b1z], [b0x, y, b0z], [b0x, top, b0z], [b1x, top, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]);
+        const part = door ? `, côté ${LU_DOOR_SIDES[f][t0 < 0.01 ? 0 : 1]} de la porte` : '';
+        K.group(`Paroi ${side} (dehors${part})`, () => K.quad('lu_panel', 0xffffff, [a0x, y - 0.6, a0z], [a1x, y - 0.6, a1z], [a1x, hi, a1z], [a0x, hi, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]));
+        K.group(`Paroi ${side} (dedans${part})`, () => K.quad('lu_panel', 0xe6e6e0, [b1x, y, b1z], [b0x, y, b0z], [b0x, top, b0z], [b1x, top, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]));
       }
     }
     if (door) {
@@ -35573,17 +35715,17 @@ function luBase(K) {
       const t0 = 0.5 - B.aw / Math.hypot(ox1 - ox0, oz1 - oz0), t1 = 1 - t0;
       const L = (ax, az, bx, bz, t) => [lerp(ax, bx, t), lerp(az, bz, t)];
       const [a0x, a0z] = L(ox0, oz0, ox1, oz1, t0), [a1x, a1z] = L(ox0, oz0, ox1, oz1, t1), [b0x, b0z] = L(ix0, iz0, ix1, iz1, t0), [b1x, b1z] = L(ix0, iz0, ix1, iz1, t1);
-      K.quad('lu_panel', 0xffffff, [a0x, y + B.ah, a0z], [a1x, y + B.ah, a1z], [a1x, top, a1z], [a0x, top, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]);
-      K.quad('lu_panel', 0xe6e6e0, [b1x, y + B.ah, b1z], [b0x, y + B.ah, b0z], [b0x, top, b0z], [b1x, top, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]);
+      K.group(`Linteau de la porte ${side} (dehors)`, () => K.quad('lu_panel', 0xffffff, [a0x, y + B.ah, a0z], [a1x, y + B.ah, a1z], [a1x, top, a1z], [a0x, top, a0z], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]));
+      K.group(`Linteau de la porte ${side} (dedans)`, () => K.quad('lu_panel', 0xe6e6e0, [b1x, y + B.ah, b1z], [b0x, y + B.ah, b0z], [b0x, top, b0z], [b1x, top, b1z], [-n[0], 0, -n[1]], (p) => [-(p[0] * n[1] - p[2] * n[0]), p[1]]));
     }
     // bande dorée au pied, cerclage en haut
-    K.quad('lu_foil', 0xffffff, [ox0 + n[0] * 0.03, y - 0.6, oz0 + n[1] * 0.03], [ox1 + n[0] * 0.03, y - 0.6, oz1 + n[1] * 0.03], [ox1 + n[0] * 0.03, y + 0.35, oz1 + n[1] * 0.03], [ox0 + n[0] * 0.03, y + 0.35, oz0 + n[1] * 0.03], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]);
+    K.group(`Bande dorée ${side}`, () => K.quad('lu_foil', 0xffffff, [ox0 + n[0] * 0.03, y - 0.6, oz0 + n[1] * 0.03], [ox1 + n[0] * 0.03, y - 0.6, oz1 + n[1] * 0.03], [ox1 + n[0] * 0.03, y + 0.35, oz1 + n[1] * 0.03], [ox0 + n[0] * 0.03, y + 0.35, oz0 + n[1] * 0.03], [n[0], 0, n[1]], (p) => [p[0] * n[1] - p[2] * n[0], p[1]]));
   }
-  luDome(K, 'lu_panel', 0xf0f0ea, x, top, z, R8 * 0.98, 3.4, [0, 1, 0], 24);
-  K.geo('lu_metal', 0x8a8e92, new THREE.CylinderGeometry(R8, R8, 0.3, 24, 1, true), mtx(x, top + 0.1, z, 0, 0, 0));   // cerclage (ouvert : il ne ferme pas le plafond)
+  K.group('Coupole', () => luDome(K, 'lu_panel', 0xf0f0ea, x, top, z, R8 * 0.98, 3.4, [0, 1, 0], 24));
+  K.group('Cerclage de la coupole', () => K.geo('lu_metal', 0x8a8e92, new THREE.CylinderGeometry(R8, R8, 0.3, 24, 1, true), mtx(x, top + 0.1, z, 0, 0, 0)));   // cerclage (ouvert : il ne ferme pas le plafond)
   // antenne et parabole sur la coupole
-  K.cyl('lu_metal', 0x9a9ea2, x + 1.5, top + 4.4, z - 1, 0.06, 3, 6);
-  luDome(K, 'lu_panel', 0xffffff, x + 1.5, top + 5.6, z - 1, 0.9, 0.35, [0.5, 0.6, -0.6], 14);
+  K.group('Antenne', () => K.cyl('lu_metal', 0x9a9ea2, x + 1.5, top + 4.4, z - 1, 0.06, 3, 6));
+  K.group('Parabole', () => luDome(K, 'lu_panel', 0xffffff, x + 1.5, top + 5.6, z - 1, 0.9, 0.35, [0.5, 0.6, -0.6], 14));
   // vitrage de la baie (une vraie vitre : on voit dehors)
   if (LUPL.bay) {
     const b = LUPL.bay, mat = new THREE.MeshBasicMaterial({ color: 0x0c1418, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false });
@@ -35591,17 +35733,15 @@ function luBase(K) {
     const mx = (b.a[0] + b.b[0]) / 2 - b.n[0] * 0.3, mz = (b.a[1] + b.b[1]) / 2 - b.n[1] * 0.3;
     g.setAttribute('position', new THREE.Float32BufferAttribute([b.a[0] - b.n[0] * 0.3, b.yl, b.a[1] - b.n[1] * 0.3, b.b[0] - b.n[0] * 0.3, b.yl, b.b[1] - b.n[1] * 0.3, b.b[0] - b.n[0] * 0.3, b.yh, b.b[1] - b.n[1] * 0.3, b.a[0] - b.n[0] * 0.3, b.yh, b.a[1] - b.n[1] * 0.3], 3));
     g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, mat); m.renderOrder = 4; m.name = 'baie'; K.add(m);
+    const m = new THREE.Mesh(g, mat); m.renderOrder = 4; m.name = 'baie'; K.group('Vitrage de la baie', () => K.add(m));
     LUPL.bayCenter = [mx, mz];
   }
-  // --- les quatre modules
-  for (const [dir, nx, nz] of [['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['o', -1, 0]]) luArm(K, B, dir, nx, nz);
   // lumières intérieures (toujours allumées : batteries) ; spots dans les modules
   for (const [dx, dz] of [[0, 0], [3, 3], [-3, 3], [3, -3], [-3, -3]]) owLamp(K, x + dx, top - 0.7, z + dz, 0xf2f4ff, false, 0.8);
   // intérieur du moyeu : console centrale, carte de la mine, casiers
-  K.box('lu_panel_dark', 0xffffff, x - 1.2, y, z - 0.6, x + 1.2, y + 1.0, z + 0.6).box('lu_metal', 0x2a3038, x - 1.15, y + 1.0, z - 0.55, x + 1.15, y + 1.06, z + 0.55);
+  K.group('Console centrale', () => K.box('lu_panel_dark', 0xffffff, x - 1.2, y, z - 0.6, x + 1.2, y + 1.0, z + 0.6).box('lu_metal', 0x2a3038, x - 1.15, y + 1.0, z - 0.55, x + 1.15, y + 1.06, z + 0.55));
   K.solid(x - 1.2, z - 0.6, x + 1.2, z + 0.6, OWK.LOW, { base: y, top: y + 1.06, mat: OWM.METAL });
-  luScreen(K, x, y + 1.06, z, 0x3ad0ff);
+  K.group('Écran de la console', () => luScreen(K, x, y + 1.06, z, 0x3ad0ff));
 }
 /* Écran lumineux posé sur une console. */
 function luScreen(K, x, y, z, col) {
@@ -35634,40 +35774,42 @@ function luArm(K, B, dir, nx, nz) {
   }
   // géométrie : tube extérieur, calotte au bout, intérieur
   const sm = (s0 + s1) / 2, [mx, mz] = P(sm, 0), yc = y + 1.6;
-  luTube(K, 'lu_panel', 0xf4f4ee, mx, yc, mz, R, s1 - s0, along, 28, true);
-  for (const s of [s0 + 1.2, sm, s1 - 1.2]) { const [rx, rz] = P(s, 0); luTube(K, 'lu_metal', 0x9a9ea2, rx, yc, rz, R + 0.06, 0.35, along, 28, true); }
+  K.group('Tube du module', () => luTube(K, 'lu_panel', 0xf4f4ee, mx, yc, mz, R, s1 - s0, along, 28, true));
+  for (const s of [s0 + 1.2, sm, s1 - 1.2]) { const [rx, rz] = P(s, 0); K.group('Cerclage du tube', () => luTube(K, 'lu_metal', 0x9a9ea2, rx, yc, rz, R + 0.06, 0.35, along, 28, true)); }
   const [ex, ez] = P(s1, 0);
-  luDome(K, 'lu_panel', 0xf0f0ea, ex, yc, ez, R, air ? 1.2 : 2.2, [nx, 0, nz], 24);
+  K.group(air ? 'Calotte du sas' : 'Calotte du bout', () => luDome(K, 'lu_panel', 0xf0f0ea, ex, yc, ez, R, air ? 1.2 : 2.2, [nx, 0, nz], 24));
   // berceaux sous le tube
-  for (const s of [s0 + 3, s1 - 3]) { const [bx, bz] = P(s, 0); K.box('lu_metal', 0x6a6e72, bx - (along ? 0.3 : R * 0.8), y - 1.5, bz - (along ? R * 0.8 : 0.3), bx + (along ? 0.3 : R * 0.8), y - 0.1, bz + (along ? R * 0.8 : 0.3)); }
+  for (const s of [s0 + 3, s1 - 3]) { const [bx, bz] = P(s, 0); K.group('Berceau', () => K.box('lu_metal', 0x6a6e72, bx - (along ? 0.3 : R * 0.8), y - 1.5, bz - (along ? R * 0.8 : 0.3), bx + (along ? 0.3 : R * 0.8), y - 0.1, bz + (along ? R * 0.8 : 0.3))); }
   // hublots
-  for (let s = s0 + 3.5; s < s1 - 2; s += 4.5) for (const side of [-1, 1]) { const [hx, hz] = P(s, side * (R + 0.02)); const d = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), new THREE.MeshStandardMaterial({ color: 0x1a222a, roughness: 0.1, metalness: 0.7 })); d.position.set(hx, yc + 0.6, hz); d.lookAt(hx + (along ? 0 : side) * (along ? 0 : 1) - nz * side, yc + 0.6, hz + nx * side); K.add(d); }
+  for (let s = s0 + 3.5; s < s1 - 2; s += 4.5) for (const side of [-1, 1]) { const [hx, hz] = P(s, side * (R + 0.02)); const d = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), new THREE.MeshStandardMaterial({ color: 0x1a222a, roughness: 0.1, metalness: 0.7 })); d.position.set(hx, yc + 0.6, hz); d.lookAt(hx + (along ? 0 : side) * (along ? 0 : 1) - nz * side, yc + 0.6, hz + nx * side); K.group('Hublot', () => K.add(d)); }
   // intérieur : sol, plafond, parois (vues de dedans)
   const [a0x, a0z] = P(s0, -aw), [a1x, a1z] = P(s1 - 0.1, aw);
   const X0 = Math.min(a0x, a1x), X1 = Math.max(a0x, a1x), Z0 = Math.min(a0z, a1z), Z1 = Math.max(a0z, a1z);
-  K.box('lu_floor', 0xffffff, X0, y - 0.2, Z0, X1, y, Z1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
-  K.box('lu_panel', 0xd6d6d0, X0, y + ah, Z0, X1, y + ah + 0.1, Z1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] });
+  K.group('Sol du module', () => K.box('lu_floor', 0xffffff, X0, y - 0.2, Z0, X1, y, Z1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] }));
+  K.group('Plafond du module', () => K.box('lu_panel', 0xd6d6d0, X0, y + ah, Z0, X1, y + ah + 0.1, Z1, { skip: ['top', 'px', 'nx', 'pz', 'nz'] }));
   // parois intérieures (faces tournées vers l'intérieur)
   if (along) {
-    K.quad('lu_panel', 0xe2e2dc, [X1, y, Z0], [X0, y, Z0], [X0, y + ah, Z0], [X1, y + ah, Z0], [0, 0, 1], (p) => [p[0], p[1]]);
-    K.quad('lu_panel', 0xe2e2dc, [X0, y, Z1], [X1, y, Z1], [X1, y + ah, Z1], [X0, y + ah, Z1], [0, 0, -1], (p) => [p[0], p[1]]);
+    K.group('Paroi intérieure nord', () => K.quad('lu_panel', 0xe2e2dc, [X1, y, Z0], [X0, y, Z0], [X0, y + ah, Z0], [X1, y + ah, Z0], [0, 0, 1], (p) => [p[0], p[1]]));
+    K.group('Paroi intérieure sud', () => K.quad('lu_panel', 0xe2e2dc, [X0, y, Z1], [X1, y, Z1], [X1, y + ah, Z1], [X0, y + ah, Z1], [0, 0, -1], (p) => [p[0], p[1]]));
   } else {
-    K.quad('lu_panel', 0xe2e2dc, [X0, y, Z0], [X0, y, Z1], [X0, y + ah, Z1], [X0, y + ah, Z0], [1, 0, 0], (p) => [p[2], p[1]]);
-    K.quad('lu_panel', 0xe2e2dc, [X1, y, Z1], [X1, y, Z0], [X1, y + ah, Z0], [X1, y + ah, Z1], [-1, 0, 0], (p) => [p[2], p[1]]);
+    K.group('Paroi intérieure ouest', () => K.quad('lu_panel', 0xe2e2dc, [X0, y, Z0], [X0, y, Z1], [X0, y + ah, Z1], [X0, y + ah, Z0], [1, 0, 0], (p) => [p[2], p[1]]));
+    K.group('Paroi intérieure est', () => K.quad('lu_panel', 0xe2e2dc, [X1, y, Z1], [X1, y, Z0], [X1, y + ah, Z0], [X1, y + ah, Z1], [-1, 0, 0], (p) => [p[2], p[1]]));
   }
   // fond du module (sans sas) : paroi
   if (!air) {
     const [fx, fz] = P(s1 - 0.1, 0);
-    if (along) K.quad('lu_panel', 0xd8d8d2, [fx, y, Z1], [fx, y, Z0], [fx, y + ah, Z0], [fx, y + ah, Z1], [-nx, 0, 0], (p) => [p[2], p[1]]);
-    else K.quad('lu_panel', 0xd8d8d2, [X0, y, fz], [X1, y, fz], [X1, y + ah, fz], [X0, y + ah, fz], [0, 0, -nz], (p) => [p[0], p[1]]);
+    K.group('Paroi du fond', () => {
+      if (along) K.quad('lu_panel', 0xd8d8d2, [fx, y, Z1], [fx, y, Z0], [fx, y + ah, Z0], [fx, y + ah, Z1], [-nx, 0, 0], (p) => [p[2], p[1]]);
+      else K.quad('lu_panel', 0xd8d8d2, [X0, y, fz], [X1, y, fz], [X1, y + ah, fz], [X0, y + ah, fz], [0, 0, -nz], (p) => [p[0], p[1]]);
+    });
   } else {
     // sas : couloir de 2,4 m, porte extérieure ouverte (cadre jaune, bandes de danger)
     const [c0x, c0z] = P(s1, -1.2), [c1x, c1z] = P(s1 + 4.5, 1.2);
     const W0 = Math.min(c0x, c1x), W1 = Math.max(c0x, c1x), V0 = Math.min(c0z, c1z), V1 = Math.max(c0z, c1z);
-    K.box('lu_panel_dark', 0xffffff, W0 - (along ? 0 : 0.6), y - 0.4, V0 - (along ? 0.6 : 0), W1 + (along ? 0 : 0.6), y + 3.4, V1 + (along ? 0.6 : 0), { skip: ['bottom'] });
-    K.box('lu_floor', 0xffffff, W0, y - 0.2, V0, W1, y, V1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] });
+    K.group('Coque du sas', () => K.box('lu_panel_dark', 0xffffff, W0 - (along ? 0 : 0.6), y - 0.4, V0 - (along ? 0.6 : 0), W1 + (along ? 0 : 0.6), y + 3.4, V1 + (along ? 0.6 : 0), { skip: ['bottom'] }));
+    K.group('Sol du sas', () => K.box('lu_floor', 0xffffff, W0, y - 0.2, V0, W1, y, V1, { skip: ['bottom', 'px', 'nx', 'pz', 'nz'] }));
     const [dx0, dz0] = P(s1 + 4.5, -1.5), [dx1, dz1] = P(s1 + 4.6, 1.5);
-    K.box('lu_hazard', 0xffffff, Math.min(dx0, dx1), y + 2.6, Math.min(dz0, dz1), Math.max(dx0, dx1), y + 3.0, Math.max(dz0, dz1));
+    K.group('Bandeau de danger du sas', () => K.box('lu_hazard', 0xffffff, Math.min(dx0, dx1), y + 2.6, Math.min(dz0, dz1), Math.max(dx0, dx1), y + 3.0, Math.max(dz0, dz1)));
     const [lx, lz] = P(s1 + 4.8, 1.6);
     owLamp(K, lx, y + 2.9, lz, 0xff9a3a, false, 0.6);
   }
@@ -35675,7 +35817,7 @@ function luArm(K, B, dir, nx, nz) {
   // rangement : casiers le long d'une paroi
   for (let s = s0 + 2.2; s < s1 - 2.5; s += 2.2) {
     const [ax, az] = P(s, -aw + 0.3), [bx2, bz2] = P(s + 1.8, -aw + 0.75);
-    if (dir === 'e' || dir === 's') K.box('lu_panel_dark', 0xffffff, Math.min(ax, bx2), y, Math.min(az, bz2), Math.max(ax, bx2), y + 2.1, Math.max(az, bz2));
+    if (dir === 'e' || dir === 's') K.group('Casier', () => K.box('lu_panel_dark', 0xffffff, Math.min(ax, bx2), y, Math.min(az, bz2), Math.max(ax, bx2), y + 2.1, Math.max(az, bz2)));
   }
   B[dir] = { s0, s1, P, air };
 }
@@ -35795,6 +35937,7 @@ function luCatapult(K, root) {
   for (let i = 0; i < 3; i++) {
     const m = new THREE.Mesh(capG, capM);
     m.rotation.order = 'YXZ'; m.rotation.y = Math.atan2(ux, uz); m.rotation.x = Math.PI / 2 - Math.atan2(C.top - luCataY(0), L);
+    m.userData.ry = m.rotation.y;                    // jeu 2.0.3 : la voie peut tourner (catapulte retouchée)
     m.castShadow = true; m.name = 'capsule';
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x5ab4ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     glow.scale.set(9, 9, 1);
@@ -35802,13 +35945,16 @@ function luCatapult(K, root) {
     caps.push({ m, glow, t: -1, wait: 6 + i * 18 });
   }
   LU.cataRun = { caps, L, ux, uz, next: rand(8, 14) };
-  // la première attend au berceau
-  luCataPlace(caps[0], 0);
+  // la première attend au berceau (Mod Tools : elle suit la catapulte retouchée)
+  owFollowFn(null, () => luCataPlace(caps[0], 0));
 }
+/* Capsule à t (0 : berceau, 1 : bout de la voie) : sur la voie, à la pose de la catapulte. */
 function luCataPlace(c, t) {
-  const C = LU.cata, x = lerp(C.x0, C.x1, t), z = lerp(C.z0, C.z1, t), y = luCataY(Math.max(0, t)) + 1.3;
-  c.m.position.set(x, y, z); c.glow.position.set(x, y, z);
-  c.m.visible = t > -0.5 && t < 1.3;
+  const C = LU.cata, x = lerp(C.x0, C.x1, t), z = lerp(C.z0, C.z1, t), y = luCataY(Math.max(0, t)) + 1.3, N = LUPL.nodes && LUPL.nodes.cata;
+  const p = owPt(N, x, y, z);
+  c.m.position.copy(p); c.glow.position.copy(p);
+  if (c.m.userData.ry !== undefined) c.m.rotation.y = c.m.userData.ry + owYaw(N);
+  c.m.visible = t > -0.5 && t < 1.3 && !owNodeHidden(N);
 }
 
 /* ------------------------------------------------------- E : la crête solaire --
@@ -35868,11 +36014,14 @@ function luTower(K) {
   for (const t of [0.33, 0.66]) owLamp(K, T.x + at(t), y0 + H * t, T.z + at(t), 0xff3a2a, false, 0.6);
   // plate-forme (le perchoir) : 8 × 8 m, garde-corps
   const p0x = T.x - 4, p0z = T.z - 4;
-  K.box('lu_grate', 0xffffff, p0x, top - 0.25, p0z, p0x + 8, top, p0z + 8);
+  K.group('Plate-forme (perchoir)', () => K.box('lu_grate', 0xffffff, p0x, top - 0.25, p0z, p0x + 8, top, p0z + 8));
+  LUPL.nodes.platform = K.lastPrim;                  // le perchoir et la centrale inertielle la suivent
   for (const [ax, az, bx, bz] of [[p0x, p0z, p0x + 8, p0z], [p0x + 8, p0z, p0x + 8, p0z + 8], [p0x + 8, p0z + 8, p0x, p0z + 8], [p0x, p0z + 8, p0x, p0z]]) {
-    luBeam(K, 'lu_yellow', 0xffffff, ax, top + 1.1, az, bx, top + 1.1, bz, 0.07);
-    luBeam(K, 'lu_yellow', 0xffffff, ax, top + 0.55, az, bx, top + 0.55, bz, 0.05);
-    for (let t = 0; t <= 1.001; t += 0.25) luBeam(K, 'lu_yellow', 0xffffff, lerp(ax, bx, t), top, lerp(az, bz, t), lerp(ax, bx, t), top + 1.1, lerp(az, bz, t), 0.06);
+    K.group('Garde-corps', () => {
+      luBeam(K, 'lu_yellow', 0xffffff, ax, top + 1.1, az, bx, top + 1.1, bz, 0.07);
+      luBeam(K, 'lu_yellow', 0xffffff, ax, top + 0.55, az, bx, top + 0.55, bz, 0.05);
+      for (let t = 0; t <= 1.001; t += 0.25) luBeam(K, 'lu_yellow', 0xffffff, lerp(ax, bx, t), top, lerp(az, bz, t), lerp(ax, bx, t), top + 1.1, lerp(az, bz, t), 0.06);
+    });
   }
   // cases : le corps de la tour plein, la plate-forme (sol à +118), son bord (garde-corps)
   for (let cz = p0z - 1; cz < p0z + 9; cz++) for (let cx = p0x - 1; cx < p0x + 9; cx++) {
@@ -35888,13 +36037,19 @@ function luTower(K) {
   owLamp(K, T.x + 2, top + 5.3, T.z - 2, 0xff3a2a, false, 0.9);
   owLamp(K, T.x, top + 2.6, T.z + 3.6, 0xf2f4ff, true, 0.8);
   // cage de l'ascenseur (au centre de la tour) et sa porte au pied, côté sud
-  K.box('lu_yellow', 0xffffff, T.x - 1.1, y0, T.z + w0 - 0.2, T.x + 1.1, y0 + 2.8, T.z + w0 + 0.1, { skip: ['bottom'] });
-  luBeam(K, 'lu_metal', 0x6a6e72, T.x - 1, y0, T.z, T.x - 1, top, T.z, 0.12);
-  luBeam(K, 'lu_metal', 0x6a6e72, T.x + 1, y0, T.z, T.x + 1, top, T.z, 0.12);
+  K.group('Ascenseur (cage et rails)', () => {
+    K.box('lu_yellow', 0xffffff, T.x - 1.1, y0, T.z + w0 - 0.2, T.x + 1.1, y0 + 2.8, T.z + w0 + 0.1, { skip: ['bottom'] });
+    luBeam(K, 'lu_metal', 0x6a6e72, T.x - 1, y0, T.z, T.x - 1, top, T.z, 0.12);
+    luBeam(K, 'lu_metal', 0x6a6e72, T.x + 1, y0, T.z, T.x + 1, top, T.z, 0.12);
+  });
+  LUPL.nodes.lift = K.lastPrim;                      // les trajets de l'ascenseur le suivent
   // échelle de service sur la face nord (les morts y grimpent quand le joueur est au perchoir)
   const la = { x: T.x, z0: T.z - 4.9, z1: T.z - 1.9, y0, y1: top - 1.2, top, fx: T.x, fz: T.z - 5.6, cz: T.z - 2.5 };
-  for (const dx of [-0.28, 0.28]) luBeam(K, 'lu_yellow', 0xffffff, la.x + dx, la.y0, la.z0, la.x + dx, la.y1 + 1.2, la.z1, 0.07);
-  for (let yy = la.y0 + 0.4; yy < la.y1 + 1; yy += 0.5) { const k = (yy - la.y0) / (la.y1 - la.y0), zz = lerp(la.z0, la.z1, k); luBeam(K, 'lu_yellow', 0xffffff, la.x - 0.28, yy, zz, la.x + 0.28, yy, zz, 0.04); }
+  K.group('Échelle de service', () => {
+    for (const dx of [-0.28, 0.28]) luBeam(K, 'lu_yellow', 0xffffff, la.x + dx, la.y0, la.z0, la.x + dx, la.y1 + 1.2, la.z1, 0.07);
+    for (let yy = la.y0 + 0.4; yy < la.y1 + 1; yy += 0.5) { const k = (yy - la.y0) / (la.y1 - la.y0), zz = lerp(la.z0, la.z1, k); luBeam(K, 'lu_yellow', 0xffffff, la.x - 0.28, yy, zz, la.x + 0.28, yy, zz, 0.04); }
+  });
+  LUPL.nodes.ladder = K.lastPrim;                    // les morts y grimpent où qu'elle soit
   LUPL.ladder = la;
   // cabine au pied (au sud)
   const cx0 = T.x - 5, cz0 = T.z + 7;
@@ -35913,7 +36068,8 @@ function luPlateau(K) {
     const a = (i / 28) * TAU, x = P.x + Math.cos(a) * 40, z = P.z + Math.sin(a) * 40, ly = owH(x, z) + 0.25;
     K.item('balise', 'Balise', x, ly, z, (K) => owLamp(K, x, ly, z, i % 2 ? 0xffffff : 0xffb24a, true, 0.45));
   }
-  K.item('atterrisseur', 'Atterrisseur', P.x, owH(P.x, P.z), P.z, (K) => luLander(K, P.x, owH(P.x, P.z), P.z), { locked: 'Les pièces de la quête s’y posent et il décolle à la fin : l’atterrisseur reste à sa place.' });
+  K.item('atterrisseur', 'Atterrisseur', P.x, owH(P.x, P.z), P.z, (K) => luLander(K, P.x, owH(P.x, P.z), P.z), { logic: 'Les pièces de la quête s’y posent et il décolle à la fin, où qu’il soit.' });
+  LUPL.nodes.lander = K.lastItem;
   // abri : module court sur le bord sud
   const ax = P.x - 7, az = P.z + 36, ya = owH(P.x, az + 4) + 0.2;
   K.item('abri', 'Abri du plateau', ax + 7, ya, az + 4, (K) => {
@@ -35954,8 +36110,6 @@ function luDepot(K, root) {
   const D = LU.depot, y = owHeightAtGrid(D.x, D.z);
   const spheres = [[-8, -4], [3, -9], [9, 3], [-2, 7]].map(([dx, dz]) => ({ x: D.x + dx, z: D.z + dz, r: 3.8, y: y + 4.6 }));
   LUPL.depot = { x: D.x, z: D.z, y, spheres };
-  const g = new THREE.Group();
-  g.name = 'dépôt';
   const mat = luSunify(new THREE.MeshStandardMaterial({ color: 0xeaeae4, roughness: 0.4, metalness: 0.35 }));
   const band = luSunify(new THREE.MeshStandardMaterial({ color: 0x2a5a9a, roughness: 0.5, metalness: 0.3 }));
   for (const s of spheres) {
@@ -35963,7 +36117,9 @@ function luDepot(K, root) {
     m.position.set(s.x, s.y, s.z); m.castShadow = true; m.receiveShadow = true;
     const b = new THREE.Mesh(new THREE.TorusGeometry(s.r * 1.005, 0.12, 6, 32), band);
     b.position.copy(m.position); b.rotation.x = Math.PI / 2;
-    g.add(m, b);
+    // jeu 2.0.3 : chaque sphère est une surface du dépôt (l'explosion part d'elle, où qu'elle soit)
+    K.group('Sphère d’oxygène', () => { K.add(m); K.add(b); });
+    s.prim = K.lastPrim;
     s.mesh = m; s.band = b;
     // berceau (jambes) : reste après l'explosion
     for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.4; luBeam(K, 'lu_metal', 0x8a8e92, s.x + Math.cos(a) * 3.2, y, s.z + Math.sin(a) * 3.2, s.x + Math.cos(a) * 2.4, s.y - 1.2, s.z + Math.sin(a) * 2.4, 0.25); }
@@ -35974,9 +36130,14 @@ function luDepot(K, root) {
   K.box('lu_panel_dark', 0xffffff, D.x + 10, y, D.z + 8, D.x + 16, y + 3, D.z + 13);
   owFill(OW.surf, D.x + 10, D.z + 8, D.x + 16, D.z + 13, OWK.SOLID, { base: y - 0.5, top: y + 3, mat: OWM.METAL });
   owLamp(K, D.x + 13, y + 3.4, D.z + 7.6, 0xffb24a, true, 0.7);
-  linearizeTree(g);
-  root.add(g);
-  LUPL.depot.group = g;
+  LUPL.depot.group = true;
+}
+/* Dépôt et sphères à leur pose (jeu 2.0.3) : { x, y, z, spheres: [{ x, y, z, r, mesh, band }] }. */
+function luDepotW() {
+  const D = LUPL.depot;
+  if (!D) return null;
+  const c = owPt(LUPL.nodes && LUPL.nodes.depot, D.x, D.y, D.z);
+  return { x: c.x, y: c.y, z: c.z, spheres: D.spheres.filter((s) => !owNodeHidden(s.prim)).map((s) => { const p = owPt(s.prim, s.x, s.y, s.z), g = owPt(s.prim, s.x, D.y, s.z); return { x: p.x, y: p.y, z: p.z, gy: g.y, r: s.r, mesh: s.mesh, band: s.band }; }) };
 }
 
 /* ------------------------------------------------------------ J : la foreuse --
@@ -36005,7 +36166,8 @@ function luDrill(K) {
   K.item('cabine', 'Cabine de la foreuse', c0x + 4, y + 0.2, c0z + 4, (K) => {
     owHouse(K, { x0: c0x, z0: c0z, x1: c0x + 8, z1: c0z + 8, y: y + 0.2, h: 3.4, wall: 'lu_yellow', wallHex: 0xffffff, roof: 'flat', roofTex: 'lu_panel_dark', floorTex: 'lu_floor', inTex: 'lu_panel', doors: [['w', 3, 2.4, 2.6]], wins: [['n', 2, 3, 1.4, 2.6]] });
     owLamp(K, c0x + 4, y + 3.3, c0z + 4, 0xf2f4ff, false, 0.8);
-  }, { locked: 'La valve de tuyère (pièce ② de la quête) est sur son établi : la cabine reste à sa place.' });
+  }, { logic: 'La valve de tuyère (pièce ② de la quête) et son établi suivent la cabine.' });
+  LUPL.nodes.cabin = K.lastItem;
   LUPL.drillHut = { x0: c0x, z0: c0z, x1: c0x + 8, z1: c0z + 8, y: y + 0.2 };
 }
 
@@ -36218,19 +36380,23 @@ function luGlas(group, o) {
    les alarmes, et ses propres gestes étouffés par la combinaison (arme, pas). Dans la base, le son
    normal. */
 const LUO = { max: 240, o2: 240, warn: 0, hurtT: 0, breathT: 0, el: null, fill: null, txt: null, muffled: null, mT: 0 };
-/* Dans la base (volume pressurisé) : le moyeu, les quatre modules, les sas jusqu'à leur porte. */
+/* Dans la base (volume pressurisé) : le moyeu, les quatre modules, les sas jusqu'à leur porte.
+   Jeu 2.0.3 : le moyeu et chaque module à leur pose (le point ramené dans leur repère d'origine). */
+const _luIn = new THREE.Vector3();
 function luInsideAt(x, y, z) {
-  const B = LUPL.base;
+  const B = LUPL.base, N = LUPL.nodes || {};
   if (!B || !OW_BASES[OW.baseId] || !OW_BASES[OW.baseId].places) return false;
-  if (y < B.y - 1 || y > B.y + 6) return false;
-  const dx = x - B.x, dz = z - B.z;
-  if (Math.abs(dx) > 30 || Math.abs(dz) > 30) return false;
-  if (luOctD(dx, dz)[0] < B.ap + 0.3) return y < B.y + B.h + 2;
+  if (!N.hub || !owNodeHidden(N.hub)) {
+    const q = owLoc(N.hub, x, y, z, _luIn), dx = q.x - B.x, dz = q.z - B.z;
+    if (q.y >= B.y - 1 && q.y <= B.y + 6 && Math.abs(dx) <= 30 && Math.abs(dz) <= 30 && luOctD(dx, dz)[0] < B.ap + 0.3) return q.y < B.y + B.h + 2;
+  }
   for (const [dir, nx, nz] of [['n', 0, -1], ['e', 1, 0], ['s', 0, 1], ['o', -1, 0]]) {
-    const A = B[dir];
-    if (!A) continue;
+    const A = B[dir], n = N.arm && N.arm[dir];
+    if (!A || owNodeHidden(n)) continue;
+    const q = owLoc(n, x, y, z, _luIn), dx = q.x - B.x, dz = q.z - B.z;
+    if (q.y < B.y - 1 || q.y > B.y + 6 || Math.abs(dx) > 30 || Math.abs(dz) > 30) continue;
     const s = dx * nx + dz * nz, l = -dx * nz + dz * nx;
-    if (s >= A.s0 - 0.5 && s <= A.s1 + (A.air ? 4.4 : 0) && Math.abs(l) < B.aw + 0.2) return y < B.y + B.ah + 0.6;
+    if (s >= A.s0 - 0.5 && s <= A.s1 + (A.air ? 4.4 : 0) && Math.abs(l) < B.aw + 0.2) return q.y < B.y + B.ah + 0.6;
   }
   return false;
 }
@@ -36465,13 +36631,12 @@ function luBuildAnomaly(root) {
 }
 /* État : intact (avant l'explosion) ou détruit (les débris en orbite depuis t secondes). */
 function luDepotState(destroyed, t = 30) {
-  const D = LUPL.depot;
+  const D = luDepotW();                                 // jeu 2.0.3 : le dépôt et ses sphères à leur pose
   LUA.done = destroyed; LUA.on = destroyed; LUA.boomT = destroyed ? t : -1;
-  if (D && D.group) for (const s of D.spheres) { s.mesh.visible = !destroyed; s.band.visible = !destroyed; }
+  if (D && LUPL.depot.group) for (const s of LUPL.depot.spheres) { s.mesh.visible = !destroyed && !owNodeHidden(s.prim); s.band.visible = s.mesh.visible; }
   // cases des sphères : pleines tant qu'elles tiennent
   if (D) {
-    const y = D.y;
-    for (const s of D.spheres) owFill(OW.surf, s.x - 2.5, s.z - 2.5, s.x + 2.5, s.z + 2.5, destroyed ? OWK.LOW : OWK.SOLID, { base: y - 0.5, top: destroyed ? y + 0.8 : s.y + s.r, mat: OWM.METAL });
+    for (const s of D.spheres) { const y = s.gy; owFill(OW.surf, s.x - 2.5, s.z - 2.5, s.x + 2.5, s.z + 2.5, destroyed ? OWK.LOW : OWK.SOLID, { base: y - 0.5, top: destroyed ? y + 0.8 : s.y + s.r, mat: OWM.METAL }); }
     OWNAV.ready = false; LUNAV.ready = false;
   }
   for (const K of LUA.kinds) K.mesh.visible = destroyed;
@@ -36479,7 +36644,7 @@ function luDepotState(destroyed, t = 30) {
   if (LUA.boom) { LUA.boom.cloud.visible = false; LUA.boom.flash.visible = false; LUA.boom.light.intensity = 0; }
   luQuestLook();
   // départs des éclats (au dépôt)
-  if (D) for (const it of LUA.items) {
+  if (D && D.spheres.length) for (const it of LUA.items) {
     const s = D.spheres[Math.floor(Math.random() * D.spheres.length)];
     it.p0.set(s.x + rand(-2, 2), s.y + rand(-2, 2), s.z + rand(-2, 2));
     // vers l'anomalie surtout (le dépôt est sur son bord), vers le haut
@@ -36491,7 +36656,7 @@ function luDepotState(destroyed, t = 30) {
 function luDepotBoom() {
   if (LUA.done) return;
   luDepotState(true, 0);
-  const D = LUPL.depot, B = LUA.boom;
+  const D = luDepotW(), B = LUA.boom;
   B.cloud.visible = true; B.flash.visible = true;
   B.flash.position.set(D.x, D.y + 6, D.z);
   B.light.position.set(D.x, D.y + 10, D.z);
@@ -36669,7 +36834,7 @@ function luPickSpawn() {
   const p = player;
   const others = Zombies.list.filter((z) => z.alive && z.state === 'rise');
   // au perchoir : autour du pied de la tour (le régolithe est 85 m plus bas)
-  const tower = luOnTower(), cx0 = tower ? LUPL.ladder.fx : p.pos.x, cz0 = tower ? LUPL.ladder.fz : p.pos.z, ref = tower ? LUPL.tower.y0 : p.gy;
+  const foot = luOnTower() ? luLadderFoot() : null, tower = !!foot, cx0 = tower ? foot.x : p.pos.x, cz0 = tower ? foot.z : p.pos.z, ref = tower ? foot.y : p.gy;
   for (let tries = 0; tries < 40; tries++) {
     const behind = Math.random() < 0.6;
     const a = p.yaw + Math.PI + (behind ? rand(-1.6, 1.6) : rand(-Math.PI, Math.PI));
@@ -36760,7 +36925,7 @@ function luChase(z, dt) {
     z.yaw = turnTo(z.yaw, want, 6 * dt);
     z.hopCd -= dt;
     // au pied de l'échelle de la tour, le joueur au perchoir : il grimpe
-    if (LUPL.ladder && !z.crawl && luOnTower() && Math.hypot(z.pos.x - LUPL.ladder.fx, z.pos.z - LUPL.ladder.fz) < 1.8
+    if (LUPL.ladder && !z.crawl && luOnTower() && !owNodeHidden(LUPL.nodes && LUPL.nodes.ladder) && (() => { const F = luLadderFoot(); return Math.hypot(z.pos.x - F.x, z.pos.z - F.z) < 1.8; })()
       && !Zombies.list.some((o) => o !== z && o.alive && o.luClimb && o.luClimb.dir > 0 && o.luClimb.s < 2.4)) { z.luClimb = { s: 0, dir: 1, m: 0 }; return; }
     if (z.hopCd <= 0 && z.stagger <= 0 && !player.down && !z.crawl) {
       // sans le joueur en vue ni lien à prendre : on vise la case la plus lointaine du chemin qu'on
@@ -36848,25 +37013,27 @@ function luHopStart(z, mx, mz, link, d) {
 /* Échelle de la tour : 3 m/s (on grimpe vite à 1,62 m/s²) ; en haut, il passe le garde-corps (0,8 s).
    Si le joueur quitte le perchoir, il redescend. */
 function luClimbUpdate(z, dt) {
-  const La = LUPL.ladder, C = z.luClimb, L = Math.hypot(La.y1 - La.y0, La.z1 - La.z0);
+  const La = LUPL.ladder, C = z.luClimb, L = Math.hypot(La.y1 - La.y0, La.z1 - La.z0), N = LUPL.nodes && LUPL.nodes.ladder;
   if (!luOnTower() && C.m === 0) C.dir = -1;
+  // jeu 2.0.3 : positions prises sur l'échelle d'origine, puis à la pose de l'échelle
+  const at = (x, y, zz) => { const p = owPt(N, x, y, zz); z.pos.set(p.x, p.y, p.z); };
   if (C.m > 0) {
     // par-dessus le garde-corps, sur la plate-forme
     C.m += dt / 0.8;
     const k = smooth(clamp(C.m, 0, 1));
-    z.pos.set(La.x, lerp(La.y1, La.top, k) + Math.sin(k * Math.PI) * 0.9, lerp(La.z1 - 0.4, La.cz, k));
+    at(La.x, lerp(La.y1, La.top, k) + Math.sin(k * Math.PI) * 0.9, lerp(La.z1 - 0.4, La.cz, k));
     if (C.m >= 1) {
-      z.luClimb = null; z.gy = La.top; z.luY = 0; z.luAir = false; z.luVy = 0; z.layer = 0; z.k = -1;
+      z.luClimb = null; z.gy = z.pos.y; z.luY = 0; z.luAir = false; z.luVy = 0; z.layer = 0; z.k = -1;
       settleBody(z, 0.28); z.pos.y = z.gy; z.hopCd = 0.3; z.lastX = z.pos.x; z.lastZ = z.pos.z; z.stuck = 0;
     }
   } else {
     C.s = clamp(C.s + C.dir * 3 * dt, 0, L);
     const k = C.s / L;
-    z.pos.set(La.x, lerp(La.y0, La.y1, k), lerp(La.z0, La.z1, k) - 0.42);
+    at(La.x, lerp(La.y0, La.y1, k), lerp(La.z0, La.z1, k) - 0.42);
     if (C.dir > 0 && C.s >= L) C.m = 1e-3;
-    if (C.dir < 0 && C.s <= 0) { z.luClimb = null; z.pos.set(La.fx, La.y0, La.fz); z.gy = La.y0; z.k = -1; settleBody(z, 0.28); z.pos.y = z.gy; z.hopCd = 0.5; }
+    if (C.dir < 0 && C.s <= 0) { z.luClimb = null; at(La.fx, La.y0, La.fz); z.gy = z.pos.y; z.k = -1; settleBody(z, 0.28); z.pos.y = z.gy; z.hopCd = 0.5; }
   }
-  z.yaw = 0; z.moving = 0; z.vx = 0; z.vz = 0; z.farT = 0; z.stuckT = 5;
+  z.yaw = owYaw(N); z.moving = 0; z.vx = 0; z.vz = 0; z.farT = 0; z.stuckT = 5;
   if (z.luClimb) z.gy = z.pos.y;
 }
 /* Pose : ramassé au départ et à la réception, jambes repliées et bras en avant en l'air. */
@@ -36935,16 +37102,18 @@ const LUQ_RULES = { seq: 45, place: 1.5 };
 function luBuildQuest(root) {
   const g = new THREE.Group(); g.name = 'quête';
   const mk = (col, w, h, d, emis) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: col, roughness: 0.4, metalness: 0.5, emissive: emis || 0x000000, emissiveIntensity: 0.6 })); m.castShadow = true; return m; };
-  const T = LUPL.tower;
-  // ① centrale inertielle : boîtier blanc, voyant vert, sur la plate-forme
+  const T = LUPL.tower, N = LUPL.nodes || {};
+  // ① centrale inertielle : boîtier blanc, voyant vert, sur la plate-forme (jeu 2.0.3 : elle la suit)
   const nav = new THREE.Group(); nav.add(mk(0xe8e8e2, 0.6, 0.4, 0.5)); const led = mk(0x2aff6a, 0.06, 0.06, 0.02, 0x2aff6a); led.position.set(0.15, 0.1, 0.26); nav.add(led);
   nav.position.set(T.x + 2.5, T.top + 0.2, T.z + 2.5); g.add(nav);
-  // ② valve de tuyère : sur l'établi de la cabine de la foreuse
+  owFollow(N.platform, nav);
+  // ② valve de tuyère : sur l'établi de la cabine de la foreuse (ils suivent la cabine)
   const H = LUPL.drillHut;
   const valve = new THREE.Group(); const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.5, 14), new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.3, metalness: 0.8 })); valve.add(body);
   const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 6, 16), new THREE.MeshStandardMaterial({ color: 0xc83a2a, roughness: 0.5 })); wheel.position.y = 0.34; wheel.rotation.x = Math.PI / 2; valve.add(wheel);
-  K_luBench(g, H.x0 + 2.5, H.y, H.z0 + 5.6);
+  owLate(N.cabin, () => owFollow(N.cabin, K_luBench(g, H.x0 + 2.5, H.y, H.z0 + 5.6)));
   valve.position.set(H.x0 + 2.5, H.y + 1.15, H.z0 + 5.6); g.add(valve);
+  owFollow(N.cabin, valve);
   // ③ cuve d'oxygène liquide : en orbite dans l'anomalie (à 70 m de l'axe, +6 m), visible après l'explosion
   const lox = new THREE.Group(); const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 2.2, 16), new THREE.MeshStandardMaterial({ color: 0xeaf2f8, roughness: 0.3, metalness: 0.5, emissive: 0x2a6aff, emissiveIntensity: 0.25 }));
   tank.rotation.z = Math.PI / 2; lox.add(tank);
@@ -36956,24 +37125,26 @@ function luBuildQuest(root) {
   LUQ.lox = { g: lox, hits: 0, free: false, vy: 0, vx: 0, vz: 0, landed: false, r: 70, y: 6, w: 0.05, ph: 2.2 };
   linearizeTree(g); luSunifyTree(g);
   root.add(g);
-  // prises
+  // prises (à la pose de ce qui les porte)
+  const pNav = owPt(N.platform, T.x + 2.5, T.top, T.z + 2.5), pValve = owPt(N.cabin, H.x0 + 2.5, H.y, H.z0 + 5.6);
   Features.interactables.push(
-    { kind: 'quest', x: nav.position.x, z: nav.position.z, y: T.top, r: 1.6, prompt() { return !LUQ.have.nav && !LUQ.placed.nav ? { text: 'Appuyez sur F pour prendre la centrale inertielle' } : null; }, use() { if (!LUQ.have.nav && !LUQ.placed.nav) luTake('nav'); } },
-    { kind: 'quest', x: valve.position.x, z: valve.position.z, y: H.y, r: 1.7, prompt() { return !LUQ.have.valve && !LUQ.placed.valve ? { text: 'Appuyez sur F pour prendre la valve de tuyère' } : null; }, use() { if (!LUQ.have.valve && !LUQ.placed.valve) luTake('valve'); } },
+    { kind: 'quest', x: pNav.x, z: pNav.z, y: pNav.y, r: 1.6, prompt() { return !LUQ.have.nav && !LUQ.placed.nav ? { text: 'Appuyez sur F pour prendre la centrale inertielle' } : null; }, use() { if (!LUQ.have.nav && !LUQ.placed.nav) luTake('nav'); } },
+    { kind: 'quest', x: pValve.x, z: pValve.z, y: pValve.y, r: 1.7, prompt() { return !LUQ.have.valve && !LUQ.placed.valve ? { text: 'Appuyez sur F pour prendre la valve de tuyère' } : null; }, use() { if (!LUQ.have.valve && !LUQ.placed.valve) luTake('valve'); } },
     { kind: 'quest', get x() { return LUQ.lox.g.position.x; }, get z() { return LUQ.lox.g.position.z; }, get y() { return LUQ.lox.g.position.y - 0.6; }, r: 2.2,
       prompt() { return LUQ.lox.landed && !LUQ.have.lox && !LUQ.placed.lox ? { text: 'Appuyez sur F pour prendre la cuve d’oxygène liquide' } : null; }, use() { if (LUQ.lox.landed && !LUQ.have.lox && !LUQ.placed.lox) luTake('lox'); } },
   );
-  // atterrisseur : poser les pièces, puis lancer la séquence
-  const L = LUPL.lander;
+  // atterrisseur : poser les pièces, puis lancer la séquence (au pied de son échelle, à sa pose)
+  const L = LUPL.lander, pL = owPt(N.lander, L.x, L.y, L.z + 5.2);
   Features.interactables.push({
-    kind: 'quest', x: L.x, z: L.z + 5.2, y: L.y, r: 2.6, hold: true,
+    kind: 'quest', x: pL.x, z: pL.z, y: pL.y, r: 2.6, hold: true,
     prompt() { return luLanderPrompt(); },
     useHold(dt) { luLanderHold(dt); },
   });
-  // ascenseur de la tour (en bas et en haut)
+  // ascenseur de la tour (en bas et en haut), à la pose de sa cage
+  const pLo = owPt(N.lift, T.x, T.y0, T.z + 6.2), pHi = owPt(N.lift, T.x, T.top, T.z + 2.4);
   Features.interactables.push(
-    { kind: 'lift', x: T.x, z: T.z + 6.2, y: T.y0, r: 1.8, prompt() { return luLiftPrompt(false); }, use() { luLiftGo(true); } },
-    { kind: 'lift', x: T.x, z: T.z + 2.4, y: T.top, r: 1.6, prompt() { return luLiftPrompt(true); }, use() { luLiftGo(false); } },
+    { kind: 'lift', x: pLo.x, z: pLo.z, y: pLo.y, r: 1.8, prompt() { return owNodeHidden(N.lift) ? null : luLiftPrompt(false); }, use() { if (!owNodeHidden(N.lift)) luLiftGo(true); } },
+    { kind: 'lift', x: pHi.x, z: pHi.z, y: pHi.y, r: 1.6, prompt() { return owNodeHidden(N.lift) ? null : luLiftPrompt(true); }, use() { if (!owNodeHidden(N.lift)) luLiftGo(false); } },
   );
   luQuestLook();
 }
@@ -36981,7 +37152,10 @@ function K_luBench(g, x, y, z) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.7), new THREE.MeshStandardMaterial({ color: 0x5a5e62, roughness: 0.6, metalness: 0.4 }));
   m.position.set(x, y + 0.45, z); g.add(m);
   owFill(OW.surf, x - 0.8, z - 0.35, x + 0.8, z + 0.35, OWK.LOW, { base: y, top: y + 0.9, mat: OWM.METAL });
+  return m;
 }
+/* Atterrisseur à sa pose (jeu 2.0.3). */
+function luLanderW() { const L = LUPL.lander; return L ? owPt(LUPL.nodes && LUPL.nodes.lander, L.x, L.y, L.z) : null; }
 function luTake(id) {
   LUQ.have[id] = true;
   const p = LUQ_PARTS.find((q) => q.id === id);
@@ -37033,7 +37207,7 @@ function luQuestUpdate(dt) {
     if (!X.free) {
       const a = X.ph + LUA.t * X.w, T = LUA.boomT;
       let x = LUA.x + Math.cos(a) * X.r, y = X.y + Math.sin(LUA.t * 0.4) * 1.5, z = LUA.z + Math.sin(a) * X.r;
-      if (T < 4) { const D = LUPL.depot, k = smooth(clamp(T / 4, 0, 1)); x = lerp(D.x, x, k); y = lerp(D.y + 4, y, k); z = lerp(D.z, z, k); }
+      if (T < 4) { const D = luDepotW() || LUPL.depot, k = smooth(clamp(T / 4, 0, 1)); x = lerp(D.x, x, k); y = lerp(D.y + 4, y, k); z = lerp(D.z, z, k); }
       X.g.position.set(x, y, z);
       X.g.rotation.set(LUA.t * 0.3, LUA.t * 0.5, 0);
       X.vx = -Math.sin(a) * X.r * X.w; X.vz = Math.cos(a) * X.r * X.w; X.vy = 0;
@@ -37046,7 +37220,7 @@ function luQuestUpdate(dt) {
     }
   }
   // séquence de décollage (le compte s'arrête si on s'éloigne)
-  const S = LUQ.seq, L = LUPL.lander;
+  const S = LUQ.seq, L = luLanderW();
   if (S && !LUQ.won && L) {
     const d = Math.hypot(player.pos.x - L.x, player.pos.z - L.z);
     if (d < 65) S.t += dt;
@@ -37113,26 +37287,28 @@ function luLiftGo(up) {
 function luLiftUpdate(dt) {
   const R = LUL.ride;
   if (!R) return;
-  const T = LUPL.tower;
+  const T = LUPL.tower, N = LUPL.nodes && LUPL.nodes.lift;
   R.t += dt;
   const k = smooth(clamp(R.t / R.dur, 0, 1)), y = R.up ? lerp(T.y0, T.top, k) : lerp(T.top, T.y0, k);
-  player.pos.set(T.x, y, T.z + 1.2); player.gy = y; player.y = 0; player.layer = 0;
+  const p = owPt(N, T.x, y, T.z + 1.2);             // jeu 2.0.3 : dans la cage, à sa pose
+  player.pos.set(p.x, p.y, p.z); player.gy = p.y; player.y = 0; player.layer = 0;
   if (R.t >= R.dur) {
     LUL.ride = null; KHP.busy = 0;
-    if (R.up) placePlayer(T.x + 0.5, T.z + 1.5); else placePlayer(T.x, T.z + 7.2);
+    const q = R.up ? owPt(N, T.x + 0.5, T.top, T.z + 1.5) : owPt(N, T.x, T.y0, T.z + 7.2);
+    placePlayer(q.x, q.z);
   }
 }
 /* ---- Catapulte : une capsule part toutes les 40 à 60 s (accélération jusqu'à 60 m/s au bout) */
 function luCataUpdate(dt) {
   const C = LU.cataRun;
-  if (!C) return;
+  if (!C || owNodeHidden(LUPL.nodes && LUPL.nodes.cata)) return;
   C.next -= dt;
   const run = C.caps.find((c) => c.t >= 0);
   if (!run && C.next <= 0) {
     const c = C.caps[(C.i = ((C.i || 0) + 1) % C.caps.length)];
     c.t = 0; c.s = 0; c.v = 0;
     C.next = rand(40, 60);
-    const ds = Math.hypot(player.pos.x - LU.cata.x0, player.pos.z - LU.cata.z0);
+    const st = owPt(LUPL.nodes && LUPL.nodes.cata, LU.cata.x0, 0, LU.cata.z0), ds = Math.hypot(player.pos.x - st.x, player.pos.z - st.z);
     if (ds < 60 && !LU.inside) luRumble(0.4 * (1 - ds / 60), 1.5);
   }
   const a = (60 * 60) / (2 * C.L);
@@ -37154,8 +37330,9 @@ function luBelt(dt) {
   const C = LU.conv, u = LUPL.conv;
   if (!u) return;
   const on = (b) => { if ((b.layer | 0) !== 1) return false; const L = OW.under, ch = owChunk(L, Math.floor(b.pos.x), Math.floor(b.pos.z)); return !!ch && ch.dir[owIdx(Math.floor(b.pos.x), Math.floor(b.pos.z))] === 7; };
-  if (on(player) && player.grounded && !KHP.busy) { player.pos.x += u.ux * C.belt * dt; player.pos.z += u.uz * C.belt * dt; }
-  for (const z of Zombies.list) if (z.alive && !z.luAir && on(z)) { z.pos.x += u.ux * C.belt * dt; z.pos.z += u.uz * C.belt * dt; }
+  const [ux, uz] = owDir(LUPL.nodes && LUPL.nodes.conv, u.ux, u.uz);    // jeu 2.0.3 : le sens suit le convoyeur
+  if (on(player) && player.grounded && !KHP.busy) { player.pos.x += ux * C.belt * dt; player.pos.z += uz * C.belt * dt; }
+  for (const z of Zombies.list) if (z.alive && !z.luAir && on(z)) { z.pos.x += ux * C.belt * dt; z.pos.z += uz * C.belt * dt; }
 }
 
 /* ---- Objectifs (à gauche) et repères de la mini-carte */
@@ -37205,7 +37382,7 @@ function luQuestMapMarks(g, X, Z, S) {
   if (!LUQ.have.nav && !LUQ.placed.nav) mark(I.nav.position.x, I.nav.position.z, '#f0a33a', '1');
   if (!LUQ.have.valve && !LUQ.placed.valve) mark(I.valve.position.x, I.valve.position.z, '#f0a33a', '2');
   if (LUA.done && !LUQ.have.lox && !LUQ.placed.lox) mark(I.lox.position.x, I.lox.position.z, '#46b8ff', '3');
-  if (LUPL.lander) mark(LUPL.lander.x, LUPL.lander.z, '#ffffff', '▲');
+  if (LUPL.lander) { const L = luLanderW(); mark(L.x, L.z, '#ffffff', '▲'); }
 }
 
 /* ---- Départ : l'étage de remontée s'élève, la caméra le suit depuis le plateau, puis l'écran de fin */
@@ -37219,7 +37396,7 @@ function luVictory() {
   Arms.root.visible = false;
   KHP.busy = 99;
   store.set('zs.ombre.wins', (store.get('zs.ombre.wins', 0) | 0) + 1);
-  const L = LUPL.lander;
+  const L = luLanderW();
   if (!LUQ.ascent) {
     const g = new THREE.Group();
     const cab = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.2, 2.4, 6), luSunify(new THREE.MeshStandardMaterial({ color: 0xf0f0ea, roughness: 0.5, metalness: 0.2 })));
@@ -37237,7 +37414,7 @@ function luVictoryCam(dt) {
   const C = LUQ.cine;
   if (!C) return;
   C.t += dt;
-  const L = LUPL.lander, t = C.t, h = Math.max(0, t - 0.6) ** 2 * 1.6 + Math.max(0, t - 0.6) * 2;
+  const L = luLanderW(), t = C.t, h = Math.max(0, t - 0.6) ** 2 * 1.6 + Math.max(0, t - 0.6) * 2;
   if (LUQ.ascent) { LUQ.ascent.g.position.set(L.x + t * 0.3, L.y + 5 + h, L.z); LUQ.ascent.fl.material.opacity = 0.6 + 0.3 * Math.sin(t * 40); }
   camera.position.set(L.x - 38, L.y + 6 + Math.min(h * 0.25, 20), L.z + 34);
   camera.lookAt(L.x, L.y + 5 + h, L.z);
@@ -37452,30 +37629,38 @@ function boxCellsOf(L) {
 }
 
 /* ------------------------------------------------- Décor des lieux (jeu 2.0.3) --
-   Chaque pièce du décor des lieux (tente, caisse, fût, lampadaire, maison, mastaba…) est une pièce
-   de la base : un identifiant stable (lieu, genre, position d'origine), sa géométrie relevée dans un
-   kit à elle, ses cases relevées à part. Une carte ouverte peut la déplacer, la tourner, la mettre à
-   l'échelle ou la retirer ; les Mod Tools la sélectionnent. Sans retouche, tout est comme avant
-   (mêmes maillages fusionnés, mêmes cases).
-     placeEdits { id: { x, z, dy, r, s, hide } }
-       x, z   nouvelle place du pied de la pièce ; pour une pièce posée dans une autre (table d'une
-              tente), dans le repère d'origine de celle-ci
+   Chaque pièce du décor des lieux (tente, caisse, fût, lampadaire, maison, mastaba, base lunaire…)
+   est une pièce de la base : un identifiant stable (lieu, genre, position d'origine), sa géométrie
+   relevée dans un kit à elle, ses cases relevées à part. Une carte ouverte peut la déplacer, la
+   tourner, la mettre à l'échelle ou la retirer ; les Mod Tools la sélectionnent. Sans retouche, tout
+   est comme avant (mêmes maillages fusionnés, mêmes cases).
+   Interface 7 (même jeu 2.0.3) : chaque surface d'une pièce (mur, poutre, panneau, face, forme,
+   objet : un appel du kit, ou un groupe K.group) se sélectionne et se retouche seule ; matières
+   (texture et teinte) ; plus de pièce fixe : ce qui dépend d'une pièce dans le jeu (air de la base,
+   échelle et ascenseur de la tour, quête, porte du sanctuaire…) suit sa pose.
+     placeEdits { id: { x, z, dy, r, s, hide, m } }
+       id     pièce (« A.tente@2265,1992.5 ») ou surface (« A.tente@2265,1992.5/3 » : la 4e surface)
+       x, z   nouvelle place du pied ; pour une pièce posée dans une autre (table d'une tente) ou une
+              surface, dans le repère d'origine de ce qui la porte
        dy     hauteur ajoutée (m) ; r : rotation ajoutée (radians, lacet de three.js) ;
        s      taille (un facteur, ou [largeur, hauteur, profondeur]) ; hide : retirée
+       m      matières { tex: { t, c } } : t, une autre texture (bibliothèque, image de la carte) ;
+              c, une teinte 0xRRGGBB ; sur une pièce, vaut pour ses surfaces et ce qu'elle porte
    Déplacée, une pièce garde sa hauteur au-dessus du terrain ; ce qui est posé dans une pièce la suit
-   (déplacé, tourné, mis à l'échelle, retiré avec elle). Les pièces liées à la quête ou au sanctuaire
-   sont fixes (locked : la raison) : sélectionnables, pas retouchables.
-   Les cases des pièces retouchables sont écrites en dernier (après le sanctuaire, la quête et le
-   tunnel), dans le journal P : les Mod Tools les retirent et les reposent sans refaire le monde. */
+   (déplacé, tourné, mis à l'échelle, retiré avec elle) ; chaque case d'une pièce appartient à la
+   surface qui la recouvre le plus (elle la suit).
+   Les cases des pièces sont écrites en dernier (après le sanctuaire, la quête et le tunnel), dans le
+   journal P : les Mod Tools les retirent et les reposent sans refaire le monde. */
 const OWLOGP = owJournal();
-const OWPI = { list: [], byId: new Map(), place: '', stack: [], sig: null, root: null, own: new Map(), ownL: new Map(), desc: null };
+const OWPI = { list: [], prims: [], byId: new Map(), place: '', stack: [], sig: null, root: null, own: new Map(), desc: null, ver: 0, fol: [] };
 const OWPI_ID = new THREE.Matrix4();                       // identité (partagée, jamais modifiée)
 const OWPI_PRI = { [OWK.SOLID]: 6, [OWK.DOOR]: 5, [OWK.WINDOW]: 4, [OWK.LOW]: 3, [OWK.RAMP]: 2, [OWK.FLOOR]: 1 };
+const OWPI_WHITE = [1, 1, 1];
 
 /* Case relevée (mêmes valeurs par défaut que owSet). */
 function owCapRec(L, cx, cz, kind, o) {
   const base = o.base !== undefined ? o.base : 0;
-  return { L, cx, cz, kind, base, top: o.top !== undefined ? o.top : base, lo: o.lo || 0, hi: o.hi || 0, ceil: o.ceil || 0, roof: o.roof || 0, dir: o.dir || 0, mat: o.mat || 0, door: o.door !== undefined ? o.door : -1 };
+  return { L, cx, cz, kind, base, top: o.top !== undefined ? o.top : base, lo: o.lo || 0, hi: o.hi || 0, ceil: o.ceil || 0, roof: o.roof || 0, dir: o.dir || 0, mat: o.mat || 0, door: o.door !== undefined ? o.door : -1, p: -1 };
 }
 /* Retouches d'une carte (objet { id: retouche }). */
 const owPlaceEdits = (map = OW.map) => (map && map.placeEdits && typeof map.placeEdits === 'object' ? map.placeEdits : {});
@@ -37483,81 +37668,208 @@ const owPlaceEdits = (map = OW.map) => (map && map.placeEdits && typeof map.plac
 /* Début des lieux d'un chargement : les cases des pièces du chargement d'avant sont retirées. */
 function owItemsBegin() {
   owLogUndo(OWLOGP);
-  OWPI.list = []; OWPI.byId = new Map(); OWPI.stack = []; OWPI.place = '';
-  OWPI.own = new Map(); OWPI.ownL = new Map(); OWPI.sig = null; OWPI.root = null; OWPI.desc = null;
+  OWPI.list = []; OWPI.prims = []; OWPI.byId = new Map(); OWPI.stack = []; OWPI.place = '';
+  OWPI.own = new Map(); OWPI.sig = null; OWPI.root = null; OWPI.desc = null; OWPI.fol = []; OWPI.ver++;
 }
-/* Une pièce (K.item) : construite dans un kit à elle ; ses cases relevées (ou, fixe, écrites tout de suite). */
+/* Une pièce (K.item) : construite dans un kit à elle, qui relève ses surfaces ; ses cases relevées.
+   o : { logic (ce qui la suit dans le jeu, dit par les Mod Tools), ground (false : elle ne suit pas
+   le terrain quand on la déplace) }. */
 function owItem(K, kind, title, x, y, z, fn, o = {}) {
   const parent = OWPI.stack.length ? OWPI.stack[OWPI.stack.length - 1] : null;
   const r1 = (v) => Math.round(v * 10) / 10;
   let id = `${OWPI.place}.${kind}@${r1(x)},${r1(z)}`;
   if (OWPI.byId.has(id)) { let n = 2; while (OWPI.byId.has(`${id}#${n}`)) n++; id = `${id}#${n}`; }
-  const locked = o.locked || (parent && parent.locked) || '';
   const it = {
-    i: OWPI.list.length, id, kind, title, place: OWPI.place, ax: x, ay: y, az: z, parent, kids: [], locked, ground: o.ground !== false,
-    cells: locked ? null : new Map(), lamps: [], kit: null, box: null, M: OWPI_ID, ident: true, hidden: false, group: null,
+    i: OWPI.list.length, id, kind, title, place: OWPI.place, ax: x, ay: y, az: z, parent, kids: [], logic: o.logic || '', ground: o.ground !== false,
+    cells: new Map(), late: null, lamps: [], kit: null, prims: [], pmap: null, box: null,
+    M: OWPI_ID, ident: true, hidden: false, own: null, mat: null, dirty: false, psig: '', group: null,
   };
   OWPI.list.push(it); OWPI.byId.set(id, it);
   if (parent) parent.kids.push(it);
   const Ki = K.mk(K.name), cap = OWCAP.cur, n0 = OWL.lamps.length;
+  Ki.cap = { prims: [] };
   OWCAP.cur = { cells: it.cells, own: it };
   OWPI.stack.push(it);
   try { fn(Ki); } finally { OWPI.stack.pop(); OWCAP.cur = cap; }
   it.kit = Ki;
-  for (let k = n0; k < OWL.lamps.length; k++) { const L = OWL.lamps[k]; if (!L.item) { L.item = it; L.o = [L.x, L.y, L.z]; it.lamps.push(L); } }
+  const recs = Ki.cap.prims;
+  Ki.cap = null;
+  it.prims = recs.map((r, n) => owPrimNode(it, r, n));
+  for (let k = n0; k < OWL.lamps.length; k++) {
+    const L = OWL.lamps[k];
+    if (L.item) continue;
+    L.item = it; L.o = [L.x, L.y, L.z];
+    L.prim = L.pr && L.pr.node && L.pr.node.item === it ? L.pr.node : null;
+    it.lamps.push(L);
+  }
   it.box = owItemBox(it);
+  owCellOwners(it);
+  it.pmap = owPrimMap(it);
   return it;
 }
-/* Boîte d'origine d'une pièce [x0, y0, z0, x1, y1, z1] (sa géométrie ; les halos par leur centre). */
-function owItemBox(it) {
-  const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+/* Surface relevée → nœud : boîte et pied d'origine, nom, matières. */
+const OW_PRIM_KIND = { quad: 'Face', tri: 'Face triangulaire', box: 'Bloc', gable: 'Toit à deux pans', cyl: 'Cylindre', add: 'Objet', group: 'Ensemble', geo: 'Forme' };
+const owTexName = (tex) => { const d = TEXLIB[tex]; return d ? d.name.replace(/\s*\((Khamsin|Lune)\)$/, '') : ''; };
+function owPrimNode(it, r, n) {
+  const d = it.kit.dump(), b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
   const add = (x, y, z) => { if (x < b[0]) b[0] = x; if (y < b[1]) b[1] = y; if (z < b[2]) b[2] = z; if (x > b[3]) b[3] = x; if (y > b[4]) b[4] = y; if (z > b[5]) b[5] = z; };
-  const d = it.kit.dump(), bb = new THREE.Box3();
-  for (const s of d.parts.values()) for (let i = 0; i < s.pos.length; i += 3) add(s.pos[i], s.pos[i + 1], s.pos[i + 2]);
-  for (const o of d.extra) {
+  for (const [tex, s, e] of r.ranges) { const P = d.parts.get(tex).pos; for (let i = s; i < e; i++) add(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]); }
+  const bb = new THREE.Box3();
+  for (let x = r.exr[0]; x < r.exr[1]; x++) {
+    const o = d.extra[x];
     if (o.isSprite) { add(o.position.x, o.position.y, o.position.z); continue; }
     o.updateMatrixWorld(true);
     bb.setFromObject(o);
     if (!bb.isEmpty()) { add(bb.min.x, bb.min.y, bb.min.z); add(bb.max.x, bb.max.y, bb.max.z); }
   }
-  if (!(b[3] >= b[0])) return [it.ax - 0.5, it.ay, it.az - 0.5, it.ax + 0.5, it.ay + 1, it.az + 0.5];
-  return b.map((v) => Math.round(v * 1000) / 1000);
+  if (!(b[3] >= b[0])) { b[0] = it.ax - 0.25; b[1] = it.ay; b[2] = it.az - 0.25; b[3] = it.ax + 0.25; b[4] = it.ay + 0.5; b[5] = it.az + 0.25; }
+  const box = b.map((v) => Math.round(v * 1000) / 1000);
+  const p = {
+    j: OWPI.prims.length, id: `${it.id}/${n}`, n, item: it, kind: r.kind, title: '', ranges: r.ranges, exr: r.exr, box,
+    ax: Math.round(((box[0] + box[3]) / 2) * 1000) / 1000, ay: box[1], az: Math.round(((box[2] + box[5]) / 2) * 1000) / 1000,
+    mats: [...new Set(r.ranges.map((g) => g[0]))], logic: '', M: OWPI_ID, ident: true, hidden: false, own: null, mat: null, selfEdit: false,
+  };
+  let t = OW_PRIM_KIND[r.kind] || 'Surface';
+  const w = box[3] - box[0], h = box[4] - box[1], dd = box[5] - box[2];
+  if (r.kind === 'box') t = h < 0.35 && Math.max(w, dd) > 0.8 ? 'Dalle' : Math.min(w, dd) < 0.4 && h > 1 && Math.max(w, dd) > 0.8 ? 'Panneau' : h > 1.2 && Math.max(w, dd) < 0.45 ? 'Poteau' : 'Bloc';
+  else if (r.kind === 'geo') t = r.geo === 'beam' ? 'Poutre' : /Cylinder/.test(r.geo) ? 'Cylindre' : /Sphere/.test(r.geo) ? 'Calotte' : /Circle/.test(r.geo) ? 'Disque' : /Lathe/.test(r.geo) ? 'Pièce tournée' : /Torus/.test(r.geo) ? 'Anneau' : 'Forme';
+  else if (r.kind === 'add') { const o = d.extra[r.exr[0]]; t = o && o.isSprite ? 'Halo' : 'Objet'; }
+  const mat = p.mats.length ? owTexName(p.mats[0]) : '';
+  p.title = r.title || (mat ? `${t} · ${mat}` : t);
+  r.node = p;
+  for (let x = r.exr[0]; x < r.exr[1]; x++) d.extra[x].userData.prim = p.j;
+  OWPI.prims.push(p); OWPI.byId.set(p.id, p);
+  return p;
+}
+/* Boîte d'origine d'une pièce [x0, y0, z0, x1, y1, z1] : ses surfaces et ce qu'elle porte (la base
+   lunaire : son moyeu et ses modules). */
+function owItemBox(it) {
+  const B = it.prims.map((p) => p.box).concat(it.kids.map((k) => k.box).filter(Boolean));
+  if (!B.length) return [it.ax - 0.5, it.ay, it.az - 0.5, it.ax + 0.5, it.ay + 1, it.az + 0.5];
+  const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  for (const q of B) for (let k = 0; k < 3; k++) { if (q[k] < b[k]) b[k] = q[k]; if (q[k + 3] > b[k + 3]) b[k + 3] = q[k + 3]; }
+  return b;
+}
+/* Chaque case de la pièce va à la surface qui la recouvre le plus (volume commun) ; pour une case
+   pleine (mur, muret, fenêtre, porte, rampe), une surface qui descend jusqu'à son pied ; pour un sol,
+   la dalle sous lui. Sans surface : la case suit la pièce. */
+function owCellOwners(it) {
+  if (!it.cells.size || !it.prims.length) return;
+  const B = it.prims.map((p) => [p.box[0] - 0.3, p.box[1] - 0.05, p.box[2] - 0.3, p.box[3] + 0.3, p.box[4] + 0.05, p.box[5] + 0.3]);
+  for (const r of it.cells.values()) {
+    let y0, y1;
+    const floor = r.kind === OWK.FLOOR;
+    if (floor) { y0 = r.base - 0.4; y1 = r.base + 0.05; } else { y0 = Math.min(r.base, r.top); y1 = Math.max(r.base, r.top, y0 + 0.1); }
+    let best = -1, bs = 0;
+    for (let n = 0; n < B.length; n++) {
+      const b = B[n];
+      if (!floor && b[1] > y0 + 0.65) continue;
+      const ox = Math.min(r.cx + 1, b[3]) - Math.max(r.cx, b[0]); if (ox <= 0) continue;
+      const oz = Math.min(r.cz + 1, b[5]) - Math.max(r.cz, b[2]); if (oz <= 0) continue;
+      const oy = Math.min(y1, b[4]) - Math.max(y0, b[1]); if (oy <= 0) continue;
+      const s = ox * oz * oy;
+      if (s > bs) { bs = s; best = n; }
+    }
+    r.p = best;
+  }
+}
+/* Par matière du kit de la pièce : [début, fin, j] de chaque surface (Mod Tools : surface sous la souris). */
+function owPrimMap(it) {
+  const m = new Map();
+  for (const p of it.prims) for (const [tex, s, e] of p.ranges) { let a = m.get(tex); if (!a) m.set(tex, (a = [])); a.push(s, e, p.j); }
+  for (const [tex, a] of m) m.set(tex, Int32Array.from(a));
+  return m;
 }
 
-/* Matrices des pièces d'après les retouches (sans rien changer) : [{ M (null : telle quelle), ident,
-   hidden, edited }] dans l'ordre des pièces (un parent avant ce qu'il porte). */
-function owItemsCompute(edits) {
-  const out = new Array(OWPI.list.length);
-  const T = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-  for (const it of OWPI.list) {
-    const e = it.locked ? null : edits[it.id] || null, P = it.parent ? out[it.parent.i] : null;
-    let own = null;
-    if (e && (e.x !== undefined || e.dy || e.r || e.s !== undefined)) {
-      const moved = typeof e.x === 'number' && typeof e.z === 'number' && (Math.abs(e.x - it.ax) > 1e-4 || Math.abs(e.z - it.az) > 1e-4);
-      const x = moved ? e.x : it.ax, z = moved ? e.z : it.az;
-      let y = it.ay + (e.dy || 0);
-      // déplacée (pas dans une autre pièce) : même hauteur au-dessus du terrain qu'à l'origine
-      if (moved && !it.parent && it.ground) y += owH(x, z) - owH(it.ax, it.az);
-      const s = propScale({ s: e.s });
-      own = new THREE.Matrix4().compose(V.set(x, y, z), Q.setFromAxisAngle(Y, e.r || 0), S.set(s[0], s[1], s[2])).multiply(T.makeTranslation(-it.ax, -it.ay, -it.az));
-    }
-    const M = P && P.M ? (own ? P.M.clone().multiply(own) : P.M) : own;
-    out[it.i] = { M, ident: !M, hidden: !!(e && e.hide) || !!(P && P.hidden), edited: !!e };
-  }
-  return out;
+/* Matrice propre d'une retouche (null : aucune) : pied, hauteur ajoutée, lacet, taille autour du pied
+   d'origine (ax, ay, az) ; ground : déplacée, elle garde sa hauteur au-dessus du terrain. */
+const _owT = new THREE.Matrix4(), _owQ = new THREE.Quaternion(), _owV = new THREE.Vector3(), _owS = new THREE.Vector3(), _owY = new THREE.Vector3(0, 1, 0);
+function owOwnMatrix(e, n, ground) {
+  if (!e || !(e.x !== undefined || e.dy || e.r || e.s !== undefined)) return null;
+  const moved = typeof e.x === 'number' && typeof e.z === 'number' && (Math.abs(e.x - n.ax) > 1e-4 || Math.abs(e.z - n.az) > 1e-4);
+  const x = moved ? e.x : n.ax, z = moved ? e.z : n.az;
+  let y = n.ay + (e.dy || 0);
+  if (moved && ground) y += owH(x, z) - owH(n.ax, n.az);
+  const s = propScale({ s: e.s });
+  return new THREE.Matrix4().compose(_owV.set(x, y, z), _owQ.setFromAxisAngle(_owY, e.r || 0), _owS.set(s[0], s[1], s[2])).multiply(_owT.makeTranslation(-n.ax, -n.ay, -n.az));
 }
+const owMatsOf = (e) => (e && e.m && typeof e.m === 'object' && Object.keys(e.m).length ? e.m : null);
+/* Poses d'après les retouches (sans rien changer) : { it: [...], pr: [...] }, chacune { M (null :
+   telle quelle), ident, hidden, edited, own (matrice propre), mat (matières, héritées comprises) }.
+   Un parent avant ce qu'il porte ; une surface après sa pièce. */
+function owItemsCompute(edits) {
+  const out = new Array(OWPI.list.length), outP = new Array(OWPI.prims.length);
+  for (const it of OWPI.list) {
+    const e = edits[it.id] || null, P = it.parent ? out[it.parent.i] : null;
+    const own = owOwnMatrix(e, it, !it.parent && it.ground);
+    const M = P && P.M ? (own ? P.M.clone().multiply(own) : P.M) : own;
+    const m = owMatsOf(e), pm = P ? P.mat : null;
+    out[it.i] = { M, ident: !M, hidden: !!(e && e.hide) || !!(P && P.hidden), edited: !!e, own, mat: m ? (pm ? { ...pm, ...m } : m) : pm };
+  }
+  for (const p of OWPI.prims) {
+    const e = edits[p.id] || null, P = out[p.item.i];
+    const own = owOwnMatrix(e, p, false);
+    const M = P.M ? (own ? P.M.clone().multiply(own) : P.M) : own;
+    const m = owMatsOf(e);
+    outP[p.j] = { M, ident: !M, hidden: !!(e && e.hide) || P.hidden, edited: !!e, own, mat: m ? (P.mat ? { ...P.mat, ...m } : m) : P.mat, selfMat: m };
+  }
+  return { it: out, pr: outP };
+}
+/* Poses appliquées aux pièces et aux surfaces ; dirty : une pièce dont une surface est retouchée,
+   retirée ou dont les matières changent (fusionnée surface par surface). */
 function owItemsPose(edits) {
   const R = owItemsCompute(edits);
-  for (const it of OWPI.list) { const r = R[it.i]; it.M = r.M || OWPI_ID; it.ident = r.ident; it.hidden = r.hidden; }
+  for (const it of OWPI.list) {
+    const r = R.it[it.i];
+    it.M = r.M || OWPI_ID; it.ident = r.ident; it.hidden = r.hidden; it.own = r.own; it.mat = r.mat;
+    it.dirty = !!it.mat; it.psig = it.mat ? `m${JSON.stringify(it.mat)}` : '';
+  }
+  for (const p of OWPI.prims) {
+    const r = R.pr[p.j], it = p.item;
+    p.M = r.M || OWPI_ID; p.ident = r.ident; p.hidden = r.hidden; p.own = r.own; p.mat = r.mat;
+    p.selfEdit = !!(r.own || r.selfMat || (r.hidden && !it.hidden));
+    if (p.selfEdit) {
+      it.dirty = true;
+      it.psig += `${p.j}:${r.hidden ? 'h' : ''}${r.own ? Array.from(r.own.elements, (v) => Math.round(v * 1e4)).join(',') : ''}${r.selfMat ? JSON.stringify(r.selfMat) : ''}|`;
+    }
+  }
+  OWPI.ver++;
+  owFollowAll();
   return R;
 }
 /* Empreinte des poses (Mod Tools : refaire les cases quand elle change, terrain compris). */
 function owItemsSig() {
   let s = '';
-  for (const it of OWPI.list) s += it.hidden ? 'h|' : it.ident ? '|' : `${Array.from(it.M.elements, (v) => Math.round(v * 1e4)).join(',')}|`;
+  for (const it of OWPI.list) s += `${it.hidden ? 'h' : it.ident ? '' : Array.from(it.M.elements, (v) => Math.round(v * 1e4)).join(',')}${it.psig ? `[${it.psig}]` : ''}|`;
   return s;
 }
 
+/* Matière d'arrivée d'une surface : [texture, uv × k, couleur imposée] (la texture d'origine si celle
+   demandée n'existe pas ; une autre texture efface la teinte d'origine, sauf teinte choisie). */
+const owRgb = (c) => { const k = new THREE.Color(c & 0xffffff).convertSRGBToLinear(); return [k.r, k.g, k.b]; };
+function owMatTarget(tex, mat) {
+  const o = mat && mat[tex];
+  if (!o) return [tex, [1, 1], null];
+  const t = o.t && o.t !== tex && TEXLIB[o.t] ? o.t : tex;
+  const S0 = TEXLIB[tex] ? TEXLIB[tex].size : [2, 2], S1 = TEXLIB[t] ? TEXLIB[t].size : [2, 2];
+  const k = t === tex ? [1, 1] : [S0[0] / (S1[0] || 2), S0[1] / (S1[1] || S1[0] || 2)];
+  const col = typeof o.c === 'number' ? owRgb(o.c) : t !== tex ? OWPI_WHITE : null;
+  return [t, k, col];
+}
+/* En partie : une pièce retouchée surface par surface rejoint les maillages fusionnés (chaque surface
+   à sa pose, dans sa matière ; retirées : absentes). */
+function owItemMerge(K, it) {
+  const d = it.kit.dump();
+  for (const p of it.prims) {
+    if (p.hidden) continue;
+    const M = p.ident ? null : p.M, nm = M ? new THREE.Matrix3().getNormalMatrix(M) : null;
+    for (const [tex, s, e] of p.ranges) {
+      const [t, k, col] = owMatTarget(tex, p.mat);
+      K.mergeRange(d.parts.get(tex), s, e, t, M, nm, k, col);
+    }
+    for (let x = p.exr[0]; x < p.exr[1]; x++) { const o = d.extra[x]; if (M) o.applyMatrix4(M); K.add(o); }
+  }
+}
 /* Fin des lieux (avant K.build) : en partie, chaque pièce rejoint les maillages fusionnés (transformée
    si la carte la retouche, absente si elle la retire) ; dans les Mod Tools, un groupe par pièce. */
 function owItemsBuild(K, root) {
@@ -37565,22 +37877,75 @@ function owItemsBuild(K, root) {
   if (CUR.editor) {
     const g = new THREE.Group();
     g.name = 'lieux-décor';
-    for (const it of OWPI.list) {
-      const gi = it.kit.build(g);
-      gi.name = it.id;
-      gi.matrixAutoUpdate = false;
-      gi.userData.el = { kind: 'place', i: it.i };
-      it.group = gi;
-    }
+    for (const it of OWPI.list) it.group = owItemGroup(it, g);
     root.add(g);
     OWPI.root = g;
     owItemsGroups();
   } else {
-    for (const it of OWPI.list) if (!it.hidden) K.merge(it.kit, it.ident ? null : it.M);
+    for (const it of OWPI.list) {
+      if (it.hidden) continue;
+      if (it.dirty) owItemMerge(K, it);
+      else K.merge(it.kit, it.ident ? null : it.M);
+    }
   }
   owItemsLamps(!CUR.editor);
   OWPI.sig = owItemsSig();
 }
+/* Objet d'une surface (Mod Tools) : à sa place d'origine dans le groupe de sa pièce, × own. */
+function owExtraPose(o, own, show) {
+  if (!o.userData.m0) { o.updateMatrix(); o.userData.m0 = o.matrix.clone(); }
+  o.matrixAutoUpdate = false;
+  if (own) o.matrix.multiplyMatrices(own, o.userData.m0); else o.matrix.copy(o.userData.m0);
+  o.visible = show;
+}
+/* Mod Tools : groupe d'une pièce dans parent (ses surfaces dans son repère d'origine, chacune × sa
+   matrice propre, dans sa matière). Chaque maillage porte ses surfaces (userData.prims : [début,
+   fin, j]…), chaque objet la sienne (userData.prim). */
+function owItemGroup(it, parent) {
+  const d = it.kit.dump();
+  let g;
+  if (!it.dirty) {
+    g = it.kit.build(parent);
+    for (const m of g.children) if (m.isMesh && m.userData.tex !== undefined) m.userData.prims = it.pmap.get(m.userData.tex) || null;
+    for (const o of d.extra) owExtraPose(o, null, true);
+  } else {
+    const Kt = owKit(it.kit.name), maps = new Map();
+    for (const p of it.prims) {
+      const hid = p.hidden && !it.hidden;
+      for (let x = p.exr[0]; x < p.exr[1]; x++) owExtraPose(d.extra[x], p.own, !hid);
+      if (hid) continue;
+      const nm = p.own ? new THREE.Matrix3().getNormalMatrix(p.own) : null;
+      for (const [tex, s, e] of p.ranges) {
+        const [t, k, col] = owMatTarget(tex, p.mat);
+        const [a, b] = Kt.mergeRange(d.parts.get(tex), s, e, t, p.own, nm, k, col);
+        let L = maps.get(t);
+        if (!L) maps.set(t, (L = []));
+        L.push(a, b, p.j);
+      }
+    }
+    g = Kt.build(parent);
+    for (const o of d.extra) g.add(o);
+    for (const m of g.children) if (m.isMesh && m.userData.tex !== undefined) m.userData.prims = Int32Array.from(maps.get(m.userData.tex) || []);
+  }
+  g.name = it.id;
+  g.matrixAutoUpdate = false;
+  g.userData.el = { kind: 'place', i: it.i };
+  return g;
+}
+/* Mod Tools : groupes des pièces dont les surfaces ont changé, refaits (old : leurs empreintes d'avant). */
+function owItemsRegroup(old) {
+  const R = OWPI.root;
+  if (!R) return;
+  OWPI.list.forEach((it, i) => {
+    if (!it.group || it.psig + (it.dirty ? '*' : '') === old[i]) return;
+    const og = it.group;
+    it.group = owItemGroup(it, R);
+    R.remove(og);
+    og.traverse((o) => { if (o.isMesh && o.geometry && o.userData.tex !== undefined) o.geometry.dispose(); });
+  });
+  OWED.meshes = null;
+}
+const owItemsMarks = () => OWPI.list.map((it) => it.psig + (it.dirty ? '*' : ''));
 /* Mod Tools : chaque groupe à sa place. */
 function owItemsGroups() {
   for (const it of OWPI.list) {
@@ -37591,32 +37956,38 @@ function owItemsGroups() {
     g.updateMatrixWorld(true);
   }
 }
-/* Lampes des pièces : à leur place (vraies lumières), sans celles des pièces retirées. lazy : rien à
-   faire si aucune pièce à lampe n'est retouchée (l'ordre des lampes reste celui d'origine). */
+/* Lampes des pièces : à leur place (vraies lumières), sans celles des pièces et surfaces retirées.
+   lazy : rien à faire si aucune pièce à lampe n'est retouchée (l'ordre des lampes reste celui d'origine). */
 function owItemsLamps(lazy = false) {
-  if (lazy && !OWPI.list.some((it) => it.lamps.length && (it.hidden || !it.ident))) return;
+  if (lazy && !OWPI.list.some((it) => it.lamps.length && (it.hidden || !it.ident || it.dirty))) return;
   const keep = OWL.lamps.filter((L) => !L.item), v = new THREE.Vector3();
   for (const it of OWPI.list) {
     if (it.hidden) continue;
-    for (const L of it.lamps) { v.set(L.o[0], L.o[1], L.o[2]).applyMatrix4(it.M); L.x = v.x; L.y = v.y; L.z = v.z; keep.push(L); }
+    for (const L of it.lamps) {
+      const n = L.prim || it;
+      if (n.hidden) continue;
+      v.set(L.o[0], L.o[1], L.o[2]).applyMatrix4(n.M); L.x = v.x; L.y = v.y; L.z = v.z;
+      keep.push(L);
+    }
   }
   OWL.lamps = keep;
 }
 
-/* Cases des pièces retouchables : écrites à la fin des lieux (journal P), à leur place. */
+/* Cases des pièces : écrites à la fin des lieux (journal P), à leur place. */
 function owItemsWrite() {
   owLogUndo(OWLOGP);
   OWPI.own = new Map();
   owLogBegin(OWLOGP);
-  try { for (const it of OWPI.list) if (it.cells && !it.hidden) owItemCells(it); } finally { owLogEnd(); }
+  const nI = OWPI.list.length;
+  try { for (const it of OWPI.list) if (!it.hidden) owItemCells(it, nI); } finally { owLogEnd(); }
 }
-/* Cases d'une pièce, transformées par sa matrice : chaque case d'arrivée prend la case d'origine sous
-   son centre, puis chaque case d'origine marque la case où tombe son centre (une pièce réduite garde
-   ses murs d'une case). Hauteurs : base, dessus, ouverture, plafond, toit suivent l'échelle. */
-function owItemCells(it) {
-  const put = (L, cx, cz, r) => { owSet(L, cx, cz, r.kind, r); if (L === OW.surf) OWPI.own.set(cz * 4096 + cx, it.i); };
-  if (it.ident) { for (const r of it.cells.values()) put(r.L, r.cx, r.cz, r); return; }
-  const e = it.M.elements, a = e[0], b = e[8], c = e[2], d = e[10], tx = e[12], tz = e[14], sy = e[5], ty = e[13];
+/* Cases transformées par M (null : telles quelles) : chaque case d'arrivée prend la case d'origine
+   sous son centre, puis chaque case d'origine marque la case où tombe son centre (une pièce réduite
+   garde ses murs d'une case). Hauteurs : base, dessus, ouverture, plafond, toit suivent l'échelle.
+   emit(L, cx, cz, case d'arrivée, case d'origine). */
+function owCellsXf(recs, M, emit) {
+  if (!M) { for (const r of recs) emit(r.L, r.cx, r.cz, r, r); return; }
+  const e = M.elements, a = e[0], b = e[8], c = e[2], d = e[10], tx = e[12], tz = e[14], sy = e[5], ty = e[13];
   const det = a * d - b * c;
   if (!(Math.abs(det) > 1e-9)) return;
   const fy = (v) => v * sy + ty, AX = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -37624,7 +37995,7 @@ function owItemCells(it) {
   const moved = (r) => ({ kind: r.kind, base: fy(r.base), top: fy(r.top), lo: r.lo ? fy(r.lo) : 0, hi: r.hi ? fy(r.hi) : 0, ceil: r.ceil ? fy(r.ceil) : 0, roof: r.roof ? fy(r.roof) : 0, dir: r.kind === OWK.RAMP ? dirOf(r.dir) : r.dir, mat: r.mat, door: r.door });
   const inW = (qx, qz) => qx >= 0 && qz >= 0 && qx < 4096 && qz < 3072;
   const layers = new Map();
-  for (const r of it.cells.values()) { let m = layers.get(r.L); if (!m) layers.set(r.L, (m = new Map())); m.set(r.cz * 4096 + r.cx, r); }
+  for (const r of recs) { let m = layers.get(r.L); if (!m) layers.set(r.L, (m = new Map())); m.set(r.cz * 4096 + r.cx, r); }
   for (const [L, src] of layers) {
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
     for (const r of src.values()) {
@@ -37649,28 +38020,108 @@ function owItemCells(it) {
       const k = qz * 4096 + qx, cur = dst.get(k);
       if (!cur || (OWPI_PRI[r.kind] || 0) > (OWPI_PRI[cur.kind] || 0)) dst.set(k, r);
     }
-    for (const [k, r] of dst) { const qx = k % 4096; put(L, qx, (k - qx) / 4096, moved(r)); }
+    for (const [k, r] of dst) { const qx = k % 4096; emit(L, qx, (k - qx) / 4096, moved(r), r); }
   }
 }
+/* Cases d'une pièce : chaque surface retouchée emporte les siennes (retirée : aucune), le reste suit
+   la pièce ; puis les cases posées dans la pièce par la quête, le sanctuaire… (late), par-dessus. */
+function owItemCells(it, nI) {
+  const put = (L, cx, cz, r, node) => { owSet(L, cx, cz, r.kind, r); if (L === OW.surf) OWPI.own.set(cz * 4096 + cx, node); };
+  const nodeOf = (r) => (r.p >= 0 && it.prims[r.p] ? nI + it.prims[r.p].j : it.i);
+  const anyPrim = it.prims.some((p) => p.own || (p.hidden && !it.hidden));
+  if (it.ident && !anyPrim) {
+    for (const r of it.cells.values()) put(r.L, r.cx, r.cz, r, nodeOf(r));
+    if (it.late) for (const r of it.late.values()) put(r.L, r.cx, r.cz, r, it.i);
+    return;
+  }
+  const groups = new Map();
+  for (const r of it.cells.values()) {
+    const p = r.p >= 0 ? it.prims[r.p] : null;
+    if (p && p.hidden) continue;
+    const key = p && p.own ? p.j : -1;
+    let g = groups.get(key);
+    if (!g) groups.set(key, (g = { M: p && p.own ? p.M : it.ident ? null : it.M, recs: [] }));
+    g.recs.push(r);
+  }
+  const dst = new Map(), PR = (k) => OWPI_PRI[k] || 0;
+  const key = (L, qx, qz) => (L === OW.under ? 16777216 : 0) + qz * 4096 + qx;
+  for (const g of groups.values()) owCellsXf(g.recs, g.M, (L, qx, qz, r, src) => {
+    const k = key(L, qx, qz), cur = dst.get(k);
+    if (!cur || PR(r.kind) >= PR(cur.r.kind)) dst.set(k, { L, qx, qz, r, node: nodeOf(src) });
+  });
+  if (it.late) owCellsXf([...it.late.values()], it.ident ? null : it.M, (L, qx, qz, r) => { dst.set(key(L, qx, qz), { L, qx, qz, r, node: it.i }); });
+  for (const v of dst.values()) put(v.L, v.qx, v.qz, v.r, v.node);
+}
 
-/* Mod Tools : retouches de la carte appliquées au monde déjà chargé (poses, groupes, lampes, cases).
-   Appelé quand les éléments sont refaits (leurs journaux déjà retirés). Renvoie vrai si rien n'était
-   à jour. */
+/* Mod Tools : retouches de la carte appliquées au monde déjà chargé (poses, groupes, lampes, cases,
+   ce qui suit les pièces). Appelé quand les éléments sont refaits (leurs journaux déjà retirés).
+   Renvoie vrai si rien n'était à jour. */
 function owItemsApply(map) {
   if (!OWPI.list.length) return false;
+  const old = owItemsMarks();
   owItemsPose(owPlaceEdits(map));
   const sig = owItemsSig();
   if (sig === OWPI.sig) return false;
   OWPI.sig = sig;
+  owItemsRegroup(old);
   owItemsGroups();
   owItemsLamps(false);
   owItemsWrite();
   OWNAV.ready = false;
+  if (typeof LUNAV !== 'undefined') LUNAV.ready = false;
   OWED.meshes = null;
   return true;
 }
 
-/* ---- Lecture d'une carte : retouches vérifiées (identifiant, nombres bornés, taille comme un objet). */
+/* ---- Ce qui suit une pièce ou une surface (interface 7) : le jeu s'y réfère par son nœud (pièce,
+   surface, ou surface relevée par K.lastPrim). owPt : point d'origine → monde ; owLoc : l'inverse ;
+   owYaw, owDir : lacet ajouté, direction tournée ; owFollow : un objet (maillage de la quête, porte),
+   remis à sa place d'origine puis transformé à chaque pose ; owFollowFn : une fonction rappelée ;
+   owLate : cases écrites avec la pièce (après les siennes). */
+const owNode = (n) => (n && n.node ? n.node : n);
+function owNodeM(n) { n = owNode(n); return n && !n.ident ? n.M : null; }
+function owNodeHidden(n) { n = owNode(n); return !!(n && n.hidden); }
+function owPt(n, x, y, z, out = new THREE.Vector3()) { const M = owNodeM(n); out.set(x, y, z); return M ? out.applyMatrix4(M) : out; }
+function owLoc(n, x, y, z, out = new THREE.Vector3()) {
+  n = owNode(n);
+  out.set(x, y, z);
+  if (!n || n.ident) return out;
+  if (n._iv !== OWPI.ver) { n._iv = OWPI.ver; n._inv = n.M.clone().invert(); }
+  return out.applyMatrix4(n._inv);
+}
+function owYaw(n) { const M = owNodeM(n); return M ? Math.atan2(-M.elements[2], M.elements[0]) : 0; }
+function owDir(n, dx, dz) { const a = owYaw(n), c = Math.cos(a), s = Math.sin(a); return [c * dx + s * dz, -s * dx + c * dz]; }
+function owFollow(n, o) {
+  if (!n || !o) return o;
+  o.updateMatrix();
+  const F = { n, o, p: o.position.clone(), q: o.quaternion.clone(), s: o.scale.clone() };
+  OWPI.fol.push(F);
+  owFollowOne(F);
+  return o;
+}
+function owFollowFn(n, fn) { const F = { n, fn }; OWPI.fol.push(F); fn(); return F; }
+function owFollowOne(F) {
+  if (F.fn) { F.fn(); return; }
+  const o = F.o;
+  o.position.copy(F.p); o.quaternion.copy(F.q); o.scale.copy(F.s);
+  const M = owNodeM(F.n);
+  if (M) o.applyMatrix4(M);
+  o.updateMatrix();
+  o.updateMatrixWorld(true);
+}
+function owFollowAll() { for (const F of OWPI.fol) owFollowOne(F); }
+function owLate(n, fn) {
+  n = owNode(n);
+  const it = n && n.item ? n.item : n;
+  if (!it || !it.cells) { fn(); return; }
+  if (!it.late) it.late = new Map();
+  const cap = OWCAP.cur;
+  OWCAP.cur = { cells: it.late, own: it };
+  try { fn(); } finally { OWCAP.cur = cap; }
+}
+
+/* ---- Lecture d'une carte : retouches vérifiées (identifiant, nombres bornés, taille comme un objet,
+   matières : identifiants de textures, teintes). */
 function normPlaceEdits(raw) {
   const out = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
@@ -37680,7 +38131,7 @@ function normPlaceEdits(raw) {
   for (const id of Object.keys(raw)) {
     if (n >= OPEN_LIMITS.placeEdits) break;
     const e = raw[id];
-    if (!/^[A-Za-z0-9_.@,#-]{1,64}$/.test(id) || !e || typeof e !== 'object') continue;
+    if (!/^[A-Za-z0-9_.@,#/-]{1,80}$/.test(id) || !e || typeof e !== 'object') continue;
     const o = {};
     const x = f(e.x, -2000, 7000), z = f(e.z, -2000, 7000);
     if (x !== undefined && z !== undefined) { o.x = r3(x); o.z = r3(z); }
@@ -37691,61 +38142,119 @@ function normPlaceEdits(raw) {
     const s = normPropScale(e.s);
     if (s !== undefined) o.s = s;
     if (e.hide === true) o.hide = true;
+    if (e.m && typeof e.m === 'object' && !Array.isArray(e.m)) {
+      const mo = {};
+      for (const tex of Object.keys(e.m).slice(0, 24)) {
+        const v = e.m[tex];
+        if (!/^[\w-]{1,48}$/.test(tex) || !v || typeof v !== 'object') continue;
+        const q = {};
+        if (typeof v.t === 'string' && /^[\w-]{1,48}$/.test(v.t) && v.t !== tex) q.t = v.t;
+        if (typeof v.c === 'number' && Number.isFinite(v.c)) q.c = Math.round(v.c) & 0xffffff;
+        if (Object.keys(q).length) mo[tex] = q;
+      }
+      if (Object.keys(mo).length) o.m = mo;
+    }
     if (Object.keys(o).length) { out[id] = o; n++; }
   }
   return out;
 }
 
-/* ---- Mod Tools (interface 6) */
+/* ---- Mod Tools (interfaces 6 et 7) : nœuds = pièces (0 … n − 1) puis surfaces (n … ). */
 const owPlaceName = (id) => { const L = (OW.locs || []).find((q) => q.id === id); return L ? L.name : ''; };
-/* Pièces du décor du monde chargé : identité, lieu, pied et boîte d'origine, parent, ce qu'elle porte. */
+const owNodeAt = (i) => (i < OWPI.list.length ? OWPI.list[i] : OWPI.prims[i - OWPI.list.length]);
+/* Nœuds du décor du monde chargé : identité, nom, lieu, pied et boîte d'origine, parent, ce qu'il porte
+   (pièces et surfaces), matières, ce qui le suit dans le jeu (logic). */
 function owEditorPlaceItems() {
   if (!OWPI.desc) {
-    OWPI.desc = OWPI.list.map((it) => ({
+    const nI = OWPI.list.length;
+    const matsOf = (it) => { const s = new Set(); const walk = (q) => { for (const p of q.prims) for (const t of p.mats) s.add(t); for (const k of q.kids) walk(k); }; walk(it); return [...s]; };
+    const D = OWPI.list.map((it) => ({
       i: it.i, id: it.id, kind: it.kind, name: it.title, place: it.place, placeName: owPlaceName(it.place), x: it.ax, y: it.ay, z: it.az,
-      box: it.box.slice(), parent: it.parent ? it.parent.i : -1, kids: it.kids.map((k) => k.i), locked: it.locked,
+      box: it.box.slice(), parent: it.parent ? it.parent.i : -1, kids: it.kids.map((k) => k.i).concat(it.prims.map((p) => nI + p.j)),
+      locked: '', logic: it.logic, surf: false, mats: matsOf(it),
     }));
+    for (const p of OWPI.prims) {
+      D.push({
+        i: nI + p.j, id: p.id, kind: 'surface', name: p.title, place: p.item.place, placeName: owPlaceName(p.item.place), x: p.ax, y: p.ay, z: p.az,
+        box: p.box.slice(), parent: p.item.i, kids: [], locked: '', logic: p.logic, surf: true, mats: p.mats.slice(),
+      });
+    }
+    OWPI.desc = D;
   }
   return OWPI.desc;
 }
-/* Pose de chaque pièce d'après les retouches de map : pied (monde), lacet, facteurs, empreinte au sol
-   (quatre coins), hauteurs, retirée ou non. */
+/* Pose de chaque nœud d'après les retouches de map : pied (monde), lacet, facteurs, empreinte au sol
+   (quatre coins), hauteurs, retiré ou non. */
 function owEditorPlaceState(map) {
   const R = owItemsCompute(owPlaceEdits(map)), v = new THREE.Vector3(), r3 = (x) => Math.round(x * 1000) / 1000;
-  return OWPI.list.map((it) => {
-    const r = R[it.i], M = r.M || OWPI_ID, e = M.elements, b = it.box;
-    v.set(it.ax, it.ay, it.az).applyMatrix4(M);
+  const one = (n, r) => {
+    const M = r.M || OWPI_ID, e = M.elements, b = n.box;
+    v.set(n.ax, n.ay, n.az).applyMatrix4(M);
     const at = [r3(v.x), r3(v.y), r3(v.z)];
     const foot = [[b[0], b[2]], [b[3], b[2]], [b[3], b[5]], [b[0], b[5]]].map(([x, z]) => { v.set(x, b[1], z).applyMatrix4(M); return [r3(v.x), r3(v.z)]; });
     return {
       x: at[0], y: at[1], z: at[2], r: Math.atan2(-e[2], e[0]), s: [Math.hypot(e[0], e[2]), e[5], Math.hypot(e[8], e[10])],
       foot, y0: r3(b[1] * e[5] + e[13]), y1: r3(b[4] * e[5] + e[13]), hidden: r.hidden, edited: r.edited, moved: !r.ident,
     };
+  };
+  return OWPI.list.map((it) => one(it, R.it[it.i])).concat(OWPI.prims.map((p) => one(p, R.pr[p.j])));
+}
+/* Matrices des nœuds de list d'après les retouches de map (Mod Tools : les éléments de jeu posés
+   dans une pièce la suivent) : [{ M (16 nombres, repère d'origine → monde ; null : telle quelle),
+   hidden }]. */
+function owEditorPlaceMatrices(list, map) {
+  const R = owItemsCompute(owPlaceEdits(map)), nI = OWPI.list.length;
+  return list.map((i) => {
+    const r = i >= 0 && i < nI ? R.it[i] : R.pr[i - nI];
+    return r ? { M: r.M ? Array.from(r.M.elements) : null, hidden: r.hidden } : null;
   });
 }
-/* Point du monde → repère où la retouche de la pièce i s'écrit (celui d'origine de son parent). */
+/* Point du monde → repère où la retouche du nœud i s'écrit (celui d'origine de ce qui le porte). */
 function owEditorPlaceLocal(i, wx, wz, map) {
-  const it = OWPI.list[i];
-  if (!it || !it.parent) return [wx, wz];
-  const P = owItemsCompute(owPlaceEdits(map))[it.parent.i];
-  if (!P.M) return [wx, wz];
-  const v = new THREE.Vector3(wx, it.ay, wz).applyMatrix4(P.M.clone().invert());
+  const n = owNodeAt(i);
+  if (!n) return [wx, wz];
+  const P = n.item || n.parent;
+  if (!P) return [wx, wz];
+  const R = owItemsCompute(owPlaceEdits(map)).it[P.i];
+  if (!R.M) return [wx, wz];
+  const v = new THREE.Vector3(wx, n.ay, wz).applyMatrix4(R.M.clone().invert());
   return [v.x, v.z];
 }
 /* Pendant un glisser : les groupes suivent les retouches (sans refaire les cases). */
 function owEditorPlacePose(map) {
   if (!OWPI.list.length) return false;
+  const old = owItemsMarks();
   owItemsPose(owPlaceEdits(map));
+  owItemsRegroup(old);
   owItemsGroups();
   const v = new THREE.Vector3();
-  for (const it of OWPI.list) for (const L of it.lamps) { v.set(L.o[0], L.o[1], L.o[2]).applyMatrix4(it.M); L.x = v.x; L.y = v.y; L.z = v.z; }
+  for (const it of OWPI.list) for (const L of it.lamps) { v.set(L.o[0], L.o[1], L.o[2]).applyMatrix4((L.prim || it).M); L.x = v.x; L.y = v.y; L.z = v.z; }
   return true;
 }
-/* Pièce à qui appartient la case sous (x, z) (vue 3D : un mur, un sol de tente…), ou -1. */
+/* Nœud à qui appartient la case sous (x, z) (vue 3D : un mur, un sol de tente…), ou -1. */
 function owEditorPlaceAt(x, z) {
-  const k = Math.floor(z) * 4096 + Math.floor(x);
-  const i = OWPI.own.has(k) ? OWPI.own.get(k) : OWPI.ownL.get(k);
+  const i = OWPI.own.get(Math.floor(z) * 4096 + Math.floor(x));
   return i === undefined ? -1 : i;
+}
+/* Nœud sous la souris dans la vue 3D : l'objet touché (et le triangle) → surface, sinon sa pièce ; -1. */
+function owEditorPlaceHit(obj, face) {
+  const nI = OWPI.list.length;
+  let o = obj;
+  while (o && !(o.userData && o.userData.el && o.userData.el.kind === 'place')) {
+    if (o.userData && typeof o.userData.prim === 'number' && OWPI.prims[o.userData.prim]) return nI + o.userData.prim;
+    o = o.parent;
+  }
+  if (!o) return -1;
+  const P = obj && obj.userData && obj.userData.prims;
+  if (P && typeof face === 'number' && face >= 0) {
+    const v = face * 3;
+    let lo = 0, hi = P.length / 3 - 1;
+    while (lo <= hi) {
+      const m = (lo + hi) >> 1, s = P[m * 3], e = P[m * 3 + 1];
+      if (v < s) hi = m - 1; else if (v >= e) lo = m + 1; else return nI + P[m * 3 + 2];
+    }
+  }
+  return o.userData.el.i;
 }
 
 /* ====================================================== fin du monde ouvert == */
@@ -39118,9 +39627,11 @@ window.ZS = {
     sculpt: owEditorSculpt, paint: owEditorPaint, afterTerrain: owEditorAfterTerrain, commitTerrain: owEditorCommitTerrain,
     apply: owEditorApply, reapply: owEditorReapply, syncMods: owEditorSyncMods, modsRect: owModsRect, buildingPlace: owEditorBuildingPlace,
     reliefAt: owEditorReliefAt, protectAt: (x, z) => owProtectMask()[owPointIndex(x, z)] / 255, get baseId() { return OW.baseId; }, baseThumb: owBaseThumb,
-    /* interface 6 (jeu 2.0.3) : décor des lieux de la base (pièces sélectionnables, retouches de la carte) */
+    /* interfaces 6 et 7 (jeu 2.0.3) : décor des lieux de la base. Nœuds : les pièces (0 … placeCount.items − 1)
+       puis leurs surfaces ; placeHit : le nœud sous la souris dans la vue 3D (objet et triangle touchés). */
     placeItems: owEditorPlaceItems, placeState: owEditorPlaceState, placeLocal: owEditorPlaceLocal, placePose: owEditorPlacePose, placeAt: owEditorPlaceAt,
-    get placeRoot() { return OWPI.root; }, placeObj: (i) => (OWPI.list[i] ? OWPI.list[i].group : null),
+    placeHit: owEditorPlaceHit, placeMatrices: owEditorPlaceMatrices, get placeCount() { return { items: OWPI.list.length, prims: OWPI.prims.length }; },
+    get placeRoot() { return OWPI.root; }, placeObj: (i) => { const n = owNodeAt(i); return n ? (n.item ? n.item.group : n.group) : null; },
     get far() { return camera.far; }, get spawnY() { return OW.on && CUR.map ? owEditorGround(CUR.map.spawn.pos[0], CUR.map.spawn.pos[1]) : 0; },
   }, World, Features, G, LAYOUT_REF: () => LAYOUT,
   normalizeMap, serializeMap, validateMap, analyzeMap, blankMap, buildWorld, disposeWorld, textureThumb, modelParts, PropBatch,

@@ -1,16 +1,18 @@
 'use strict';
-/* Essai de bout en bout : décor des lieux de la base retouchable (jeu 2.0.3, interface 6) dans les
-   Mod Tools du launcher 1.3.2. Copie temporaire du launcher avec une clé de test, dossier jetable.
+/* Essai de bout en bout : décor des lieux de la base retouchable (jeu 2.0.3, interfaces 6 et 7) dans
+   les Mod Tools du launcher 1.3.2. Copie temporaire du launcher avec une clé de test, dossier jetable.
+   (Les surfaces, les matières et les constructions entières : e2e/modtools-surfaces.e2e.js.)
 
      xvfb-run -a node e2e/modtools-decor.e2e.js
 
    Khamsin : la petite tente de couchage du camp se sélectionne d'un clic (plan, puis vue 3D),
    se glisse dans le plan (ses murs suivent : cases), tourne (R, Maj+R), change de taille, se
    retire (Suppr) puis revient (liste « Décor de la base »), annuler et rétablir ; la tente-réfectoire
-   emporte ses tables ; la cuve d'aviation (quête) est fixe ; l'outil Éléments pose une arme dans
-   une tente sans la sélectionner ; enregistrée (placeEdits), partie de test (les murs déplacés
-   arrêtent le joueur), publiée : le jeu publié charge le décor retouché. Ombre éternelle : un mât
-   solaire déplacé, un lampadaire retiré. */
+   emporte ses tables et les armes posées dedans ; la cuve d'aviation (quête) se déplace, la quête
+   suit (interface 7 : plus de pièce fixe) ; l'outil Éléments pose une arme dans une tente sans la
+   sélectionner ; enregistrée (placeEdits), partie de test (les murs déplacés arrêtent le joueur),
+   publiée : le jeu publié charge le décor retouché. Ombre éternelle : un mât solaire déplacé, un
+   lampadaire retiré. Une case appartient à une surface : on remonte à sa pièce (pieceOf). */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -88,8 +90,8 @@ async function run(userData) {
     }, id);
     /* cases au sol d'une zone : { genre: nombre } (0 terrain, 1 sol, 2 plein…) ; pièce propriétaire du centre */
     const cells = (x0, z0, x1, z1) => mt.evaluate(([x0, z0, x1, z1]) => {
-      const k = {};
-      for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) { const h = ZS.ow.height(x + 0.5, z + 0.5) - ZS.ow.ground(x + 0.5, z + 0.5); const q = ZS.ow.placeAt(x + 0.5, z + 0.5); const key = q >= 0 ? `p${q}` : 'libre'; k[key] = (k[key] || 0) + 1; void h; }
+      const k = {}, D = ZS.ow.placeItems();
+      for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) { let q = ZS.ow.placeAt(x + 0.5, z + 0.5); if (q >= 0 && D[q].surf) q = D[q].parent; const key = q >= 0 ? `p${q}` : 'libre'; k[key] = (k[key] || 0) + 1; }
       return k;
     }, [x0, z0, x1, z1]);
 
@@ -98,11 +100,11 @@ async function run(userData) {
     await until(() => MT.state.map && MT.state.map.base === 'khamsin' && MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !!MT.ow.plan.base, null, 180000);
     await rebuilt();
     const k0 = await mt.evaluate(() => {
-      const D = ZS.ow.placeItems();
-      return { api: ZS.editorApi, ok: MT.ow.placeOk(), n: D.length, locked: D.filter((d) => d.locked).length, kids: D.filter((d) => d.parent >= 0).length, groups: ZS.ow.placeRoot ? ZS.ow.placeRoot.children.length : 0, edits: Object.keys(MT.state.map.placeEdits || {}).length };
+      const D = ZS.ow.placeItems(), P = D.filter((d) => !d.surf);
+      return { api: ZS.editorApi, ok: MT.ow.placeOk() && MT.ow.surfOk(), n: P.length, surf: D.length - P.length, locked: D.filter((d) => d.locked).length, kids: P.filter((d) => d.parent >= 0).length, groups: ZS.ow.placeRoot ? ZS.ow.placeRoot.children.length : 0, edits: Object.keys(MT.state.map.placeEdits || {}).length, level: MT.ow.placeLevel() };
     });
-    ok(k0.api >= 6 && k0.ok && k0.n === 164 && k0.locked === 9 && k0.kids === 26 && k0.groups === 164 && k0.edits === 0,
-      `Khamsin : 164 pièces de décor (9 fixes, 26 posées dans une autre), un groupe chacune dans la vue 3D ${JSON.stringify(k0)}`);
+    ok(k0.api >= 7 && k0.ok && k0.n === 164 && k0.surf === 873 && k0.locked === 0 && k0.kids === 26 && k0.groups === 164 && k0.edits === 0 && k0.level === 'piece',
+      `Khamsin : 164 pièces de décor (aucune fixe, 26 posées dans une autre, 873 surfaces), un groupe chacune dans la vue 3D ; un clic choisit une pièce ${JSON.stringify(k0)}`);
     const ti = await idx(TENT);
     // 1. un clic dans le plan sur la petite tente : elle est sélectionnée, l'inspecteur la montre
     await mt.evaluate(() => { MT.setTool('select'); MT.ui.setView('split'); MT.ui.setTab('sel'); });
@@ -158,9 +160,14 @@ async function run(userData) {
     await render();
     const okBack = await clickBtn('^Remettre', true);
     await rebuilt();
+    const st8a = await state(TENT);
+    ok(okBack && st8a.edit && !st8a.edit.hide && st8a.edit.s === 1.5 && st8a.visible && near(st8a.x, 2285, 0.3), `liste du décor : « Remettre » rend la tente avec ses retouches (déplacée, tournée, ×1,5) ${JSON.stringify(st8a.edit)}`);
+    await render();
+    const okOrig = await clickBtn('^Rétablir l’origine', true);
+    await rebuilt();
     const st8 = await state(TENT);
     const back = await cells(2262, 1990, 2268, 1995);
-    ok(okBack && !st8.edit && st8.visible && near(st8.x, 2265, 1e-3) && back[`p${ti}`] === before[`p${ti}`], `liste du décor : « Remettre » rend la tente à sa place d’origine (cases comprises) ${JSON.stringify({ edit: st8.edit, back })}`);
+    ok(okOrig && !st8.edit && st8.visible && near(st8.x, 2265, 1e-3) && back[`p${ti}`] === before[`p${ti}`], `liste du décor : « Rétablir l’origine » la rend à sa place d’origine (cases comprises) ${JSON.stringify({ edit: st8.edit, back })}`);
     // 5. vue 3D : un clic sur l'autre tente de couchage la sélectionne
     const ti2 = await idx(TENT2);
     const p3 = await mt.evaluate(() => {
@@ -177,28 +184,37 @@ async function run(userData) {
     await shot('4-vue-3d-tente');
     // 6. la tente-réfectoire emporte ses tables (déplacée de +10 m par l'inspecteur)
     const mi = await idx(MESS);
-    const tables0 = await mt.evaluate((mi) => ZS.ow.placeItems()[mi].kids.map((k) => { const s = ZS.ow.placeState(MT.state.map)[k]; return [s.x, s.z]; }), mi);
+    const D0 = await mt.evaluate(() => ZS.ow.placeItems().map((d) => !!d.surf));
+    const tables0 = await mt.evaluate(([mi, D0]) => ZS.ow.placeItems()[mi].kids.filter((k) => !D0[k]).map((k) => { const s = ZS.ow.placeState(MT.state.map)[k]; return [s.x, s.z]; }), [mi, D0]);
+    const wb0 = await mt.evaluate(() => MT.state.map.wallbuys.map((w) => [w.x, w.z]));
     await mt.evaluate((mi) => { MT.select({ kind: 'place', i: mi }); MT.ui.setTab('sel'); }, mi);
     await render();
     const messText = await panelText();
     await mt.evaluate(() => { const i = [...document.querySelectorAll('#mt-panel .f-row')].find((r) => r.querySelector('.f-label') && r.querySelector('.f-label').textContent === 'Position').querySelector('input'); i.value = '2315'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); });
     await rebuilt();
-    const tables1 = await mt.evaluate((mi) => ZS.ow.placeItems()[mi].kids.map((k) => { const s = ZS.ow.placeState(MT.state.map)[k]; return [s.x, s.z]; }), mi);
+    const tables1 = await mt.evaluate(([mi, D0]) => ZS.ow.placeItems()[mi].kids.filter((k) => !D0[k]).map((k) => { const s = ZS.ow.placeState(MT.state.map)[k]; return [s.x, s.z]; }), [mi, D0]);
     ok(/4 pièces posées dedans/.test(messText) && tables1.length === 4 && tables1.every((p, k) => near(p[0], tables0[k][0] + 10, 0.01) && near(p[1], tables0[k][1], 0.01)),
       `tente-réfectoire déplacée de 10 m : ses tables et sa lampe suivent ${JSON.stringify({ tables0, tables1 })}`);
+    // les trois armes au fond de la tente (x 2300, 2305, 2310) la suivent : aucune ne reste sans mur
+    const wb1 = await mt.evaluate(() => MT.state.map.wallbuys.map((w) => [w.x, w.z]));
+    const movedW = wb1.filter((p, k) => near(p[0], wb0[k][0] + 10, 0.01) && near(p[1], wb0[k][1], 0.01)).length;
     const wv = await mt.evaluate(() => { MT.validateNow(); return MT.state.issues.warnings.map((w) => w.msg).filter((t) => /au mur/.test(t)).length; });
-    // trois armes au fond de la tente (x 2300, 2305, 2310) ; déplacée de 10 m, son premier panneau est à x 2310 : la troisième garde un mur
-    ok(wv === 2, `vérification : les deux armes restées sans mur derrière elles sont signalées (la troisième est sur le panneau déplacé) (${wv})`);
-    // 7. pièce fixe : la cuve d'aviation (quête) se sélectionne mais ne bouge pas
+    ok(movedW === 3 && wv === 0, `les trois armes posées dans la tente-réfectoire la suivent (+10 m) ; la vérification ne signale aucune arme sans mur (${movedW} déplacées, ${wv} alerte(s))`);
+    // 7. plus de pièce fixe (interface 7) : la cuve d'aviation (quête) se tourne et se déplace ; la quête suit
     const ci = await idx(TANK);
     await view(1419, 2601, 8);
     await click(1419, 2601);
     const cs = await mt.evaluate(() => MT.state.sel);
     await render();
     const ct = await panelText();
-    const cm = await mt.evaluate((ci) => { MT.ow.rotate(1); const r = MT.ow.moveTo({ kind: 'place', i: ci }, 1430, 2601); return { r, e: (MT.state.map.placeEdits || {})['C.cuve@1419,2601'] || null }; }, ci);
-    await shot('5-cuve-fixe');
-    ok(cs && cs.kind === 'place' && cs.i === ci && /Pièce fixe/.test(ct) && /Pièce ①/.test(ct) && !cm.r.ok && !cm.e, `cuve d’aviation (quête) : sélectionnée, « Pièce fixe », ni tournée ni déplacée ${JSON.stringify(cm)}`);
+    const cm = await mt.evaluate((ci) => { MT.ow.rotate(1); MT.begin('Déplacer'); const r = MT.ow.moveTo({ kind: 'place', i: ci }, 1430, 2601); MT.commit(); return { r, e: (MT.state.map.placeEdits || {})['C.cuve@1419,2601'] || null }; }, ci);
+    await rebuilt();
+    await shot('5-cuve-deplacee');
+    const cv = await mt.evaluate(() => { MT.validateNow(); return MT.state.issues.errors.map((w) => w.msg); });
+    ok(cs && cs.kind === 'place' && cs.i === ci && !/Pièce fixe/.test(ct) && /Dans la partie/.test(ct) && /vanne et le fût de la quête suivent la cuve/.test(ct) && cm.r.ok && cm.e && near(cm.e.x, 1430, 0.01) && cm.e.r > 0 && !cv.length,
+      `cuve d’aviation (quête) : sélectionnée, plus fixe (« Dans la partie : … suivent la cuve »), tournée et déplacée, sans erreur à la vérification ${JSON.stringify({ e: cm.e, cv })}`);
+    await mt.evaluate(() => { MT.undo(); MT.undo(); });
+    await rebuilt();
     // 8. outil Éléments : une arme posée sur le mur d'une tente, sans sélectionner la tente
     await mt.evaluate(() => { MT.setTool('elements'); Object.assign(MT.state.opts.ow, { kind: 'wallbuy', weapon: 'thompson' }); });
     await view(2265, 1982.5, 12);
@@ -228,7 +244,8 @@ async function run(userData) {
     await until(() => ZS.G.state === 'playing', null, 120000);
     const g10 = await mt.evaluate(() => {
       const D = ZS.ow.placeItems(), d = D.find((q) => q.id === 'A.tente@2265,1992.5');
-      return { n: D.length, own: ZS.ow.placeAt(2290, 1992.5 - 2.5 + 0.5), old: ZS.ow.placeAt(2262.5, 1992.5), i: d && d.i, wall: ZS.ow.height(2287.6, 1995.4) - ZS.ow.ground(2287.6, 1995.4) };
+      const pieceOf = (k) => (k >= 0 && D[k].surf ? D[k].parent : k);
+      return { n: D.filter((q) => !q.surf).length, own: pieceOf(ZS.ow.placeAt(2290, 1992.5 - 2.5 + 0.5)), old: ZS.ow.placeAt(2262.5, 1992.5), i: d && d.i, wall: ZS.ow.height(2287.6, 1995.4) - ZS.ow.ground(2287.6, 1995.4) };
     });
     ok(g10.n === 164 && g10.own === g10.i && g10.old === -1, `partie de test : la tente retouchée est à sa nouvelle place, plus rien à l’ancienne ${JSON.stringify(g10)}`);
     await mt.evaluate(() => { if (document.pointerLockElement) document.exitPointerLock(); });
@@ -248,14 +265,14 @@ async function run(userData) {
     await rebuilt();
     const o1 = await mt.evaluate(() => {
       const D = ZS.ow.placeItems(), mast = D.find((d) => d.kind === 'mat'), lamp = D.find((d) => d.kind === 'lampadaire'), base = D.find((d) => d.kind === 'base');
-      return { n: D.length, mast: mast && mast.i, mx: mast && mast.x, mz: mast && mast.z, lamp: lamp && lamp.i, base: base && base.locked.length > 0, lamps: null };
+      return { n: D.filter((d) => !d.surf).length, mast: mast && mast.i, mx: mast && mast.x, mz: mast && mast.z, lamp: lamp && lamp.i, base: !!base && !base.locked && base.kids.filter((k) => !D[k].surf).length === 5, lamps: null };
     });
     await mt.evaluate(([i, x, z]) => { MT.setTool('select'); MT.select({ kind: 'place', i }); MT.begin('Déplacer'); MT.ow.moveTo({ kind: 'place', i }, x + 25, z); MT.commit(); }, [o1.mast, o1.mx, o1.mz]);
     await rebuilt();
     await mt.evaluate((i) => MT.ow.remove('place', i), o1.lamp);
     await rebuilt();
-    const o2 = await mt.evaluate(([mi, li, x, z]) => ({ at: ZS.ow.placeAt(x + 25, z), old: ZS.ow.placeAt(x, z), lampHidden: ZS.ow.placeState(MT.state.map)[li].hidden, e: MT.state.map.placeEdits }), [o1.mast, o1.lamp, o1.mx, o1.mz]);
-    ok(o1.n === 74 && o1.base && o2.at === o1.mast && o2.old === -1 && o2.lampHidden, `Ombre éternelle : 74 pièces (base fixe) ; mât solaire déplacé de 25 m (ses cases suivent), lampadaire retiré ${JSON.stringify({ o1, o2: { at: o2.at, old: o2.old } })}`);
+    const o2 = await mt.evaluate(([mi, li, x, z]) => { const D = ZS.ow.placeItems(), pieceOf = (k) => (k >= 0 && D[k].surf ? D[k].parent : k); return { at: pieceOf(ZS.ow.placeAt(x + 25, z)), old: ZS.ow.placeAt(x, z), lampHidden: ZS.ow.placeState(MT.state.map)[li].hidden, e: MT.state.map.placeEdits }; }, [o1.mast, o1.lamp, o1.mx, o1.mz]);
+    ok(o1.n === 79 && o1.base && o2.at === o1.mast && o2.old === -1 && o2.lampHidden, `Ombre éternelle : 79 pièces (la base : un moyeu et quatre modules, plus fixe) ; mât solaire déplacé de 25 m (ses cases suivent), lampadaire retiré ${JSON.stringify({ o1, o2: { at: o2.at, old: o2.old } })}`);
     await mt.evaluate(() => { window.__save = MT.ui.save(); });
     await until(() => /carte du jeu/.test(document.getElementById('mt-modal').textContent), null, 10000);
     await mt.evaluate(() => [...document.querySelectorAll('#mt-modal button')].find((x) => /Enregistrer dans/.test(x.textContent)).click());
@@ -291,7 +308,8 @@ async function run(userData) {
       await page.waitForFunction(() => ZS.ow.on && ZS.G.mapId === 'khamsin', null, { timeout: 180000 });
       const g1 = await page.evaluate(() => {
         const m = ZS.MAPS_ALL.byId.khamsin, D = ZS.ow.placeItems(), d = D.find((q) => q.id === 'A.tente@2265,1992.5'), st = ZS.ow.placeState(m)[d.i];
-        return { src: m.source, n: Object.keys(m.placeEdits || {}).length, x: st.x, at: ZS.ow.placeAt(2290, 1990.5), i: d.i, old: ZS.ow.placeAt(2262.5, 1992.5) };
+        const at = ZS.ow.placeAt(2290, 1990.5);
+        return { src: m.source, n: Object.keys(m.placeEdits || {}).length, x: st.x, at: at >= 0 && D[at].surf ? D[at].parent : at, i: d.i, old: ZS.ow.placeAt(2262.5, 1992.5) };
       });
       ok(g1.src === 'package' && g1.n === 2 && near(g1.x, 2290) && g1.at === g1.i && g1.old === -1 && !perr.length, `jeu publié : Khamsin charge la petite tente déplacée (et la tente-réfectoire) ${JSON.stringify(g1)} ${perr.slice(0, 2).join(' | ')}`);
     } finally { await browser.close(); server.close(); }

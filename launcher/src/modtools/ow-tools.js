@@ -12,7 +12,7 @@
   const O = MT.ow;
 
   const BASE_TOOLS = [
-    { id: 'select', name: 'Sélection', key: 'KeyV', label: 'V', hint: 'Clic : sélectionner (éléments, objets, décor de la base) · glisser : déplacer · Maj+clic : ajouter des objets · Suppr : supprimer · R : tourner' },
+    { id: 'select', name: 'Sélection', key: 'KeyV', label: 'V', hint: 'Clic : sélectionner (éléments, objets, décor de la base : surface, pièce ou construction) · glisser : déplacer · Maj+clic : ajouter des objets · Suppr : supprimer · R : tourner' },
     { id: 'props', name: 'Objets', key: 'KeyO', label: 'O', hint: 'Clic : poser · R : tourner · Alt+clic : pipette · Échap : sélection' },
     { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser · clic droit : retirer · R : tourner · 1 à 8 : genre' },
   ];
@@ -80,9 +80,11 @@
       return;
     }
     const e = O.get(sel);
-    if (!e || sel.kind === 'road' || (sel.kind === 'place' && e.locked)) return;      // pièce fixe du décor : sélectionnée seulement
+    if (!e || sel.kind === 'road' || (sel.kind === 'place' && e.locked)) return;      // pièce fixe du décor (moteur d'avant l'interface 7) : sélectionnée seulement
+    // décor de la base : les éléments de jeu posés dedans le suivent (relevés avant le glisser)
+    const fol = sel.kind === 'place' ? O.placeFollowPlan([sel.i]) : undefined;
     MT.begin('Déplacer');
-    MT.tools.drag = { mode: 'ow-el', sel: { ...sel }, start: [p.wx, p.wz], orig: O.posOf(sel.kind, e), moved: false, before: sel.kind === 'building' ? O.terrainRect('building', { ...e }) : null };
+    MT.tools.drag = { mode: 'ow-el', sel: { ...sel }, start: [p.wx, p.wz], orig: O.posOf(sel.kind, e), moved: false, fol, before: sel.kind === 'building' ? O.terrainRect('building', { ...e }) : null };
   }
   function dragMove(p, ev) {
     const d = MT.tools.drag, m = S.map;
@@ -97,7 +99,7 @@
       d.list.forEach((i, k) => { const pr = m.props[i]; if (pr) { pr.x = round(d.orig[k][0] + dx); pr.z = round(d.orig[k][1] + dz); } });
       MT.touch('prop-move', { list: d.list, live: true });
     } else if (d.mode === 'ow-el') {
-      const r = O.moveTo(d.sel, d.orig[0] + dx, d.orig[1] + dz, true);
+      const r = O.moveTo(d.sel, d.orig[0] + dx, d.orig[1] + dz, true, d.fol);
       if (r.ok) d.moved = true;
       MT.preview.owWhy = r.ok ? null : r.why || null;
     }

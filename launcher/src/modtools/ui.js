@@ -1513,7 +1513,8 @@
   function loadImage(src) {
     return new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('Image illisible.')); i.src = src; });
   }
-  UI.importImage = async () => {
+  /* onDone(id) : ce qu'on en fait une fois importée (une matière du décor…) ; sinon, la texture du pinceau. */
+  UI.importImage = async (onDone = null) => {
     let file;
     try { file = await MT.api.importImage(); } catch (e) { MT.toast(e.message, 'error'); return; }
     if (!file) return;
@@ -1552,7 +1553,8 @@
         for (let n = 2; S.library[id] || ZS.TEXLIB[id]; n++) id = `u_${slug(name, 26).replace(/-/g, '_') || 'image'}_${n}`;
         const t = { name, data, size: [clamp(parseFloat(wI.value) || 2, 0.25, 20), clamp(parseFloat(hI.value) || 2, 0.25, 20)], rough: parseFloat(rough.value), fit: fitC.checked };
         try { await MT.addToLibrary(id, t); } catch (e) { MT.toast(`Import impossible : ${e.message}`, 'error'); return false; }
-        S.opts.paint.tex = id;
+        if (onDone) setTimeout(() => onDone(id), 0);
+        else S.opts.paint.tex = id;
         UI.lib.tex.cat = 'import';
         MT.pushRecent('tex', id);
         MT.emit('tool-opts');
@@ -1718,9 +1720,9 @@
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
       ['Tailles', 'objet : onglet Sélection → Taille (largeur, hauteur, profondeur en mètres ; « Garder les proportions » ; « Taille d’origine ») ou outil Objets → Taille à la pose · texture : outil Textures → Taille sur cette carte (toute la carte), « Créer une variante… » pour une autre taille au même endroit · éléments de jeu : Taille ×0,4 à ×3 dans leur inspecteur · bâtiments des cartes ouvertes : Cotes (largeur, profondeur, hauteur des murs)'],
       ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
-      ['Décor de la base', 'outil Sélection : clic sur une tente, une caisse, un fût, un lampadaire, une maison, un mastaba… (plan ou 3D) · glisser : déplacer · R : tourner (Maj : 90°) · Page haut/bas : hauteur · Taille dans l’inspecteur · Suppr : retirer · ce qui est posé dedans suit · « Rétablir l’origine » ; les pièces retirées se remettent depuis la liste « Décor de la base » (outil Sélection, rien de sélectionné) · les pièces liées à la quête restent fixes'],
+      ['Décor de la base', 'outil Sélection : clic sur le décor des lieux (plan ou 3D) ; « Un clic choisit » : une surface (un mur, un toit, une poutre…), une pièce (une tente, une caisse, une maison, un module…) ou la construction entière · la ligne « A › B › C » de l’inspecteur sélectionne ce qui porte la sélection ; « Ce qu’elle porte » liste ses pièces et ses surfaces · glisser : déplacer · R : tourner (Maj : 90°) · Page haut/bas : hauteur · Taille dans l’inspecteur · Matières : une autre texture (bibliothèque ou vos images), une teinte · « Remplacer par un objet… » · Suppr : retirer · ce qui est posé dedans suit, les éléments de jeu aussi ; ce qui en dépend dans la partie (air de la base, échelle et ascenseur de la tour, quête…) suit · « Rétablir l’origine » ; ce qui est retiré se remet depuis la liste « Décor de la base » (outil Sélection, rien de sélectionné)'],
       ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, effacer ; clic droit dans le plan : l’inverse ; Échap : annuler le coup) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · le relief des sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
-      ['Carte ouverte (la Lune)', 'Ombre éternelle et Lune vierge (1,4 × 1,4 km, 1/6 g, sans air) · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 disjoncteur · 6 poste d’oxygène · 7 Le Glas, un seul · 8 lieu nommé) · T relief · P sol (régolithe, éjectas, roche, glace…) · B bâtiments lunaires (module, hangar, abri, réservoir, conteneur, panneaux solaires) · pas de routes ni de véhicules · la fosse, ses rampes et les lieux liés à la quête d’Ombre éternelle restent fixes (mâts, abri, poste électrique, balises, foreuse et lampadaires se retouchent) · nouvelle carte « Lune vierge » : la Lune sans les lieux'],
+      ['Carte ouverte (la Lune)', 'Ombre éternelle et Lune vierge (1,4 × 1,4 km, 1/6 g, sans air) · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 disjoncteur · 6 poste d’oxygène · 7 Le Glas, un seul · 8 lieu nommé) · T relief · P sol (régolithe, éjectas, roche, glace…) · B bâtiments lunaires (module, hangar, abri, réservoir, conteneur, panneaux solaires) · pas de routes ni de véhicules · la fosse et ses rampes restent fixes ; tous les lieux d’Ombre éternelle se retouchent (base, pont, catapulte, tour, dépôt…), le jeu suit · nouvelle carte « Lune vierge » : la Lune sans les lieux'],
     ];
     UI.modal({
       title: 'Aide des Mod Tools', wide: true,

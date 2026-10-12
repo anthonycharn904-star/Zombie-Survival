@@ -145,9 +145,9 @@
       decorSection(),
       section('Carte ouverte',
         h('p', { class: 'p-note' }, O.moon()
-          ? `Base : ${baseName(m)}. ${m.base === 'lune' ? 'Le relief de la Lune (fosse et rampes, crête, cratères) sans les lieux d’Ombre éternelle' : 'La base Séléné, la fosse, le pont, le convoyeur, la catapulte, la crête solaire, la tour, le plateau d’extraction, le dépôt et l’anomalie, la quête de l’atterrisseur'} viennent du jeu ; ${m.base === 'lune' ? 'la fosse reste fixe' : O.placeOk() ? 'la fosse et les lieux liés à la quête restent fixes ; le reste du décor des lieux se retouche (Sélection : cliquez un mât, l’abri, une balise…)' : 'la fosse et les lieux restent fixes'}. Ici : relief (T), sol (P), bâtiments (B), éléments de jeu (G : départ, armes, atouts, boîte, disjoncteurs, postes d’oxygène, Le Glas, lieux), objets (O), règles.`
+          ? `Base : ${baseName(m)}. ${m.base === 'lune' ? 'Le relief de la Lune (fosse et rampes, crête, cratères) sans les lieux d’Ombre éternelle' : 'La base Séléné, la fosse, le pont, le convoyeur, la catapulte, la crête solaire, la tour, le plateau d’extraction, le dépôt et l’anomalie, la quête de l’atterrisseur'} viennent du jeu ; ${m.base === 'lune' ? 'la fosse reste fixe' : O.surfOk() ? 'la fosse reste fixe ; tout le décor des lieux se retouche, surface par surface (Sélection : cliquez un module de la base, un mur, la coupole, la tour…), et le jeu suit' : O.placeOk() ? 'la fosse et les lieux liés à la quête restent fixes ; le reste du décor des lieux se retouche (Sélection : cliquez un mât, l’abri, une balise…)' : 'la fosse et les lieux restent fixes'}. Ici : relief (T), sol (P), bâtiments (B), éléments de jeu (G : départ, armes, atouts, boîte, disjoncteurs, postes d’oxygène, Le Glas, lieux), objets (O), règles.`
           : O.ok2()
-            ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; le relief des lieux, les routes d’origine et les pyramides restent fixes${O.placeOk() && m.base !== 'desert' ? ', le décor des lieux se retouche (Sélection : cliquez une tente, une caisse, une maison…)' : ''}. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
+            ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; le relief des lieux, les routes d’origine et les pyramides restent fixes${O.placeOk() && m.base !== 'desert' ? `, le décor des lieux se retouche (Sélection : cliquez une tente, une caisse, une maison${O.surfOk() ? ', ou un seul de ses murs' : ''}…)` : ''}. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
             : `Relief, routes, bâtiments, sanctuaire et quête viennent du jeu (base : ${baseName(m)}). Vous placez ici les éléments de jeu, les objets de la bibliothèque, le départ et les règles.`),
         h('p', { class: 'p-note' }, `Plan : molette pour le zoom (de ${O.moon() ? '1,4 km' : '4 km'} à quelques mètres), double-clic pour y aller en 3D. 3D : ZQSD/WASD pour voler (Maj : très vite), molette pour avancer vers le curseur.`)),
     ];
@@ -190,7 +190,7 @@
       const ed = m && m.placeEdits && Object.keys(m.placeEdits).length;
       return [h('div', { class: 'p-empty' },
         h('p', null, 'Rien de sélectionné.'),
-        h('p', { class: 'p-note' }, `Outil Sélection (V) : cliquez sur une arme, un atout, une boîte, un véhicule, un objet${O.placeOk() ? ', une pièce du décor (tente, caisse, maison…)' : ''}… dans le plan ou en 3D.`)), ed ? decorSection() : null];
+        h('p', { class: 'p-note' }, `Outil Sélection (V) : cliquez sur une arme, un atout, une boîte, un véhicule, un objet${O.surfOk() ? ', le décor de la base (une surface, une pièce ou une construction entière)' : O.placeOk() ? ', une pièce du décor (tente, caisse, maison…)' : ''}… dans le plan ou en 3D.`)), ed ? decorSection() : null];
     }
     if (s.kind === 'prop') return s.list.length > 1 ? UI.panels.propsMulti(s.list) : UI.panels.propInspector(s.list[0]);
     const e = O.get(s);
@@ -305,31 +305,137 @@
       default: return [];
     }
   };
-  /* ---- Décor des lieux de la base (jeu 2.0.3) : pièces retouchées ou retirées, sélection en marche ou non. */
+  /* ---- Décor des lieux de la base (jeu 2.0.3) : ce qu'un clic sélectionne (surface, pièce,
+     construction), nœuds retouchés ou retirés (pour les remettre). */
+  function setLevel(v) {
+    S.opts.ow.placeLevel = v;
+    // en remontant (surface → pièce → construction), la sélection suit
+    const s = S.sel;
+    if (s && s.kind === 'place' && v !== 'surface') { const k = O.placeLift(s.i, v); if (k >= 0 && k !== s.i) { MT.select({ kind: 'place', i: k }); return; } }
+    MT.emit('tool-opts');
+    UI.renderPanel();
+  }
+  const levelField = () => {
+    if (!O.surfOk()) return null;
+    const L = O.PLACE_LEVELS.find((q) => q[0] === O.placeLevel()) || O.PLACE_LEVELS[1];
+    return h('div', { class: 'ow-level-box' }, h('span', { class: 'ow-level-lbl' }, 'Un clic sur le décor choisit :'), seg(L[0], O.PLACE_LEVELS, setLevel, 'ow-level'), h('small', { class: 'f-hint' }, L[2]));
+  };
+  const editWord = (x) => (!x ? '' : x.hide ? 'retirée' : Object.keys(x).length === 1 && x.m ? 'matières' : 'retouchée');
   function decorSection() {
     if (!O.placeOk() || !ZS.ow.on) return null;
     const D = O.placeDesc(), m = S.map;
     if (!D.length) return null;                                   // désert vierge, Lune vierge : pas de lieux
     const E = m.placeEdits || {}, edited = D.filter((d) => E[d.id]), gone = edited.filter((d) => E[d.id].hide);
+    const nP = D.filter((d) => !d.surf).length, nS = D.length - nP;
     const rows = edited.slice(0, 80).map((d) => h('div', { class: 'ow-decor-row' },
-      h('span', null, h('b', null, d.name), h('small', null, `${d.placeName || 'lieu'} · ${E[d.id].hide ? 'retirée' : 'retouchée'}`)),
-      E[d.id].hide ? null : h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Montrer', onclick: () => { MT.select({ kind: 'place', i: d.i }); OU.focusSel(); } }, UI.icon('eye')),
-      h('button', { type: 'button', class: 'mt-icon-btn sm', title: E[d.id].hide ? 'Remettre (comme à l’origine)' : 'Rétablir l’origine', onclick: () => O.placeReset([d.i], `${E[d.id].hide ? 'Remettre' : 'Rétablir'} : ${d.name.toLowerCase()}`) }, UI.icon('rotate'))));
+      h('span', null, h('b', null, d.name), h('small', null, `${d.surf ? `surface de « ${D[d.parent] ? D[d.parent].name : '?'} »` : d.placeName || 'lieu'} · ${editWord(E[d.id])}`)),
+      E[d.id].hide
+        ? h('button', { type: 'button', class: 'mt-icon-btn sm', title: Object.keys(E[d.id]).length > 1 ? 'Remettre (avec ses retouches)' : 'Remettre', onclick: () => { O.placeUnhide(d.i); UI.renderPanel(); } }, UI.icon('eye'))
+        : h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Montrer', onclick: () => { MT.select({ kind: 'place', i: d.i }); OU.focusSel(); } }, UI.icon('eye')),
+      h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Rétablir l’origine (sans aucune retouche)', onclick: () => { O.placeReset([d.i], `Rétablir : ${d.name.toLowerCase()}`); UI.renderPanel(); } }, UI.icon('rotate'))));
+    const word = (n, a, b) => `${n} ${n > 1 ? b : a}`;
     return section('Décor de la base',
       check({ checked: S.opts.ow.placePick, label: 'Sélectionnable (clic dans le plan ou en 3D)', onChange: (v) => { S.opts.ow.placePick = v; if (!v && S.sel && S.sel.kind === 'place') MT.select(null); MT.emit('tool-opts'); } }),
-      h('p', { class: 'p-note' }, `${D.length} pièces dans les lieux (tentes, caisses, fûts, lampadaires, maisons…) : ${edited.length - gone.length} retouchée${edited.length - gone.length > 1 ? 's' : ''}, ${gone.length} retirée${gone.length > 1 ? 's' : ''}. Cliquez-en une pour la déplacer, la tourner, changer sa taille ou la retirer ; celles liées à la quête restent à leur place.`),
+      levelField(),
+      h('p', { class: 'p-note' }, O.surfOk()
+        ? `${word(nP, 'pièce', 'pièces')} dans les lieux (tentes, caisses, maisons, modules de la base…) et ${word(nS, 'surface', 'surfaces')} (murs, toits, poutres, faces…) : ${word(edited.length - gone.length, 'retouchée', 'retouchées')}, ${word(gone.length, 'retirée', 'retirées')}. Chacune se déplace, se tourne, change de taille, de texture ou de teinte, se remplace par un objet ou se retire. Ce qui en dépend dans la partie suit (air de la base, échelle de la tour, quête…), et les éléments de jeu posés dedans aussi.`
+        : `${D.length} pièces dans les lieux (tentes, caisses, fûts, lampadaires, maisons…) : ${edited.length - gone.length} retouchée${edited.length - gone.length > 1 ? 's' : ''}, ${gone.length} retirée${gone.length > 1 ? 's' : ''}. Cliquez-en une pour la déplacer, la tourner, changer sa taille ou la retirer ; celles liées à la quête restent à leur place.`),
       rows.length ? h('div', { class: 'ow-decor-list' }, ...rows) : null,
       edited.length > rows.length ? h('p', { class: 'p-note' }, `… et ${edited.length - rows.length} autres.`) : null,
-      edited.length ? h('div', { class: 'p-actions' }, btn('Tout le décor d’origine', () => { O.placeReset(null, 'Tout le décor d’origine'); MT.toast('Décor d’origine partout (Ctrl+Z pour annuler).', 'info'); }, { ic: 'rotate' })) : null);
+      edited.length ? h('div', { class: 'p-actions' }, btn('Tout le décor d’origine', () => { O.placeReset(null, 'Tout le décor d’origine'); MT.toast('Décor d’origine partout (Ctrl+Z pour annuler).', 'info'); UI.renderPanel(); }, { ic: 'rotate' })) : null);
   }
-  /* Inspecteur d'une pièce du décor : place, hauteur, rotation, taille, retirer, rétablir. */
+  /* Ce qui porte la sélection, de la construction jusqu'à elle (chaque niveau se sélectionne). */
+  function crumbs(i) {
+    const D = O.placeDesc(), chain = O.placeChain(i);
+    if (chain.length < 2) return null;
+    return h('nav', { class: 'ow-crumbs', 'aria-label': 'Ce qui porte la sélection' }, chain.map((k, n) => [
+      n ? h('span', { class: 'sep', 'aria-hidden': 'true' }, '›') : null,
+      k === i ? h('b', null, D[k].name) : h('button', { type: 'button', title: D[k].surf ? 'Sélectionner cette surface' : 'Sélectionner cette pièce', onclick: () => MT.select({ kind: 'place', i: k }) }, D[k].name),
+    ]));
+  }
+  /* Ce que le jeu fait de ce nœud ou de ce qui le porte (air, quête…). */
+  function logicNote(i) {
+    const D = O.placeDesc(), chain = O.placeChain(i).reverse();
+    const k = chain.find((q) => D[q] && D[q].logic);
+    if (k === undefined) return null;
+    return h('p', { class: 'p-note ow-logic' }, h('b', null, 'Dans la partie : '), k === i ? D[k].logic : `${D[k].logic.replace(/\.$/, '')} (« ${D[k].name} »).`);
+  }
+  /* Pièces posées dedans et surfaces : liste cliquable (recherche au-delà de 24). */
+  function kidsSection(e) {
+    const D = O.placeDesc(), E = S.map.placeEdits || {};
+    const kids = (e.kids || []).filter((k) => D[k] && (O.surfOk() || !D[k].surf));
+    if (!kids.length) return null;
+    const nP = kids.filter((k) => !D[k].surf).length, nS = kids.length - nP;
+    const list = h('div', { class: 'ow-decor-list ow-kids' });
+    let q = '';
+    const fill = () => {
+      list.textContent = '';
+      const nq = q.trim().toLowerCase();
+      const shown = nq ? kids.filter((k) => D[k].name.toLowerCase().includes(nq)) : kids;
+      for (const k of shown.slice(0, 200)) {
+        const d = D[k], w = editWord(E[d.id]);
+        list.append(h('button', { type: 'button', class: `ow-kid ${d.surf ? 'surf' : 'piece'} ${E[d.id] && E[d.id].hide ? 'gone' : ''}`, onclick: () => { MT.select({ kind: 'place', i: k }); OU.focusSel(); } },
+          h('b', null, d.name), h('small', null, `${d.surf ? 'surface' : 'pièce posée dedans'}${w ? ` · ${w}` : ''}`)));
+      }
+      if (shown.length > 200) list.append(h('p', { class: 'p-note' }, `… et ${shown.length - 200} autres : affinez la recherche.`));
+      if (!shown.length) list.append(h('p', { class: 'p-note' }, 'Rien ne correspond.'));
+    };
+    fill();
+    const search = kids.length > 24 ? h('input', { type: 'search', class: 'f-text ow-kids-search', placeholder: 'Chercher : mur, toit, poutre, sol…', spellcheck: false, oninput: (ev) => { q = ev.target.value; fill(); } }) : null;
+    const parts = [nP ? `${nP} pièce${nP > 1 ? 's' : ''} posée${nP > 1 ? 's' : ''} dedans` : '', nS ? `${nS} surface${nS > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ');
+    return section('Ce qu’elle porte', h('p', { class: 'p-note' }, `${parts}. Cliquez pour la sélectionner (une surface retirée se remet d’ici).`), search, list);
+  }
+  /* Matières (interface 7) : chaque texture de la sélection, remplacée (bibliothèque, image importée)
+     et teintée ; sur une pièce, pour toutes ses surfaces et ce qu'elle porte. */
+  function matSection(s, e) {
+    if (!O.surfOk() || !e.mats || !e.mats.length) return null;
+    const own = (e.edit && e.edit.m) || {}, inh = O.placeInheritedMats(s.i);
+    const tn = (id) => MT.texName(id).replace(/\s*\((Khamsin|Lune)\)$/, '');
+    const swatch = (id) => {
+      const sw = h('span', { class: 'tex-swatch sm' }), u = MT.texThumb(id);
+      if (typeof u === 'string') sw.style.backgroundImage = `url(${u})`;
+      else if (u && u.nodeType) { u.classList.add('lib-canvas'); sw.append(u); }
+      return sw;
+    };
+    const rows = e.mats.slice(0, 24).map((tex) => {
+      const o = own[tex], q = o || inh[tex] || null;
+      const cur = q && q.t && ZS.TEXLIB[q.t] ? q.t : tex, col = q && typeof q.c === 'number' ? q.c : null;
+      const changed = cur !== tex;
+      const name = h('span', { class: 'ow-mat-name', title: `${MT.texName(tex)}${changed ? ` → ${MT.texName(cur)}` : ''}` }, h('b', null, tn(tex)), changed ? h('small', null, `→ ${tn(cur)}`) : null,
+        !o && inh[tex] ? h('small', null, `de « ${inh[tex].from} »`) : null, q && q.t && !ZS.TEXLIB[q.t] ? h('small', { class: 'warn' }, `${q.t} introuvable`) : null);
+      return h('div', { class: 'ow-mat' }, swatch(cur), name,
+        h('span', { class: 'ow-mat-acts' },
+          h('button', { type: 'button', class: 'mt-btn sm', title: 'Une autre texture de la bibliothèque (ou une de vos images)', onclick: async () => { const id = await UI.pick('tex', cur, `Texture à la place de « ${tn(tex)} »`); if (id) O.placeSetMat(s.i, tex, { t: id === tex ? null : id }, `Texture : ${tn(id)}`); } }, 'Texture…'),
+          h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Importer une image pour cette matière', onclick: () => UI.importImage((id) => O.placeSetMat(s.i, tex, { t: id }, 'Image importée')) }, UI.icon('image')),
+          UI.f.color({ value: col !== null ? col : 0xffffff, onCommit: (v) => O.placeSetMat(s.i, tex, { c: ZS.parseColor(v, 0xffffff) }, 'Teinte') }),
+          col !== null && o ? h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Sans teinte', onclick: () => O.placeSetMat(s.i, tex, { c: null }, 'Sans teinte') }, UI.icon('close')) : null,
+          o ? h('button', { type: 'button', class: 'mt-icon-btn sm', title: inh[tex] ? `Matière de « ${inh[tex].from} »` : 'Matière d’origine', onclick: () => O.placeSetMat(s.i, tex, null, 'Matière d’origine', true) }, UI.icon('rotate')) : null));
+    });
+    return section('Matières', ...rows,
+      e.mats.length > rows.length ? h('p', { class: 'p-note' }, `… et ${e.mats.length - rows.length} autres (sélectionnez une surface).`) : null,
+      h('p', { class: 'p-note' }, e.surf
+        ? 'Texture : une autre de la bibliothèque, ou une de vos images (« Mes images », ou le bouton image pour en importer une), à sa taille réelle. Teinte : colore la texture. Rien que sur cette surface.'
+        : 'Texture et teinte de toutes les surfaces de cette matière dans la pièce, et dans ce qu’elle porte (une surface garde la sienne si vous la changez ensuite). Pour une seule surface : choisissez « Surface » (un clic choisit), puis cliquez-la.'));
+  }
+  /* Inspecteur d'un nœud du décor (pièce ou surface) : ce qui le porte, place, hauteur, rotation, taille,
+     matières, remplacer par un objet, ce qu'il porte, retirer, rétablir. */
   function placeInspector(s, e) {
-    const D = O.placeDesc(), parent = e.parent >= 0 ? D[e.parent] : null, kids = (e.kids || []).length;
-    const sub = `${e.placeName || 'Lieu de la base'}${parent ? ` · posée dans « ${parent.name} »` : ''}${kids ? ` · ${kids} pièce${kids > 1 ? 's' : ''} posée${kids > 1 ? 's' : ''} dedans` : ''}`;
+    const D = O.placeDesc(), parent = e.parent >= 0 ? D[e.parent] : null;
+    const what = e.surf ? 'surface' : 'pièce';
+    const sub = `${e.placeName || 'Lieu de la base'}${e.surf ? ` · surface de « ${parent ? parent.name : '?'} »` : parent ? ` · posée dans « ${parent.name} »` : ''}`;
     if (e.locked) {
       return [head(e.name, sub), section('Pièce fixe',
         h('p', { class: 'p-note' }, e.locked),
         h('p', { class: 'p-note' }, 'Les autres pièces du décor (tentes, caisses, lampadaires, maisons…) se déplacent, se tournent, changent de taille ou se retirent.'))];
+    }
+    const up = parent ? h('button', { type: 'button', class: 'mt-icon-btn sm', title: `Sélectionner « ${parent.name} » (ce qui la porte)`, onclick: () => MT.select({ kind: 'place', i: parent.i }) }, UI.icon('up')) : null;
+    if (e.hidden) {
+      const gonePar = parent && O.get({ kind: 'place', i: parent.i }) && O.get({ kind: 'place', i: parent.i }).hidden;
+      return [head(e.name, `${sub} · retirée`, [up]), crumbs(s.i), section(e.surf ? 'Surface retirée' : 'Pièce retirée',
+        h('p', { class: 'p-note' }, gonePar ? `« ${parent.name} », qui la porte, est retirée aussi : remettez-la d’abord.` : 'Elle n’est plus dans la carte (ni dans la partie).'),
+        h('div', { class: 'p-actions' },
+          btn('Remettre', () => O.placeUnhide(s.i), { ic: 'eye', kind: 'primary', disabled: !(e.edit && e.edit.hide), title: 'Avec ses autres retouches (place, taille, matières)' }),
+          btn('Rétablir l’origine', () => O.placeReset([s.i], `Rétablir : ${e.name.toLowerCase()}`), { ic: 'rotate', disabled: !e.edit }))), logicNote(s.i)];
     }
     const ed = e.edit || {};
     const mut = (fn) => (mm) => {
@@ -341,23 +447,35 @@
     const set = (label, fn) => O.placeEdit(s.i, label, fn);
     const dims = [e.box[3] - e.box[0], e.box[4] - e.box[1], e.box[5] - e.box[2]].map((v) => Math.max(0, round(v, 3)));
     const curS = () => { const x = ((S.map.placeEdits || {})[e.id] || {}); return ZS.propScale ? ZS.propScale({ s: x.s }) : [1, 1, 1]; };
+    const kidsP = (e.kids || []).filter((k) => D[k] && !D[k].surf).length;
+    const follows = O.surfOk();
     return [
-      head(e.name, sub, [delBtn()]),
+      head(e.name, sub, [up, delBtn()]),
+      crumbs(s.i),
+      O.surfOk() ? section('Sélection', levelField()) : null,
+      logicNote(s.i),
       section('Place',
         field('Position', h('span', { class: 'f-inline' },
           num({ value: e.x, min: 1, max: S.map.w - 1, step: 0.25, unit: 'x', width: '82px', onCommit: (v) => moveNum(s, v, e.z) }),
           num({ value: e.z, min: 1, max: S.map.h - 1, step: 0.25, unit: 'z', width: '82px', onCommit: (v) => moveNum(s, e.x, v) })),
-        parent ? `Suit « ${parent.name} » quand elle bouge` : 'Glissez-la dans le plan ou en 3D : elle garde sa hauteur au-dessus du terrain'),
+          parent ? `Suit « ${parent.name} » quand elle bouge` : 'Glissez-la dans le plan ou en 3D : elle garde sa hauteur au-dessus du terrain'),
         field('Hauteur', num({ value: ed.dy || 0, min: -60, max: 200, step: 0.1, unit: 'm', onLive: (v) => liveSet('Hauteur', (x) => { x.dy = round(v, 3); }), onCommit: (v) => set('Hauteur', (x) => { x.dy = round(v, 3); }) }), 'Ajoutée à sa hauteur d’origine · Page haut / bas'),
         field('Rotation', num({ value: degOf(ed.r || 0), min: -360, max: 720, step: 15, unit: '°', digits: 1, onLive: (v) => liveSet('Tourner', (x) => { x.r = rad(v); }), onCommit: (v) => set('Tourner', (x) => { x.r = rad(v); }) }), 'Par rapport à l’origine · R : +15° · Maj+R : +90°')),
       MT.sizesOk() ? section('Taille', ...UI.f.sizeFields(dims, curS, (f, isLive) => (isLive ? liveSet : set)('Taille', (x) => { x.s = f; }),
-        { note: `À l’origine : ${decFr(dims[0])} × ${decFr(dims[1])} × ${decFr(dims[2])} m (largeur × hauteur × profondeur). Ses murs, ses sols et ses solides suivent la taille${kids ? ', et ce qui est posé dedans aussi' : ''}.` })) : null,
-      section('Pièce du décor',
+        { note: `À l’origine : ${decFr(dims[0])} × ${decFr(dims[1])} × ${decFr(dims[2])} m (largeur × hauteur × profondeur). ${e.surf ? 'Ses cases (mur, sol…) suivent la taille.' : `Ses murs, ses sols et ses solides suivent la taille${kidsP ? ', et ce qui est posé dedans aussi' : ''}.`}` })) : null,
+      matSection(s, e),
+      O.surfOk() ? section('Remplacer',
+        h('div', { class: 'p-actions' }, btn('Remplacer par un objet…', async () => { const id = await UI.pick('model', null, `Remplacer « ${e.name} » par un objet`); if (id) O.placeReplace(s.i, id); }, { ic: 'props' })),
+        h('p', { class: 'p-note' }, `Un objet de la bibliothèque (ou un de vos modèles .glb) prend sa place : même pied, même rotation, même encombrement. La ${what} est retirée (elle se remet depuis la liste « Décor de la base »).`)) : null,
+      kidsSection(e),
+      section(e.surf ? 'Surface du décor' : 'Pièce du décor',
         h('div', { class: 'p-actions' },
           btn('Rétablir l’origine', () => O.placeReset([s.i], `Rétablir : ${e.name.toLowerCase()}`), { ic: 'rotate', disabled: !e.edit }),
           btn('Retirer', () => O.remove('place', s.i), { ic: 'trash', title: 'Suppr' })),
-        kids ? h('p', { class: 'p-note' }, 'Ce qui est posé dedans la suit : déplacé, tourné, mis à l’échelle et retiré avec elle.') : null,
-        h('p', { class: 'p-note' }, 'Les armes au mur, atouts, boîtes et autres éléments de jeu posés contre elle ne la suivent pas : déplacez-les aussi (la vérification signale une arme restée sans mur).'),
+        kidsP ? h('p', { class: 'p-note' }, 'Ce qui est posé dedans la suit : déplacé, tourné, mis à l’échelle et retiré avec elle.') : null,
+        h('p', { class: 'p-note' }, follows
+          ? `Les éléments de jeu posés ${e.surf ? 'contre elle' : 'dedans'} (départ, armes au mur, atouts, boîtes, disjoncteurs, objets…) la suivent quand elle bouge, tourne ou change de taille.`
+          : 'Les armes au mur, atouts, boîtes et autres éléments de jeu posés contre elle ne la suivent pas : déplacez-les aussi (la vérification signale une arme restée sans mur).'),
         h('p', { class: 'p-note' }, `Identifiant : ${e.id}${e.edit ? ' · retouchée par cette carte' : ' · d’origine'}`)),
     ];
   }

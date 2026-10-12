@@ -160,8 +160,9 @@
       const w = ZS.ow.ray(o.x, o.y, o.z, d.x, d.y, d.z, 4500);
       if (w.hit) {
         best = { t: w.t, x: w.x, y: w.y, z: w.z, n: [w.nx, w.ny, w.nz] };
-        // décor de la base (jeu 2.0.3) : la case touchée appartient à une pièce (mur de tente, sol de maison…)
-        const pi = decor ? ZS.ow.placeAt(w.x + d.x * 0.05, w.z + d.z * 0.05) : -1;
+        // décor de la base (jeu 2.0.3) : la case touchée appartient à une pièce ou à une surface (mur de
+        // tente, sol de maison…), ramenée au niveau choisi (surface, pièce, construction)
+        const pi = decor ? O.placeLift(ZS.ow.placeAt(w.x + d.x * 0.05, w.z + d.z * 0.05)) : -1;
         if (pi >= 0) best.el = { kind: 'place', i: pi };
       }
     }
@@ -169,8 +170,10 @@
     if (ZS.ow.root && !dragging) targets.push(ZS.ow.root);
     if (decor) targets.push(ZS.ow.placeRoot);
     const hits = targets.length ? R.intersectObjects(targets, true) : [];
+    // une case du décor touchée : ses surfaces (plus précises que les cases d'un mètre) passent devant
+    const slack = best && best.el && best.el.kind === 'place' ? 1.5 : 0.25;
     for (const h of hits) {
-      if (best && h.distance > best.t + 0.25) break;
+      if (best && h.distance > best.t + slack) break;
       if (skip(h.object)) continue;
       let el = null, prop = null, mt = null;
       for (let q = h.object; q; q = q.parent) {
@@ -180,6 +183,12 @@
         if (u.mt) { mt = u.mt; break; }
       }
       if (!el && prop === null && !mt) continue;
+      if (el && el.kind === 'place' && O.surfOk()) {
+        // interface 7 : la surface touchée (objet et triangle), ramenée au niveau choisi
+        const k = O.placeLift(ZS.ow.placeHit(h.object, h.faceIndex));
+        if (k < 0) continue;
+        el = { kind: 'place', i: k };
+      }
       const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : UP.clone();
       best = { t: h.distance, x: h.point.x, y: h.point.y, z: h.point.z, n: [n.x, n.y, n.z], el, prop, mt };
       break;
@@ -290,9 +299,25 @@
     const e = O.get(s);
     if (!e) return out;
     if (s.kind === 'place') {
-      // la pièce (et, plus clair, ce qu'elle porte)
+      // une surface : sa boîte à sa pose ; une pièce : son groupe, et les pièces qu'elle porte
+      const D = O.placeDesc();
+      const stBox = (q) => {
+        if (!q || q.hidden || !q.foot) return null;
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const [x, z] of q.foot) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+        return new THREE.Box3(new THREE.Vector3(x0, Math.min(q.y0, q.y1), z0), new THREE.Vector3(x1, Math.max(q.y0, q.y1), z1));
+      };
+      if (e.surf) { const b = stBox(e); if (b) out.push(b.expandByScalar(0.05)); return out; }
       if (!e.hidden) fromObj(ZS.ow.placeObj(s.i));
-      for (const k of e.kids || []) { const q = O.get({ kind: 'place', i: k }); if (q && !q.hidden) { const b = new THREE.Box3().setFromObject(ZS.ow.placeObj(k)); if (!b.isEmpty()) out.push(b.expandByScalar(0.03)); } }
+      const walk = (i, n) => {
+        for (const k of (D[i] && D[i].kids) || []) {
+          if (!D[k] || D[k].surf || n > 400) continue;
+          const q = O.get({ kind: 'place', i: k });
+          if (q && !q.hidden) { const b = new THREE.Box3().setFromObject(ZS.ow.placeObj(k)); if (!b.isEmpty()) out.push(b.expandByScalar(0.03)); }
+          walk(k, n + 1);
+        }
+      };
+      walk(s.i, 0);
       return out;
     }
     if (s.kind === 'box' && !(ZS.ow.box && s.i === m.boxStart)) {
