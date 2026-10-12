@@ -320,7 +320,7 @@
     const L = O.PLACE_LEVELS.find((q) => q[0] === O.placeLevel()) || O.PLACE_LEVELS[1];
     return h('div', { class: 'ow-level-box' }, h('span', { class: 'ow-level-lbl' }, 'Un clic sur le décor choisit :'), seg(L[0], O.PLACE_LEVELS, setLevel, 'ow-level'), h('small', { class: 'f-hint' }, L[2]));
   };
-  const editWord = (x) => (!x ? '' : x.hide ? 'retirée' : Object.keys(x).length === 1 && x.m ? 'matières' : 'retouchée');
+  const editWord = (x) => (!x ? '' : x.hide ? 'retirée' : Object.keys(x).length === 1 && x.m ? 'matières' : Object.keys(x).length === 1 && x.cost !== undefined ? 'prix' : 'retouchée');
   function decorSection() {
     if (!O.placeOk() || !ZS.ow.on) return null;
     const D = O.placeDesc(), m = S.map;
@@ -454,6 +454,7 @@
       crumbs(s.i),
       O.surfOk() ? section('Sélection', levelField()) : null,
       logicNote(s.i),
+      doorSection(s, e),
       section('Place',
         field('Position', h('span', { class: 'f-inline' },
           num({ value: e.x, min: 1, max: S.map.w - 1, step: 0.25, unit: 'x', width: '82px', onCommit: (v) => moveNum(s, v, e.z) }),
@@ -478,6 +479,17 @@
           : 'Les armes au mur, atouts, boîtes et autres éléments de jeu posés contre elle ne la suivent pas : déplacez-les aussi (la vérification signale une arme restée sans mur).'),
         h('p', { class: 'p-note' }, `Identifiant : ${e.id}${e.edit ? ' · retouchée par cette carte' : ' · d’origine'}`)),
     ];
+  }
+  /* Interface 8 : porte payante (herse d'une pyramide de Khamsin) : son prix. */
+  function doorSection(s, e) {
+    if (!e.door || (ZS.editorApi || 1) < 8) return null;
+    const ed = e.edit || {}, cur = Number.isFinite(ed.cost) ? ed.cost : e.door.cost;
+    const pts = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+    return section('Porte payante',
+      field('Prix', num({ value: cur, min: 0, max: 1000000, step: 250, digits: 0, unit: 'points', width: '96px', onCommit: (v) => O.placeEdit(s.i, 'Prix de la porte', (x) => { x.cost = Math.round(v); }, { follow: false }) }),
+        Number.isFinite(ed.cost) ? `D’origine : ${pts(e.door.cost)} points` : 'Prix d’origine'),
+      h('p', { class: 'p-note' }, `Le joueur paie ce prix pour lever la herse et entrer dans la ${e.door.name}. Retirée (bouton Retirer), l’entrée est libre.`),
+      Number.isFinite(ed.cost) ? h('div', { class: 'p-actions' }, btn('Prix d’origine', () => O.placeEdit(s.i, 'Prix d’origine', (x) => { delete x.cost; }, { follow: false }), { ic: 'rotate' })) : null);
   }
   /* Atout : taille obtenue sous le plafond (réduite quand il est trop bas). */
   function perkNote(e) {

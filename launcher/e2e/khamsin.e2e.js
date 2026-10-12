@@ -89,7 +89,7 @@ const USER = path.join(TMP, 'joueur');
       __zs.step(30);
       ok(OWH.map && OWH.map.isConnected && !OWH.map.hidden && OWH.comp && OWH.comp.isConnected, 'HUD : mini-carte et boussole');
       ok(VEH.list.map((V) => V.type).join(',') === 'jeep,jeep,jeep,buggy,truck', 'véhicules : trois 4×4, le buggy, le camion blindé', VEH.list.map((V) => V.type));
-      ok(Features.perkMachines.length === 5 && KHF.breakers.length === 3 && Features.box.locs.length === 7, 'cinq atouts, trois disjoncteurs, sept emplacements de la boîte', { perks: Features.perkMachines.length, breakers: KHF.breakers.length, box: Features.box.locs.length });
+      ok(Features.perkMachines.length === 5 && KHF.breakers.length === 3 && Features.box.locs.length === 8, 'cinq atouts, trois disjoncteurs, huit emplacements de la boîte (le dernier dans la chambre du Roi)', { perks: Features.perkMachines.length, breakers: KHF.breakers.length, box: Features.box.locs.length });
       return out;
     })).forEach(report);
     // une image du désert (shaders compilés sans erreur)

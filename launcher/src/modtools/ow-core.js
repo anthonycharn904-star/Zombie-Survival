@@ -424,6 +424,11 @@
     if (e.r !== undefined) { e.r = round(wrapRad(e.r), 4); if (Math.abs(e.r) < 1e-4) delete e.r; }
     if (e.s !== undefined) { const s = ZS.normPropScale ? ZS.normPropScale(e.s) : e.s; if (s === undefined) delete e.s; else e.s = s; }
     if (e.hide !== true) delete e.hide;
+    // interface 8 : prix d'une porte payante (herse d'une pyramide) ; celui d'origine ne s'écrit pas
+    if (e.cost !== undefined) {
+      const c = Math.round(Number(e.cost));
+      if (!Number.isFinite(c) || !d.door || c === d.door.cost) delete e.cost; else e.cost = clamp(c, 0, 1000000);
+    }
     if (e.m !== undefined) {
       const mo = {};
       for (const [tex, q] of Object.entries(e.m && typeof e.m === 'object' ? e.m : {})) {

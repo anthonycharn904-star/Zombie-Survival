@@ -103,8 +103,8 @@ async function run(userData) {
       const D = ZS.ow.placeItems(), P = D.filter((d) => !d.surf);
       return { api: ZS.editorApi, ok: MT.ow.placeOk() && MT.ow.surfOk(), n: P.length, surf: D.length - P.length, locked: D.filter((d) => d.locked).length, kids: P.filter((d) => d.parent >= 0).length, groups: ZS.ow.placeRoot ? ZS.ow.placeRoot.children.length : 0, edits: Object.keys(MT.state.map.placeEdits || {}).length, level: MT.ow.placeLevel() };
     });
-    ok(k0.api >= 7 && k0.ok && k0.n === 164 && k0.surf === 873 && k0.locked === 0 && k0.kids === 26 && k0.groups === 164 && k0.edits === 0 && k0.level === 'piece',
-      `Khamsin : 164 pièces de décor (aucune fixe, 26 posées dans une autre, 873 surfaces), un groupe chacune dans la vue 3D ; un clic choisit une pièce ${JSON.stringify(k0)}`);
+    ok(k0.api >= 8 && k0.ok && k0.n === 204 && k0.surf === 1167 && k0.locked === 0 && k0.kids === 63 && k0.groups === 204 && k0.edits === 0 && k0.level === 'piece',
+      `Khamsin : 204 pièces de décor (pyramides comprises ; aucune fixe, 63 posées dans une autre, 1 167 surfaces), un groupe chacune dans la vue 3D ; un clic choisit une pièce ${JSON.stringify(k0)}`);
     const ti = await idx(TENT);
     // 1. un clic dans le plan sur la petite tente : elle est sélectionnée, l'inspecteur la montre
     await mt.evaluate(() => { MT.setTool('select'); MT.ui.setView('split'); MT.ui.setTab('sel'); });
@@ -247,7 +247,7 @@ async function run(userData) {
       const pieceOf = (k) => (k >= 0 && D[k].surf ? D[k].parent : k);
       return { n: D.filter((q) => !q.surf).length, own: pieceOf(ZS.ow.placeAt(2290, 1992.5 - 2.5 + 0.5)), old: ZS.ow.placeAt(2262.5, 1992.5), i: d && d.i, wall: ZS.ow.height(2287.6, 1995.4) - ZS.ow.ground(2287.6, 1995.4) };
     });
-    ok(g10.n === 164 && g10.own === g10.i && g10.old === -1, `partie de test : la tente retouchée est à sa nouvelle place, plus rien à l’ancienne ${JSON.stringify(g10)}`);
+    ok(g10.n === 204 && g10.own === g10.i && g10.old === -1, `partie de test : la tente retouchée est à sa nouvelle place, plus rien à l’ancienne ${JSON.stringify(g10)}`);
     await mt.evaluate(() => { if (document.pointerLockElement) document.exitPointerLock(); });
     await mt.waitForTimeout(400);
     if (await mt.evaluate(() => ZS.G.state === 'playing')) await mt.keyboard.press('Escape');
@@ -257,7 +257,7 @@ async function run(userData) {
     await until(() => ZS.G.state === 'editor' && !document.getElementById('mt').hidden && MT.v3.owLoaded && !MT.v3.worldDirty, null, 120000);
     await rebuilt();
     const back10 = await mt.evaluate(() => ({ editor: ZS.CUR.editor, groups: ZS.ow.placeRoot ? ZS.ow.placeRoot.children.length : 0, hidden: ZS.ow.placeRoot ? ZS.ow.placeRoot.children.filter((g) => !g.visible).length : -1, dirty: MT.isDirty() }));
-    ok(back10.editor && back10.groups === 164 && back10.hidden === 0 && !back10.dirty, `retour aux Mod Tools : décor de l’éditeur rechargé avec les retouches ${JSON.stringify(back10)}`);
+    ok(back10.editor && back10.groups === 204 && back10.hidden === 0 && !back10.dirty, `retour aux Mod Tools : décor de l’éditeur rechargé avec les retouches ${JSON.stringify(back10)}`);
 
     /* ================================================== Ombre éternelle */
     await mt.evaluate(() => MT.openGameMap('ombre'));

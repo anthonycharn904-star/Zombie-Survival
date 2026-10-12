@@ -67,8 +67,8 @@ async function run(userData) {
       same: JSON.stringify(MT.ow.exportObject(MT.util.deep(MT.state.map)).wallbuys) === JSON.stringify(ZS.openSerialize(ZS.MAPS_ALL.byId.khamsin).wallbuys),
       far: MT.v3.cam.far,
     }));
-    ok(open.tools === 'select,props,elements,terrain,ground,roads,buildings' && open.cls && open.levels && open.on && open.editor && open.issues === 0 && /4 × 3 km · 0 objet · 35 éléments/.test(open.st) && open.same && open.far > 3000,
-      `Khamsin ouverte dans les Mod Tools (${((Date.now() - t0) / 1000).toFixed(0)} s) : monde du jeu, 35 éléments, aucun problème ${JSON.stringify(open)}`);
+    ok(open.tools === 'select,props,elements,terrain,ground,roads,buildings' && open.cls && open.levels && open.on && open.editor && open.issues === 0 && /4 × 3 km · 0 objet · 39 éléments/.test(open.st) && open.same && open.far > 3000,
+      `Khamsin ouverte dans les Mod Tools (${((Date.now() - t0) / 1000).toFixed(0)} s) : monde du jeu, 39 éléments (dont 3 armes et 1 boîte dans les pyramides), aucun problème ${JSON.stringify(open)}`);
     const rt = await mt.evaluate(() => {
       const a = JSON.stringify({ ...ZS.openSerialize(ZS.MAPS_ALL.byId.khamsin), updated: '' });
       const b = JSON.stringify({ ...ZS.openSerialize(ZS.openNormalize(JSON.parse(JSON.stringify(ZS.openSerialize(MT.state.map))))), updated: '' });
@@ -89,7 +89,7 @@ async function run(userData) {
       const m = MT.state.map, w = m.wallbuys[m.wallbuys.length - 1];
       return { n: m.wallbuys.length, w, sel: MT.state.sel, inter: ZS.Features.interactables.filter((q) => q.kind === 'wallbuy').length, mesh: ZS.ow.objs.wallbuy.length, issues: MT.state.issues.errors.length };
     });
-    ok(ghost && ghost.ok && wb.n === 13 && wb.w.w === 'thompson' && wb.w.nz === 1 && Math.abs(wb.w.z - 1958.08) < 0.05 && wb.inter === 13 && wb.mesh === 13 && wb.sel.kind === 'wallbuy' && wb.issues === 0,
+    ok(ghost && ghost.ok && wb.n === 16 && wb.w.w === 'thompson' && wb.w.nz === 1 && Math.abs(wb.w.z - 1958.08) < 0.05 && wb.inter === 16 && wb.mesh === 16 && wb.sel.kind === 'wallbuy' && wb.issues === 0,
       `arme au mur posée au clic : sur la toile de la tente (face visible, entre deux panneaux), achetable en partie ${JSON.stringify(wb.w)}`);
 
     // 3. atout posé en 3D : clic sur le mur nord du café (relais Km 47)
@@ -174,8 +174,8 @@ async function run(userData) {
     const saved = await mt.evaluate(async () => ({ ok: await window.__save, dirty: MT.isDirty(), src: MT.state.source }));
     const file = path.join(userData, 'modtools', 'maps', 'khamsin.json');
     const fo = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-    ok(saved.ok && !saved.dirty && fo.open === true && fo.base === 'khamsin' && !fo.grid && fo.wallbuys.length === 13 && fo.perks.length === 6 && fo.props.length === 1 && fo.rules.storms === 6 && !('thumb' in fo),
-      `enregistrée dans l’atelier : carte ouverte (base khamsin, sans grille ni vignette), 13 armes, 6 atouts, 1 objet ${JSON.stringify({ saved, keys: Object.keys(fo).join() })}`);
+    ok(saved.ok && !saved.dirty && fo.open === true && fo.base === 'khamsin' && !fo.grid && fo.wallbuys.length === 16 && fo.perks.length === 6 && fo.props.length === 1 && fo.rules.storms === 6 && !('thumb' in fo) && (fo.adds || []).join() === 'pyramides',
+      `enregistrée dans l’atelier : carte ouverte (base khamsin, sans grille ni vignette), 16 armes (3 dans les pyramides), 6 atouts, 1 objet, éléments des pyramides notés ${JSON.stringify({ saved, keys: Object.keys(fo).join() })}`);
     await mt.evaluate(() => MT.savePublishSet(['bunker7', 'khamsin']));
     const pubSet = JSON.parse(fs.readFileSync(path.join(userData, 'modtools', 'publish.json'), 'utf8'));
     ok(pubSet.maps.join() === 'bunker7,khamsin' && pubSet.editor === 4, 'liste de publication (Mod Tools 1.3.1) : editor 4');
@@ -185,7 +185,7 @@ async function run(userData) {
     await mt.keyboard.press('F5');
     await until(() => ZS.G.state === 'playing', null, 90000);
     const play = await mt.evaluate(() => ({ map: ZS.G.mapId, on: ZS.ow.on, editor: ZS.CUR.editor, wb: ZS.Features.interactables.filter((q) => q.kind === 'wallbuy').length, perks: ZS.Features.perkMachines.length }));
-    ok(play.map === 'khamsin' && play.on && !play.editor && play.wb === 13 && play.perks === 6, `partie de test sur Khamsin modifiée (13 armes au mur, 6 atouts) ${JSON.stringify(play)}`);
+    ok(play.map === 'khamsin' && play.on && !play.editor && play.wb === 16 && play.perks === 6, `partie de test sur Khamsin modifiée (16 armes au mur, 6 atouts) ${JSON.stringify(play)}`);
     await mt.evaluate(() => { if (document.pointerLockElement) document.exitPointerLock(); });
     await mt.waitForTimeout(400);
     if (await mt.evaluate(() => ZS.G.state === 'playing')) await mt.keyboard.press('Escape');
@@ -193,13 +193,13 @@ async function run(userData) {
     await mt.click('#btn-quit');
     await until(() => ZS.G.state === 'editor' && !document.getElementById('mt').hidden && MT.v3.owLoaded && !MT.v3.worldDirty, null, 90000);
     const after = await mt.evaluate(() => ({ editor: ZS.CUR.editor, n: MT.state.map.wallbuys.length, objs: ZS.ow.objs.wallbuy.length, props: ZS.ow.props.children.length, dirty: MT.isDirty() }));
-    ok(after.editor && after.n === 13 && after.objs === 13 && after.props === 1 && !after.dirty, `retour aux Mod Tools : monde de l’éditeur rechargé, carte intacte ${JSON.stringify(after)}`);
+    ok(after.editor && after.n === 16 && after.objs === 16 && after.props === 1 && !after.dirty, `retour aux Mod Tools : monde de l’éditeur rechargé, carte intacte ${JSON.stringify(after)}`);
 
     // 9. copie de Khamsin (nouvelle carte), puis Bunker 7 (moteur de grille)
     await mt.evaluate(() => { const m = MT.copyOfMap(MT.gameMaps().byId.khamsin); m.id = MT.uniqueId('khamsin'); m.name = 'Khamsin bis'; MT.openMap(m, { id: m.id, source: 'new' }); });
     await until(() => MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !MT.v3.worldDirty, null, 60000);
     const cp = await mt.evaluate(() => ({ id: MT.state.id, n: MT.ow.count(), props: MT.state.map.props.length }));
-    ok(cp.id === 'khamsin-2' && cp.n === 35 && cp.props === 0, `copie de Khamsin (carte du jeu, pas celle de l’atelier) ${JSON.stringify(cp)}`);
+    ok(cp.id === 'khamsin-2' && cp.n === 39 && cp.props === 0, `copie de Khamsin (carte du jeu, pas celle de l’atelier) ${JSON.stringify(cp)}`);
     await mt.evaluate(() => MT.openGameMap('bunker7'));
     await mt.waitForTimeout(1500);
     const b7 = await mt.evaluate(() => ({ tools: MT.tools.available().map((t) => t.id).join(), cls: document.body.classList.contains('mt-open'), owOn: ZS.ow.on, far: MT.v3.cam.far, grid: !!MT.state.map.grid }));
@@ -231,7 +231,7 @@ async function run(userData) {
       await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
       await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
       const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId.khamsin; return { list: ZS.MAPS_ALL.list.join(), src: m.source, wb: m.wallbuys.length, perks: m.perks.length, props: m.props.length, storms: m.rules.storms, thumb: !!m.thumb }; });
-      ok(g.list === 'bunker7,khamsin' && g.src === 'package' && g.wb === 13 && g.perks === 6 && g.props === 1 && g.storms === 6 && g.thumb, `jeu publié : Khamsin vient du fichier des Mod Tools ${JSON.stringify(g)}`);
+      ok(g.list === 'bunker7,khamsin' && g.src === 'package' && g.wb === 16 && g.perks === 6 && g.props === 1 && g.storms === 6 && g.thumb, `jeu publié : Khamsin vient du fichier des Mod Tools ${JSON.stringify(g)}`);
     } finally { await browser.close(); server.close(); }
   } finally { await closeAll(app); }
 }

@@ -95,7 +95,7 @@ async function run(userData) {
     await until(() => MT.state.map && MT.state.map.base === 'khamsin' && MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !!MT.ow.plan.base, null, 180000);
     await rebuilt();
     const k0 = await mt.evaluate(() => ({ api: ZS.editorApi, ok: MT.ow.surfOk(), level: MT.ow.placeLevel(), n: ZS.ow.placeCount }));
-    ok(k0.api >= 7 && k0.ok && k0.level === 'piece' && k0.n.items === 164 && k0.n.prims === 873, `moteur à l’interface 7 : 164 pièces et 873 surfaces ; un clic choisit d’abord une pièce ${JSON.stringify(k0)}`);
+    ok(k0.api >= 8 && k0.ok && k0.level === 'piece' && k0.n.items === 204 && k0.n.prims === 1167, `moteur à l’interface 8 : 204 pièces et 1 167 surfaces (pyramides comprises) ; un clic choisit d’abord une pièce ${JSON.stringify(k0)}`);
     // 1. « Un clic choisit : Surface » (outil Sélection) ; la 3D vise le pan ouest de la tente de couchage
     await mt.evaluate(() => { MT.setTool('select'); MT.select(null); MT.ui.setView('split'); MT.ui.setTab('tool'); });
     await render();
