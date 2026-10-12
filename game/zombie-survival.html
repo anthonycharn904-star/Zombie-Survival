@@ -33274,9 +33274,9 @@ function khPyrDecor(K, d) {
     K.item('caisse', 'Caisse', X(-7), Y(4.3), Z(-9), (K) => owCrate(K, X(-7), Y(4.3), Z(-9), 0.8));
     // caveau : sarcophage de basalte à panneaux
     K.item('sarcophage', 'Sarcophage de Mykérinos', X(-19.3), Y(0.3), Z(9), (K) => {
-      K.group('Cuve', () => khTrough(K, 'kh_basalt', 0xd8d0c8, X(-20.5), Z(8.4), X(-18.1), Z(9.6), Y(0.3), 1.0, 0.15));
+      K.group('Cuve', () => khTrough(K, 'kh_rock', 0x7a7470, X(-20.5), Z(8.4), X(-18.1), Z(9.6), Y(0.3), 1.0, 0.15));
       K.group('Panneaux de la cuve', () => {
-        for (let x = -20.35; x < -18.2; x += 0.42) for (const s of [-1, 1]) K.box('kh_basalt', 0xc8c0b8, X(x), Y(0.42), Z(9) + s * 0.6 - (s > 0 ? 0 : 0.05), X(x + 0.16), Y(1.18), Z(9) + s * 0.6 + (s > 0 ? 0.05 : 0));
+        for (let x = -20.35; x < -18.2; x += 0.42) for (const s of [-1, 1]) K.box('kh_rock', 0x5c5754, X(x), Y(0.42), Z(9) + s * 0.6 - (s > 0 ? 0 : 0.05), X(x + 0.16), Y(1.18), Z(9) + s * 0.6 + (s > 0 ? 0.05 : 0));
       });
       K.solid(X(-20.5), Z(8.4), X(-18.1), Z(9.6), OWK.LOW, { base: Y(0.3), top: Y(1.3), mat: OWM.STONE });
     }, { logic: 'Décor : un obstacle bas (on tire par-dessus).' });
