@@ -12,7 +12,7 @@
   const O = MT.ow;
 
   const BASE_TOOLS = [
-    { id: 'select', name: 'Sélection', key: 'KeyV', label: 'V', hint: 'Clic : sélectionner · glisser : déplacer · Maj+clic : ajouter des objets · Suppr : supprimer · R : tourner' },
+    { id: 'select', name: 'Sélection', key: 'KeyV', label: 'V', hint: 'Clic : sélectionner (éléments, objets, décor de la base) · glisser : déplacer · Maj+clic : ajouter des objets · Suppr : supprimer · R : tourner' },
     { id: 'props', name: 'Objets', key: 'KeyO', label: 'O', hint: 'Clic : poser · R : tourner · Alt+clic : pipette · Échap : sélection' },
     { id: 'elements', name: 'Éléments de jeu', key: 'KeyG', label: 'G', hint: 'Clic : poser · clic droit : retirer · R : tourner · 1 à 8 : genre' },
   ];
@@ -34,7 +34,7 @@
     const m = S.map;
     if (!m || !p) return null;
     if (p.view === '3d') {
-      if (p.el && O.get(p.el)) return { ...p.el };
+      if (p.el && (p.el.kind !== 'place' || S.opts.ow.placePick) && O.get(p.el)) return { ...p.el };
       if (typeof p.prop === 'number' && m.props[p.prop]) return { kind: 'prop', i: p.prop };
       if (p.mt) return { ...p.mt };
       const t = O.terrain ? O.terrain.hitTest(p) : null;
@@ -67,7 +67,8 @@
       if (area < bestArea) { bi = i; bestArea = area; }
     }
     if (bi >= 0) return { kind: 'prop', i: bi };
-    return O.terrain ? O.terrain.hitTest(p) : null;
+    // bâtiments, routes et lieux de la carte, puis le décor des lieux de la base (jeu 2.0.3)
+    return (O.terrain ? O.terrain.hitTest(p) : null) || O.placeHit(p.wx, p.wz, 3 / Z);
   };
 
   /* ------------------------------------------------------- Sélection -- */
@@ -79,7 +80,7 @@
       return;
     }
     const e = O.get(sel);
-    if (!e || sel.kind === 'road') return;
+    if (!e || sel.kind === 'road' || (sel.kind === 'place' && e.locked)) return;      // pièce fixe du décor : sélectionnée seulement
     MT.begin('Déplacer');
     MT.tools.drag = { mode: 'ow-el', sel: { ...sel }, start: [p.wx, p.wz], orig: O.posOf(sel.kind, e), moved: false, before: sel.kind === 'building' ? O.terrainRect('building', { ...e }) : null };
   }
@@ -211,15 +212,16 @@
   const elements = {
     down(p, ev) {
       const kind = S.opts.ow.kind;
+      // (le décor de la base ne compte pas ici : on pose dedans, sur ses murs, sur ses sols)
       if (ev.button === 2) {
         const hit = O.hitTest(p);
-        if (hit && hit.kind !== 'prop' && hit.kind !== 'spawn') O.remove(hit.kind, hit.i);
+        if (hit && hit.kind !== 'prop' && hit.kind !== 'spawn' && hit.kind !== 'place') O.remove(hit.kind, hit.i);
         return true;
       }
       if (ev.button !== 0) return false;
       // un élément déjà posé sous le curseur : on le sélectionne (et on peut le glisser)
       const hit = O.hitTest(p);
-      if (hit && hit.kind !== 'prop') { MT.select(hit); startMove(hit, p); return true; }
+      if (hit && hit.kind !== 'prop' && hit.kind !== 'place') { MT.select(hit); startMove(hit, p); return true; }
       O.add(kind, p.wx, p.wz);
       return true;
     },

@@ -287,6 +287,16 @@
     if (!s || s.kind === 'prop') return;
     const e = O.get(s);
     if (!e) return;
+    if (s.kind === 'place') {
+      // pièce du décor de la base (jeu 2.0.3) : son empreinte au sol ; ce qu'elle porte, en plus fin
+      const Z = P.cam.zoom, out = (q, lw, dash) => { if (!q || q.hidden || !q.foot) return; g.setLineDash(dash); poly(g, q.foot.map(([x, z]) => P.toScreen(x, z)), q === e ? 'rgba(255,210,122,0.12)' : null, '#ffd27a', lw); g.setLineDash([]); };
+      for (const k of e.kids || []) out(O.get({ kind: 'place', i: k }), 1, [3, 3]);
+      out(e, 2.5, [6, 4]);
+      const [sx, sy] = P.toScreen(e.x, e.z);
+      marker(g, sx, sy, Math.max(3, Math.min(6, 0.3 * Z)), e.locked ? '#9a8f7a' : '#ffd27a', '#1b1408');
+      if (Z >= 2) text(g, e.locked ? `${e.name} · fixe` : e.name, sx, sy - 14, { size: 11, color: '#ffe7b0' });
+      return;
+    }
     const [x, z] = O.posOf(s.kind, e);
     const [sx, sy] = P.toScreen(x, z);
     const r = s.kind === 'vehicle' ? Math.max(14, ((ZS.VEH_TYPES[e.type] || { len: 4 }).len / 2 + 0.6) * P.cam.zoom) : Math.max(11, 1.4 * P.cam.zoom);

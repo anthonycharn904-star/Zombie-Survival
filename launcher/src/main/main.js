@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
-const { Updater, UpdateError, compareVersions, parseVersion } = require('./updater');
+const { Updater, UpdateError, compareVersions, parseVersion, editorApiOf } = require('./updater');
 const publisher = require('./publisher');
 const github = require('./github');
 const { readGameVersion } = require('./gamepack');
@@ -378,12 +378,6 @@ function authorMode(refresh = false) {
   authorOk = ok;
   if (status.author !== ok) setStatus({ author: ok });
   return ok;
-}
-function editorApiOf(dir) {
-  try {
-    const m = /const EDITOR_API = (\d+);/.exec(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'));
-    return m ? parseInt(m[1], 10) : 0;
-  } catch (e) { return 0; }
 }
 /* Jeu servi aux Mod Tools : la version la plus récente (installée ou livrée) qui contient l'éditeur ;
    à numéro égal, celle dont l'interface de l'éditeur est la plus récente (le jeu 2.0.0 a reçu la Lune

@@ -171,7 +171,7 @@
   /* Cotes d'un objet : largeur, hauteur, profondeur (mètres) = boîte du modèle (dims) × facteurs.
      get() : facteurs actuels ; set(f, live) : nouveaux facteurs (live : aperçu pendant la saisie).
      Cadenas : les trois suivent (proportions gardées). Échelle : les trois au même facteur. */
-  function sizeFields(dims, get, set, { resetLabel = 'Taille d’origine' } = {}) {
+  function sizeFields(dims, get, set, { resetLabel = 'Taille d’origine', note = null } = {}) {
     const [a, b] = PROP_RULE();
     const f0 = get();
     let start = null, uni = null;
@@ -209,7 +209,7 @@
       h('div', { class: 'f-inline size-actions' },
         check({ checked: UI.sizeLock, label: 'Garder les proportions', onChange: (v) => { UI.sizeLock = v; } }),
         btn(resetLabel, () => apply([1, 1, 1], false), { ic: 'rotate', title: 'Largeur, hauteur et profondeur du modèle' })),
-      h('p', { class: 'p-note' }, `Modèle : ${decFr(dims[0])} × ${decFr(dims[1])} × ${decFr(dims[2])} m (largeur × hauteur × profondeur). La collision suit la taille.`),
+      h('p', { class: 'p-note' }, note || `Modèle : ${decFr(dims[0])} × ${decFr(dims[1])} × ${decFr(dims[2])} m (largeur × hauteur × profondeur). La collision suit la taille.`),
     ];
   }
   /* Taille d'un élément de jeu (facteur k, de 0,4 à 3) ; apply(k) ; note : ce qui la limite. */
@@ -678,10 +678,9 @@
     const scroll = panel.scrollTop;
     panel.textContent = '';
     if (!S.map) { panel.append(h('p', { class: 'p-empty' }, 'Aucune carte ouverte.')); return; }
-    if (UI.tab === 'tool') panel.append(...toolPanel());
-    else if (UI.tab === 'sel') panel.append(...inspector());
-    else if (UI.tab === 'map') panel.append(...mapPanel());
-    else panel.append(...issuesPanel());
+    // (les sections absentes valent null : rien à ajouter)
+    const parts = UI.tab === 'tool' ? toolPanel() : UI.tab === 'sel' ? inspector() : UI.tab === 'map' ? mapPanel() : issuesPanel();
+    panel.append(...parts.filter((x) => x !== null && x !== undefined && x !== false));
     panel.scrollTop = scroll;
     if (UI.tab === 'issues') refreshIssues();
   }
@@ -1719,8 +1718,9 @@
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
       ['Tailles', 'objet : onglet Sélection → Taille (largeur, hauteur, profondeur en mètres ; « Garder les proportions » ; « Taille d’origine ») ou outil Objets → Taille à la pose · texture : outil Textures → Taille sur cette carte (toute la carte), « Créer une variante… » pour une autre taille au même endroit · éléments de jeu : Taille ×0,4 à ×3 dans leur inspecteur · bâtiments des cartes ouvertes : Cotes (largeur, profondeur, hauteur des murs)'],
       ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
-      ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, effacer ; clic droit dans le plan : l’inverse ; Échap : annuler le coup) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · les sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
-      ['Carte ouverte (la Lune)', 'Ombre éternelle et Lune vierge (1,4 × 1,4 km, 1/6 g, sans air) · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 disjoncteur · 6 poste d’oxygène · 7 Le Glas, un seul · 8 lieu nommé) · T relief · P sol (régolithe, éjectas, roche, glace…) · B bâtiments lunaires (module, hangar, abri, réservoir, conteneur, panneaux solaires) · pas de routes ni de véhicules · la fosse, ses rampes et les lieux d’Ombre éternelle restent fixes · nouvelle carte « Lune vierge » : la Lune sans les lieux'],
+      ['Décor de la base', 'outil Sélection : clic sur une tente, une caisse, un fût, un lampadaire, une maison, un mastaba… (plan ou 3D) · glisser : déplacer · R : tourner (Maj : 90°) · Page haut/bas : hauteur · Taille dans l’inspecteur · Suppr : retirer · ce qui est posé dedans suit · « Rétablir l’origine » ; les pièces retirées se remettent depuis la liste « Décor de la base » (outil Sélection, rien de sélectionné) · les pièces liées à la quête restent fixes'],
+      ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, effacer ; clic droit dans le plan : l’inverse ; Échap : annuler le coup) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · le relief des sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
+      ['Carte ouverte (la Lune)', 'Ombre éternelle et Lune vierge (1,4 × 1,4 km, 1/6 g, sans air) · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 disjoncteur · 6 poste d’oxygène · 7 Le Glas, un seul · 8 lieu nommé) · T relief · P sol (régolithe, éjectas, roche, glace…) · B bâtiments lunaires (module, hangar, abri, réservoir, conteneur, panneaux solaires) · pas de routes ni de véhicules · la fosse, ses rampes et les lieux liés à la quête d’Ombre éternelle restent fixes (mâts, abri, poste électrique, balises, foreuse et lampadaires se retouchent) · nouvelle carte « Lune vierge » : la Lune sans les lieux'],
     ];
     UI.modal({
       title: 'Aide des Mod Tools', wide: true,

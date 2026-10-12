@@ -81,6 +81,12 @@
       try { ZS.ow.reapply(S.map, W3.prevMods); } catch (e) { console.error(e); }
       W3.prevMods = modsOf(S.map);
     }
+    if (kind === 'ow-live' && detail && detail.kind === 'place') {
+      // décor de la base (jeu 2.0.3) : les pièces suivent pendant le glisser ; leurs cases au relâcher
+      try { ZS.ow.placePose(S.map); } catch (e) { console.error(e); }
+      v.selDirty = true;
+      return;
+    }
     if (kind === 'ow-live' && detail) {
       const e = O.get(detail);
       if (e) {
@@ -147,14 +153,21 @@
     v.int.setRay(e);
     const R = v.int.ray, o = R.ray.origin, d = R.ray.direction;
     let best = null;
-    if (ZS.ow.on) {
-      const w = ZS.ow.ray(o.x, o.y, o.z, d.x, d.y, d.z, 4500);
-      if (w.hit) best = { t: w.t, x: w.x, y: w.y, z: w.z, n: [w.nx, w.ny, w.nz] };
-    }
     // pendant un glisser, seul le monde compte (l'objet déplacé ne doit pas se viser lui-même)
     const d0 = MT.tools.drag, dragging = !!(d0 && /^ow-(el|props)$/.test(d0.mode));
+    const decor = !dragging && S.opts.ow.placePick && O.placeOk() && !!ZS.ow.placeRoot;
+    if (ZS.ow.on) {
+      const w = ZS.ow.ray(o.x, o.y, o.z, d.x, d.y, d.z, 4500);
+      if (w.hit) {
+        best = { t: w.t, x: w.x, y: w.y, z: w.z, n: [w.nx, w.ny, w.nz] };
+        // décor de la base (jeu 2.0.3) : la case touchée appartient à une pièce (mur de tente, sol de maison…)
+        const pi = decor ? ZS.ow.placeAt(w.x + d.x * 0.05, w.z + d.z * 0.05) : -1;
+        if (pi >= 0) best.el = { kind: 'place', i: pi };
+      }
+    }
     const targets = dragging ? [] : [v.helpers];
     if (ZS.ow.root && !dragging) targets.push(ZS.ow.root);
+    if (decor) targets.push(ZS.ow.placeRoot);
     const hits = targets.length ? R.intersectObjects(targets, true) : [];
     for (const h of hits) {
       if (best && h.distance > best.t + 0.25) break;
@@ -276,6 +289,12 @@
     }
     const e = O.get(s);
     if (!e) return out;
+    if (s.kind === 'place') {
+      // la pièce (et, plus clair, ce qu'elle porte)
+      if (!e.hidden) fromObj(ZS.ow.placeObj(s.i));
+      for (const k of e.kids || []) { const q = O.get({ kind: 'place', i: k }); if (q && !q.hidden) { const b = new THREE.Box3().setFromObject(ZS.ow.placeObj(k)); if (!b.isEmpty()) out.push(b.expandByScalar(0.03)); } }
+      return out;
+    }
     if (s.kind === 'box' && !(ZS.ow.box && s.i === m.boxStart)) {
       const y = Number.isFinite(e.y) ? e.y : groundY(e.x, e.z), hx = e.face[0] ? 0.4 : 0.8, hz = e.face[0] ? 0.8 : 0.4;
       out.push(new THREE.Box3(new THREE.Vector3(e.x - hx, y, e.z - hz), new THREE.Vector3(e.x + hx, y + 0.85, e.z + hz)));

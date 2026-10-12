@@ -225,6 +225,13 @@ async function extractZip(zipPath, destDir, { maxBytes = 512 * 1024 * 1024, maxE
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; }
 }
+/* Interface de l'éditeur d'un jeu (« const EDITOR_API = n » dans son index.html) ; 0 sans éditeur. */
+function editorApiOf(dir) {
+  try {
+    const m = /const EDITOR_API = (\d+);/.exec(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'));
+    return m ? parseInt(m[1], 10) : 0;
+  } catch (e) { return 0; }
+}
 
 class Updater {
   constructor({ dataDir, bundledDir, updateUrl, publicKey, fetchImpl, log, timeoutMs = 15000 }) {
@@ -270,16 +277,20 @@ class Updater {
     return info;
   }
 
-  /* Premier lancement : installe la version livrée avec le launcher. */
+  /* Premier lancement : installe la version livrée avec le launcher. À numéro égal, la version livrée
+     remplace l'installée quand l'interface de son éditeur est plus récente : un jeu reconstruit sans
+     changer de numéro (2.0.0 et la Lune ; 2.0.3 et le décor des lieux, launcher 1.3.2). */
   async ensureBundled() {
     const b = this.bundledInfo();
     const inst = this.getInstalled();
-    if (b && (!inst || compareVersions(b.version, inst.version) > 0)) {
+    const cmp = b && inst ? compareVersions(b.version, inst.version) : 0;
+    const rebuilt = !!(b && inst && cmp === 0 && editorApiOf(this.bundledDir) > editorApiOf(inst.dir));
+    if (b && (!inst || cmp > 0 || rebuilt)) {
       await fsp.mkdir(this.versionsDir, { recursive: true });
       const tmp = path.join(this.versionsDir, `.${b.version}-bundle-${Date.now()}`);
       await fsp.cp(this.bundledDir, tmp, { recursive: true });
       await this.activate(tmp, b.version);
-      this.log(`Version livrée installée : ${b.version}`);
+      this.log(rebuilt ? `Version livrée réinstallée : ${b.version} (éditeur ${editorApiOf(this.bundledDir)} au lieu de ${editorApiOf(this.versionDir(b.version)) || 'plus ancien'})` : `Version livrée installée : ${b.version}`);
     }
     return this.getInstalled();
   }
@@ -379,4 +390,4 @@ class Updater {
   }
 }
 
-module.exports = { Updater, UpdateError, verifyManifest, compareVersions, parseVersion, downloadFile, extractZip };
+module.exports = { Updater, UpdateError, verifyManifest, compareVersions, parseVersion, downloadFile, extractZip, editorApiOf };

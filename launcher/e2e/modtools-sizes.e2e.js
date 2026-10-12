@@ -81,7 +81,7 @@ async function run(userData) {
     await until(() => MT.state.map && MT.state.map.id === 'bunker7', null);
     await rebuilt();
     const api = await mt.evaluate(() => ({ api: ZS.editorApi, v: ZS.version, sizes: MT.sizesOk(), tex: MT.texOk(), rules: ZS.SIZE_RULES }));
-    ok(api.api === 5 && api.sizes && api.tex && api.rules.prop.join() === '0.02,50' && api.rules.elem.join() === '0.4,3', `moteur 2.0.3, interface 5 : tailles disponibles ${JSON.stringify(api)}`);
+    ok(api.api >= 5 && api.sizes && api.tex && api.rules.prop.join() === '0.02,50' && api.rules.elem.join() === '0.4,3', `moteur 2.0.3, interface 5 ou plus (6 : décor des lieux) : tailles disponibles ${JSON.stringify(api)}`);
     // coordonnées de texture du sol (maillages du niveau avec le matériau de bunker_floor)
     const uvSpan = () => mt.evaluate(() => {
       const mat = levelMaterial('bunker_floor');

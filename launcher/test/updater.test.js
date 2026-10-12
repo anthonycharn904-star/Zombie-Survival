@@ -51,3 +51,39 @@ test('manifeste signé mais incomplet : refusé', () => {
   bad.game.sha256 = 'pas-une-empreinte';
   assert.throws(() => verifyManifest(JSON.stringify(signManifest(bad, privatePem)), publicPem), { code: 'MANIFEST_INVALID' });
 });
+
+test('version livrée : installée au premier lancement, réinstallée à numéro égal si son éditeur est plus récent', async () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Updater } = require('../src/main/updater');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zs-upd-bundle-'));
+  const game = (dir, version, api, mark) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'game.json'), JSON.stringify({ version }));
+    fs.writeFileSync(path.join(dir, 'index.html'), `<script>const EDITOR_API = ${api};                       // ${mark}</script>`);
+  };
+  try {
+    const bundle = path.join(tmp, 'bundle'), data = path.join(tmp, 'data');
+    const u = new Updater({ dataDir: data, bundledDir: bundle, updateUrl: '', publicKey: '' });
+    const html = () => fs.readFileSync(path.join(u.getInstalled().dir, 'index.html'), 'utf8');
+    // premier lancement : la version livrée (2.0.3, éditeur 5)
+    game(bundle, '2.0.3', 5, 'premier');
+    assert.equal((await u.ensureBundled()).version, '2.0.3');
+    assert.match(html(), /premier/);
+    // même numéro, même éditeur : rien ne change
+    game(bundle, '2.0.3', 5, 'pareil');
+    await u.ensureBundled();
+    assert.match(html(), /premier/);
+    // même numéro, éditeur plus récent (jeu reconstruit) : réinstallée
+    game(bundle, '2.0.3', 6, 'reconstruit');
+    await u.ensureBundled();
+    assert.match(html(), /reconstruit/);
+    assert.equal(u.getInstalled().version, '2.0.3');
+    // version installée plus récente (mise à jour en ligne) : la version livrée ne la remplace pas
+    game(u.versionDir('2.0.4'), '2.0.4', 6, 'en ligne');
+    await u.writeState({ current: '2.0.4', previous: '2.0.3' });
+    game(bundle, '2.0.3', 9, 'ancienne');
+    await u.ensureBundled();
+    assert.equal(u.getInstalled().version, '2.0.4');
+    assert.match(html(), /en ligne/);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});

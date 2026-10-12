@@ -7,7 +7,8 @@
    disjoncteurs, objets de la bibliothèque, règles. Le moteur expose ZS.ow
    (interface 3) : monde sans partie, place d'un élément, plan, vérification.
    Ce fichier : éléments (liste, création, déplacement, rotation, suppression),
-   sélection, fichier enregistré.
+   sélection, fichier enregistré ; décor des lieux de la base (jeu 2.0.3,
+   interface 6 : tentes, caisses, lampadaires, maisons… retouchés par la carte).
    ========================================================================= */
 (() => {
   const MT = window.MT, ZS = window.ZS;
@@ -25,13 +26,15 @@
   };
   O.moon = (m = S.map) => O.world(m) === 'lune';
   O.okMoon = () => (ZS.editorApi || 1) >= 4 && !!ZS.ow && !!ZS.ow.BASES && !!ZS.ow.BASES.lune;
+  /* Décor des lieux de la base sélectionnable et retouchable (jeu 2.0.3, interface 6). */
+  O.placeOk = () => (ZS.editorApi || 1) >= 6 && !!ZS.ow && typeof ZS.ow.placeItems === 'function';
 
   /* --------------------------------------------------------- éléments -- */
   O.KINDS = ['spawn', 'wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker', 'oxy', 'glas', 'loc'];
-  O.LABEL = { spawn: 'Départ du joueur', wallbuy: 'Arme au mur', perk: 'Atout', box: 'Boîte mystère', vehicle: 'Véhicule', fuel: 'Jerricans', breaker: 'Disjoncteur', oxy: 'Poste d’oxygène', glas: 'Le Glas', prop: 'Objet', loc: 'Lieu nommé', road: 'Route', building: 'Bâtiment' };
-  O.PLURAL = { wallbuy: 'Armes au mur', perk: 'Atouts', box: 'Emplacements de la boîte', vehicle: 'Véhicules', fuel: 'Jerricans', breaker: 'Disjoncteurs', oxy: 'Postes d’oxygène', glas: 'Le Glas', prop: 'Objets', loc: 'Lieux nommés', road: 'Routes et pistes', building: 'Bâtiments' };
+  O.LABEL = { spawn: 'Départ du joueur', wallbuy: 'Arme au mur', perk: 'Atout', box: 'Boîte mystère', vehicle: 'Véhicule', fuel: 'Jerricans', breaker: 'Disjoncteur', oxy: 'Poste d’oxygène', glas: 'Le Glas', prop: 'Objet', loc: 'Lieu nommé', road: 'Route', building: 'Bâtiment', place: 'Décor de la base' };
+  O.PLURAL = { wallbuy: 'Armes au mur', perk: 'Atouts', box: 'Emplacements de la boîte', vehicle: 'Véhicules', fuel: 'Jerricans', breaker: 'Disjoncteurs', oxy: 'Postes d’oxygène', glas: 'Le Glas', prop: 'Objets', loc: 'Lieux nommés', road: 'Routes et pistes', building: 'Bâtiments', place: 'Décor de la base' };
   O.LIST = { wallbuy: 'wallbuys', perk: 'perks', box: 'boxes', vehicle: 'vehicles', fuel: 'fuel', breaker: 'breakers', oxy: 'oxy', prop: 'props', loc: 'locs', road: 'roads', building: 'buildings' };
-  O.COLOR = { spawn: '#2fa84a', wallbuy: '#f0ecdc', perk: '#b3231f', box: '#2f6fc8', vehicle: '#8d9a52', fuel: '#e07a24', breaker: '#e8c22a', oxy: '#5fd8a8', glas: '#d9a441', prop: '#a5804c', loc: '#ffe7b0', road: '#3a3430', building: '#c8b08a' };
+  O.COLOR = { spawn: '#2fa84a', wallbuy: '#f0ecdc', perk: '#b3231f', box: '#2f6fc8', vehicle: '#8d9a52', fuel: '#e07a24', breaker: '#e8c22a', oxy: '#5fd8a8', glas: '#d9a441', prop: '#a5804c', loc: '#ffe7b0', road: '#3a3430', building: '#c8b08a', place: '#d6b46a' };
   /* Niveau 2 (relief, sol, routes, bâtiments, lieux) : demande le moteur du jeu 2.0.0 complet. */
   O.ok2 = () => O.ok() && typeof ZS.ow.sculpt === 'function';
   /* Ce qui change le terrain (routes, bâtiments) : la zone à refaire. */
@@ -60,6 +63,7 @@
   O.get = (sel, m = S.map) => {
     if (!sel || !m) return null;
     if (sel.kind === 'spawn') return m.spawn;
+    if (sel.kind === 'place') return O.placeView(sel.i, m);
     if (sel.kind === 'glas') return m.glas || null;
     const a = O.arr(sel.kind, m);
     return a ? a[sel.i] || null : null;
@@ -95,6 +99,7 @@
       case 'glas': return 'Le Glas';
       case 'road': return `${e.kind === 'road' ? 'Route' : 'Piste'} n° ${i + 1}`;
       case 'building': return (ZS.ow.BUILDINGS[e.type] || { name: e.type }).name;
+      case 'place': return e.name;
       default: return '';
     }
   };
@@ -180,6 +185,13 @@
   O.remove = (kind, i) => {
     const m = S.map;
     if (!m || kind === 'spawn') return false;
+    if (kind === 'place') {
+      const d = O.placeDesc()[i];
+      if (!d) return false;
+      const ok = O.placeEdit(i, `Retirer : ${d.name.toLowerCase()}`, (e) => { e.hide = true; });
+      if (ok && S.sel && S.sel.kind === 'place') MT.select(null);
+      return !!ok;
+    }
     if (kind === 'glas') {
       if (!m.glas) return false;
       MT.edit('Retirer : Le Glas', (mm) => { mm.glas = null; }, 'ow-el');
@@ -214,6 +226,16 @@
       return r;
     }
     if (kind === 'loc') { e.x = round(clamp(x, 0, m.w), 1); e.z = round(clamp(z, 0, m.h), 1); MT.touch('settings', { kind, i: sel.i, live }); return { ok: true }; }
+    if (kind === 'place') {
+      // pièce du décor : sa retouche s'écrit dans le repère d'origine de ce qui la porte (tente, maison…)
+      if (e.locked) return { ok: false, why: `Fixe : ${e.locked}` };
+      const [lx, lz] = ZS.ow.placeLocal(sel.i, clamp(x, 1, m.w - 1), clamp(z, 1, m.h - 1), m);
+      const E = m.placeEdits || (m.placeEdits = {}), ne = { ...(E[e.id] || {}), x: round(lx, 3), z: round(lz, 3) };
+      O.placeClean(ne, e);
+      if (Object.keys(ne).length) E[e.id] = ne; else delete E[e.id];
+      MT.touch(live ? 'ow-live' : 'ow-el', { kind, i: sel.i, live });
+      return { ok: true };
+    }
     if (kind === 'road') return { ok: false };
     const face = kind === 'perk' || kind === 'box' || kind === 'oxy' || kind === 'glas' ? e.face : kind === 'breaker' ? [e.nx, e.nz] : null;
     const r = O.place(kind, x, z, face, e.k || 1);
@@ -238,6 +260,7 @@
     if (!s || !m) return;
     let ok = true;
     if (s.kind === 'prop') { s.list = s.list.filter((i) => i < m.props.length); ok = s.list.length > 0; }
+    else if (s.kind === 'place') { const e = O.get(s); ok = !!e && !e.hidden; }
     else if (s.kind !== 'spawn') ok = !!O.get(s);
     if (!ok) { S.sel = null; MT.emit('selection'); }
   };
@@ -255,6 +278,7 @@
   O.duplicateSelection = () => {
     const s = S.sel;
     if (!s) return false;
+    if (s.kind === 'place') { MT.toast('Le décor de la base ne se duplique pas : posez un objet de la bibliothèque (outil Objets) ou un bâtiment (outil Bâtiments).', 'info'); return false; }
     if (s.kind === 'prop') {
       return MT.edit('Dupliquer', (m) => {
         const start = m.props.length;
@@ -297,6 +321,7 @@
     if (s.kind === 'prop') { MT.tools.rotateProps(dir, big); return; }
     const e = O.get(s);
     if (!e) return;
+    if (s.kind === 'place') { O.placeEdit(s.i, 'Tourner', (x) => { x.r = (x.r || 0) + rad(big ? 90 : 15) * dir; }); return; }
     MT.edit('Tourner', (mm) => {
       const x = O.get(s, mm);
       if (s.kind === 'perk' || s.kind === 'box' || s.kind === 'oxy' || s.kind === 'glas') x.face = O.turnFace(x.face, dir);
@@ -332,8 +357,89 @@
   };
   O.raise = (dy) => {
     const s = S.sel, m = S.map;
+    if (s && m && s.kind === 'place') { O.placeEdit(s.i, 'Hauteur', (x) => { x.dy = round(clamp((x.dy || 0) + dy, -60, 200), 3); }); return; }
     if (!s || !m || s.kind !== 'prop') return;
     MT.edit('Hauteur', () => { for (const i of s.list) { const p = m.props[i]; p.y = round(clamp((p.y || 0) + dy, -20, 60)); if (!p.y) delete p.y; } }, 'prop-move', { list: s.list });
+  };
+
+  /* ------------------------------------------- décor des lieux (jeu 2.0.3) --
+     Les pièces des lieux de la base (tentes, caisses, lampadaires, maisons, mastabas…) : le moteur
+     les liste et les pose (interface 6) ; la carte porte leurs retouches, placeEdits :
+     { id: { x, z, dy, r, s, hide } } (place du pied, hauteur ajoutée, rotation, taille, retirée).
+     Ce qui est posé dans une pièce (tables d'une tente…) la suit : sa retouche s'écrit dans le
+     repère d'origine de son parent. Sélection : { kind: 'place', i } (indice de la liste). */
+  S.opts.ow.placePick = true;
+  const PC = { st: null, rev: -1, map: null, root: null };
+  O.placeDesc = () => (O.placeOk() && ZS.ow.on ? ZS.ow.placeItems() : []);
+  /* Pose de chaque pièce d'après la carte (pied, lacet, facteurs, empreinte au sol, retirée…). */
+  O.placeState = (m = S.map) => {
+    if (!O.placeOk() || !ZS.ow.on || !m) return [];
+    if (PC.st && PC.rev === S.rev && PC.map === m && PC.root === ZS.ow.placeRoot && PC.st.length === O.placeDesc().length) return PC.st;
+    PC.st = ZS.ow.placeState(m); PC.rev = S.rev; PC.map = m; PC.root = ZS.ow.placeRoot;
+    return PC.st;
+  };
+  /* Vue d'une pièce : identité (x, y, z d'origine dans ax, ay, az), pose actuelle, retouche. */
+  O.placeView = (i, m = S.map) => {
+    const d = O.placeDesc()[i];
+    if (!d) return null;
+    const st = O.placeState(m)[i] || {};
+    return { ...d, ...st, ax: d.x, ay: d.y, az: d.z, edit: (m && m.placeEdits && m.placeEdits[d.id]) || null };
+  };
+  /* Retouche nettoyée : rien de ce qui vaut l'origine (place, hauteur, rotation, taille). */
+  O.placeClean = (e, d) => {
+    const ox = d.ax !== undefined ? d.ax : d.x, oz = d.az !== undefined ? d.az : d.z;      // pied d'origine (vue ou liste du moteur)
+    if (e.x === undefined || e.z === undefined || (Math.abs(e.x - ox) < 1e-3 && Math.abs(e.z - oz) < 1e-3)) { delete e.x; delete e.z; }
+    if (e.dy !== undefined && !(Math.abs(e.dy) >= 1e-3)) delete e.dy;
+    if (e.r !== undefined) { e.r = round(wrapRad(e.r), 4); if (Math.abs(e.r) < 1e-4) delete e.r; }
+    if (e.s !== undefined) { const s = ZS.normPropScale ? ZS.normPropScale(e.s) : e.s; if (s === undefined) delete e.s; else e.s = s; }
+    if (e.hide !== true) delete e.hide;
+    return e;
+  };
+  /* Modifie la retouche de la pièce i (fn(retouche, pièce) ; false : rien), en un geste annulable. */
+  O.placeEdit = (i, label, fn) => {
+    const d = O.placeDesc()[i];
+    if (!d || !S.map) return false;
+    if (d.locked) { MT.toast(`${d.name} reste à sa place : ${d.locked}`, 'warn'); return false; }
+    return MT.edit(label, (mm) => {
+      const E = mm.placeEdits || (mm.placeEdits = {}), e = { ...(E[d.id] || {}) };
+      if (fn(e, d) === false) return false;
+      O.placeClean(e, d);
+      if (Object.keys(e).length) E[d.id] = e; else delete E[d.id];
+      return true;
+    }, 'ow-el', { kind: 'place', i });
+  };
+  /* Remet des pièces à l'origine (sans retouche) : liste d'indices, ou toutes (null). */
+  O.placeReset = (list = null, label = 'Décor d’origine') => {
+    const D = O.placeDesc(), E = (S.map && S.map.placeEdits) || {};
+    const ids = list ? list.map((i) => D[i] && D[i].id).filter((id) => id && E[id]) : Object.keys(E);
+    if (!ids.length) return false;
+    return MT.edit(label, (mm) => { for (const id of ids) delete mm.placeEdits[id]; }, 'ow-el', { kind: 'place' });
+  };
+  /* Pièce du décor sous un point du plan (empreinte au sol, la plus petite d'abord), ou null. */
+  O.placeHit = (wx, wz, tol = 0) => {
+    if (!S.opts.ow.placePick || !O.placeOk() || !ZS.ow.on) return null;
+    const st = O.placeState(), D = O.placeDesc();
+    let best = -1, area = Infinity;
+    st.forEach((q, i) => {
+      if (q.hidden || !D[i]) return;
+      const f = q.foot;
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const [x, z] of f) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+      if (wx < x0 - tol || wx > x1 + tol || wz < z0 - tol || wz > z1 + tol) return;
+      // dans le quadrilatère (ou à tol près de son bord)
+      let inside = false;
+      for (let a = 0, b = 3; a < 4; b = a++) { const [ax, az] = f[a], [bx, bz] = f[b]; if ((az > wz) !== (bz > wz) && wx < ((bx - ax) * (wz - az)) / (bz - az) + ax) inside = !inside; }
+      if (!inside && tol > 0) {
+        for (let a = 0, b = 3; a < 4 && !inside; b = a++) {
+          const [ax, az] = f[b], ex = f[a][0] - ax, ez = f[a][1] - az, l2 = ex * ex + ez * ez || 1e-9, t = clamp(((wx - ax) * ex + (wz - az) * ez) / l2, 0, 1);
+          if (Math.hypot(wx - ax - ex * t, wz - az - ez * t) <= tol) inside = true;
+        }
+      }
+      if (!inside) return;
+      const ar = (x1 - x0) * (z1 - z0);
+      if (ar < area) { area = ar; best = i; }
+    });
+    return best >= 0 ? { kind: 'place', i: best } : null;
   };
 
   /* ---------------------------------------------------------- fichier -- */

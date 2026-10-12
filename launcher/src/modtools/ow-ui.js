@@ -27,7 +27,11 @@
     if (!s || !m) return;
     let p = null;
     if (s.kind === 'prop') { const pr = m.props[s.list[0]]; if (pr) p = { x: pr.x, z: pr.z, dist: 12 }; }
-    else { const e = O.get(s); if (e) { const [x, z] = O.posOf(s.kind, e); p = { x, z, dist: s.kind === 'vehicle' ? 16 : 9 }; } }
+    else if (s.kind === 'place') {
+      // pièce du décor : assez loin pour la voir entière (une tente, une salle des turbines…)
+      const e = O.get(s);
+      if (e && e.foot) { const d = Math.hypot(e.foot[2][0] - e.foot[0][0], e.foot[2][1] - e.foot[0][1]); p = { x: e.x, z: e.z, dist: Math.max(9, Math.min(90, d * 1.3)) }; }
+    } else { const e = O.get(s); if (e) { const [x, z] = O.posOf(s.kind, e); p = { x, z, dist: s.kind === 'vehicle' ? 16 : 9 }; } }
     if (p) MT.emit('focus', p);
   };
   const head = (title, sub, actions = []) => h('div', { class: 'p-head sel' }, h('div', null, h('h2', null, title), sub ? h('p', null, sub) : null), h('div', { class: 'p-head-actions' },
@@ -138,11 +142,12 @@
         h('div', { class: 'p-actions' },
           btn('Départ du joueur', () => { MT.select({ kind: 'spawn' }); OU.focusSel(); }, { ic: 'walk' }),
           btn(`Tous les objets (${m.props.length})`, () => { if (m.props.length) MT.select({ kind: 'prop', list: m.props.map((_, i) => i) }); }, { disabled: !m.props.length }))),
+      decorSection(),
       section('Carte ouverte',
         h('p', { class: 'p-note' }, O.moon()
-          ? `Base : ${baseName(m)}. ${m.base === 'lune' ? 'Le relief de la Lune (fosse et rampes, crête, cratères) sans les lieux d’Ombre éternelle' : 'La base Séléné, la fosse, le pont, le convoyeur, la catapulte, la crête solaire, la tour, le plateau d’extraction, le dépôt et l’anomalie, la quête de l’atterrisseur'} viennent du jeu ; la fosse${m.base === 'lune' ? '' : ' et les lieux'} restent fixes. Ici : relief (T), sol (P), bâtiments (B), éléments de jeu (G : départ, armes, atouts, boîte, disjoncteurs, postes d’oxygène, Le Glas, lieux), objets (O), règles.`
+          ? `Base : ${baseName(m)}. ${m.base === 'lune' ? 'Le relief de la Lune (fosse et rampes, crête, cratères) sans les lieux d’Ombre éternelle' : 'La base Séléné, la fosse, le pont, le convoyeur, la catapulte, la crête solaire, la tour, le plateau d’extraction, le dépôt et l’anomalie, la quête de l’atterrisseur'} viennent du jeu ; ${m.base === 'lune' ? 'la fosse reste fixe' : O.placeOk() ? 'la fosse et les lieux liés à la quête restent fixes ; le reste du décor des lieux se retouche (Sélection : cliquez un mât, l’abri, une balise…)' : 'la fosse et les lieux restent fixes'}. Ici : relief (T), sol (P), bâtiments (B), éléments de jeu (G : départ, armes, atouts, boîte, disjoncteurs, postes d’oxygène, Le Glas, lieux), objets (O), règles.`
           : O.ok2()
-            ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; les lieux, les routes d’origine et les pyramides restent fixes. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
+            ? `Base : ${baseName(m)}. ${m.base === 'desert' ? 'Le désert de Khamsin sans ses lieux (relief, Nil, oasis)' : 'Les sept lieux de Khamsin, leur sanctuaire et leur quête'} viennent du jeu ; le relief des lieux, les routes d’origine et les pyramides restent fixes${O.placeOk() && m.base !== 'desert' ? ', le décor des lieux se retouche (Sélection : cliquez une tente, une caisse, une maison…)' : ''}. Ici : relief (T), sol (P), routes (L), bâtiments (B), éléments de jeu (G), objets (O), départ et règles.`
             : `Relief, routes, bâtiments, sanctuaire et quête viennent du jeu (base : ${baseName(m)}). Vous placez ici les éléments de jeu, les objets de la bibliothèque, le départ et les règles.`),
         h('p', { class: 'p-note' }, `Plan : molette pour le zoom (de ${O.moon() ? '1,4 km' : '4 km'} à quelques mètres), double-clic pour y aller en 3D. 3D : ZQSD/WASD pour voler (Maj : très vite), molette pour avancer vers le curseur.`)),
     ];
@@ -181,9 +186,11 @@
   OU.inspector = () => {
     const s = S.sel, m = S.map;
     if (!s) {
+      // décor de la base retouché ou retiré (jeu 2.0.3) : la liste, pour remettre une pièce retirée
+      const ed = m && m.placeEdits && Object.keys(m.placeEdits).length;
       return [h('div', { class: 'p-empty' },
         h('p', null, 'Rien de sélectionné.'),
-        h('p', { class: 'p-note' }, 'Outil Sélection (V) : cliquez sur une arme, un atout, une boîte, un véhicule, un objet… dans le plan ou en 3D.'))];
+        h('p', { class: 'p-note' }, `Outil Sélection (V) : cliquez sur une arme, un atout, une boîte, un véhicule, un objet${O.placeOk() ? ', une pièce du décor (tente, caisse, maison…)' : ''}… dans le plan ou en 3D.`)), ed ? decorSection() : null];
     }
     if (s.kind === 'prop') return s.list.length > 1 ? UI.panels.propsMulti(s.list) : UI.panels.propInspector(s.list[0]);
     const e = O.get(s);
@@ -279,6 +286,7 @@
           h('p', { class: 'p-note' }, 'Glissez-le pour le déplacer (le terrain suit). Posez des armes au mur, des atouts, la boîte… dedans avec l’outil Éléments.')),
           bldDimsSection(e.type, O.bldDims(e), setDims)];
       }
+      case 'place': return placeInspector(s, e);
       case 'breaker': return [head('Disjoncteur', `${s.i + 1} sur ${m.breakers.length} · face ${FACE_NAME([e.nx, e.nz])}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         field('Nom', text({ value: e.name, maxLength: 40, onCommit: (v) => set('Nom du disjoncteur', (x) => { x.name = v.trim().slice(0, 40) || x.name; }) }), 'Affiché quand on le vise : « Maintenez F pour enclencher le disjoncteur (…) »'),
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME([e.nx, e.nz])), rotBtn())),
@@ -297,6 +305,62 @@
       default: return [];
     }
   };
+  /* ---- Décor des lieux de la base (jeu 2.0.3) : pièces retouchées ou retirées, sélection en marche ou non. */
+  function decorSection() {
+    if (!O.placeOk() || !ZS.ow.on) return null;
+    const D = O.placeDesc(), m = S.map;
+    if (!D.length) return null;                                   // désert vierge, Lune vierge : pas de lieux
+    const E = m.placeEdits || {}, edited = D.filter((d) => E[d.id]), gone = edited.filter((d) => E[d.id].hide);
+    const rows = edited.slice(0, 80).map((d) => h('div', { class: 'ow-decor-row' },
+      h('span', null, h('b', null, d.name), h('small', null, `${d.placeName || 'lieu'} · ${E[d.id].hide ? 'retirée' : 'retouchée'}`)),
+      E[d.id].hide ? null : h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Montrer', onclick: () => { MT.select({ kind: 'place', i: d.i }); OU.focusSel(); } }, UI.icon('eye')),
+      h('button', { type: 'button', class: 'mt-icon-btn sm', title: E[d.id].hide ? 'Remettre (comme à l’origine)' : 'Rétablir l’origine', onclick: () => O.placeReset([d.i], `${E[d.id].hide ? 'Remettre' : 'Rétablir'} : ${d.name.toLowerCase()}`) }, UI.icon('rotate'))));
+    return section('Décor de la base',
+      check({ checked: S.opts.ow.placePick, label: 'Sélectionnable (clic dans le plan ou en 3D)', onChange: (v) => { S.opts.ow.placePick = v; if (!v && S.sel && S.sel.kind === 'place') MT.select(null); MT.emit('tool-opts'); } }),
+      h('p', { class: 'p-note' }, `${D.length} pièces dans les lieux (tentes, caisses, fûts, lampadaires, maisons…) : ${edited.length - gone.length} retouchée${edited.length - gone.length > 1 ? 's' : ''}, ${gone.length} retirée${gone.length > 1 ? 's' : ''}. Cliquez-en une pour la déplacer, la tourner, changer sa taille ou la retirer ; celles liées à la quête restent à leur place.`),
+      rows.length ? h('div', { class: 'ow-decor-list' }, ...rows) : null,
+      edited.length > rows.length ? h('p', { class: 'p-note' }, `… et ${edited.length - rows.length} autres.`) : null,
+      edited.length ? h('div', { class: 'p-actions' }, btn('Tout le décor d’origine', () => { O.placeReset(null, 'Tout le décor d’origine'); MT.toast('Décor d’origine partout (Ctrl+Z pour annuler).', 'info'); }, { ic: 'rotate' })) : null);
+  }
+  /* Inspecteur d'une pièce du décor : place, hauteur, rotation, taille, retirer, rétablir. */
+  function placeInspector(s, e) {
+    const D = O.placeDesc(), parent = e.parent >= 0 ? D[e.parent] : null, kids = (e.kids || []).length;
+    const sub = `${e.placeName || 'Lieu de la base'}${parent ? ` · posée dans « ${parent.name} »` : ''}${kids ? ` · ${kids} pièce${kids > 1 ? 's' : ''} posée${kids > 1 ? 's' : ''} dedans` : ''}`;
+    if (e.locked) {
+      return [head(e.name, sub), section('Pièce fixe',
+        h('p', { class: 'p-note' }, e.locked),
+        h('p', { class: 'p-note' }, 'Les autres pièces du décor (tentes, caisses, lampadaires, maisons…) se déplacent, se tournent, changent de taille ou se retirent.'))];
+    }
+    const ed = e.edit || {};
+    const mut = (fn) => (mm) => {
+      const E = mm.placeEdits || (mm.placeEdits = {}), x = { ...(E[e.id] || {}) };
+      fn(x); O.placeClean(x, e);
+      if (Object.keys(x).length) E[e.id] = x; else delete E[e.id];
+    };
+    const liveSet = (label, fn) => UI.edit.live(label, 'ow-live', mut(fn), { kind: 'place', i: s.i, live: true });
+    const set = (label, fn) => O.placeEdit(s.i, label, fn);
+    const dims = [e.box[3] - e.box[0], e.box[4] - e.box[1], e.box[5] - e.box[2]].map((v) => Math.max(0, round(v, 3)));
+    const curS = () => { const x = ((S.map.placeEdits || {})[e.id] || {}); return ZS.propScale ? ZS.propScale({ s: x.s }) : [1, 1, 1]; };
+    return [
+      head(e.name, sub, [delBtn()]),
+      section('Place',
+        field('Position', h('span', { class: 'f-inline' },
+          num({ value: e.x, min: 1, max: S.map.w - 1, step: 0.25, unit: 'x', width: '82px', onCommit: (v) => moveNum(s, v, e.z) }),
+          num({ value: e.z, min: 1, max: S.map.h - 1, step: 0.25, unit: 'z', width: '82px', onCommit: (v) => moveNum(s, e.x, v) })),
+        parent ? `Suit « ${parent.name} » quand elle bouge` : 'Glissez-la dans le plan ou en 3D : elle garde sa hauteur au-dessus du terrain'),
+        field('Hauteur', num({ value: ed.dy || 0, min: -60, max: 200, step: 0.1, unit: 'm', onLive: (v) => liveSet('Hauteur', (x) => { x.dy = round(v, 3); }), onCommit: (v) => set('Hauteur', (x) => { x.dy = round(v, 3); }) }), 'Ajoutée à sa hauteur d’origine · Page haut / bas'),
+        field('Rotation', num({ value: degOf(ed.r || 0), min: -360, max: 720, step: 15, unit: '°', digits: 1, onLive: (v) => liveSet('Tourner', (x) => { x.r = rad(v); }), onCommit: (v) => set('Tourner', (x) => { x.r = rad(v); }) }), 'Par rapport à l’origine · R : +15° · Maj+R : +90°')),
+      MT.sizesOk() ? section('Taille', ...UI.f.sizeFields(dims, curS, (f, isLive) => (isLive ? liveSet : set)('Taille', (x) => { x.s = f; }),
+        { note: `À l’origine : ${decFr(dims[0])} × ${decFr(dims[1])} × ${decFr(dims[2])} m (largeur × hauteur × profondeur). Ses murs, ses sols et ses solides suivent la taille${kids ? ', et ce qui est posé dedans aussi' : ''}.` })) : null,
+      section('Pièce du décor',
+        h('div', { class: 'p-actions' },
+          btn('Rétablir l’origine', () => O.placeReset([s.i], `Rétablir : ${e.name.toLowerCase()}`), { ic: 'rotate', disabled: !e.edit }),
+          btn('Retirer', () => O.remove('place', s.i), { ic: 'trash', title: 'Suppr' })),
+        kids ? h('p', { class: 'p-note' }, 'Ce qui est posé dedans la suit : déplacé, tourné, mis à l’échelle et retiré avec elle.') : null,
+        h('p', { class: 'p-note' }, 'Les armes au mur, atouts, boîtes et autres éléments de jeu posés contre elle ne la suivent pas : déplacez-les aussi (la vérification signale une arme restée sans mur).'),
+        h('p', { class: 'p-note' }, `Identifiant : ${e.id}${e.edit ? ' · retouchée par cette carte' : ' · d’origine'}`)),
+    ];
+  }
   /* Atout : taille obtenue sous le plafond (réduite quand il est trop bas). */
   function perkNote(e) {
     const D = ZS.ELIXIRS && ZS.ELIXIRS[e.p];
