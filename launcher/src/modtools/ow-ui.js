@@ -8,7 +8,7 @@
   const { h, round, deg, rad, wrapRad } = MT.util;
   const S = MT.state, UI = MT.ui, O = MT.ow;
   const OU = (O.ui = {});
-  const { field, num, slider, select, check, text, seg, btn, section } = UI.f;
+  const { field, num, slider, select, check, text, seg, btn, section, kField, setK, decFr } = UI.f;
   const commit = (label, kind, fn, detail) => UI.edit.commit(label, kind, fn, detail);
   const ELKINDS_DESERT = ['wallbuy', 'perk', 'box', 'vehicle', 'fuel', 'breaker'];
   const ELKINDS_MOON = ['wallbuy', 'perk', 'box', 'breaker', 'oxy'];
@@ -86,15 +86,32 @@
   function buildingsPanel() {
     const o = S.opts.ow.bld, cat = ZS.ow.BUILDINGS;
     const list = h('div', { class: 'ow-blds' }, Object.entries(cat).map(([id, T]) => h('button', {
-      type: 'button', class: `ow-bld ${o.type === id ? 'on' : ''}`, onclick: () => { o.type = id; MT.emit('tool-opts'); MT.emit('preview'); },
+      type: 'button', class: `ow-bld ${o.type === id ? 'on' : ''}`, onclick: () => { if (o.type !== id) o.dims = null; o.type = id; MT.emit('tool-opts'); MT.emit('preview'); },
     }, h('b', null, T.name), h('small', null, `${T.w} × ${T.d} m · ${T.desc}`))));
     return [
       section('Catalogue', list),
+      bldDimsSection(o.type, o.dims || {}, (d) => { o.dims = d && Object.keys(d).length ? d : null; MT.emit('tool-opts'); MT.emit('preview'); }, 'Cotes à la pose'),
       section('Pose',
         field('Orientation', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, ['entrée au sud', 'entrée à l’ouest', 'entrée au nord', 'entrée à l’est'][o.rot]), btn('Tourner', () => O.terrain.rotateTool(1), { ic: 'rotate', title: 'R' }))),
         h('p', { class: 'p-note' }, `Le terrain est aplani sous le bâtiment. Murs, portes, fenêtres et toits sont pleins : on y entre, les zombies en font le tour, on pose des armes sur ses murs (outil Éléments).${O.moon() ? ' Sur la Lune, un module n’est pas pressurisé : l’oxygène ne s’y recharge pas (seulement dans la base Séléné et aux postes d’oxygène).' : ''}`),
         h('p', { class: 'p-note' }, `${(S.map.buildings || []).length} sur ${ZS.OPEN_LIMITS.buildings}. ${O.moon() ? 'Pas sur un lieu de la base, ni dans la fosse ou sur son bord.' : 'Pas sur un lieu de la base, une route d’origine ni dans l’eau.'}`)),
     ];
+  }
+  /* Cotes d'un bâtiment (jeu 2.0.3) : largeur et profondeur en mètres entiers (avant rotation : la
+     façade d'entrée est la largeur), hauteur des murs. cur : { w, d, h } réglés ; apply(dims). */
+  function bldDimsSection(type, cur, apply, title = 'Cotes') {
+    const T = ZS.ow.BUILDINGS[type] || ZS.ow.ALL_BUILDINGS && ZS.ow.ALL_BUILDINGS[type];
+    const L = ZS.ow.bldLimits && MT.sizesOk() ? ZS.ow.bldLimits(type) : null;
+    if (!T || !L) return null;
+    const val = { w: cur.w || T.w, d: cur.d || T.d, h: L.h ? cur.h || L.h0 : null };
+    const put = (k, v) => { const d = ZS.ow.bldDims({}, { ...cur, [k]: v }, type); apply(d); };
+    const fixed = (a) => a[0] === a[1];
+    return section(title,
+      field('Largeur', fixed(L.w) ? h('span', { class: 'f-hint' }, `${val.w} m (fixe)`) : num({ value: val.w, min: L.w[0], max: L.w[1], step: 1, unit: 'm', digits: 0, onCommit: (v) => put('w', Math.round(v)) }), `Façade d’entrée · de ${L.w[0]} à ${L.w[1]} m`),
+      field('Profondeur', fixed(L.d) ? h('span', { class: 'f-hint' }, `${val.d} m (fixe)`) : num({ value: val.d, min: L.d[0], max: L.d[1], step: 1, unit: 'm', digits: 0, onCommit: (v) => put('d', Math.round(v)) }), fixed(L.d) ? null : `De ${L.d[0]} à ${L.d[1]} m`),
+      L.h ? field('Hauteur des murs', num({ value: val.h, min: L.h[0], max: L.h[1], step: 0.1, unit: 'm', digits: 1, onCommit: (v) => put('h', round(v, 1)) }), `De ${decFr(L.h[0], 1)} à ${decFr(L.h[1], 1)} m · catalogue : ${decFr(L.h0, 1)} m`) : null,
+      h('div', { class: 'p-actions' }, btn(`Cotes du catalogue (${T.w} × ${T.d} m)`, () => apply({}), { ic: 'rotate', disabled: !Object.keys(cur).length })),
+      h('p', { class: 'p-note' }, T.house ? 'Portes et fenêtres gardent leur place le long des murs (une ouverture qui ne tient plus est retirée).' : T.tent ? 'Les murets de la tente suivent la hauteur.' : T.tank ? 'Le diamètre de la cuve suit la profondeur.' : 'Le terrain est aplani sous le bâtiment.'));
   }
   function selectPanel() {
     const m = S.map;
@@ -172,6 +189,11 @@
     const e = O.get(s);
     if (!e) return [];
     const set = (label, fn) => commit(label, 'ow-el', (mm) => fn(O.get(s, mm)));
+    // taille (jeu 2.0.3) ; Le Glas et la boîte : la place est revérifiée à la nouvelle taille
+    const kSet = (label) => (k) => {
+      set(label, (x) => setK(x, k));
+      if (s.kind === 'glas' || s.kind === 'box') { const x = O.get(s); const r = x ? O.place(s.kind, x.x, x.z, x.face, x.k || 1) : null; if (r && !r.ok && r.why) MT.toast(`${r.why} (à cette taille)`, 'warn'); }
+    };
     switch (s.kind) {
       case 'spawn': return [head('Départ du joueur', `x ${fmt(e.pos[0])} · z ${fmt(e.pos[1])}${where(e.pos[0], e.pos[1])}`), section('Réglages',
         field('Position', h('span', { class: 'f-inline' },
@@ -187,6 +209,7 @@
             typeof e.cost === 'number' ? num({ value: e.cost, min: 0, max: 99999, step: 50, unit: 'pts', digits: 0, onCommit: (v) => set('Prix de l’arme', (x) => { x.cost = Math.round(v); }) }) : h('small', { class: 'f-hint' }, `${ZS.wallbuyPrice(e)} pts (prix habituel)`)),
           'Les munitions coûtent la moitié du prix.'),
           field('Hauteur du dessin', slider({ value: e.h || 1.6, min: 0.6, max: 3, step: 0.05, fmt: (v) => `${v.toFixed(2)} m`, onCommit: (v) => set('Hauteur du dessin', (x) => { x.h = round(v, 2); }) }), 'Centre du dessin au-dessus du sol'),
+          kField(e, kSet('Taille de l’arme au mur'), 'Taille du dessin à la craie'),
           h('p', { class: 'p-note' }, 'Glissez l’arme pour la changer de mur : elle se recale sur la face visible du mur le plus proche.'))];
       }
       case 'perk': {
@@ -198,11 +221,13 @@
             check({ checked: typeof e.roomH === 'number', label: 'bas', onChange: (v) => set('Plafond', (x) => { if (v) x.roomH = 3.2; else delete x.roomH; }) }),
             typeof e.roomH === 'number' ? num({ value: e.roomH, min: 2.2, max: 30, step: 0.1, unit: 'm', onCommit: (v) => set('Plafond', (x) => { x.roomH = round(v, 2); }) }) : h('small', { class: 'f-hint' }, 'à l’air libre ou sous un haut plafond')),
           'La machine est réduite pour tenir sous un plafond bas.'),
+          kField(e, kSet('Taille de l’atout'), perkNote(e)),
           def ? h('p', { class: 'p-note' }, def.desc) : null)];
       }
       case 'box': return [head('Emplacement de la boîte mystère', `n° ${s.i + 1} sur ${m.boxes.length}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         check({ checked: m.boxStart === s.i, label: 'La boîte commence ici', onChange: (v) => { if (v) commit('Départ de la boîte', 'ow-el', (mm) => { mm.boxStart = s.i; }); } }),
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME(e.face)), rotBtn('Tourner'))),
+        kField(e, kSet('Taille de la boîte'), 'Taille de la boîte à cet emplacement ; agrandie, elle avance vers sa face (son dos reste en place)'),
         h('p', { class: 'p-note' }, 'La boîte part ailleurs après quelques tirages (ours en peluche) : sur un désert de 4 × 3 km, répartissez les emplacements entre les lieux.'))];
       case 'vehicle': {
         const T = ZS.VEH_TYPES[e.type];
@@ -211,7 +236,7 @@
           field('Cap', num({ value: degOf(e.yaw), min: 0, max: 360, step: 15, unit: '°', digits: 1, onCommit: (v) => set('Cap du véhicule', (x) => { x.yaw = round(wrapRad(rad(v)), 4); }) }), 'R : +15° · Maj+R : +90°'),
           T ? h('p', { class: 'p-note' }, `${fmt(T.len, 1)} × ${fmt(T.wid, 1)} m · réservoir ${Math.round(T.fuel / 1000)} km${T.cost ? ` · à acheter (${T.cost} pts)` : ''}${e.type === 'truck' ? ' · démarre avec le courant' : ''}.`) : null)];
       }
-      case 'fuel': return [head('Jerricans', `n° ${s.i + 1} sur ${m.fuel.length}${where(e.x, e.z)}`, [delBtn()]), section('Infos', h('p', { class: 'p-note' }, 'Font le plein du véhicule le plus proche (à moins de 14 m) quand on appuie sur F.'))];
+      case 'fuel': return [head('Jerricans', `n° ${s.i + 1} sur ${m.fuel.length}${where(e.x, e.z)}`, [delBtn()]), section('Réglages', kField(e, kSet('Taille des jerricans')), h('p', { class: 'p-note' }, 'Font le plein du véhicule le plus proche (à moins de 14 m) quand on appuie sur F.'))];
       case 'loc': return [head('Lieu nommé', `x ${fmt(e.x)} · z ${fmt(e.z)}`, [delBtn()]), section('Réglages',
         field('Nom', text({ value: e.name, maxLength: 40, onCommit: (v) => commit('Nom du lieu', 'settings', (mm) => { const L = mm.locs[s.i]; L.name = v.trim().slice(0, 40) || L.name; }) }), 'Affiché en entrant dans le cercle, et sur la mini-carte (numéro)'),
         field('Rayon', slider({ value: e.r, min: 15, max: 600, step: 5, fmt: (v) => `${Math.round(v)} m`, onCommit: (v) => commit('Rayon du lieu', 'settings', (mm) => { mm.locs[s.i].r = Math.round(v); }) })),
@@ -229,32 +254,56 @@
       }
       case 'building': {
         const T = ZS.ow.BUILDINGS[e.type] || { name: e.type, w: 0, d: 0 };
-        return [head(T.name, `${T.w} × ${T.d} m · sol à ${fmt(e.y, 2)} m${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
+        const W0 = e.w || T.w, D0 = e.d || T.d;
+        // cotes (jeu 2.0.3) : la place est revérifiée ; le sol garde sa hauteur
+        const setDims = (d) => {
+          const r = ZS.ow.buildingPlace(e.type, e.x, e.z, e.rot, d);
+          if (!r.ok) { MT.toast(r.why, 'warn'); UI.renderPanel(); return; }
+          const before = O.terrainRect('building', { ...e });
+          commit('Cotes du bâtiment', 'ow-terrain', (mm) => {
+            const b = mm.buildings[s.i];
+            delete b.w; delete b.d; delete b.h;
+            Object.assign(b, { x: r.b.x, z: r.b.z }, O.bldDims(r.b));
+          }, { rect: O.unionRect(before, O.terrainRect('building', { ...e, ...r.b, y: e.y })) });
+        };
+        return [head(T.name, `${W0} × ${D0} m${e.h ? ` · murs de ${decFr(e.h, 1)} m` : ''} · sol à ${fmt(e.y, 2)} m${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
           field('Modèle', select({ value: e.type, options: Object.entries(ZS.ow.BUILDINGS).map(([id, x]) => [id, `${x.name} (${x.w} × ${x.d} m)`]), onChange: (v) => {
             const r = ZS.ow.buildingPlace(v, e.x, e.z, e.rot);
             if (!r.ok) { MT.toast(r.why, 'warn'); UI.renderPanel(); return; }
             const before = O.terrainRect('building', { ...e });
-            commit('Modèle du bâtiment', 'ow-terrain', (mm) => { Object.assign(mm.buildings[s.i], { type: v, x: r.b.x, z: r.b.z, y: r.b.y }); }, { rect: O.unionRect(before, O.terrainRect('building', r.b)) });
+            // un autre modèle : les cotes du catalogue
+            commit('Modèle du bâtiment', 'ow-terrain', (mm) => { const b = mm.buildings[s.i]; delete b.w; delete b.d; delete b.h; Object.assign(b, { type: v, x: r.b.x, z: r.b.z, y: r.b.y }); }, { rect: O.unionRect(before, O.terrainRect('building', r.b)) });
           } })),
           field('Orientation', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, ['entrée au sud', 'entrée à l’ouest', 'entrée au nord', 'entrée à l’est'][e.rot]), rotBtn())),
           field('Hauteur du sol', num({ value: e.y, min: -10, max: 120, step: 0.1, unit: 'm', onCommit: (v) => commit('Hauteur du bâtiment', 'ow-terrain', (mm) => { mm.buildings[s.i].y = round(v, 3); }, { rect: O.terrainRect('building', e) }) }), 'Relevée à la pose ; le terrain est aplani à cette hauteur'),
-          h('p', { class: 'p-note' }, 'Glissez-le pour le déplacer (le terrain suit). Posez des armes au mur, des atouts, la boîte… dedans avec l’outil Éléments.'))];
+          h('p', { class: 'p-note' }, 'Glissez-le pour le déplacer (le terrain suit). Posez des armes au mur, des atouts, la boîte… dedans avec l’outil Éléments.')),
+          bldDimsSection(e.type, O.bldDims(e), setDims)];
       }
       case 'breaker': return [head('Disjoncteur', `${s.i + 1} sur ${m.breakers.length} · face ${FACE_NAME([e.nx, e.nz])}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         field('Nom', text({ value: e.name, maxLength: 40, onCommit: (v) => set('Nom du disjoncteur', (x) => { x.name = v.trim().slice(0, 40) || x.name; }) }), 'Affiché quand on le vise : « Maintenez F pour enclencher le disjoncteur (…) »'),
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME([e.nx, e.nz])), rotBtn())),
+        kField(e, kSet('Taille du disjoncteur')),
         h('p', { class: 'p-note' }, `Tous enclenchés (${m.breakers.length}) : le courant revient (${O.moon() ? 'atouts, Le Glas, ascenseur de la tour, projecteurs, atterrisseur' : 'atouts, sanctuaire, batterie de l’avion, camion blindé'}).`))];
       case 'oxy': return [head('Poste d’oxygène', `n° ${s.i + 1} sur ${(m.oxy || []).length} · face ${FACE_NAME(e.face)}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME(e.face)), rotBtn())),
+        kField(e, kSet('Taille du poste d’oxygène')),
         h('p', { class: 'p-note' }, 'F : une bouteille neuve (4 min d’oxygène) pour 250 points. Dans la base Séléné, inutile : l’air recharge seul.'),
         h('p', { class: 'p-note' }, 'Glissez-le pour le changer de mur : il se recale dos au mur le plus proche.'))];
       case 'glas': return [head('Le Glas', `face ${FACE_NAME(e.face)}${where(e.x, e.z)}`, [delBtn()]), section('Réglages',
         field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, FACE_NAME(e.face)), rotBtn())),
+        kField(e, kSet('Taille du Glas'), `Beffroi de ${decFr(5.6 * (e.k || 1), 1)} m ; il lui faut ${decFr(5 * (e.k || 1), 1)} × ${decFr(5 * (e.k || 1), 1)} m de sol plat`),
         h('p', { class: 'p-note' }, 'La cloche qui reforge les armes : muette sans courant, trois paliers (5 000, +10 000, +20 000 points). Une seule par carte.'),
-        h('p', { class: 'p-note' }, 'Glissez-la sur un autre sol plat et libre de 5 × 5 m.'))];
+        h('p', { class: 'p-note' }, `Glissez-la sur un autre sol plat et libre de ${decFr(5 * (e.k || 1), 1)} × ${decFr(5 * (e.k || 1), 1)} m.`))];
       default: return [];
     }
   };
+  /* Atout : taille obtenue sous le plafond (réduite quand il est trop bas). */
+  function perkNote(e) {
+    const D = ZS.ELIXIRS && ZS.ELIXIRS[e.p];
+    if (!D) return null;
+    const k = e.k || 1, roomH = e.roomH || 6, sz = Math.min(k, (roomH - 0.05) / D.h);
+    return sz < k - 1e-3 ? `Réduit à ×${decFr(sz)} sous ${decFr(roomH)} m de plafond · ${decFr(D.w * sz)} × ${decFr(D.h * sz)} m` : `Machine de ${decFr(D.w * sz)} × ${decFr(D.h * sz)} m (largeur × hauteur)`;
+  }
   function moveNum(s, x, z) {
     MT.begin('Déplacer');
     const r = O.moveTo(s, x, z);

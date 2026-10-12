@@ -194,13 +194,15 @@
       case 'wallbuy': {
         const [sx, sy] = P.toScreen(e.x, e.z);
         if (Z >= 2.5) {
-          poly(g, rotRect(P, e.x + e.nx * 0.06, e.z + e.nz * 0.06, 0.8, 0.12, yawOfFace([e.nx, e.nz])), tint('#f0ecdc'), '#2a2622', 1);
+          poly(g, rotRect(P, e.x + e.nx * 0.06, e.z + e.nz * 0.06, 0.8 * (e.k || 1), 0.12, yawOfFace([e.nx, e.nz])), tint('#f0ecdc'), '#2a2622', 1);
           if (Z >= 12 && !ghost) text(g, O.weaponName(e.w), sx + e.nx * 16, sy + e.nz * 16, { size: 11 });
         } else marker(g, sx, sy, 3.5, tint('#f0ecdc'), '#2a2622', 'square');
         break;
       }
       case 'perk': {
-        const D = (ZS.ELIXIRS && ZS.ELIXIRS[e.p]) || { w: 1.2, d: 1 };
+        const D0 = (ZS.ELIXIRS && ZS.ELIXIRS[e.p]) || { w: 1.2, d: 1, h: 2.5 };
+        // taille (jeu 2.0.3), réduite sous un plafond bas comme dans le jeu
+        const ks = Math.min(e.k || 1, ((e.roomH || 6) - 0.05) / (D0.h || 2.5)), D = { w: D0.w * ks, d: D0.d * ks };
         const cx = e.x + e.face[0] * D.d / 2, cz = e.z + e.face[1] * D.d / 2;
         const col = (ZS.PERKS[e.p] && ZS.PERKS[e.p].color) || '#b3231f';
         const [sx, sy] = P.toScreen(cx, cz);
@@ -215,7 +217,8 @@
       }
       case 'box': {
         const [sx, sy] = P.toScreen(e.x, e.z), start = !ghost && m.boxStart === i;
-        if (Z >= 3) poly(g, rotRect(P, e.x, e.z, 0.8, 0.4, yawOfFace(e.face)), tint('#2f6fc8'), start ? '#ffd27a' : '#0c1a33', start ? 2.5 : 1.2);
+        const bk = e.k || 1, bsh = 0.42 * (bk - 1);              // agrandie : elle avance vers sa face
+        if (Z >= 3) poly(g, rotRect(P, e.x + e.face[0] * bsh, e.z + e.face[1] * bsh, 0.8 * bk, 0.4 * bk, yawOfFace(e.face)), tint('#2f6fc8'), start ? '#ffd27a' : '#0c1a33', start ? 2.5 : 1.2);
         else marker(g, sx, sy, start ? 6 : 5, tint('#2f6fc8'), start ? '#ffd27a' : '#0c1a33', 'square');
         if (!ghost && (Z >= 3 || start)) text(g, start ? `Boîte ${i + 1} · départ` : `Boîte ${i + 1}`, sx, sy - Math.max(12, Z * 0.9), { size: 11, color: '#bcd6ff' });
         break;
@@ -235,21 +238,21 @@
       }
       case 'fuel': {
         const [sx, sy] = P.toScreen(e.x, e.z);
-        marker(g, sx, sy, Math.max(4, 0.45 * Z), tint('#e07a24'), '#2b1405', 'square');
+        marker(g, sx, sy, Math.max(4, 0.45 * Z * (e.k || 1)), tint('#e07a24'), '#2b1405', 'square');
         if (Z >= 5 && !ghost) text(g, 'Jerricans', sx, sy + Math.max(12, Z * 0.8), { size: 11 });
         break;
       }
       case 'breaker': {
         const [sx, sy] = P.toScreen(e.x + e.nx * 0.2, e.z + e.nz * 0.2);
-        if (Z >= 3) poly(g, rotRect(P, e.x + e.nx * 0.2, e.z + e.nz * 0.2, 0.45, 0.2, yawOfFace([e.nx, e.nz])), tint('#e8c22a'), '#2a2205', 1.5);
+        if (Z >= 3) poly(g, rotRect(P, e.x + e.nx * 0.2 * (e.k || 1), e.z + e.nz * 0.2 * (e.k || 1), 0.45 * (e.k || 1), 0.2 * (e.k || 1), yawOfFace([e.nx, e.nz])), tint('#e8c22a'), '#2a2205', 1.5);
         else marker(g, sx, sy, 5, tint('#e8c22a'), '#2a2205', 'diamond');
         if (Z >= 6 && !ghost) text(g, e.name, sx + e.nx * 18, sy + e.nz * 18, { size: 11, color: '#fff1b0' });
         break;
       }
       case 'oxy': {
         // râtelier de bouteilles (1,3 × 0,45 m), dos au mur
-        const cx = e.x + e.face[0] * 0.22, cz = e.z + e.face[1] * 0.22, [sx, sy] = P.toScreen(cx, cz);
-        if (Z >= 4) poly(g, rotRect(P, cx, cz, 0.65, 0.24, yawOfFace(e.face)), tint('#5fd8a8'), '#0b2a1e', 1.5);
+        const ok = e.k || 1, cx = e.x + e.face[0] * 0.22 * ok, cz = e.z + e.face[1] * 0.22 * ok, [sx, sy] = P.toScreen(cx, cz);
+        if (Z >= 4) poly(g, rotRect(P, cx, cz, 0.65 * ok, 0.24 * ok, yawOfFace(e.face)), tint('#5fd8a8'), '#0b2a1e', 1.5);
         else marker(g, sx, sy, 5, tint('#5fd8a8'), '#0b2a1e', 'square');
         if (!ghost && Z >= 2) text(g, 'O₂', sx, sy, { size: 10, color: '#0b2a1e', bg: null, weight: 700 });
         if (Z >= 6 && !ghost) text(g, `Oxygène ${i + 1}`, sx, sy + Math.max(14, Z * 0.8), { size: 11, color: '#c8ffe8' });
@@ -259,9 +262,10 @@
         // beffroi de 4,7 m, socle de 2,4 × 1,2 m, place devant
         const [sx, sy] = P.toScreen(e.x, e.z);
         if (Z >= 1.2) {
-          poly(g, rotRect(P, e.x, e.z, 2.35, 2.35, yawOfFace(e.face)), ghost ? tint('#d9a441') : 'rgba(217,164,65,0.25)', '#2a1c06', 1.2);
-          poly(g, rotRect(P, e.x, e.z, 1.2, 0.6, yawOfFace(e.face)), tint('#d9a441'), '#2a1c06', 1.5);
-          const [fx, fy] = P.toScreen(e.x + e.face[0] * 2.2, e.z + e.face[1] * 2.2);
+          const gk = e.k || 1;
+          poly(g, rotRect(P, e.x, e.z, 2.35 * gk, 2.35 * gk, yawOfFace(e.face)), ghost ? tint('#d9a441') : 'rgba(217,164,65,0.25)', '#2a1c06', 1.2);
+          poly(g, rotRect(P, e.x, e.z, 1.2 * gk, 0.6 * gk, yawOfFace(e.face)), tint('#d9a441'), '#2a1c06', 1.5);
+          const [fx, fy] = P.toScreen(e.x + e.face[0] * 2.2 * gk, e.z + e.face[1] * 2.2 * gk);
           g.strokeStyle = '#ffe6a8'; g.lineWidth = 2; g.beginPath(); g.moveTo(sx, sy); g.lineTo(fx, fy); g.stroke();
         } else marker(g, sx, sy, 6, tint('#d9a441'), '#2a1c06');
         if (!ghost) text(g, 'Le Glas', sx, sy - Math.max(14, Z * 3), { size: 11, color: '#ffe6a8' });

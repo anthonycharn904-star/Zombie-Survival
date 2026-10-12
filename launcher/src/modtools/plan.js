@@ -572,6 +572,21 @@
         arrow(g, fx, fy, b.face[0], b.face[1], Math.max(4, Z * 0.25), '#e0c0ff', 1.5);
       }
     }
+    // tailles changées (jeu 2.0.3) : l'emprise réelle en pointillés
+    if (MT.sizesOk()) {
+      const dash = (cells, col) => {
+        g.save(); g.setLineDash([4, 3]); g.strokeStyle = col; g.lineWidth = 1.5;
+        for (const [x, z] of cells) { if (!vis(x, z)) continue; const [sx, sy] = P.toScreen(x + 0.06, z + 0.06); g.strokeRect(sx, sy, Z * 0.88, Z * 0.88); }
+        g.restore();
+      };
+      for (const p of m.perks) if (H(p) && p.k) dash(ZS.elixirFootprint(p, MT.wallHeight()).cells, ZS.PERKS[p.p].color);
+      m.boxes.forEach((b) => {
+        if (!H(b) || !b.k) return;
+        const sh = ZS.boxShift(b.k);
+        dash(ZS.boxFootCells((b.cells[0][0] + b.cells[1][0]) / 2 + 0.5 + b.face[0] * sh, (b.cells[0][1] + b.cells[1][1]) / 2 + 0.5 + b.face[1] * sh, b.face, b.k), '#9fd0ff');
+      });
+      if (m.amp && H(m.amp) && m.amp.k) dash(ZS.glasFootprint(m.amp).cells, '#e0c0ff');
+    }
     // armes murales, interrupteur
     const onWall = (cell, n, fill, text, tcol) => {
       const [x, z] = cell;
@@ -594,8 +609,9 @@
       const [x, z] = MT.signCell(s);
       if (!H(s) || !vis(x, z)) continue;
       const along = s.n[0] ? [0, 1] : [1, 0];
-      const a = P.toScreen(s.pos[0] - along[0] * 0.85 + s.n[0] * 0.04, s.pos[2] - along[1] * 0.85 + s.n[1] * 0.04);
-      const b = P.toScreen(s.pos[0] + along[0] * 0.85 + s.n[0] * 0.04, s.pos[2] + along[1] * 0.85 + s.n[1] * 0.04);
+      const hw = 0.85 * (s.k || 1);                          // taille du panneau (jeu 2.0.3)
+      const a = P.toScreen(s.pos[0] - along[0] * hw + s.n[0] * 0.04, s.pos[2] - along[1] * hw + s.n[1] * 0.04);
+      const b = P.toScreen(s.pos[0] + along[0] * hw + s.n[0] * 0.04, s.pos[2] + along[1] * hw + s.n[1] * 0.04);
       g.strokeStyle = 'rgba(232,223,200,0.9)'; g.lineWidth = Math.max(2, Z * 0.12);
       g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
       if (Z >= 14) { const [lx, ly] = P.toScreen(s.pos[0] + s.n[0] * 0.55, s.pos[2] + s.n[1] * 0.55); label(g, s.text, lx, ly, { size: 11, font: 'Special Elite', weight: 400 }); }

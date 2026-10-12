@@ -159,7 +159,69 @@
   /* Modification immédiate (aperçu) puis validation (historique). */
   const live = (label, kind, fn, detail) => { if (!S.map) return; MT.begin(label); fn(S.map); MT.touch(kind, detail); };
   const commit = (label, kind, fn, detail) => { if (!S.map) return; MT.begin(label); fn(S.map); MT.touch(kind, detail); MT.commit(); };
-  UI.f = { field, num, slider, color, select, check, text, seg, btn, section };
+  /* ------------------------------------------------------------ tailles --
+     Jeu 2.0.3 (interface 5 du moteur) : objets en mètres (largeur, hauteur, profondeur), textures
+     par carte et variantes, éléments de jeu (facteur). Avec un moteur plus ancien : un facteur. */
+  const PROP_RULE = () => (ZS.SIZE_RULES ? ZS.SIZE_RULES.prop : [0.1, 10]);
+  const ELEM_RULE = () => (ZS.SIZE_RULES ? ZS.SIZE_RULES.elem : [0.4, 3]);
+  const TEX_RULE = () => (ZS.SIZE_RULES ? ZS.SIZE_RULES.tex : [0.05, 50]);
+  const decFr = (v, d = 2) => (Number.isFinite(v) ? String(round(v, d)).replace('.', ',') : '—');
+  UI.sizeLock = true;
+  const inputOf = (el) => (el.tagName === 'INPUT' ? el : el.querySelector('input'));
+  /* Cotes d'un objet : largeur, hauteur, profondeur (mètres) = boîte du modèle (dims) × facteurs.
+     get() : facteurs actuels ; set(f, live) : nouveaux facteurs (live : aperçu pendant la saisie).
+     Cadenas : les trois suivent (proportions gardées). Échelle : les trois au même facteur. */
+  function sizeFields(dims, get, set, { resetLabel = 'Taille d’origine' } = {}) {
+    const [a, b] = PROP_RULE();
+    const f0 = get();
+    let start = null, uni = null;
+    const inputs = [];
+    const same = (f) => Math.abs(f[0] - f[1]) < 1e-3 && Math.abs(f[1] - f[2]) < 1e-3;
+    const show = (f, skip) => {
+      inputs.forEach((inp, j) => { if (inp && j !== skip && document.activeElement !== inp) inp.value = fmtNum(dims[j] * f[j], 3); });
+      if (uni && document.activeElement !== uni) { uni.value = same(f) ? fmtNum(f[0], 3) : ''; uni.placeholder = same(f) ? '' : 'mixte'; }
+    };
+    const apply = (f, live, skip) => {
+      set(f.map((x) => round(clamp(x, a, b), 3)), live);
+      show(f, skip);
+    };
+    const change = (axis, meters, live) => {
+      if (!start) start = get();
+      const k = clamp(meters / Math.max(1e-6, dims[axis]), a, b);
+      const f = UI.sizeLock ? start.map((x) => clamp((x * k) / start[axis], a, b)) : start.map((x, j) => (j === axis ? k : x));
+      if (!live) start = null;
+      apply(f, live, axis);
+    };
+    const rows = [['Largeur', 0], ['Hauteur', 1], ['Profondeur', 2]].map(([label, j]) => {
+      if (!(dims[j] > 1e-3)) { inputs.push(null); return field(label, h('span', { class: 'f-hint' }, 'plat (sans épaisseur)')); }
+      const el = num({ value: dims[j] * f0[j], min: round(dims[j] * a, 3), max: round(dims[j] * b, 2), step: 0.05, unit: 'm', digits: 3,
+        onLive: (v) => change(j, v, true), onCommit: (v) => change(j, v, false) });
+      inputs.push(inputOf(el));
+      return field(label, el);
+    });
+    const uniEl = num({ value: same(f0) ? f0[0] : NaN, min: a, max: b, step: 0.05, unit: '×', digits: 3,
+      onLive: (v) => apply([v, v, v], true), onCommit: (v) => apply([v, v, v], false) });
+    uni = inputOf(uniEl);
+    if (!same(f0)) uni.placeholder = 'mixte';
+    return [
+      ...rows,
+      field('Échelle', uniEl, 'Les trois cotes au même facteur (×1 : taille d’origine)'),
+      h('div', { class: 'f-inline size-actions' },
+        check({ checked: UI.sizeLock, label: 'Garder les proportions', onChange: (v) => { UI.sizeLock = v; } }),
+        btn(resetLabel, () => apply([1, 1, 1], false), { ic: 'rotate', title: 'Largeur, hauteur et profondeur du modèle' })),
+      h('p', { class: 'p-note' }, `Modèle : ${decFr(dims[0])} × ${decFr(dims[1])} × ${decFr(dims[2])} m (largeur × hauteur × profondeur). La collision suit la taille.`),
+    ];
+  }
+  /* Taille d'un élément de jeu (facteur k, de 0,4 à 3) ; apply(k) ; note : ce qui la limite. */
+  function kField(e, apply, note) {
+    if (!MT.sizesOk()) return null;
+    const [a, b] = ELEM_RULE(), k = e && e.k ? e.k : 1;
+    return field('Taille', h('span', { class: 'k-row' },
+      slider({ value: k, min: a, max: b, step: 0.05, fmt: (v) => `×${decFr(v)}`, onCommit: (v) => apply(round(v, 3)) }),
+      Math.abs(k - 1) > 1e-3 ? h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Taille d’origine (×1)', onclick: () => apply(1) }, icon('close')) : null), note || null);
+  }
+  const setK = (e, k) => { const v = ZS.elemK ? ZS.elemK(k) : 1; if (Math.abs(v - 1) < 1e-3) delete e.k; else e.k = v; };
+  UI.f = { field, num, slider, color, select, check, text, seg, btn, section, sizeFields, kField, setK, decFr };
 
   /* ------------------------------------------------------- vignettes -- */
   const TH = { r: null, scene: null, cam: null, cache: new Map(), queue: [], pending: new Map(), timer: 0 };
@@ -274,7 +336,7 @@
   function library(kind, opts = {}) {
     const st = UI.lib[kind];
     const cats = kind === 'tex'
-      ? [['all', 'Toutes'], ['recent', 'Récentes'], ...ZS.TEX_CATS, ['import', 'Mes images']]
+      ? [['all', 'Toutes'], ['recent', 'Récentes'], ...ZS.TEX_CATS, ['import', 'Mes images'], ...(MT.texOk() ? [['variant', 'Variantes (carte)']] : [])]
       : [['all', 'Tous'], ['recent', 'Récents'], ...ZS.MODEL_CATS, ['import', 'Mes modèles']];
     const grid = h('div', { class: `lib-grid ${kind === 'model' ? 'models' : ''}` });
     const count = h('span', { class: 'lib-count' });
@@ -287,7 +349,8 @@
       if (kind === 'tex') {
         items = Object.values(ZS.TEXLIB);
         if (st.cat === 'recent') items = S.recent.tex.map((id) => ZS.TEXLIB[id]).filter(Boolean);
-        else if (st.cat === 'import') items = items.filter((d) => d.custom);
+        else if (st.cat === 'import') items = items.filter((d) => d.custom && !d.variant);
+        else if (st.cat === 'variant') items = items.filter((d) => d.variant);
         else if (st.cat !== 'all') items = items.filter((d) => d.cat === st.cat);
       } else {
         items = Object.values(ZS.MODELS);
@@ -299,7 +362,7 @@
       if (special) grid.append(tile({ id: 'none', name: 'Ciel ouvert (pas de plafond)' }));
       for (const d of items) grid.append(tile(d));
       count.textContent = `${items.length + (special ? 1 : 0)}`;
-      if (!items.length && !special) grid.append(h('p', { class: 'lib-empty' }, st.cat === 'import' ? (kind === 'tex' ? 'Aucune image importée pour l’instant.' : 'Aucun modèle importé pour l’instant.') : 'Rien ne correspond.'));
+      if (!items.length && !special) grid.append(h('p', { class: 'lib-empty' }, st.cat === 'import' ? (kind === 'tex' ? 'Aucune image importée pour l’instant.' : 'Aucun modèle importé pour l’instant.') : st.cat === 'variant' ? 'Pas de variante sur cette carte : outil Peinture, « Créer une variante… ».' : 'Rien ne correspond.'));
     };
     const tile = (d) => {
       const on = d.id === opts.value;
@@ -710,20 +773,83 @@
       ' ': 'Vide : l’extérieur de la carte.',
     }[ch] || '';
   }
+  /* Taille d'une texture sur cette carte (une variante : la sienne) ; variantes. */
+  function texSizeBlock(id) {
+    if (!MT.texOk() || !id || id === 'none' || !ZS.TEXLIB[id]) return null;
+    const t = MT.texSizeOf(id);
+    if (!t) return null;
+    const [a, b] = TEX_RULE(), v = MT.variantOf(id);
+    const cur = { w: t.w, h: t.h, fit: t.fit };
+    const save = () => MT.setTexSize(id, cur.w, cur.h, cur.fit);
+    const hIn = num({ value: t.h, min: a, max: b, step: 0.05, unit: 'm', digits: 3, onCommit: (val) => { if (UI.sizeLock && !cur.fit) cur.w = round(clamp((cur.w * val) / cur.h, a, b), 3); cur.h = val; save(); } });
+    const wIn = num({ value: t.w, min: a, max: b, step: 0.05, unit: 'm', digits: 3, onCommit: (val) => { if (UI.sizeLock) cur.h = round(clamp((cur.h * val) / cur.w, a, b), 3); cur.w = val; save(); } });
+    if (t.fit) inputOf(hIn).disabled = true;
+    const base = v ? ZS.TEXLIB[v.base] : null;
+    return h('div', { class: 'tex-size' },
+      h('h4', null, v ? 'Taille de la variante' : 'Taille sur cette carte'),
+      v ? h('p', { class: 'p-note' }, `Variante de « ${base ? base.name : v.base} » (même image, sa propre taille), propre à cette carte.`) : null,
+      field('Largeur', wIn, 'Mètres d’une répétition de l’image'),
+      field('Hauteur', hIn, t.fit ? `Suit la hauteur des murs (sur un sol : ${decFr(t.h)} m)` : null),
+      check({ checked: t.fit, label: 'Sur les murs, suivre leur hauteur', onChange: (val) => { cur.fit = val; save(); } }),
+      h('div', { class: 'f-inline size-actions' },
+        check({ checked: UI.sizeLock, label: 'Garder les proportions', onChange: (val) => { UI.sizeLock = val; } }),
+        t.own && !v ? btn('Taille d’origine', () => MT.resetTexSize(id), { ic: 'rotate', title: `${decFr(t.w0)} × ${t.fit0 ? 'hauteur des murs' : `${decFr(t.h0)} m`}` }) : null),
+      h('div', { class: 'p-actions' },
+        btn('Créer une variante…', () => UI.variantDialog(id), { ic: 'copy', title: 'Une copie de cette texture avec sa propre taille (les deux tailles sur la même carte)' }),
+        v ? btn('Renommer…', () => UI.variantDialog(id, true)) : null,
+        v ? btn('Supprimer', async () => {
+          if (!(await UI.confirm(`Supprimer la variante « ${v.name} » ? Là où elle est peinte, « ${base ? base.name : v.base} » la remplace.`, { ok: 'Supprimer', danger: true }))) return;
+          const n = MT.deleteVariant(id);
+          S.opts.paint.tex = v.base;
+          MT.toast(n ? 'Variante supprimée : sa texture de base la remplace.' : 'Variante supprimée.', 'ok');
+          UI.renderPanel();
+        }, { kind: 'danger' }) : null),
+      h('p', { class: 'p-note' }, v ? 'Peignez-la comme une autre texture (onglet « Variantes (carte) » de la bibliothèque).'
+        : `Vaut pour toute la carte (chaque surface peinte avec elle). Taille d’origine : ${decFr(t.w0)} × ${t.fit0 ? 'hauteur des murs' : `${decFr(t.h0)} m`}. Deux tailles sur la même carte : créez une variante.`));
+  }
+  /* Fenêtre : nouvelle variante de la texture id (rename : renommer la variante id). */
+  UI.variantDialog = (id, rename = false) => {
+    const t = MT.texSizeOf(id), v = MT.variantOf(id);
+    if (!t) return;
+    const [a, b] = TEX_RULE();
+    const st = { name: rename ? v.name : `${MT.texName(v ? v.base : id)} ${t.fit ? '' : `${decFr(t.w * 2)} m`}`.trim(), w: round(t.w * 2, 3), h: round(t.h * 2, 3), fit: t.fit };
+    const body = h('div', null,
+      field('Nom', text({ value: st.name, maxLength: 60, onLive: (val) => { st.name = val; }, onCommit: (val) => { st.name = val; } })),
+      rename ? null : field('Largeur', num({ value: st.w, min: a, max: b, step: 0.05, unit: 'm', onLive: (val) => { st.w = val; }, onCommit: (val) => { st.w = val; } })),
+      rename ? null : field('Hauteur', num({ value: st.h, min: a, max: b, step: 0.05, unit: 'm', onLive: (val) => { st.h = val; }, onCommit: (val) => { st.h = val; } })),
+      rename ? null : check({ checked: st.fit, label: 'Sur les murs, suivre leur hauteur', onChange: (val) => { st.fit = val; } }),
+      rename ? null : h('p', { class: 'p-note' }, 'La variante garde l’image de la texture ; seule sa taille change. Elle est rangée dans la carte (elle part avec elle à la publication).'));
+    UI.modal({ title: rename ? 'Renommer la variante' : `Nouvelle variante : ${MT.texName(v ? v.base : id)}`, body, buttons: [{ label: 'Annuler' }, { label: rename ? 'Renommer' : 'Créer', kind: 'primary', onClick: () => {
+      if (rename) { MT.renameVariant(id, st.name); UI.renderPanel(); return true; }
+      const nid = MT.createVariant(id, st.name, st.w, st.h, st.fit);
+      if (!nid) return false;
+      S.opts.paint.tex = nid;
+      MT.pushRecent('tex', nid);
+      MT.toast(`Variante créée : « ${MT.texName(nid)} ». Elle est choisie pour peindre.`, 'ok');
+      UI.renderPanel();
+      return true;
+    } }] });
+  };
   function paintPanel() {
     const o = S.opts.paint;
     const cur = o.tex;
     const preview = h('div', { class: 'tex-current' },
       h('span', { class: `tex-swatch ${cur === 'none' ? 'sky' : ''}`, style: cur !== 'none' && typeof MT.texThumb(cur) === 'string' ? { backgroundImage: `url(${MT.texThumb(cur)})` } : {} }),
-      h('div', null, h('b', null, MT.tools.texName(cur)), h('small', null, cur === 'none' ? 'Plafond retiré : on voit le ciel' : `${cur}${ZS.TEXLIB[cur] ? ` · ${ZS.TEXLIB[cur].size[0]} × ${ZS.TEXLIB[cur].size[1]} m` : ''}`)));
+      h('div', null, h('b', null, MT.tools.texName(cur)), h('small', null, cur === 'none' ? 'Plafond retiré : on voit le ciel' : `${cur}${texSizeText(cur)}`)));
     const setPreview = (id) => {
       const sw = preview.querySelector('.tex-swatch'), u = id === 'none' ? null : MT.texThumb(id);
       sw.classList.toggle('sky', id === 'none');
       sw.style.backgroundImage = typeof u === 'string' ? `url(${u})` : '';
       preview.querySelector('b').textContent = MT.tools.texName(id);
-      preview.querySelector('small').textContent = id === 'none' ? 'Plafond retiré : on voit le ciel' : `${id}${ZS.TEXLIB[id] ? ` · ${ZS.TEXLIB[id].size[0]} × ${ZS.TEXLIB[id].size[1]} m` : ''}`;
+      preview.querySelector('small').textContent = id === 'none' ? 'Plafond retiré : on voit le ciel' : `${id}${texSizeText(id)}`;
     };
-    const lib = library('tex', { value: cur, layer: o.layer, onPick: (id) => { o.tex = id; MT.pushRecent('tex', id); setPreview(id); MT.emit('preview'); } });
+    const slot = h('div', null, texSizeBlock(cur));
+    const lib = library('tex', { value: cur, layer: o.layer, onPick: (id) => {
+      o.tex = id; MT.pushRecent('tex', id); setPreview(id); MT.emit('preview');
+      slot.textContent = '';
+      const next = texSizeBlock(id);
+      if (next) slot.append(next);
+    } });
     return [
       section('Surface',
         seg(o.layer, [['floor', 'Sol'], ['wall', 'Murs'], ['ceil', 'Plafond']], (v) => { o.layer = v; if (v !== 'ceil' && o.tex === 'none') o.tex = 'concrete'; MT.emit('tool-opts'); MT.plan.baseRev++; MT.plan.need = true; }),
@@ -731,11 +857,19 @@
       section('Forme',
         seg(o.shape, [['brush', 'Pinceau'], ['rect', 'Rectangle'], ['room', 'Pièce entière']], (v) => { o.shape = v; MT.emit('tool-opts'); }),
         o.shape === 'brush' ? field('Taille', slider({ value: o.size, min: 1, max: 9, step: 1, fmt: (v) => `${v} × ${v}`, onCommit: (v) => { o.size = v; } })) : null),
-      section('Texture', preview, lib,
+      section('Texture', preview, slot),
+      section('Bibliothèque', lib,
         h('div', { class: 'p-actions' },
           btn('Importer une image…', () => UI.importImage(), { ic: 'image' }),
           btn('Textures par défaut', () => UI.setTab('map'), { title: 'Textures de toute la carte (onglet Carte)' }))),
     ];
+  }
+  /* « · 2 × 3,5 m » : taille d'une texture sur cette carte. */
+  function texSizeText(id) {
+    if (!ZS.TEXLIB[id]) return '';
+    const t = MT.texOk() ? MT.texSizeOf(id) : null;
+    if (!t) return ` · ${ZS.TEXLIB[id].size[0]} × ${ZS.TEXLIB[id].size[1]} m`;
+    return ` · ${decFr(t.w)} × ${t.fit ? 'hauteur des murs' : `${decFr(t.h)} m`}${t.own && !t.variant ? ' (réglée sur cette carte)' : ''}`;
   }
   function propsPanel() {
     const o = S.opts.props;
@@ -750,6 +884,7 @@
       cur.firstChild.style.backgroundImage = '';
       MT.modelThumb(id, (url) => { if (url && o.model === id) cur.firstChild.style.backgroundImage = `url(${url})`; });
       MT.emit('preview');
+      if (MT.sizesOk() && (!Array.isArray(o.size) || o.size.some((x) => Math.abs(x - 1) > 1e-3))) UI.renderPanel();   // cotes de ce modèle
     } });
     return [
       section('Objet', cur, lib, h('div', { class: 'p-actions' }, btn('Importer un modèle 3D (.glb)…', () => UI.importModel(), { ic: 'upload' }))),
@@ -759,12 +894,14 @@
           num({ value: o.rot, min: 0, max: 359, step: 1, unit: '°', digits: 1, width: '64px', onCommit: (v) => { o.rot = v; MT.emit('preview'); } }),
           select({ value: o.rotStep, options: [[15, 'pas de 15°'], [45, 'pas de 45°'], [90, 'pas de 90°']], onChange: (v) => { o.rotStep = parseInt(v, 10); } })), 'R / Maj+R'),
         check({ checked: o.randomRot, label: 'Rotation au hasard', onChange: (v) => { o.randomRot = v; } }),
-        field('Taille', num({ value: o.scale, min: 0.1, max: 10, step: 0.05, unit: '×', onCommit: (v) => { o.scale = v; MT.emit('preview'); } })),
+        MT.sizesOk() ? null : field('Taille', num({ value: o.scale, min: 0.1, max: 10, step: 0.05, unit: '×', onCommit: (v) => { o.scale = v; MT.emit('preview'); } })),
         field('Variation', slider({ value: o.randomScale, min: 0, max: 0.4, step: 0.05, fmt: (v) => `± ${Math.round(v * 100)} %`, onCommit: (v) => { o.randomScale = v; } })),
         field('Teinte', h('span', { class: 'f-inline' },
           check({ checked: !!o.tint, label: '', onChange: (v) => { o.tint = v ? (o.tintLast || '#c0a080') : null; MT.emit('tool-opts'); } }),
           color({ value: o.tint || o.tintLast || '#c0a080', onCommit: (v) => { o.tint = v; o.tintLast = v; } }))),
         field('Bloque le passage', select({ value: o.solid, options: [['auto', 'Selon l’objet'], ['yes', 'Oui'], ['no', 'Non']], onChange: (v) => { o.solid = v; } }))),
+      MT.sizesOk() && def ? section('Taille à la pose', ...sizeFields(MT.modelDims(o.model), () => MT.toolScale(), (f) => { o.size = f; MT.emit('preview'); }),
+        h('p', { class: 'p-note' }, 'Gardée pour les objets suivants (même si vous changez de modèle). Modifiable ensuite, objet par objet (onglet Sélection).')) : null,
     ];
   }
   const KIND_ORDER = ['spawn', 'light', 'door', 'window', 'wallbuy', 'perk', 'box', 'power', 'amp', 'sign', 'riser', 'zone'];
@@ -890,7 +1027,8 @@
             check({ checked: typeof w.cost === 'number', label: 'personnalisé', onChange: (v) => commit('Prix de l’arme', 'elements', (mm) => { if (v) mm.wallbuys[s.i].cost = ZS.wallbuyPrice({ w: mm.wallbuys[s.i].w }); else delete mm.wallbuys[s.i].cost; }) }),
             typeof w.cost === 'number' ? num({ value: w.cost, min: 0, max: 99999, step: 50, unit: 'pts', digits: 0, onCommit: (v) => commit('Prix de l’arme', 'elements', (mm) => { mm.wallbuys[s.i].cost = Math.round(v); }) }) : h('small', { class: 'f-hint' }, `${ZS.wallbuyPrice(w)} pts (prix habituel)`)),
           'Les munitions coûtent la moitié du prix.'),
-          field('Position', h('span', { class: 'f-hint' }, `mur x ${w.cell[0]} · z ${w.cell[1]}, face ${faceName(w.n)}`)))];
+          field('Position', h('span', { class: 'f-hint' }, `mur x ${w.cell[0]} · z ${w.cell[1]}, face ${faceName(w.n)}`)),
+          kField(w, (k) => commit('Taille de l’arme murale', 'elements', (mm) => setK(mm.wallbuys[s.i], k)), 'Taille du dessin à la craie'))];
       }
       case 'perk': {
         const p = m.perks[s.i];
@@ -899,6 +1037,7 @@
         return [selHead('Distributeur d’atout', `${def.name} · ${def.cost} pts${def.power ? ' · demande le courant' : ''}`, [delBtn()]), section('Réglages',
           field('Atout', select({ value: p.p, options: Object.entries(ZS.PERKS).map(([id, x]) => [id, x.name]), onChange: (v) => commit('Atout', 'elements', (mm) => { mm.perks[s.i].p = v; }) })),
           field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(p.face)), btn('Tourner', () => MT.tools.rotate(1), { ic: 'rotate' }))),
+          kField(p, (k) => commit('Taille du distributeur', 'elements', (mm) => setK(mm.perks[s.i], k)), perkSizeNote(p)),
           h('p', { class: 'p-note' }, def.desc))];
       }
       case 'box': {
@@ -907,17 +1046,23 @@
         return [selHead('Emplacement de la boîte mystère', `n° ${s.i + 1} sur ${m.boxes.length}`, [delBtn()]), section('Réglages',
           check({ checked: m.boxStart === s.i, label: 'La boîte commence ici', onChange: (v) => { if (v) commit('Départ de la boîte', 'elements', (mm) => { mm.boxStart = s.i; }); } }),
           field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(b.face)), btn('Retourner', () => MT.tools.rotate(1), { ic: 'rotate' }))),
+          kField(b, (k) => commit('Taille de la boîte', 'elements', (mm) => setK(mm.boxes[s.i], k)), 'Taille de la boîte à cet emplacement ; agrandie, elle avance vers sa face (son dos reste contre le mur)'),
           h('p', { class: 'p-note' }, 'La boîte part ailleurs après quelques tirages (ours en peluche) : prévoyez plusieurs emplacements.'))];
       }
-      case 'amp': return [selHead('Pack-A-Punch', 'Améliore l’arme tenue (5000 pts)', [delBtn()]), section('Réglages', field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(m.amp.face)), btn('Retourner', () => MT.tools.rotate(1), { ic: 'rotate' }))), h('p', { class: 'p-note' }, 'Il ne marche qu’avec le courant (interrupteur, ou « courant allumé au départ » dans l’onglet Carte).'))];
-      case 'power': return [selHead('Interrupteur du courant', `mur x ${m.power.cell[0]} · z ${m.power.cell[1]}`, [delBtn()]), section('Infos', h('p', { class: 'p-note' }, 'Allume les distributeurs qui demandent le courant, le Pack-A-Punch et les lumières réglées « avec le courant ».'))];
+      case 'amp': return [selHead('Pack-A-Punch', 'Améliore l’arme tenue (5000 pts)', [delBtn()]), section('Réglages', field('Face', h('span', { class: 'f-inline' }, h('span', { class: 'f-hint' }, faceName(m.amp.face)), btn('Retourner', () => MT.tools.rotate(1), { ic: 'rotate' }))),
+        kField(m.amp, (k) => commit('Taille du Pack-A-Punch', 'elements', (mm) => setK(mm.amp, k)), `Emprise : ${decFr(6 * (m.amp.k || 1))} × ${decFr(3 * (m.amp.k || 1))} m. Sous un étage, le beffroi est réduit pour tenir sous le plafond ; au dernier niveau, le plafond s’ouvre au-dessus.`),
+        h('p', { class: 'p-note' }, 'Il ne marche qu’avec le courant (interrupteur, ou « courant allumé au départ » dans l’onglet Carte).'))];
+      case 'power': return [selHead('Interrupteur du courant', `mur x ${m.power.cell[0]} · z ${m.power.cell[1]}`, [delBtn()]), section('Réglages',
+        kField(m.power, (k) => commit('Taille de l’interrupteur', 'elements', (mm) => setK(mm.power, k))),
+        h('p', { class: 'p-note' }, 'Allume les distributeurs qui demandent le courant, le Pack-A-Punch et les lumières réglées « avec le courant ».'))];
       case 'sign': {
         const g = m.signs[s.i];
         if (!g) return [];
         return [selHead('Panneau', g.text, [delBtn()]), section('Réglages',
           field('Texte', text({ value: g.text, maxLength: 28, upper: true, onCommit: (v) => commit('Texte du panneau', 'elements', (mm) => { mm.signs[s.i].text = v.toUpperCase().slice(0, 28) || 'PANNEAU'; }) })),
           field('Hauteur', num({ value: g.pos[1], min: 0.3, max: 8, step: 0.05, unit: 'm', onCommit: (v) => commit('Hauteur du panneau', 'elements', (mm) => { mm.signs[s.i].pos[1] = round(v); }) })),
-          field('Le long du mur', num({ value: g.n[0] ? g.pos[2] : g.pos[0], min: 0, max: 200, step: 0.25, unit: 'm', onCommit: (v) => commit('Déplacer le panneau', 'elements', (mm) => { const q = mm.signs[s.i]; if (q.n[0]) q.pos[2] = round(v); else q.pos[0] = round(v); }) })))];
+          field('Le long du mur', num({ value: g.n[0] ? g.pos[2] : g.pos[0], min: 0, max: 200, step: 0.25, unit: 'm', onCommit: (v) => commit('Déplacer le panneau', 'elements', (mm) => { const q = mm.signs[s.i]; if (q.n[0]) q.pos[2] = round(v); else q.pos[0] = round(v); }) })),
+          kField(g, (k) => commit('Taille du panneau', 'elements', (mm) => setK(mm.signs[s.i], k)), `${decFr(1.7 * (g.k || 1))} × ${decFr(0.42 * (g.k || 1))} m`))];
       }
       case 'riser': { const r = m.risers[s.i]; if (!r) return []; return [selHead('Apparition de zombies', `case x ${r[0]} · z ${r[1]}`, [delBtn()]), section('Infos', h('p', { class: 'p-note' }, 'Utilisée seulement quand sa pièce est ouverte. Les plus proches du joueur servent le plus souvent ; aucune ne sert à moins de 3 m de lui.'))]; }
       case 'spawn': return [selHead('Point de départ', 'Où le joueur commence'), section('Réglages',
@@ -932,6 +1077,13 @@
     }
   }
   const faceName = (n) => (n[0] === 1 ? 'est' : n[0] === -1 ? 'ouest' : n[1] === 1 ? 'sud' : 'nord');
+  /* Distributeur : taille obtenue sous le plafond (réduite quand les murs sont trop bas). */
+  function perkSizeNote(p) {
+    if (!MT.sizesOk() || typeof ZS.elixirFootprint !== 'function') return null;
+    const wh = MT.wallHeight(), fp = ZS.elixirFootprint(p, wh), k = p.k || 1, E = ZS.ELIXIRS && ZS.ELIXIRS[p.p];
+    const dims = E ? ` · ${decFr(E.w * fp.s)} × ${decFr(E.h * fp.s)} m (largeur × hauteur)` : '';
+    return fp.s < k - 1e-3 ? `Réduit à ×${decFr(fp.s)} pour tenir sous des murs de ${decFr(wh)} m${dims}` : `Machine${dims} ; emprise : ${fp.cells.length} case${fp.cells.length > 1 ? 's' : ''}`;
+  }
   function propInspector(i) {
     const m = S.map, pr = m.props[i];
     if (!pr) return [];
@@ -951,7 +1103,9 @@
         field('Z', num({ value: pr.z, min: -60, max: m.h + 60, step: 0.05, unit: 'm', onLive: (v) => liveSet('Déplacer', (p) => { p.z = round(v); }), onCommit: (v) => set('Déplacer', (p) => { p.z = round(v); }) })),
         field('Hauteur', num({ value: pr.y || 0, min: -5, max: 30, step: 0.05, unit: 'm', onLive: (v) => liveSet('Hauteur', (p) => { p.y = round(v); }), onCommit: (v) => set('Hauteur', (p) => { p.y = round(v); if (!p.y) delete p.y; }) }), 'Page haut / bas'),
         field('Rotation', num({ value: (((deg(pr.r || 0) % 360) + 360) % 360), min: -360, max: 720, step: 15, unit: '°', digits: 1, onLive: (v) => liveSet('Tourner', (p) => { p.r = round(MT.util.wrapRad(rad(v)), 4); }), onCommit: (v) => set('Tourner', (p) => { p.r = round(MT.util.wrapRad(rad(v)), 4); if (!p.r) delete p.r; }) }), 'R : +15° · Maj+R : +90°'),
-        field('Taille', slider({ value: pr.s || 1, min: 0.1, max: 4, step: 0.05, fmt: (v) => `${v.toFixed(2)}×`, onLive: (v) => liveSet('Taille', (p) => { p.s = v; }), onCommit: (v) => set('Taille', (p) => { p.s = round(v); if (Math.abs(p.s - 1) < 1e-3) delete p.s; }) }))),
+        MT.sizesOk() ? null : field('Taille', slider({ value: pr.s || 1, min: 0.1, max: 4, step: 0.05, fmt: (v) => `${v.toFixed(2)}×`, onLive: (v) => liveSet('Taille', (p) => { p.s = v; }), onCommit: (v) => set('Taille', (p) => { p.s = round(v); if (Math.abs(p.s - 1) < 1e-3) delete p.s; }) }))),
+      MT.sizesOk() ? section('Taille', ...sizeFields(MT.modelDims(pr.m), () => MT.propScale(S.map.props[i] || pr),
+        (f, isLive) => (isLive ? liveSet : set)('Taille', (p) => { MT.setPropScale(p, f); }))) : null,
       section('Aspect',
         field('Teinte', h('span', { class: 'f-inline' },
           check({ checked: pr.c !== undefined, label: '', onChange: (v) => set('Teinte', (p) => { if (v) p.c = 0xc0a080; else delete p.c; }, 'props') }),
@@ -972,6 +1126,12 @@
           btn('Poser au sol', () => commit('Poser au sol', 'prop-move', (mm) => { for (const i of list) delete mm.props[i].y; }, { list })),
           btn('Copier', () => MT.copySelection(), { ic: 'copy' })),
         field('Teinte commune', color({ value: '#c0a080', onCommit: (v) => commit('Teinte', 'props', (mm) => { for (const i of list) mm.props[i].c = ZS.parseColor(v, 0xffffff); }) }))),
+      MT.sizesOk() ? section('Taille',
+        field('Multiplier', h('span', { class: 'f-inline' }, [0.5, 0.8, 1.25, 1.5, 2].map((k) => btn(`×${decFr(k)}`, () => commit(`Taille ×${decFr(k)}`, 'prop-move', (mm) => {
+          for (const i of list) MT.setPropScale(mm.props[i], MT.propScale(mm.props[i]).map((x) => x * k));
+        }, { list })))), 'Chaque objet garde ses proportions'),
+        field('Facteur', num({ value: 1, min: 0.05, max: 20, step: 0.05, unit: '×', onCommit: (k) => { if (Math.abs(k - 1) > 1e-3) commit(`Taille ×${decFr(k)}`, 'prop-move', (mm) => { for (const i of list) MT.setPropScale(mm.props[i], MT.propScale(mm.props[i]).map((x) => x * k)); }, { list }); } }), 'Un facteur au choix, appliqué à tous'),
+        h('div', { class: 'p-actions' }, btn('Taille d’origine', () => commit('Taille d’origine', 'prop-move', (mm) => { for (const i of list) delete mm.props[i].s; }, { list }), { ic: 'rotate' }))) : null,
     ];
   }
   function lightInspector(i) {
@@ -1082,6 +1242,7 @@
         texField('Plafond', m.textures.ceil, (id) => commit('Plafond par défaut', 'all', (mm) => { mm.textures.ceil = id; }), { layer: 'ceil' }),
         texField('Murs, côté extérieur', m.textures.exterior, (id) => commit('Façades', 'all', (mm) => { mm.textures.exterior = id; })),
         texField('Sol extérieur', m.textures.ground, (id) => commit('Sol extérieur', 'all', (mm) => { mm.textures.ground = id; }))),
+      MT.texOk() ? texSizesSection() : null,
       section('Ambiance',
         field('Ciel', color({ value: a.sky, onLive: (v) => ambLive('Ciel', (x) => { x.sky = v; if (a.fogLinked !== false && a.sky === a.fog) x.fog = v; }), onCommit: (v) => amb('Couleur du ciel', (x) => { const same = x.fog === x.sky; x.sky = v; if (same) x.fog = v; }) })),
         field('Brouillard', color({ value: a.fog, onLive: (v) => ambLive('Brouillard', (x) => { x.fog = v; }), onCommit: (v) => amb('Couleur du brouillard', (x) => { x.fog = v; }) }), 'Même couleur que le ciel pour un horizon invisible'),
@@ -1123,6 +1284,22 @@
           m.menuCam ? btn('Automatique', () => commit('Caméra du menu', 'settings', (mm) => { mm.menuCam = null; })) : null),
         h('p', { class: 'p-note' }, m.menuCam ? 'Caméra du menu réglée à la main.' : 'Caméra du menu automatique : depuis le départ, vers la boîte mystère.')),
     ];
+  }
+  /* Textures réglées sur cette carte : tailles changées et variantes. */
+  function texSizesSection() {
+    const m = S.map;
+    const ids = [...Object.keys(m.texSizes || {}).filter((id) => ZS.TEXLIB[id] && !MT.variantOf(id)), ...MT.variants().filter((id) => ZS.TEXLIB[id])];
+    const rows = ids.map((id) => {
+      const t = MT.texSizeOf(id);
+      if (!t) return null;
+      const sw = h('span', { class: 'tex-swatch sm' }), u = MT.texThumb(id);
+      if (typeof u === 'string') sw.style.backgroundImage = `url(${u})`;
+      return h('div', { class: 'tex-row' }, sw,
+        h('span', null, h('b', null, MT.texName(id)), h('small', null, `${t.variant ? `variante de ${MT.texName(MT.variantOf(id).base)} · ` : ''}${decFr(t.w)} × ${t.fit ? 'hauteur des murs' : `${decFr(t.h)} m`}`)),
+        btn('Régler', () => { S.opts.paint.tex = id; MT.setTool('paint'); UI.setTab('tool'); }, { title: 'Outil Peinture, cette texture choisie' }),
+        t.variant ? null : h('button', { type: 'button', class: 'mt-icon-btn sm', title: `Taille d’origine (${decFr(t.w0)} × ${t.fit0 ? 'hauteur des murs' : `${decFr(t.h0)} m`})`, onclick: () => MT.resetTexSize(id) }, icon('close')));
+    }).filter(Boolean);
+    return section('Tailles des textures', rows.length ? rows : h('p', { class: 'p-note' }, 'Toutes les textures ont leur taille d’origine. Outil Peinture : choisissez une texture, puis sa taille sur cette carte, ou créez-en une variante.'));
   }
   function boxWeapons(r) {
     const pool = Object.entries(ZS.WEAPONS).filter(([, w]) => w.box > 0);
@@ -1540,6 +1717,7 @@
       ['3D', 'clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · Maj : vite · molette : avancer vers le curseur · clic milieu : glisser · Alt+glisser : tourner autour · F : montrer la sélection · H : vue de dessus'],
       ['Construire', '1 à 9 : type de case · [ et ] : taille du pinceau · clic droit : effacer · Alt+clic : pipette'],
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
+      ['Tailles', 'objet : onglet Sélection → Taille (largeur, hauteur, profondeur en mètres ; « Garder les proportions » ; « Taille d’origine ») ou outil Objets → Taille à la pose · texture : outil Textures → Taille sur cette carte (toute la carte), « Créer une variante… » pour une autre taille au même endroit · éléments de jeu : Taille ×0,4 à ×3 dans leur inspecteur · bâtiments des cartes ouvertes : Cotes (largeur, profondeur, hauteur des murs)'],
       ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
       ['Monde ouvert : terrain', 'T relief (monter, creuser, aplanir, adoucir, effacer ; clic droit dans le plan : l’inverse ; Échap : annuler le coup) · P sol (sable, roche, oasis…) · L routes (clic par point, Entrée ou double-clic pour finir, Retour arrière : dernier point) · B bâtiments (R : quart de tour) · [ et ] : taille du pinceau · les sept lieux de Khamsin et les routes d’origine restent fixes · nouvelle carte « Désert vierge » : le désert sans ses lieux'],
       ['Carte ouverte (la Lune)', 'Ombre éternelle et Lune vierge (1,4 × 1,4 km, 1/6 g, sans air) · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 disjoncteur · 6 poste d’oxygène · 7 Le Glas, un seul · 8 lieu nommé) · T relief · P sol (régolithe, éjectas, roche, glace…) · B bâtiments lunaires (module, hangar, abri, réservoir, conteneur, panneaux solaires) · pas de routes ni de véhicules · la fosse, ses rampes et les lieux d’Ombre éternelle restent fixes · nouvelle carte « Lune vierge » : la Lune sans les lieux'],

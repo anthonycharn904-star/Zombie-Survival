@@ -377,7 +377,7 @@
       if (!g || !pr) continue;
       g.position.set(pr.x, MT.levelY(MT.lvOf(pr)) + (pr.y || 0), pr.z);
       g.rotation.set(0, pr.r || 0, 0);
-      g.scale.setScalar(pr.s || 1);
+      g.scale.set(...MT.propScale(pr));
     }
   }
   function applyLightLive(detail) {
@@ -576,7 +576,7 @@
     if (V.ghost && gh) {
       V.ghost.position.set(gh.x, OWV() ? OWV().propGhostY(gh) : MT.levelY() + (gh.y || 0), gh.z);
       V.ghost.rotation.set(0, gh.r || 0, 0);
-      V.ghost.scale.setScalar(gh.s || 1);
+      V.ghost.scale.set(...MT.propScale(gh));
     }
   }
 

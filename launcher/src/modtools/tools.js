@@ -98,7 +98,7 @@
       for (let i = m.props.length - 1; i >= 0; i--) {
         const pr = m.props[i];
         if (!MT.here(pr) || !MT.propContains(pr, p.wx, p.wz, 2 / zoom)) continue;
-        const b = MT.modelBox(pr.m), area = (b.max.x - b.min.x) * (b.max.z - b.min.z) * (pr.s || 1) ** 2;
+        const area = MT.propArea(pr);
         if (area < bestArea) { best = i; bestArea = area; }
       }
       if (best >= 0) return { kind: 'prop', i: best };
@@ -606,7 +606,7 @@
       if (!pl) { MT.preview.ghost = null; return; }
       const o = S.opts.props, def = ZS.MODELS[o.model];
       const r = pl.face && def.wall ? Math.atan2(pl.face[0], pl.face[1]) : rad(o.rot);
-      MT.preview.ghost = { m: o.model, x: pl.x, z: pl.z, y: pl.y, r, s: o.scale || 1 };
+      MT.preview.ghost = { m: o.model, x: pl.x, z: pl.z, y: pl.y, r, s: MT.toolScale() };
       MT.preview.cells = null;
     },
   };

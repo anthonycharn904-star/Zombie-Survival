@@ -63,7 +63,7 @@
       const pr = m.props[i];
       if (Math.abs(pr.x - p.wx) > 30 || Math.abs(pr.z - p.wz) > 30) continue;
       if (!MT.propContains(pr, p.wx, p.wz, 3 / Z)) continue;
-      const b = MT.modelBox(pr.m), area = (b.max.x - b.min.x) * (b.max.z - b.min.z) * (pr.s || 1) ** 2;
+      const area = MT.propArea(pr);
       if (area < bestArea) { bi = i; bestArea = area; }
     }
     if (bi >= 0) return { kind: 'prop', i: bi };
@@ -203,7 +203,7 @@
       if (!pl) { MT.preview.ghost = null; return; }
       const o = S.opts.props, def = ZS.MODELS[o.model];
       const r = pl.face && def.wall ? Math.atan2(pl.face[0], pl.face[1]) : rad(o.rot);
-      MT.preview.ghost = { m: o.model, x: pl.x, z: pl.z, y: pl.y, r, s: o.scale || 1 };
+      MT.preview.ghost = { m: o.model, x: pl.x, z: pl.z, y: pl.y, r, s: MT.toolScale() };
     },
   };
 

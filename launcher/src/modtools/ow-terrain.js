@@ -17,7 +17,7 @@
   S.opts.ow.brush = { op: 'raise', size: 24, strength: 0.5 };
   S.opts.ow.paint = { bio: 'OASIS', size: 14 };
   S.opts.ow.road = { kind: 'track', w: 6 };
-  S.opts.ow.bld = { type: 'maison', rot: 0 };
+  S.opts.ow.bld = { type: 'maison', rot: 0, dims: null };      // dims : { w, d, h } (jeu 2.0.3), null : catalogue
   TR.OPS = [['raise', 'Monter'], ['lower', 'Creuser'], ['flatten', 'Aplanir'], ['smooth', 'Adoucir'], ['reset', 'Effacer']];
   const PAINT_DESERT = {
     SAND: ['Sable', '#d9a873'], PAD: ['Sable tassé', '#d8b48a'], TRACK: ['Sol damé', '#c49a66'], ROCK: ['Roche', '#8f7a64'], WADI: ['Graviers d’oued', '#b39674'],
@@ -139,9 +139,9 @@
     down(p, ev) {
       if (ev.button !== 0) return false;
       const o = S.opts.ow.bld;
-      if (ev.alt) { const h = O.hitTest(p); if (h && h.kind === 'building') { const b = S.map.buildings[h.i]; o.type = b.type; o.rot = b.rot; MT.emit('tool-opts'); } return true; }
+      if (ev.alt) { const h = O.hitTest(p); if (h && h.kind === 'building') { const b = S.map.buildings[h.i]; o.type = b.type; o.rot = b.rot; o.dims = Object.keys(O.bldDims(b)).length ? O.bldDims(b) : null; MT.emit('tool-opts'); } return true; }
       if ((S.map.buildings || []).length >= ZS.OPEN_LIMITS.buildings) { MT.toast(`${ZS.OPEN_LIMITS.buildings} bâtiments au plus.`, 'warn'); return true; }
-      const r = ZS.ow.buildingPlace(o.type, p.wx, p.wz, o.rot);
+      const r = ZS.ow.buildingPlace(o.type, p.wx, p.wz, o.rot, o.dims);
       if (!r.ok) { MT.toast(r.why, 'warn'); return true; }
       const over = (S.map.buildings || []).some((b) => { const Q = ZS.ow.bldRect(b); return Q && r.rect[0] < Q.x1 && Q.x0 < r.rect[2] && r.rect[1] < Q.z1 && Q.z0 < r.rect[3]; });
       if (over) MT.toast('Ce bâtiment en chevauche un autre.', 'warn');
@@ -152,7 +152,7 @@
     },
     hover(p) {
       if (!p || !ZS.ow.on) { MT.preview.bld = null; return; }
-      const o = S.opts.ow.bld, r = ZS.ow.buildingPlace(o.type, p.wx, p.wz, o.rot);
+      const o = S.opts.ow.bld, r = ZS.ow.buildingPlace(o.type, p.wx, p.wz, o.rot, o.dims);
       MT.preview.bld = { ...r, wx: p.wx, wz: p.wz };
     },
   };
@@ -348,7 +348,8 @@
     if (S.tool === 'buildings' && pv.bld && pv.bld.b) {
       const R = ZS.ow.bldRect(pv.bld.b), y = pv.bld.b.y;
       if (R) {
-        const box = new THREE.Box3(new THREE.Vector3(R.x0, y, R.z0), new THREE.Vector3(R.x1, y + 3.2, R.z1));
+        const H = (ZS.ow.bldSize && ZS.ow.bldSize(pv.bld.b)[2]) || 3.2;
+        const box = new THREE.Box3(new THREE.Vector3(R.x0, y, R.z0), new THREE.Vector3(R.x1, y + H, R.z1));
         const hlp = new THREE.Box3Helper(box, pv.bld.ok ? 0x4fd06a : 0xe04a3a);
         hlp.material.depthTest = false; hlp.material.transparent = true; hlp.renderOrder = 21;
         g.add(hlp);

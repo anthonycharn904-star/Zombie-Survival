@@ -121,12 +121,14 @@
   };
 
   /* Place proposée par le moteur pour un genre d'élément en (x, z). */
-  O.place = (kind, x, z, face) => {
+  O.place = (kind, x, z, face, size = 1) => {
     if (!ZS.ow || !ZS.ow.on) return { ok: false, why: 'Monde pas encore chargé.' };
     if (kind === 'loc') { const ok = x > 0 && z > 0 && x < S.map.w && z < S.map.h; return { ok, x: round(x, 1), z: round(z, 1), why: ok ? '' : 'Hors de la carte.' }; }
     const k = kind === 'spawn' ? 'spawn' : kind;
-    return ZS.ow.place(k, x, z, { face: face || S.opts.ow.face });
+    return ZS.ow.place(k, x, z, { face: face || S.opts.ow.face, k: size });   // k : taille (jeu 2.0.3)
   };
+  /* Cotes d'un bâtiment (w, d, h) quand elles diffèrent du catalogue (jeu 2.0.3). */
+  O.bldDims = (b) => { const o = {}; for (const k of ['w', 'd', 'h']) if (b && typeof b[k] === 'number') o[k] = b[k]; return o; };
   /* Nouvel élément d'après une place (r : résultat de O.place). */
   O.make = (kind, r, m = S.map) => {
     const o = S.opts.ow;
@@ -159,6 +161,7 @@
     if (kind === 'glas') {
       // une seule cloche : poser ailleurs la déplace
       const had = !!m.glas, e = O.make('glas', r);
+      if (had && m.glas.k) e.k = m.glas.k;
       MT.edit(had ? 'Déplacer : Le Glas' : 'Poser : Le Glas', (mm) => { mm.glas = e; }, 'ow-el');
       if (had) MT.toast('Le Glas déplacé : une seule cloche par carte.', 'info');
       MT.select({ kind: 'glas' });
@@ -202,7 +205,7 @@
     const kind = sel.kind;
     if (kind === 'building') {
       const before = O.terrainRect('building', e);
-      const r = ZS.ow.buildingPlace(e.type, x, z, e.rot);
+      const r = ZS.ow.buildingPlace(e.type, x, z, e.rot, O.bldDims(e));
       if (!r.ok) return r;
       if (r.b.x === e.x && r.b.z === e.z) return r;
       Object.assign(e, { x: r.b.x, z: r.b.z, y: r.b.y });
@@ -213,7 +216,7 @@
     if (kind === 'loc') { e.x = round(clamp(x, 0, m.w), 1); e.z = round(clamp(z, 0, m.h), 1); MT.touch('settings', { kind, i: sel.i, live }); return { ok: true }; }
     if (kind === 'road') return { ok: false };
     const face = kind === 'perk' || kind === 'box' || kind === 'oxy' || kind === 'glas' ? e.face : kind === 'breaker' ? [e.nx, e.nz] : null;
-    const r = O.place(kind, x, z, face);
+    const r = O.place(kind, x, z, face, e.k || 1);
     if (!r.ok) return r;
     switch (kind) {
       case 'spawn': m.spawn.pos = [r.x, r.z]; break;
@@ -302,7 +305,7 @@
       else if (s.kind === 'spawn') x.yaw = round(wrapRad(x.yaw + rad(big ? 90 : 15) * dir), 4);
       else if (s.kind === 'building') {
         const before = O.terrainRect('building', x);
-        const r = ZS.ow.buildingPlace(x.type, x.x, x.z, (x.rot + (dir > 0 ? 1 : 3)) % 4);
+        const r = ZS.ow.buildingPlace(x.type, x.x, x.z, (x.rot + (dir > 0 ? 1 : 3)) % 4, O.bldDims(x));
         if (!r.ok) { MT.toast(r.why, 'warn'); return false; }
         Object.assign(x, { x: r.b.x, z: r.b.z, rot: r.b.rot, y: r.b.y });
         S.owRect = unionR(before, O.terrainRect('building', x));

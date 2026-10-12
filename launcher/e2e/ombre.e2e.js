@@ -44,13 +44,13 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.0' && ZS.version === v, `jeu 2.0.0 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
+      ok(GAME_VERSION === '2.0.3' && ZS.version === v, `jeu 2.0.3 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
       ok(MAPS.list.join() === 'bunker7,khamsin,ombre', 'catalogue : Bunker 7, Khamsin, puis Ombre éternelle (troisième carte)', MAPS.list);
       const M = MAPS.byId.ombre;
       ok(M && M.open && M.base === 'ombre' && M.name === 'Ombre éternelle' && /^data:image\/jpeg/.test(M.thumb || ''), 'Ombre éternelle : carte ouverte (base ombre), vignette du plan en relief', M && { open: M.open, base: M.base, name: M.name, thumb: (M.thumb || '').slice(0, 22) });
       ok(!ZS.MAPS.list.includes('ombre') && !ZS.MAPS.byId.ombre && ZS.MAPS_ALL.byId.ombre === M, 'Mod Tools : absente du catalogue des cartes de grille, présente dans le catalogue complet', ZS.MAPS.list);
       ok(!ZS.ZOMBIE_TYPES.some((t) => /^lu_/.test(t.id)), 'Mod Tools : les zombies lunaires ne sont pas des types de pièce', ZS.ZOMBIE_TYPES.map((t) => t.id));
-      ok(ZS.editorApi === 4 && ZS.ow.ALL_BUILDINGS.lu_module && ZS.ow.worldOf('ombre') === 'lune' && ZS.ow.worldOf('lune') === 'lune' && ZS.ow.worldOf('khamsin') === 'khamsin', 'interface des Mod Tools 4 : bâtiments lunaires, mondes des bases', ZS.editorApi);
+      ok(ZS.editorApi >= 4 && ZS.ow.ALL_BUILDINGS.lu_module && ZS.ow.worldOf('ombre') === 'lune' && ZS.ow.worldOf('lune') === 'lune' && ZS.ow.worldOf('khamsin') === 'khamsin', 'interface des Mod Tools 4 ou plus (5 depuis le jeu 2.0.3) : bâtiments lunaires, mondes des bases', ZS.editorApi);
       return out;
     }, GAME)).forEach(report);
 

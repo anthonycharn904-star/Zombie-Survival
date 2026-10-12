@@ -226,6 +226,7 @@
   function restore(snapshot, sel) {
     S.map = snapshot;
     S.sel = sel;
+    MT.syncVariants();
     if (!MT.hasLevel(S.level)) { S.level = 0; MT.emit('level', 0); }
     S.rev++;
     MT.emit('change', 'all', { history: true });
@@ -533,7 +534,7 @@
   async function absorbCustomTextures(m) {
     const ct = (m.custom && m.custom.textures) || {};
     for (const id of Object.keys(ct)) {
-      if (S.library[id]) continue;
+      if (S.library[id] || !ct[id] || typeof ct[id].data !== 'string') continue;   // variante : propre à la carte
       try { await MT.addToLibrary(id, ct[id]); } catch (e) { console.warn(e); }
     }
     const cm = (m.custom && m.custom.models) || {};
@@ -564,21 +565,144 @@
     } catch (e) { console.warn('Bibliothèque de modèles indisponible', e); }
   };
 
+  /* ------------------------------------------- tailles des textures --
+     Jeu 2.0.3 (cartes à grille) : la taille d'une texture (mètres d'une répétition) vaut pour toute
+     la carte (texSizes : { id: [largeur, hauteur] }) ; hauteur 0 : sur les murs, elle suit leur
+     hauteur. Une variante est une copie d'une texture (même image) avec sa propre taille, rangée
+     dans la carte : custom.textures[u_…] = { name, base, size }.                                   */
+  MT.texOk = (m = S.map) => MT.sizesOk() && !!m && !m.open;
+  MT.variantOf = (id, m = S.map) => {
+    const t = m && m.custom && m.custom.textures && m.custom.textures[id];
+    return t && typeof t.data !== 'string' && typeof t.base === 'string' ? t : null;
+  };
+  MT.variants = (m = S.map) => Object.keys((m && m.custom && m.custom.textures) || {}).filter((id) => MT.variantOf(id, m));
+  /* Taille d'une texture sur cette carte : w, h (h : hauteur sur un sol quand elle suit les murs),
+     fit (suit la hauteur des murs), own (réglée sur cette carte), w0, h0, fit0 (taille d'origine). */
+  MT.texSizeOf = (id, m = S.map) => {
+    const v = MT.variantOf(id, m), B = ZS.TEXLIB[v ? v.base : id];
+    if (!B) return null;
+    const w0 = B.size[0], h0 = B.size[1], fit0 = !!B.fit;
+    const o = v ? v.size : m && m.texSizes ? m.texSizes[id] : null;
+    if (!o) return { w: w0, h: h0, fit: fit0, own: false, w0, h0, fit0, variant: !!v };
+    const fit = o[1] === 0;
+    return { w: o[0], h: fit ? round((o[0] * h0) / w0, 3) : o[1], fit, own: true, w0, h0, fit0, variant: !!v };
+  };
+  const TEX_RULE = () => (ZS.SIZE_RULES ? ZS.SIZE_RULES.tex : [0.05, 50]);
+  /* Règle la taille d'une texture pour toute la carte (une variante : sa propre taille). */
+  MT.setTexSize = (id, w, h, fit) => {
+    const [a, b] = TEX_RULE(), v = MT.variantOf(id);
+    const cur = MT.texSizeOf(id);
+    if (!cur) return;
+    w = round(clamp(w, a, b), 3); h = round(clamp(h, a, b), 3);
+    const val = [w, fit ? 0 : h];
+    MT.edit(`Taille de la texture : ${MT.texName(id)}`, (m) => {
+      if (v) { m.custom.textures[id].size = val; return true; }
+      const same = Math.abs(w - cur.w0) < 1e-3 && (fit ? cur.fit0 : !cur.fit0 && Math.abs(h - cur.h0) < 1e-3);
+      if (!m.texSizes) m.texSizes = {};
+      if (same) delete m.texSizes[id]; else m.texSizes[id] = val;
+      return true;
+    }, 'all');
+    MT.syncVariants();
+  };
+  MT.resetTexSize = (id) => {
+    const cur = MT.texSizeOf(id);
+    if (cur) MT.setTexSize(id, cur.w0, cur.h0, cur.fit0);
+  };
+  MT.texName = (id) => (ZS.TEXLIB[id] ? ZS.TEXLIB[id].name : id);
+  /* Nouvelle variante de la texture base (une variante d'une variante part de la même base). */
+  MT.createVariant = (base, name, w, h, fit) => {
+    const m = S.map;
+    if (!MT.texOk(m)) return null;
+    const pv = MT.variantOf(base);
+    if (pv) base = pv.base;
+    if (!ZS.TEXLIB[base] || base === 'none') return null;
+    const ct = (m.custom && m.custom.textures) || {};
+    if (Object.keys(ct).length >= 64) { MT.toast('64 textures propres à la carte au plus (images et variantes).', 'warn'); return null; }
+    const nm = String(name || '').trim().slice(0, 60) || `${MT.texName(base)} (variante)`;
+    let id = `u_v_${slug(nm, 30) || 'variante'}`, n = 2;
+    while (ct[id] || ZS.TEXLIB[id] || S.library[id]) id = `u_v_${slug(nm, 26) || 'variante'}-${n++}`;
+    const [a, b] = TEX_RULE();
+    const size = [round(clamp(w, a, b), 3), fit ? 0 : round(clamp(h, a, b), 3)];
+    MT.edit(`Nouvelle variante : ${nm}`, (mm) => {
+      if (!mm.custom) mm.custom = { textures: {}, models: {} };
+      if (!mm.custom.textures) mm.custom.textures = {};
+      mm.custom.textures[id] = { name: nm, base, size };
+      return true;
+    }, 'all');
+    MT.syncVariants();
+    return id;
+  };
+  MT.renameVariant = (id, name) => {
+    const nm = String(name || '').trim().slice(0, 60);
+    if (!MT.variantOf(id) || !nm) return;
+    MT.edit('Renommer la variante', (m) => { m.custom.textures[id].name = nm; return true; }, 'all');
+    MT.syncVariants();
+  };
+  /* Remplace partout une texture par une autre (palette des couches, textures de la carte, pièces). */
+  function replaceTexture(m, from, to) {
+    let n = 0;
+    for (const k of Object.keys(m.textures)) if (m.textures[k] === from) { m.textures[k] = to; n++; }
+    m.palette = m.palette.map((id) => { if (id === from) { n++; return to; } return id; });
+    for (const z of m.zones) for (const L of ['floor', 'wall', 'ceil']) if (z[L] === from) { z[L] = to; n++; }
+    if (n) compactPalette(m);
+    return n;
+  }
+  /* Supprime une variante : là où elle est peinte, sa texture de base la remplace. */
+  MT.deleteVariant = (id) => {
+    const v = MT.variantOf(id);
+    if (!v) return 0;
+    let n = 0;
+    MT.edit(`Supprimer la variante : ${v.name}`, (m) => {
+      n = replaceTexture(m, id, v.base);
+      delete m.custom.textures[id];
+      if (m.texSizes) delete m.texSizes[id];
+      return true;
+    }, 'all');
+    MT.syncVariants();
+    return n;
+  };
+  /* Variantes de la carte ouverte dans la bibliothèque du moteur (celles d'une autre carte en sortent). */
+  const variantSig = () => Object.values(ZS.TEXLIB).filter((d) => d.variant).map((d) => `${d.id}:${d.variant}:${d.size}:${d.fit}:${d.name}`).sort().join('|');
+  MT.syncVariants = (force = false) => {
+    if (typeof ZS.registerTextureVariants !== 'function') return;
+    const before = variantSig();
+    ZS.registerTextureVariants(S.map && !S.map.open ? S.map : null);
+    if (force || variantSig() !== before) MT.emit('library');
+  };
+  // une image arrivée dans la bibliothèque peut être la base d'une variante de la carte
+  MT.on('library', () => { if (S.map && !S.map.open) MT.syncVariants(); });
+
   /* ------------------------------------------------- objets posés --- */
   const BOX_DEFAULT = { min: { x: -0.5, y: 0, z: -0.5 }, max: { x: 0.5, y: 1, z: 0.5 } };
   MT.modelBox = (id) => { const info = ZS.MODELS[id] ? ZS.modelParts(id) : null; return info ? info.box : BOX_DEFAULT; };
+  /* Tailles (jeu 2.0.3, interface 5) : objets par axe, textures par carte, bâtiments, éléments. */
+  MT.sizesOk = () => (ZS.editorApi || 1) >= 5 && typeof ZS.propScale === 'function';
+  /* Facteurs d'un objet : [largeur, hauteur, profondeur] (s : un nombre, ou trois). */
+  MT.propScale = (pr) => {
+    if (MT.sizesOk()) return ZS.propScale(pr);
+    const k = pr && typeof pr.s === 'number' && pr.s > 0 ? pr.s : 1;
+    return [k, k, k];
+  };
+  /* Écrit des facteurs dans un objet (un nombre s'ils sont égaux, rien pour 1). */
+  MT.setPropScale = (pr, f) => {
+    const v = MT.sizesOk() ? ZS.normPropScale(f) : (Math.abs(f[0] - 1) < 1e-3 ? undefined : round(clamp(f[0], 0.1, 10), 3));
+    if (v === undefined) delete pr.s; else pr.s = v;
+  };
+  /* Dimensions d'un modèle (mètres) : [largeur, hauteur, profondeur] de sa boîte. */
+  MT.modelDims = (id) => { const b = MT.modelBox(id); return [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z]; };
   MT.propCorners = (pr) => {
-    const b = MT.modelBox(pr.m), s = pr.s || 1, r = pr.r || 0, c = Math.cos(r), sn = Math.sin(r);
+    const b = MT.modelBox(pr.m), [sx, , sz] = MT.propScale(pr), r = pr.r || 0, c = Math.cos(r), sn = Math.sin(r);
     return [[b.min.x, b.min.z], [b.max.x, b.min.z], [b.max.x, b.max.z], [b.min.x, b.max.z]]
-      .map(([lx, lz]) => [pr.x + (c * lx + sn * lz) * s, pr.z + (-sn * lx + c * lz) * s]);
+      .map(([lx, lz]) => [pr.x + c * lx * sx + sn * lz * sz, pr.z - sn * lx * sx + c * lz * sz]);
   };
   MT.propContains = (pr, px, pz, pad = 0) => {
-    const b = MT.modelBox(pr.m), s = pr.s || 1, r = pr.r || 0, c = Math.cos(r), sn = Math.sin(r);
+    const b = MT.modelBox(pr.m), [sx, , sz] = MT.propScale(pr), r = pr.r || 0, c = Math.cos(r), sn = Math.sin(r);
     const dx = px - pr.x, dz = pz - pr.z;
-    const lx = (c * dx - sn * dz) / s, lz = (sn * dx + c * dz) / s;
-    const p = pad / s;
-    return lx >= b.min.x - p && lx <= b.max.x + p && lz >= b.min.z - p && lz <= b.max.z + p;
+    const lx = (c * dx - sn * dz) / sx, lz = (sn * dx + c * dz) / sz;
+    return lx >= b.min.x - pad / sx && lx <= b.max.x + pad / sx && lz >= b.min.z - pad / sz && lz <= b.max.z + pad / sz;
   };
+  /* Surface au sol d'un objet (choix du plus petit sous le curseur). */
+  MT.propArea = (pr) => { const b = MT.modelBox(pr.m), [sx, , sz] = MT.propScale(pr); return (b.max.x - b.min.x) * sx * (b.max.z - b.min.z) * sz; };
   MT.propSolid = (pr) => {
     const def = ZS.MODELS[pr.m];
     if (!def || def.decal) return false;
@@ -590,16 +714,25 @@
     let r = rad(o.rot);
     if (o.randomRot) r = Math.round(Math.random() * 24) * (Math.PI / 12);
     if (face && def && def.wall) r = Math.atan2(face[0], face[1]);
-    let s = o.scale || 1;
-    if (o.randomScale > 0) s *= 1 + (Math.random() * 2 - 1) * o.randomScale;
+    // taille : facteurs de l'outil (par axe), variation au hasard sur les trois à la fois
+    const f = MT.toolScale();
+    let v = 1;
+    if (o.randomScale > 0) v = 1 + (Math.random() * 2 - 1) * o.randomScale;
     const pr = { m: model, x: round(x), z: round(z) };
     if (y) pr.y = round(y);
     if (Math.abs(r) > 1e-4) pr.r = round(wrapRad(r), 4);
-    if (Math.abs(s - 1) > 1e-3) pr.s = round(clamp(s, 0.1, 10), 3);
+    MT.setPropScale(pr, f.map((k) => k * v));
     if (o.tint) pr.c = ZS.parseColor(o.tint, 0xffffff);
     if (o.solid === 'yes') pr.solid = true;
     else if (o.solid === 'no') pr.solid = false;
     return MT.tagLv(pr);
+  };
+  /* Facteurs de l'outil Objets : [largeur, hauteur, profondeur] (taille d'origine : [1, 1, 1]). */
+  MT.toolScale = () => {
+    const o = S.opts.props;
+    if (Array.isArray(o.size) && o.size.length === 3 && MT.sizesOk()) return o.size.slice();
+    const k = o.scale || 1;
+    return [k, k, k];
   };
   MT.pushRecent = (kind, id) => {
     const list = S.recent[kind];
@@ -1120,11 +1253,20 @@
   MT.exportMapObject = (m = S.map) => {
     if (m.open) return MT.ow.exportObject(m);
     compactPalette(m);
-    const custom = {};
-    for (const id of MT.usedTextures(m)) {
-      if (!/^u_/.test(id)) continue;
-      const t = S.library[id] || (m.custom && m.custom.textures && m.custom.textures[id]);
-      if (t) custom[id] = { name: t.name, data: t.data, size: t.size.slice(), rough: t.rough, fit: !!t.fit };
+    const custom = {}, own = (m.custom && m.custom.textures) || {};
+    const image = (id) => {
+      if (custom[id]) return;
+      const t = S.library[id] || own[id];
+      if (t && typeof t.data === 'string') custom[id] = { name: t.name, data: t.data, size: t.size.slice(), rough: t.rough, fit: !!t.fit };
+    };
+    for (const id of MT.usedTextures(m)) if (/^u_/.test(id) && !(own[id] && own[id].base)) image(id);
+    // variantes (jeu 2.0.3) : toutes celles de la carte, même pas encore peintes, et l'image de leur base
+    for (const id of Object.keys(own)) {
+      const t = own[id];
+      if (!t || typeof t.data === 'string' || typeof t.base !== 'string') continue;
+      if (/^u_/.test(t.base)) image(t.base);
+      if (/^u_/.test(t.base) && !custom[t.base]) continue;          // base introuvable : variante perdue
+      custom[id] = { name: t.name, base: t.base, size: t.size.slice() };
     }
     const models = {};
     for (const p of m.props) {
@@ -1185,6 +1327,7 @@
     S.savedRev = source === 'workspace' || source === 'game' ? S.rev : -1;
     S.analysisRev = -1;
     absorbCustomTextures(map);
+    MT.syncVariants(true);
     MT.emit('map');
     MT.emit('change', 'all', { load: true });
     MT.emit('selection');
