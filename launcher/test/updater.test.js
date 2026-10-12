@@ -63,21 +63,25 @@ test('version livrée : installée au premier lancement, réinstallée à numér
   };
   try {
     const bundle = path.join(tmp, 'bundle'), data = path.join(tmp, 'data');
-    const u = new Updater({ dataDir: data, bundledDir: bundle, updateUrl: '', publicKey: '' });
+    const logs = [];
+    const u = new Updater({ dataDir: data, bundledDir: bundle, updateUrl: '', publicKey: '', log: (m) => logs.push(m) });
     const html = () => fs.readFileSync(path.join(u.getInstalled().dir, 'index.html'), 'utf8');
     // premier lancement : la version livrée (2.0.3, éditeur 5)
     game(bundle, '2.0.3', 5, 'premier');
     assert.equal((await u.ensureBundled()).version, '2.0.3');
     assert.match(html(), /premier/);
+    assert.deepEqual(logs, ['Version livrée installée : 2.0.3']);
     // même numéro, même éditeur : rien ne change
     game(bundle, '2.0.3', 5, 'pareil');
     await u.ensureBundled();
     assert.match(html(), /premier/);
-    // même numéro, éditeur plus récent (jeu reconstruit) : réinstallée
+    assert.equal(logs.length, 1);
+    // même numéro, éditeur plus récent (jeu reconstruit) : réinstallée, le journal dit d'où elle vient
     game(bundle, '2.0.3', 6, 'reconstruit');
     await u.ensureBundled();
     assert.match(html(), /reconstruit/);
     assert.equal(u.getInstalled().version, '2.0.3');
+    assert.equal(logs[1], 'Version livrée réinstallée : 2.0.3 (éditeur 6 au lieu de 5)');
     // version installée plus récente (mise à jour en ligne) : la version livrée ne la remplace pas
     game(u.versionDir('2.0.4'), '2.0.4', 6, 'en ligne');
     await u.writeState({ current: '2.0.4', previous: '2.0.3' });

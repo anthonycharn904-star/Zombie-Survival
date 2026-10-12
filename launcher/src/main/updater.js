@@ -284,13 +284,14 @@ class Updater {
     const b = this.bundledInfo();
     const inst = this.getInstalled();
     const cmp = b && inst ? compareVersions(b.version, inst.version) : 0;
-    const rebuilt = !!(b && inst && cmp === 0 && editorApiOf(this.bundledDir) > editorApiOf(inst.dir));
+    const apiB = b ? editorApiOf(this.bundledDir) : 0, apiI = inst ? editorApiOf(inst.dir) : 0;
+    const rebuilt = !!(b && inst && cmp === 0 && apiB > apiI);
     if (b && (!inst || cmp > 0 || rebuilt)) {
       await fsp.mkdir(this.versionsDir, { recursive: true });
       const tmp = path.join(this.versionsDir, `.${b.version}-bundle-${Date.now()}`);
       await fsp.cp(this.bundledDir, tmp, { recursive: true });
       await this.activate(tmp, b.version);
-      this.log(rebuilt ? `Version livrée réinstallée : ${b.version} (éditeur ${editorApiOf(this.bundledDir)} au lieu de ${editorApiOf(this.versionDir(b.version)) || 'plus ancien'})` : `Version livrée installée : ${b.version}`);
+      this.log(rebuilt ? `Version livrée réinstallée : ${b.version} (éditeur ${apiB} au lieu de ${apiI || 'aucun'})` : `Version livrée installée : ${b.version}`);
     }
     return this.getInstalled();
   }
