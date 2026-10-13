@@ -17,10 +17,10 @@ cd launcher && node scripts/prepare-game.js         # copie hors ligne dans laun
    - `hooks-decor.py` : décor des lieux (2.0.3).
    - `hooks-pyramides.py` : intérieur des pyramides (2.0.3).
    - `hooks-libs.py` : bibliothèques de textures et de modèles (2.0.4).
-   - `hooks-khepesh.py` : khépesh de Khamsin, construction 1 (2.0.4).
+   - `hooks-khepesh.py` : khépesh de Khamsin, constructions 1 et 2 (2.0.4).
 3. Il concatène les modules `src/*.js` dans l'ordre alphabétique et les insère avant la ligne `/* --- Catalogue des cartes -- */`.
 
-Vérification de départ, à faire avant toute modification : `python3 engine/tools/build.py --out /tmp/zs.html`, puis comparer avec `game/zombie-survival.html` (`cmp` ou SHA-256). Le 13 octobre 2026, la reconstruction donne exactement le jeu du dépôt (jeu 2.0.4, construction 1, SHA-256 `496ed859…9dda`). Si ce n'est plus le cas, quelqu'un a modifié le HTML sans passer par l'atelier : reporter ses changements ici avant de reconstruire.
+Vérification de départ, à faire avant toute modification : `python3 engine/tools/build.py --out /tmp/zs.html`, puis comparer avec `game/zombie-survival.html` (`cmp` ou SHA-256). Le 13 octobre 2026, la reconstruction donne exactement le jeu du dépôt (jeu 2.0.4, construction 1, SHA-256 `496ed859…9dda`) ; depuis le 14 octobre : construction 2, `632973eb…ce8c`. Si ce n'est plus le cas, quelqu'un a modifié le HTML sans passer par l'atelier : reporter ses changements ici avant de reconstruire.
 
 ## Modules (`src/`, insérés dans cet ordre)
 

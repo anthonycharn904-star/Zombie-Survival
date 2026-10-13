@@ -1,13 +1,15 @@
 'use strict';
-/* Khépesh (jeu 2.0.4 refait, construction 1), dans la fenêtre du jeu du launcher : arme de corps-à-corps
-   du désert de Khamsin, faite d'après le fichier khepesh-melee.js d'Anthony (module intégré au script du
+/* Khépesh (jeu 2.0.4 refait, construction 2), dans la fenêtre du jeu du launcher : arme de corps-à-corps
+   de Khamsin (et des cartes faites à partir d'elle ; le Désert vierge garde le couteau depuis la
+   construction 2), faite d'après le fichier khepesh-melee.js d'Anthony (module intégré au script du
    jeu, sans variable globale ni écoute du clavier ; reflets du bronze du fichier calculés d'avance ;
    bras aux couleurs des gants et des manches du jeu). Touché quand la lame arrive (0,3 s) : jusqu'à
    3 zombies, 150, 113 et 75 dégâts, +10 par touche ; saignement (la moitié des dégâts en 4 s, sans
    points ; mort au corps-à-corps, +130) ; raté (personne, trop loin, hors de l'arc), mur ; Rôdeur qui
    agrippe : il lâche prise ; enchaînement ; vue immobile ; arme baissée puis revenue ; pas de tir
    pendant le coup ; à terre ; au volant ; nouvelle partie et retour au menu (sang effacé) ; son dans le
-   bus des effets du jeu ; rendu par-dessus la vue de l'arme ; le couteau sur Bunker 7.
+   bus des effets du jeu ; rendu par-dessus la vue de l'arme ; le couteau sur Bunker 7 et dans le Désert
+   vierge ; le khépesh sur une carte faite à partir de Khamsin.
      xvfb-run -a node e2e/khepesh.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -45,7 +47,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.4' && GAME_BUILD === 1 && ZS.build === 1, 'jeu 2.0.4, construction 1 (le launcher remplace la construction 0 installée)', { GAME_VERSION, GAME_BUILD, b: ZS.build });
+      ok(GAME_VERSION === '2.0.4' && GAME_BUILD === 2 && ZS.build === 2, 'jeu 2.0.4, construction 2 (le launcher remplace les constructions 0 et 1 installées)', { GAME_VERSION, GAME_BUILD, b: ZS.build });
       ok(typeof creerKhepesh === 'function' && window.creerKhepesh === undefined, 'module du khépesh dans le script du jeu, sans variable globale');
       ok(Khepesh === null && CUR.map && CUR.map.id === 'bunker7' && meleeName() === 'Couteau' && $('key-melee').textContent === 'Couteau',
         'au menu sur Bunker 7 : « V ou E : Couteau », pas de khépesh', { map: CUR.map && CUR.map.id, key: $('key-melee').textContent });
@@ -474,6 +476,32 @@ const USER = path.join(TMP, 'joueur');
       ok(Couteau.occupe && !Khepesh.occupe && !Khepesh.rig.visible && Arms.state === 'knife', 'Bunker 7 : V, coup de couteau (pas de khépesh)', { k: Couteau.occupe, kh: Khepesh.occupe });
       __run(1.2);
       ok(Arms.state === 'idle', 'puis arme en main');
+      return out;
+    })).forEach(report);
+
+    // ------------------- Désert vierge : le couteau ; carte faite à partir de Khamsin : le khépesh
+    // (construction 2 : décision d'Anthony du 13 octobre 2026, 23 h 39, le khépesh sur Khamsin seulement)
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      quitToMenu();
+      registerMap({ ...DESERT, id: 'essai-desert', name: 'Désert d’essai' }, 'essai');
+      __zs.map('essai-desert');
+      ok(OW.on && OW.baseId === 'desert' && $('key-melee').textContent === 'Couteau' && meleeName() === 'Couteau' && !khepeshOn() && meleeCur() === Couteau,
+        'Désert vierge : « V ou E : Couteau », pas de khépesh', { base: OW.baseId, key: $('key-melee').textContent });
+      __zs.start(); __zs.god(true);
+      if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
+      G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
+      __run(0.4);
+      __press('KeyV'); update(1 / 60); endFrameInput(); Input.keys.KeyV = false;
+      ok(Couteau.occupe && !Khepesh.occupe && !Khepesh.rig.visible && Arms.state === 'knife', 'Désert vierge : V, coup de couteau (pas de khépesh)', { k: Couteau.occupe, kh: Khepesh.occupe });
+      __run(1.2);
+      ok(Arms.state === 'idle', 'puis arme en main');
+      quitToMenu();
+      registerMap({ ...KHAMSIN, id: 'essai-khamsin', name: 'Khamsin retouchée' }, 'essai');
+      __zs.map('essai-khamsin');
+      ok(OW.on && OW.baseId === 'khamsin' && $('key-melee').textContent === 'Khépesh' && meleeName() === 'Khépesh' && khepeshOn() && meleeCur() === Khepesh,
+        'carte faite à partir de Khamsin : « V ou E : Khépesh »', { base: OW.baseId, key: $('key-melee').textContent });
       return out;
     })).forEach(report);
 

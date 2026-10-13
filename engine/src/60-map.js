@@ -299,8 +299,9 @@ function owLoad(map, opts = {}) {
   owShadows();
   owUpdateTerrainLod(true);
   owApplyGrade(0);
-  // jeu 2.0.4 : le khépesh, arme de corps-à-corps du désert, fait au premier chargement en partie
-  if (!opts.editor && !Khepesh) buildKhepesh();
+  // jeu 2.0.4 : le khépesh, arme de corps-à-corps de Khamsin (pas du Désert vierge depuis la
+  // construction 2), fait au premier chargement de Khamsin en partie
+  if (!Khepesh && khepeshOn()) buildKhepesh();
 }
 /* Ombres du soleil : carte de 1 024 (moyenne) ou 2 048 texels (haute) sur ±55 ou ±80 m ; aucune en basse qualité. */
 function owShadows() {

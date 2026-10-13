@@ -34,9 +34,10 @@ function khStormTip(n) {
   return `Toutes les ${KH_NUM[n] || n} manches, une tempête de sable\u00a0: abritez-vous sous un toit.`;
 }
 function khMenuTips(map) {
-  // jeu 2.0.4 : V ou E, le khépesh dans le désert de Khamsin, le couteau ailleurs
+  // jeu 2.0.4 : V ou E, le khépesh sur Khamsin et les cartes faites à partir d'elle (base « khamsin »),
+  // le couteau ailleurs, Désert vierge compris (construction 2)
   const km = $('key-melee');
-  if (km) km.textContent = map && map.open && owWorldOf(map.base) === 'khamsin' ? 'Khépesh' : 'Couteau';
+  if (km) km.textContent = map && map.open && map.base === 'khamsin' ? 'Khépesh' : 'Couteau';
   if (map && map.open && owWorldOf(map.base) === 'lune') { luMenuTips(map); return; }
   for (const id of ['tip-moon', 'tip-o2']) { const e = $(id); if (e) e.hidden = true; }
   const kh = !!(map && map.open);

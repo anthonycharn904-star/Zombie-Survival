@@ -1049,8 +1049,9 @@ const GAME_VERSION = '2.0.4';
 /* Version de l'interface entre ce moteur et les Mod Tools du launcher. */
 const EDITOR_API = 9;                       // 3 : cartes ouvertes (jeu 2.0.0, Mod Tools du launcher 1.3.0) ; 4 : la Lune (Ombre éternelle, Lune vierge ; launcher 1.3.1) ; 5 : tailles, 6 : décor des lieux, 7 : surfaces du décor, matières, plus de pièce fixe, 8 : intérieur des pyramides, prix des herses (jeu 2.0.3, launcher 1.3.2) ; 9 : bibliothèques de textures et de modèles (jeu 2.0.4, launcher 1.3.3)
 /* Construction du jeu, à numéro et interface égaux : le launcher remplace un jeu installé de construction
-   plus ancienne (1 : jeu 2.0.4 refait le 13 octobre 2026, le khépesh de Khamsin). */
-const GAME_BUILD = 1;
+   plus ancienne (1 : jeu 2.0.4 refait le 13 octobre 2026, le khépesh de Khamsin ; 2 : le khépesh sur
+   Khamsin seulement, le Désert vierge garde le couteau, décision d'Anthony du 13 octobre, 23 h 39). */
+const GAME_BUILD = 2;
 
 /* ================================================================ 01 DONNÉES ==
    Les cartes sont des données (voir « Cartes » plus bas). Bunker 7 est la
@@ -20149,7 +20150,7 @@ function requestSwap(target) {
   Arms.autoReloadAt = -1;
   Sound.swap();
 }
-/* V ou E : coup de couteau (module « Fossoyeur ») ; dans le désert de Khamsin, coup de khépesh (jeu 2.0.4,
+/* V ou E : coup de couteau (module « Fossoyeur ») ; sur Khamsin, coup de khépesh (jeu 2.0.4,
    meleeMod) ; pendant le retour en garde, un nouvel appui relance un coup aussitôt ; pendant l'estoc, il
    ne compte pas. Le coup annule un rechargement en cours, comme avant. */
 function startKnife() {
@@ -20566,7 +20567,7 @@ function updateArms(dt) {
       break;
     case 'swapIn': if (Arms.t >= Arms.dur) Arms.state = 'idle'; break;
     case 'knife': {
-      const M = meleeCur();                              // le khépesh dans le désert (jeu 2.0.4), sinon le couteau
+      const M = meleeCur();                              // le khépesh sur Khamsin (jeu 2.0.4), sinon le couteau
       if (!M || player.down) { if (M) M.annuler(); KnifeLunge.m = 0; Arms.state = 'idle'; break; }
       knifeLungeStep(dt);
       if (!M.occupe) Arms.state = 'idle';
@@ -25561,7 +25562,7 @@ function update(dt) {
   updatePlayer(dt);
   updateArms(dt);
   if (Couteau) Couteau.update(dt);
-  if (Khepesh && khepeshOn()) { Khepesh.regler({ hauteurSol: player.gy }); Khepesh.update(dt); }   // jeu 2.0.4 : le khépesh du désert
+  if (Khepesh && khepeshOn()) { Khepesh.regler({ hauteurSol: player.gy }); Khepesh.update(dt); }   // jeu 2.0.4 : le khépesh de Khamsin
   updateInteract(dt);
   updateKeypad(dt);
   updateZombies(dt);
@@ -25608,7 +25609,7 @@ function render() {
     renderer.clearDepth();
     renderer.render(vmScene, vmCamera);
     if (Couteau) Couteau.rendreVue(renderer);   // le bras au couteau, par-dessus
-    if (Khepesh) Khepesh.rendreVue(renderer);   // le bras au khépesh (désert de Khamsin), par-dessus
+    if (Khepesh) Khepesh.rendreVue(renderer);   // le bras au khépesh (Khamsin), par-dessus
   }
 }
 let lastT = performance.now();
@@ -27611,8 +27612,9 @@ function owLoad(map, opts = {}) {
   owShadows();
   owUpdateTerrainLod(true);
   owApplyGrade(0);
-  // jeu 2.0.4 : le khépesh, arme de corps-à-corps du désert, fait au premier chargement en partie
-  if (!opts.editor && !Khepesh) buildKhepesh();
+  // jeu 2.0.4 : le khépesh, arme de corps-à-corps de Khamsin (pas du Désert vierge depuis la
+  // construction 2), fait au premier chargement de Khamsin en partie
+  if (!Khepesh && khepeshOn()) buildKhepesh();
 }
 /* Ombres du soleil : carte de 1 024 (moyenne) ou 2 048 texels (haute) sur ±55 ou ±80 m ; aucune en basse qualité. */
 function owShadows() {
@@ -34991,9 +34993,10 @@ function khStormTip(n) {
   return `Toutes les ${KH_NUM[n] || n} manches, une tempête de sable\u00a0: abritez-vous sous un toit.`;
 }
 function khMenuTips(map) {
-  // jeu 2.0.4 : V ou E, le khépesh dans le désert de Khamsin, le couteau ailleurs
+  // jeu 2.0.4 : V ou E, le khépesh sur Khamsin et les cartes faites à partir d'elle (base « khamsin »),
+  // le couteau ailleurs, Désert vierge compris (construction 2)
   const km = $('key-melee');
-  if (km) km.textContent = map && map.open && owWorldOf(map.base) === 'khamsin' ? 'Khépesh' : 'Couteau';
+  if (km) km.textContent = map && map.open && map.base === 'khamsin' ? 'Khépesh' : 'Couteau';
   if (map && map.open && owWorldOf(map.base) === 'lune') { luMenuTips(map); return; }
   for (const id of ['tip-moon', 'tip-o2']) { const e = $(id); if (e) e.hidden = true; }
   const kh = !!(map && map.open);
@@ -44754,8 +44757,10 @@ const creerKhepesh = (function () {
    « cette arme, qui sera utilisable uniquement dans la 2ème map, Khamsin », arme de corps-à-corps
    principale, « identique au fichier », pour le jeu 2.0.4. Module creerKhepesh juste au-dessus (bras
    ganté, épée-faucille de bronze, traînée, sang, flaques, saignement, sons, animations touché et raté).
-   Arme de corps-à-corps du désert de Khamsin : Khamsin, ses copies et le désert vierge des Mod Tools
-   (même monde) ; le couteau reste celui de Bunker 7, des cartes en grille et de la Lune. V ou E, comme
+   Arme de corps-à-corps de Khamsin : la carte Khamsin et les cartes faites à partir d'elle dans les Mod
+   Tools (base « khamsin ») ; le couteau reste celui de Bunker 7, des cartes en grille, du Désert vierge
+   (base « desert ») et de la Lune. Construction 2 : décision d'Anthony du 13 octobre 2026, 23 h 39, le
+   khépesh sur Khamsin seulement (la construction 1 le donnait aussi au Désert vierge). V ou E, comme
    le couteau (startKnife, état « knife » de updateArms). Le module dessine et joue ; le jeu choisit les
    cibles et applique ses dégâts, avec la géométrie du fichier : quand la lame arrive (0,3 s), jusqu'à
    3 zombies à 2,4 m de l'œil (jusqu'à leur surface), à ±62° du regard (plus leur demi-largeur), du plus
@@ -44779,10 +44784,10 @@ const KHEPESH = {
 let Khepesh = null;
 const _khpP = new THREE.Vector3(), _khpEye = new THREE.Vector3(), _khpFwd = new THREE.Vector3(), _khpV = new THREE.Vector3();
 const _khpDeg = 180 / Math.PI;
-/* Le khépesh est l'arme de corps-à-corps du désert (Khamsin, ses copies, le désert vierge), en partie
-   (pas dans les Mod Tools). */
-function khepeshOn() { return OW.on && OW.worldId === 'khamsin' && !CUR.editor; }
-/* Arme de corps-à-corps en cours (V ou E) : le khépesh dans le désert (fait au premier besoin), sinon le couteau. */
+/* Le khépesh est l'arme de corps-à-corps de Khamsin (la carte et celles faites à partir d'elle : base
+   « khamsin »), en partie (pas dans les Mod Tools). Le Désert vierge (base « desert ») garde le couteau. */
+function khepeshOn() { return OW.on && OW.worldId === 'khamsin' && OW.baseId === 'khamsin' && !CUR.editor; }
+/* Arme de corps-à-corps en cours (V ou E) : le khépesh sur Khamsin (fait au premier besoin), sinon le couteau. */
 function meleeMod() { return khepeshOn() ? Khepesh || buildKhepesh() : Couteau; }
 function meleeCur() { return khepeshOn() ? Khepesh : Couteau; }
 function meleeName() { return khepeshOn() ? 'Khépesh' : 'Couteau'; }
@@ -44838,7 +44843,7 @@ function khepeshBleed(z, dose) {
    rendue par-dessus l'arme (render), reflets du bronze du fichier (sa salle aux torches préfiltrée,
    calculée d'avance au pixel près : khepeshEnv ; préfiltrée au chargement, elle prenait 25 à 30 s en
    rendu logiciel), son dans le bus des effets du jeu, règles du jeu ; il n'écoute pas le clavier (V et E
-   passent par updateArms) et ne secoue pas la vue. Fait une fois, au premier chargement du désert en partie. */
+   passent par updateArms) et ne secoue pas la vue. Fait une fois, au premier chargement de Khamsin en partie. */
 function buildKhepesh() {
   const t0 = performance.now();
   Khepesh = creerKhepesh(THREE, {

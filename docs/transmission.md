@@ -113,9 +113,9 @@ Ces préférences sont réglées dans son compte claude.ai. Une session Claude C
 |---|---|---|
 | Le jeu n'est plus copié dans le Projet claude.ai (« option 1 »). | 13 oct. | Le Projet était presque plein : 1,83 million de jetons sur 2, dont environ 1,7 pour le jeu. Anthony veut développer « sur le très long terme » sans cette limite. Le dépôt GitHub devient la seule copie de travail. Le retrait effectif attend son accord. |
 | L'atelier du moteur (`engine/`) entre dans le dépôt (commit `2eec425`). | 13 oct. | Il n'existait que dans l'espace de travail temporaire des sessions ; le perdre empêchait de reconstruire le jeu. Le même problème s'était posé le 3 octobre avec les sources d'origine (README, « Provenance »). |
-| Le khépesh sert dans tout le désert : Khamsin, ses copies et le Désert vierge. | 13 oct. | Anthony a écrit « uniquement dans la 2ème map, Khamsin ». Les copies et le Désert vierge sont le même monde (`OW.worldId === 'khamsin'`). À confirmer avec lui (§9). |
+| Le khépesh sert sur Khamsin seulement : la carte et celles faites à partir d'elle (base « khamsin »). Le Désert vierge garde le couteau (construction 2). | 13 oct., 23 h 39 | Décision d'Anthony, conforme à sa demande d'origine (« uniquement dans la 2ème map, Khamsin »). La construction 1 donnait aussi le khépesh au Désert vierge, qui est le même monde. Les cartes faites à partir de Khamsin le gardent, puisque c'est ainsi qu'Anthony retouche Khamsin dans les Mod Tools. |
 | Volume du khépesh : 0,21 (0,7 dans le fichier). | 13 oct. | Mesuré : à 0,27, la valeur du couteau, le coup sonnait 2 dB plus fort que le couteau ; à 0,21, ils sonnent pareil. |
-| Flaques du khépesh presque noires (`0x1c0202`). | 13 oct. | Fidélité au fichier. Anthony peut demander de les éclaircir. |
+| Flaques du khépesh presque noires (`0x1c0202`). | 13 oct., 23 h 39 | Fidélité au fichier ; Anthony a décidé de les garder noires. |
 | Reflets du bronze calculés d'avance (`P2-khepesh-reflets.js`), à retirer. | 13 oct. | Annoncés à tort comme un gain de 25 s ; mesurés ensuite : 1 à 2 s en rendu logiciel, pour 230 Ko. Retrait à la prochaine version du jeu (`CLAUDE.md` §9). |
 | Textures, modèles et sons générés par le code. | 3 oct. | Le jeu tient en un seul fichier. Depuis l'environnement cloud, aucun site de ressources libres (CC0) n'était joignable : seuls GitHub et les registres de paquets l'étaient. Une session avec un réseau ouvert pourrait en télécharger : à décider avec Anthony (poids du fichier, licences). |
 
@@ -123,7 +123,7 @@ Ces préférences sont réglées dans son compte claude.ai. Une session Claude C
 
 **Demandé par Anthony, absent des notes et du dépôt**
 
-Ces deux demandes viennent de la mémoire claude.ai. La date exacte est inconnue (avant le 12 octobre).
+Ces deux demandes viennent de la mémoire claude.ai (date exacte inconnue, avant le 12 octobre). Anthony a confirmé le 13 octobre à 23 h 39 qu'elles sont toujours prévues.
 
 - **Marteau gravitationnel** : l'arme de corps-à-corps principale de sa carte lunaire.
   - Ombre éternelle existe depuis le jeu 2.0.0, mais elle garde le couteau. Les notes disent seulement « une arme de corps-à-corps propre à Ombre éternelle ».
@@ -145,7 +145,7 @@ Ces deux demandes viennent de la mémoire claude.ai. La date exacte est inconnue
 
 Copié ici pour une session sans accès au Projet ; la liste complète est dans les notes.
 
-- **Khépesh** : flaques plus claires ou moins nombreuses, posées selon la pente.
+- **Khépesh** : flaques posées selon la pente du terrain (elles restent noires : décision d'Anthony).
 - **Mod Tools**
   - Vues de face et de côté (XZ, YZ) ; inclinaison, et rotation sur trois axes.
   - Lumière réelle pour les textures lumineuses ; collisions fines des grands modèles ; import de modèles en lot ; plus de 62 textures peintes par carte.
@@ -314,8 +314,11 @@ Les écarts déjà notés sont dans les notes privées, sections « Limites conn
 ## 9. Questions ouvertes pour Anthony
 
 1. Retrait du jeu du Projet (étape 1) : quand donne-t-il son accord ?
-2. Khépesh : dans tout le désert (Khamsin, copies, Désert vierge), ou dans Khamsin seulement ?
-3. Flaques du khépesh : les garder presque noires, ou les éclaircir ?
-4. Marteau gravitationnel (Lune) et carte du marécage : toujours prévus ? Une planche ou un module va-t-il arriver ?
-5. Écarts du §6 : lesquels corriger à la prochaine version ? Les plus visibles : le halo de Vif-Argent, le faisceau pendant la tempête, les pistes ensablées.
-6. Valeurs « à équilibrer » du Molosse et du Fantassin : les régler après une partie d'essai ?
+2. Marteau gravitationnel (Lune) et carte du marécage : une planche ou un module va-t-il arriver, comme pour le khépesh ?
+3. Écarts du §6 : lesquels corriger à la prochaine version ? Les plus visibles : le halo de Vif-Argent, le faisceau pendant la tempête, les pistes ensablées.
+4. Valeurs « à équilibrer » du Molosse et du Fantassin : les régler après une partie d'essai ?
+
+**Réponses d'Anthony du 13 octobre, 23 h 39**
+- Marteau gravitationnel et carte du marécage : toujours prévus.
+- Khépesh : sur Khamsin seulement (construction 2 du jeu 2.0.4 ; le Désert vierge garde le couteau).
+- Flaques du khépesh : elles restent noires.

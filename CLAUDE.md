@@ -21,7 +21,7 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
   - Ombre éternelle : mine de glace en gradins sur la Lune, monde ouvert, 1/6 g, oxygène.
   - Les autres cartes viennent des Mod Tools.
 - **État au 13 octobre 2026.**
-  - Jeu 2.0.4, construction 1 (le khépesh de Khamsin) ; interface des Mod Tools 9 ; launcher 1.3.3.
+  - Jeu 2.0.4, construction 2 (le khépesh sur Khamsin seulement) ; interface des Mod Tools 9 ; launcher 1.3.3.
   - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.3`.
   - **Publier une version pour les joueurs est l'action d'Anthony, jamais celle de Claude.**
 
@@ -120,7 +120,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 - **Tests unitaires** : `cd launcher && npm test` (31 tests).
 - **Essais de bout en bout** : `cd launcher && xvfb-run -a node e2e/<nom>.e2e.js`, **un par un**, sans autre rendu lourd à côté (pas de construction de l'installateur pendant ce temps).
   - Suite complète : `npm run test:e2e`.
-  - Le 13 octobre 2026 : 26 essais, 914 vérifications, environ 1 h 45 en rendu logiciel. Le plus long est `modtools-biblio` (23 min) ; les plus courts sont `publish-online` (40 s) et la plupart des essais du jeu (1 à 3 min).
+  - 26 essais, 918 vérifications (14 octobre 2026), environ 1 h 45 en rendu logiciel. Le plus long est `modtools-biblio` (23 min) ; les plus courts sont `publish-online` (40 s) et la plupart des essais du jeu (1 à 3 min).
   - Les 26 essais : `modtools`, `game-menu`, `publish-online`, `stairs`, `rank`, `perk-drink`, `outskirts`, `zone-zombies`, `glas`, `elixirs`, `zombie-anims`, `weapons`, `dogs`, `grenade`, `knife`, `khamsin`, `khepesh`, `modtools-khamsin`, `modtools-desert`, `ombre`, `modtools-ombre`, `modtools-sizes`, `modtools-decor`, `modtools-surfaces`, `modtools-pyramides`, `modtools-biblio`.
 - **Rendu logiciel sous Linux** (SwiftShader : `--use-angle=swiftshader --enable-unsafe-swiftshader --disable-gpu-watchdog`). Points à connaître :
   - une image toutes les 2 à 6 s ;
@@ -163,13 +163,14 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 
 ## 9. Décisions et travaux en attente
 
-- **Khépesh (jeu 2.0.4, construction 1).**
-  - Il sert d'arme de corps-à-corps dans tout le désert : Khamsin, ses copies, le Désert vierge (`khepeshOn`). Partout ailleurs, c'est le couteau.
-  - Ses flaques gardent la couleur du fichier (presque noires) ; Anthony peut demander de les éclaircir.
+- **Khépesh (jeu 2.0.4, construction 2).**
+  - Il sert d'arme de corps-à-corps sur Khamsin et sur les cartes faites à partir d'elle dans les Mod Tools (base « khamsin » : `khepeshOn`, `OW.baseId`). Partout ailleurs, Désert vierge compris, c'est le couteau. Décision d'Anthony du 13 octobre 2026, 23 h 39 ; la construction 1 le donnait aussi au Désert vierge.
+  - Ses flaques gardent la couleur du fichier, presque noire : décision d'Anthony (13 octobre, 23 h 39).
   - **À faire à la prochaine version du jeu.**
     - Retirer `engine/src/P2-khepesh-reflets.js` et l'option `envMap: khepeshEnv()` dans `buildKhepesh`. Le module recalcule alors ses reflets, au pixel près. L'image ne fait gagner que 1 à 2 s en rendu logiciel, pour 230 Ko de plus.
     - Corriger les commentaires et le README qui parlaient d'un gain de 25 s.
 - **Projet claude.ai.** Retirer la copie du jeu (`claude/zombie-survival.html`) est décidé, mais attend l'accord d'Anthony (« Non, attends », 13 octobre).
+- **Marteau gravitationnel (Lune) et carte du marécage** : toujours prévus (Anthony, 13 octobre, 23 h 39). Rien n'est commencé.
 - **Demandes en attente et écarts connus** : `docs/transmission.md` §5 et §6. On y trouve le Marteau gravitationnel, la carte du marécage, le bogue du halo de Vif-Argent, le faisceau coupé pendant la tempête, etc. Ne rien corriger sans la demande d'Anthony.
 - **Numéros refaits.** Plusieurs jeux ont été refaits sous le même numéro (2.0.0, 2.0.3, 2.0.4) ; le launcher départage par interface puis par construction.
 - **Historique.** `README.md` « Historique », `git log` (messages détaillés) et les notes privées du Projet.
