@@ -3,6 +3,10 @@ node_modules/
 launcher/dist/
 # Généré par « npm run prepare-game » à partir de game/zombie-survival.html
 launcher/game/
+# Fichier de travail de engine/tools/make-khepesh-env.py
+engine/tools/khepesh-env/
+# Fichiers en transit vers le Projet claude.ai (supprimés après l'envoi)
+.upload-tmp/
 
 # Clés : la clé privée de signature ne doit JAMAIS entrer dans le dépôt
 *.pem
