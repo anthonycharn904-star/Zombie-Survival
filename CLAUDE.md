@@ -1,11 +1,17 @@
 # CLAUDE.md — Zombie Survival
 
-Guide de reprise du développement. À lire en entier au début de chaque session. Le détail de chaque système se trouve dans `README.md` (sections citées plus bas) ; l'atelier du moteur est décrit dans `engine/README.md`.
+Guide de reprise du développement. À lire en entier au début de chaque session, puis `docs/transmission.md` (préférences d'Anthony, décisions et leurs raisons, demandes en attente, écarts connus, leçons). Le détail de chaque système se trouve dans `README.md` (sections citées plus bas) ; l'atelier du moteur est décrit dans `engine/README.md`.
 
 ## 1. Le projet
 
 - **Le jeu.** Survie par manches contre des zombies, en vue FPS, dans le style du mode Zombies de Call of Duty. Gratuit. Auteur et seul décideur : **Anthony** (Belgique, francophone).
 - **Langue.** Tout se fait **en français** : textes du jeu et du launcher, commentaires du code, README, messages de commit, échanges avec Anthony. Heures en Europe/Brussels.
+- **Façon de répondre à Anthony** (détail dans `docs/transmission.md` §2) :
+  - direct, sans préambule, sans remplissage ni flatterie ;
+  - dire clairement quand il se trompe, corriger une prémisse fausse ;
+  - donner un niveau de confiance quand c'est incertain ;
+  - finir par des actions précises et la façon de vérifier ;
+  - jamais la tournure « ce n'est pas X, c'est Y ».
 - **Deux livrables.**
   - Le jeu : un seul fichier HTML, `game/zombie-survival.html` (three.js r128).
   - Le launcher Windows : `launcher/`, en Electron. Il installe le jeu hors ligne, le met à jour depuis GitHub (versions signées), publie les versions (outil réservé à l'auteur) et contient les **Mod Tools**, l'éditeur de cartes réservé à l'auteur.
@@ -33,6 +39,7 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
 | `launcher/test/` | Tests unitaires (`npm test`, `node --test` : 31 tests). |
 | `launcher/e2e/` | 26 essais de bout en bout (Electron et Playwright, voir §5). `fake-github.js` simule GitHub pour la publication. |
 | `README.md` | Documentation complète : chaque fonctionnalité, ses règles, « Où modifier », la publication et l'historique. |
+| `docs/transmission.md` | Transmission du 13 octobre 2026 : préférences et règles d'Anthony, décisions et leurs raisons, demandes en attente (Marteau gravitationnel, carte du marécage…), écarts entre ses planches et le jeu, leçons, questions ouvertes. Public : jamais de secret dedans. |
 
 **Hors du dépôt**
 - **Projet claude.ai « Zombie Survival ».**
@@ -128,7 +135,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
    - Créer un **nouveau dossier unique** sous `/mnt/user-data/outputs/`. Ne jamais réutiliser un ancien chemin ; noter le nom réel du dossier.
    - Y mettre les morceaux de 29 000 000 octets (`split -b 29000000 -d -a 1`) et `recoller-installateur.bat` (fins de ligne CRLF, texte ASCII). Ce script recolle par `copy /b` et affiche l'empreinte SHA-256 attendue.
    - Joindre `zombie-survival.html` si utile.
-3. **Copie sur le PC** quand il est relié : dossier `Téléchargements`, par `device_commit_files` (100 Mo au plus par appel). **Relire les empreintes SHA-256** de chaque copie.
+3. **Copie sur le PC** quand il est relié : dossier `Téléchargements`, par `device_commit_files` (30 Mo au plus par fichier et 100 Mo par appel : copier les morceaux, en deux appels pour quatre morceaux). **Relire les empreintes SHA-256** de chaque copie.
 4. **Fin de livraison.**
    - Dire à Anthony comment installer (recoller, fermer le launcher, lancer l'installateur par-dessus) et comment vérifier : la ligne du journal du launcher et ce qu'il doit voir en jeu.
    - Rappeler que la publication pour les joueurs passe par l'outil de publication, et qu'elle est **son** action.
@@ -142,6 +149,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 - **E-mail d'Anthony.** Il sert uniquement à l'attribution.
 - **Ordinateur d'Anthony.** Ne pas taper dans un terminal de son ordinateur par contrôle de l'écran.
 - **Dépôt public.** Ne pas y publier les planches et PDF d'Anthony, ni ses données personnelles.
+- **Suppressions.** Aucune suppression de ses fichiers ni des documents du Projet sans son accord explicite, donné pour cette suppression (13 octobre 2026 : « Ne supprime aucun fichier avant […] d'avoir obtenu mon autorisation »).
 
 ## 8. Pièges déjà rencontrés
 
@@ -151,6 +159,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 - **Bibliothèques.** Les identifiants de la bibliothèque doivent être en minuscules (`/^gx_[a-z0-9_]+$/`, `/^gm_[a-z0-9_]+$/`) : le moteur signale les autres dans la console.
 - **Corps-à-corps.** Le couteau et le khépesh ne tapent ni à travers les murs ni d'un étage à l'autre ; les règles sont celles du jeu (`knifeReach`, `khepeshCan`).
 - **Place du Projet claude.ai.** La limite est de 2 millions de jetons. N'y mettre que des notes, jamais le jeu ni des données en base64.
+- **Mémoire des conversations.** Une longue conversation est condensée et le détail des échanges se perd. Écrire chaque décision d'Anthony le jour même : dans les notes privées, et dans le README ou ce fichier si elle peut être publique.
 
 ## 9. Décisions et travaux en attente
 
@@ -160,12 +169,14 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
   - **À faire à la prochaine version du jeu.**
     - Retirer `engine/src/P2-khepesh-reflets.js` et l'option `envMap: khepeshEnv()` dans `buildKhepesh`. Le module recalcule alors ses reflets, au pixel près. L'image ne fait gagner que 1 à 2 s en rendu logiciel, pour 230 Ko de plus.
     - Corriger les commentaires et le README qui parlaient d'un gain de 25 s.
+- **Projet claude.ai.** Retirer la copie du jeu (`claude/zombie-survival.html`) est décidé, mais attend l'accord d'Anthony (« Non, attends », 13 octobre).
+- **Demandes en attente et écarts connus** : `docs/transmission.md` §5 et §6. On y trouve le Marteau gravitationnel, la carte du marécage, le bogue du halo de Vif-Argent, le faisceau coupé pendant la tempête, etc. Ne rien corriger sans la demande d'Anthony.
 - **Numéros refaits.** Plusieurs jeux ont été refaits sous le même numéro (2.0.0, 2.0.3, 2.0.4) ; le launcher départage par interface puis par construction.
 - **Historique.** `README.md` « Historique », `git log` (messages détaillés) et les notes privées du Projet.
 
 ## 10. Reprendre le travail (liste)
 
-1. `git pull`, puis lire ce fichier et la section du README qui concerne la demande.
+1. `git pull`, puis lire ce fichier, `docs/transmission.md` et la section du README qui concerne la demande.
 2. Si la session est rattachée au Projet : lire les notes privées (`project_read claude/zombie-survival-notes.md` : état au dernier jour, décisions en cours).
 3. `cd launcher && npm install` (si `node_modules` manque), puis `node scripts/prepare-game.js`.
 4. Faire la vérification de départ de l'atelier (§4.1), puis lancer les tests unitaires.
