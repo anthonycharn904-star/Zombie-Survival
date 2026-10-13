@@ -67,7 +67,9 @@
     let q = META.get(d);
     if (q && q.full) return q;
     if (!q) {
-      q = { cat: d.cat, fam: d.fam || (d.id || '').split('_')[0], famName: d.famName || null, state: d.state || null, mat: d.mat || null, dims: d.dims || null, text: norm(`${d.name} ${d.id} ${d.famName || ''} ${d.tags || ''}`) };
+      // objets d'avant le jeu 2.0.4 (sans famille) : une famille par catégorie, « jeu 1.x » ; modèles importés : « Mes modèles »
+      const fam = d.fam || (d.glb ? 'import' : `jeu1_${d.cat}`);
+      q = { cat: d.cat, fam, famName: d.famName || null, glb: !!d.glb, state: d.state || null, mat: d.mat || null, dims: d.dims || null, text: norm(`${d.name} ${d.id} ${d.famName || ''} ${d.tags || ''}`) };
       META.set(d, q);
     }
     return q;
@@ -93,7 +95,8 @@
   }
   const sizeOf = (dims) => { const m = Math.max(...(dims || [1, 1, 1])); return m < 0.6 ? 's' : m < 1.6 ? 'm' : m < 4 ? 'l' : 'xl'; };
   const labelOf = (list, k) => { const r = list.find((x) => x[0] === k); return r ? r[1] : k; };
-  const famLabel = (q) => q.famName || q.fam;
+  const catLabel = (k) => (ZS.MODEL_CATS.find((c) => c[0] === k) || [k, k])[1];
+  const famLabel = (q) => q.famName || (q.glb ? 'Mes modèles' : `${catLabel(q.cat)} · jeu 1.x`);
 
   /* ------------------------------------------------------- préférences -- */
   const FAV = { tex: new Set(), model: new Set() };
@@ -484,7 +487,7 @@
       acts.push(h('button', { type: 'button', class: 'mt-btn sm primary', onclick: () => B.placeWith(d.id) }, UI.icon('props'), 'Poser'),
         h('button', { type: 'button', class: 'mt-btn sm', title: 'Les objets sélectionnés (ou la pièce du décor) deviennent ce modèle', onclick: () => B.replaceWith(d.id) }, 'Remplacer la sélection'));
       const cat = (ZS.MODEL_CATS.find((c) => c[0] === d.cat) || [d.cat, d.cat])[1];
-      f.append(sw, h('div', { class: 'br-det' }, h('b', null, d.name), h('small', null, `${d.id}${q.dims ? ` · ${decFr(q.dims[0])} × ${decFr(q.dims[1])} × ${decFr(q.dims[2])} m` : ''}`), h('small', null, `${cat} · ${famLabel(q)} · ${labelOf(MOD_MAT(), q.mat).toLowerCase()}${d.solid && !d.decal ? ' · bloque le passage' : ''}${d.wall ? ' · se colle aux murs' : ''}`)), h('div', { class: 'br-acts' }, ...acts, fav));
+      f.append(sw, h('div', { class: 'br-det' }, h('b', null, d.name), h('small', null, `${d.id}${q.dims ? ` · ${decFr(q.dims[0])} × ${decFr(q.dims[1])} × ${decFr(q.dims[2])} m` : ''}`), h('small', null, `${cat} · ${q.famName || (q.glb ? 'mes modèles' : 'jeu 1.x')} · ${labelOf(MOD_MAT(), q.mat).toLowerCase()}${d.solid && !d.decal ? ' · bloque le passage' : ''}${d.wall ? ' · se colle aux murs' : ''}`)), h('div', { class: 'br-acts' }, ...acts, fav));
     }
   }
 

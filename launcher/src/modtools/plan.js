@@ -388,13 +388,22 @@
     g.fillStyle = 'rgba(14,18,16,0.72)'; g.fillRect(LEFT + 6, P.h - 22, gw + 12, 18);
     g.fillStyle = '#e9f2e6'; g.fillText(gsT, LEFT + 12, P.h - 13);
   };
-  /* Étiquette d'une entité (vert, comme les noms de Radiant). */
+  /* Étiquette d'une entité (vert, comme les noms de Radiant). Une étiquette qui en chevaucherait une déjà
+     écrite n'est pas écrite (sauf la sélection et les noms en gras : pièces, lieux) ; P.xyBoxes est
+     vidé au début de chaque dessin de la vue XY. */
+  P.xyBoxes = [];
   P.xyLabel = (g, text, sx, sy, { color = XY.label, size = 11, align = 'left', bold = false } = {}) => {
     g.font = `${bold ? 700 : 600} ${size}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    const w = g.measureText(text).width, x0 = align === 'center' ? sx - w / 2 : align === 'right' ? sx - w : sx;
+    const box = [x0 - 2, sy - size / 2 - 2, x0 + w + 2, sy + size / 2 + 2];
+    const force = bold || color === XY.sel;
+    if (!force && P.xyBoxes.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) return false;
+    P.xyBoxes.push(box);
     g.textBaseline = 'middle'; g.textAlign = align;
     g.lineWidth = 3; g.strokeStyle = 'rgba(214,218,215,0.75)'; g.strokeText(text, sx, sy);
     g.fillStyle = color; g.fillText(text, sx, sy);
     g.textAlign = 'left';
+    return true;
   };
   P.xyPoly = (g, pts, stroke, fill, lw = 1.3, dash = null) => {
     g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
@@ -415,6 +424,7 @@
      éléments de jeu en rouge avec leur nom ; pièces nommées. */
   function drawXY() {
     const g = P.g, m = S.map, Z = P.cam.zoom;
+    P.xyBoxes = [];
     g.setTransform(P.dpr, 0, 0, P.dpr, 0, 0);
     g.fillStyle = XY.bg; g.fillRect(0, 0, P.w, P.h);
     if (!m) return;

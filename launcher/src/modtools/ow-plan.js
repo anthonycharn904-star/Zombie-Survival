@@ -156,6 +156,7 @@
      bleus, noms en vert), objets, éléments de jeu (rouges), lieux, sélection en rouge. */
   PL.drawXY = (P) => {
     const g = P.g, m = S.map, Z = P.cam.zoom, XY = P.XY;
+    P.xyBoxes = [];
     g.setTransform(P.dpr, 0, 0, P.dpr, 0, 0);
     g.fillStyle = XY.bg; g.fillRect(0, 0, P.w, P.h);
     if (!m) return;
