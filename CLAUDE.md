@@ -22,7 +22,7 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
   - Les autres cartes viennent des Mod Tools.
 - **État au 13 octobre 2026.**
   - Jeu 2.0.4, construction 2 (le khépesh sur Khamsin seulement) ; interface des Mod Tools 9 ; launcher 1.3.3.
-  - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.3`.
+  - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.4`, construction 1, publiée par Anthony le 13 octobre 2026 à 19 h 35. La construction 2 ne change rien pour eux (le Désert vierge n'est pas dans leur menu) ; elle partira avec la prochaine version du jeu.
   - **Publier une version pour les joueurs est l'action d'Anthony, jamais celle de Claude.**
 
 ## 2. Où est quoi
@@ -103,6 +103,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 **Numéros**
 - Un nouveau contenu prend un nouveau numéro de jeu, choisi avec Anthony.
 - Si on refait sous le même numéro, augmenter `GAME_BUILD`, ou `EDITOR_API` si l'interface change. Sinon, un launcher qui a déjà ce numéro ne remplace pas le jeu.
+- Un numéro déjà publié ne repart pas chez les joueurs : leur launcher n'installe qu'un numéro plus grand que le sien (`remoteIsNewer`). Un jeu refait sous ce numéro ne sert qu'au launcher d'Anthony et aux nouveaux installateurs. Anthony publie parfois dans les minutes qui suivent une livraison (2.0.4 : installée à 19 h 32, publiée à 19 h 35) : ne livrer que du travail essayé.
 - Le numéro du launcher est dans `launcher/package.json`.
 
 **Intégrer un module fait par Anthony dans une page à part** (cas du couteau et du khépesh)

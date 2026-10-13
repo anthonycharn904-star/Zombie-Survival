@@ -63,6 +63,7 @@ Ces préférences sont réglées dans son compte claude.ai. Une session Claude C
   - « Ne supprime aucun fichier avant de m'avoir confirmé ces cinq points et d'avoir obtenu mon autorisation » ;
   - puis « Non, attends », quand on lui a demandé l'accord. Le retrait du jeu du Projet attend toujours.
 - **Ordre des étapes** : c'est lui qui le fixe (« Avant d'attaquer l'étape 1, fais l'étape 2 avec le nouvel installateur »).
+- **Rapidité** : il installe et publie vite. Le 13 octobre, il a installé la livraison à 19 h 32 et publié la 2.0.4 pour les joueurs à 19 h 35. Une livraison peut donc partir chez les joueurs dans les minutes qui suivent : ne livrer que du travail essayé.
 - **Horizon** : le très long terme (« continuer à développer Zombie Survival pendant des années sans rencontrer à nouveau ce problème de stockage »).
 - **Fidélité aux fichiers** : quand il fournit un fichier, il veut un résultat « identique au fichier » (khépesh, 13 octobre). Chaque écart lui est signalé (`CLAUDE.md` §4).
 - **Notes de version** : il les écrit lui-même, dans un style direct qui annonce la suite aux joueurs (`launcher/config/notes-history.json`, puis l'outil de publication). Ce qu'il y annonce engage le jeu (§5).
@@ -137,6 +138,7 @@ Ces deux demandes viennent de la mémoire claude.ai (date exacte inconnue, avant
 - 1.5.0 : « D'autres modèles de Zombies sont à venir prochainement ».
   - Fait depuis : trois variantes du Fantassin (jeu 1.8.0 : Lacéré, Savant, Sentinelle). La fiche du Notable (N°00-B) est encore attendue.
   - Dans ces mêmes notes, il appelle le Fantassin « Nazi Zombie », sans doute un clin d'œil aux Nazi Zombies de Call of Duty: World at War (confiance moyenne).
+- Notes de la release `v2.0.4` (13 octobre) : « Amélioration majeur du mod tools afin de pouvoir finaliser et paufiner Khamsin, et puis Ombre éternelle ».
 - Annoncés dans le jeu lui-même :
   - armoires de prestige : « Arrivera lors d'une prochaine mise à jour » (`CABINET_NOTE`) ;
   - mods de munition : « D'autres arriveront avec de prochaines cartes ».
@@ -297,18 +299,20 @@ Les écarts déjà notés sont dans les notes privées, sections « Limites conn
 - **Copie sur le PC** (`device_commit_files`) : 30 Mo au plus par fichier, 100 Mo par appel. Copier les morceaux de 29 000 000 octets (deux appels pour quatre morceaux), puis relire chaque copie par empreinte.
 - **GitHub.** Le 3 octobre, l'envoi (push) a été refusé (403) jusqu'à ce qu'Anthony installe l'application GitHub de Claude ; le jeton `gh` de la session était refusé.
 
-## 8. État au 13 octobre 2026, 23 h 30 (complète les notes, arrêtées à 10 h 45)
+## 8. État au 14 octobre 2026, 0 h 30 (les notes privées sont à jour à la même heure)
 
-- **Dépôt** : `main` contient `2eec425` (16 h 25 : `engine/` et `CLAUDE.md`), puis ce document. Avant : `595aa3a` (10 h 35 : jeu 2.0.4 construction 1, launcher 1.3.3). Reconstruction vérifiée depuis un clone neuf : `496ed859…9dda`.
-- **PC d'Anthony.**
-  - Livraison de 10 h 40 : launcher 1.3.3 refait, jeu 2.0.4 construction 1, installateur recollé `f8d39622…8f2b` (104 120 299 octets).
-  - Copiée à 19 h 22 dans `Téléchargements\Zombie Survival 2.0.4\launcher-1.3.3-khepesh\`, et relue par empreinte.
-  - Jeu installé, relevé vers 18 h : 2.0.3 interface 7 (installé le 12 octobre à 20 h 28). La nouvelle version n'était donc pas encore installée.
-- **En ligne pour les joueurs** : `v2.0.3`.
+- **Dépôt** : `main` contient `b9834ad` (14 octobre, 0 h 11 : jeu 2.0.4 construction 2, `632973eb…ce8c`), puis la mise à jour de ce document. Avant : `617f0b0` (13 octobre, 23 h 35 : ce document), `2eec425` (16 h 25 : `engine/` et `CLAUDE.md`), `595aa3a` (10 h 35 : construction 1). La reconstruction redonne exactement le jeu du dépôt.
+- **En ligne pour les joueurs** : `v2.0.4`, construction 1, publiée par Anthony le 13 octobre à 19 h 35 (cartes : Bunker 7, Khamsin, Ombre éternelle).
+  - La construction 2 ne change rien pour eux : le Désert vierge n'est pas dans leur menu.
+  - Elle partira avec la prochaine version du jeu (2.0.5 ou plus). Ne pas republier 2.0.4 : leur launcher ne le reprendrait pas.
+- **PC d'Anthony**
+  - Jeu installé : 2.0.4 construction 1, depuis le 13 octobre à 19 h 32 (relevé le 14 octobre à 0 h 12).
+  - Construction 2 (launcher 1.3.3 refait ; installateur recollé `58b700b7…93bf`, 104 120 544 octets) : copiée le 14 octobre à 0 h 14 dans `Téléchargements\Zombie Survival 2.0.4\launcher-1.3.3-construction-2\`, relue par empreinte, pas encore installée. Journal attendu : « Version livrée réinstallée : 2.0.4 (construction 2 au lieu de 1) ».
+  - Périmés : `launcher-1.3.3-khepesh\` et `Zombie Survival 2.0.4\zombie-survival.html` (construction 1). À lui de les supprimer s'il le veut.
 - **Projet claude.ai**
-  - Il contient encore le jeu (`claude/zombie-survival.html`) et les notes : 1,83 million de jetons sur 2.
-  - Le retrait du jeu est décidé (option 1), mais il attend l'accord d'Anthony (« Non, attends »).
-  - Une mise à jour des notes est prête, hors du dépôt, pour le moment du retrait. Si elle s'est perdue, la refaire à partir de ce paragraphe.
+  - Les notes sont à jour (état, empreintes, décisions du 13 octobre à 23 h 39), relues identiques après l'envoi.
+  - Il contient encore la copie du jeu, construction 1 (`claude/zombie-survival.html`) : 1,83 million de jetons sur 2. Son retrait est décidé (option 1), mais il attend l'accord d'Anthony (« Non, attends »).
+  - Le script qui met les notes à jour au moment du retrait est prêt, hors du dépôt. S'il s'est perdu : retirer le document, puis réécrire dans les notes les trois passages qui disent que le retrait attend son accord.
 - **Sans le Projet** : `CLAUDE.md`, le README et ce document suffisent pour développer. Le code du digi pass et l'historique des livraisons restent dans les notes privées.
 
 ## 9. Questions ouvertes pour Anthony
