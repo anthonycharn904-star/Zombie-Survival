@@ -150,6 +150,118 @@
     text(g, bar >= 1000 ? `${bar / 1000} km` : `${bar} m`, bx + bar * Z / 2, by - 11, { size: 11, bg: null });
   };
 
+  /* ============================================ vue XY façon Radiant (launcher 1.3.3) ==
+     Fond gris, relief de la carte en transparence (bouton du panneau), morceaux de 64 m de près, grille
+     au pas de la grille de pose, règles en mètres ; routes, bâtiments, décor de la base (contours
+     bleus, noms en vert), objets, éléments de jeu (rouges), lieux, sélection en rouge. */
+  PL.drawXY = (P) => {
+    const g = P.g, m = S.map, Z = P.cam.zoom, XY = P.XY;
+    g.setTransform(P.dpr, 0, 0, P.dpr, 0, 0);
+    g.fillStyle = XY.bg; g.fillRect(0, 0, P.w, P.h);
+    if (!m) return;
+    ensureBase(P);
+    const [ox, oy] = P.toScreen(0, 0);
+    const w0 = P.toWorld(0, 0), w1 = P.toWorld(P.w, P.h);
+    const vis = (x, z, pad = 4) => x >= w0.x - pad && x <= w1.x + pad && z >= w0.z - pad && z <= w1.z + pad;
+    if (P.xyRelief) {
+      if (PL.base) { g.globalAlpha = 0.26; g.imageSmoothingEnabled = true; g.drawImage(PL.base, ox, oy, m.w * Z, m.h * Z); g.globalAlpha = 1; }
+      // de près : morceaux de 64 m (murs et sols des bâtiments, en sombre)
+      if (Z >= 1.4 && ZS.ow.on) {
+        g.imageSmoothingEnabled = Z < 3;
+        let budget = 10, missing = false;
+        const tx0 = Math.max(0, Math.floor(w0.x / 64)), tx1 = Math.min(Math.ceil(m.w / 64) - 1, Math.floor(w1.x / 64));
+        const tz0 = Math.max(0, Math.floor(w0.z / 64)), tz1 = Math.min(Math.ceil(m.h / 64) - 1, Math.floor(w1.z / 64));
+        g.globalAlpha = 0.3;
+        for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) {
+          let c = ZS.ow.tile(tx, tz, false);
+          if (!c && budget > 0) { c = ZS.ow.tile(tx, tz, true); budget--; }
+          if (!c) { missing = true; continue; }
+          const [sx, sy] = P.toScreen(tx * 64, tz * 64);
+          g.drawImage(c, Math.floor(sx), Math.floor(sy), Math.ceil(64 * Z) + 1, Math.ceil(64 * Z) + 1);
+        }
+        g.globalAlpha = 1;
+        g.imageSmoothingEnabled = true;
+        if (missing) P.need = true;
+      }
+    }
+    const grid = P.xyGrid(g, m.w, m.h);
+    // routes et pistes de la base (traits), puis celles de la carte (O.terrain)
+    if (!PL.roads) PL.roads = ZS.ow.roads ? ZS.ow.roads() : [];
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const r of PL.roads) {
+      g.beginPath();
+      r.pts.forEach(([x, z], i) => { const [sx, sy] = P.toScreen(x, z); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); });
+      g.strokeStyle = r.kind === 'road' ? 'rgba(40,40,44,0.55)' : 'rgba(90,70,50,0.45)'; g.lineWidth = Math.max(1, r.w * Z); g.stroke();
+    }
+    g.lineCap = 'butt';
+    // décor de la base : contours des pièces (et des surfaces quand « Un clic choisit : Surface »)
+    if (O.placeOk() && ZS.ow.on && S.opts.ow.placePick) {
+      const st = O.placeState(), D = O.placeDesc(), lvl = O.placeLevel(), sel = S.sel && S.sel.kind === 'place' ? S.sel.i : -1;
+      st.forEach((q, i) => {
+        const d = D[i];
+        if (!d || q.hidden || !q.foot) return;
+        if (d.surf && (lvl !== 'surface' || Z < 4)) return;
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const [x, z] of q.foot) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+        if (x1 < w0.x || x0 > w1.x || z1 < w0.z || z0 > w1.z) return;
+        if ((x1 - x0) * Z < 2 && (z1 - z0) * Z < 2) return;
+        const on = i === sel;
+        P.xyPoly(g, q.foot.map(([x, z]) => P.toScreen(x, z)), on ? XY.sel : d.surf ? 'rgba(24,38,143,0.55)' : XY.brush, on ? XY.selFill : d.surf ? null : XY.brushFill, on ? 2.4 : d.surf ? 0.8 : 1.2);
+        if (P.xyNames && !d.surf && !on && Z >= 3 && (x1 - x0) * Z > 26) { const [sx, sy] = P.toScreen((x0 + x1) / 2, z0); P.xyLabel(g, d.name, sx, sy - 7, { align: 'center', color: on ? XY.sel : XY.label }); }
+      });
+    }
+    if (O.terrain) O.terrain.drawPlan(P, g, m, vis);
+    // lieux (cercles et noms)
+    if (P.showZones !== false) {
+      for (const L of O.allLocs(m)) {
+        if (!vis(L.x, L.z, L.r)) continue;
+        const [sx, sy] = P.toScreen(L.x, L.z);
+        g.setLineDash([6, 6]); g.strokeStyle = 'rgba(20,48,28,0.55)'; g.lineWidth = 1.2; g.beginPath(); g.arc(sx, sy, L.r * Z, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
+        P.xyLabel(g, L.name, sx, sy - Math.min(L.r * Z * 0.8, 40), { align: 'center', size: clamp(11 + Z * 2, 11, 16), color: '#14301c', bold: true });
+      }
+    }
+    // objets
+    if (P.showProps !== false && Z >= 0.35) {
+      const sel = new Set(MT.selectedProps());
+      m.props.forEach((pr, i) => {
+        if (!vis(pr.x, pr.z, 6)) return;
+        const def = ZS.MODELS[pr.m], on = sel.has(i);
+        if (Z < 1.2) { const [sx, sy] = P.toScreen(pr.x, pr.z); g.fillStyle = on ? XY.sel : XY.prop; g.fillRect(sx - 1.5, sy - 1.5, 3, 3); return; }
+        P.xyPoly(g, MT.propCorners(pr).map(([x, z]) => P.toScreen(x, z)), on ? XY.sel : XY.prop, on ? XY.selFill : XY.propFill, on ? 2.2 : 1.1);
+        if (P.xyNames && (on || Z >= 14)) { const [sx, sy] = P.toScreen(pr.x, pr.z); P.xyLabel(g, def ? def.name : pr.m, sx, sy - 9, { align: 'center', color: on ? XY.sel : XY.label }); }
+      });
+    }
+    // éléments de jeu (entités, en rouge) et leurs noms
+    const s0 = S.sel || {};
+    const ent = (kind, e, i, x, z, half, fill) => { if (!vis(x, z, 10)) return; P.xyEntity(g, x, z, half, Z >= 2 ? O.title(kind, e, i) : '', { sel: s0.kind === kind && (s0.i === i || kind === 'glas'), fill }); };
+    m.wallbuys.forEach((e, i) => ent('wallbuy', e, i, e.x, e.z, 0.4, 'rgba(240,236,220,0.65)'));
+    m.perks.forEach((e, i) => ent('perk', e, i, e.x + e.face[0] * 0.5, e.z + e.face[1] * 0.5, 0.6, ZS.PERKS[e.p] ? ZS.PERKS[e.p].color : null));
+    m.boxes.forEach((e, i) => ent('box', e, i, e.x, e.z, 0.6, 'rgba(47,111,200,0.4)'));
+    m.vehicles.forEach((e, i) => {
+      const T = ZS.VEH_TYPES[e.type] || { len: 4.5, wid: 1.9 };
+      if (!vis(e.x, e.z, 10)) return;
+      const on = s0.kind === 'vehicle' && s0.i === i;
+      if (Z >= 1.6) P.xyPoly(g, rotRect(P, e.x, e.z, T.wid / 2, T.len / 2, e.yaw || 0), on ? XY.sel : XY.ent, 'rgba(141,154,82,0.35)', on ? 2.2 : 1.3);
+      else P.xyEntity(g, e.x, e.z, 1, '', { sel: on });
+      if (P.xyNames && Z >= 2) { const [sx, sy] = P.toScreen(e.x, e.z); P.xyLabel(g, O.title('vehicle', e, i), sx, sy - Math.max(10, T.len * Z * 0.6), { align: 'center', color: on ? XY.sel : XY.label }); }
+    });
+    m.fuel.forEach((e, i) => ent('fuel', e, i, e.x, e.z, 0.35, 'rgba(224,122,36,0.55)'));
+    m.breakers.forEach((e, i) => ent('breaker', e, i, e.x + e.nx * 0.2, e.z + e.nz * 0.2, 0.35, 'rgba(232,194,42,0.6)'));
+    (m.oxy || []).forEach((e, i) => ent('oxy', e, i, e.x + e.face[0] * 0.22, e.z + e.face[1] * 0.22, 0.5, 'rgba(95,216,168,0.55)'));
+    if (m.glas) ent('glas', m.glas, 0, m.glas.x, m.glas.z, 2.35, 'rgba(217,164,65,0.3)');
+    {
+      const sp = m.spawn, on = s0.kind === 'spawn';
+      P.xyEntity(g, sp.pos[0], sp.pos[1], 0.5, 'Départ', { color: '#1e6a2a', sel: on, fill: 'rgba(47,168,74,0.5)' });
+      const [sx, sy] = P.toScreen(sp.pos[0], sp.pos[1]), r = Math.max(14, Z * 1.6);
+      g.strokeStyle = on ? XY.sel : '#1e6a2a'; g.lineWidth = 2; g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx - Math.sin(sp.yaw) * r, sy - Math.cos(sp.yaw) * r); g.stroke();
+    }
+    drawSelection(P, g, m);
+    drawPreview(P, g, m);
+    drawIssues(P, g);
+    drawCamera(P, g);
+    P.xyRulers(g, grid.major, `XY Top · ${O.moon() ? 'la Lune' : 'le désert'}`);
+  };
+
   /* ---------------------------------------------------------- objets --- */
   function drawProps(P, g, m, vis) {
     const Z = P.cam.zoom;
@@ -290,7 +402,7 @@
     if (s.kind === 'place') {
       // décor de la base (jeu 2.0.3) : son empreinte au sol ; les pièces qu'il porte, en plus fin ;
       // une surface : aussi la pièce dont elle fait partie, en pointillé léger
-      const Z = P.cam.zoom, D = O.placeDesc(), out = (q, lw, dash, col = '#ffd27a') => { if (!q || q.hidden || !q.foot) return; g.setLineDash(dash); poly(g, q.foot.map(([x, z]) => P.toScreen(x, z)), q === e ? 'rgba(255,210,122,0.12)' : null, col, lw); g.setLineDash([]); };
+      const Z = P.cam.zoom, D = O.placeDesc(), out = (q, lw, dash, col = P.selColor()) => { if (!q || q.hidden || !q.foot) return; g.setLineDash(dash); poly(g, q.foot.map(([x, z]) => P.toScreen(x, z)), q === e ? 'rgba(255,210,122,0.12)' : null, col, lw); g.setLineDash([]); };
       if (e.surf && e.parent >= 0) out(O.get({ kind: 'place', i: e.parent }), 1, [2, 4], 'rgba(255,210,122,0.55)');
       for (const k of e.kids || []) if (D[k] && !D[k].surf) out(O.get({ kind: 'place', i: k }), 1, [3, 3]);
       out(e, 2.5, [6, 4]);
@@ -302,7 +414,7 @@
     const [x, z] = O.posOf(s.kind, e);
     const [sx, sy] = P.toScreen(x, z);
     const r = s.kind === 'vehicle' ? Math.max(14, ((ZS.VEH_TYPES[e.type] || { len: 4 }).len / 2 + 0.6) * P.cam.zoom) : Math.max(11, 1.4 * P.cam.zoom);
-    g.strokeStyle = '#ffd27a'; g.lineWidth = 2.5;
+    g.strokeStyle = P.selColor(); g.lineWidth = 2.5;
     g.setLineDash([5, 4]);
     g.beginPath(); g.arc(sx, sy, r, 0, Math.PI * 2); g.stroke();
     g.setLineDash([]);

@@ -99,6 +99,10 @@
       d.list.forEach((i, k) => { const pr = m.props[i]; if (pr) { pr.x = round(d.orig[k][0] + dx); pr.z = round(d.orig[k][1] + dz); } });
       MT.touch('prop-move', { list: d.list, live: true });
     } else if (d.mode === 'ow-el') {
+      // décor, lieux, véhicules, départ : recalés sur la grille de pose (launcher 1.3.3 ; Alt : libre) ;
+      // les autres éléments, par le moteur (contre un mur, sur le sol)
+      const snap = ev.alt ? 0 : S.opts.props.snap;
+      if (snap && ['place', 'loc', 'vehicle', 'spawn'].includes(d.sel.kind)) { dx = snapV(d.orig[0] + dx, snap) - d.orig[0]; dz = snapV(d.orig[1] + dz, snap) - d.orig[1]; }
       const r = O.moveTo(d.sel, d.orig[0] + dx, d.orig[1] + dz, true, d.fol);
       if (r.ok) d.moved = true;
       MT.preview.owWhy = r.ok ? null : r.why || null;

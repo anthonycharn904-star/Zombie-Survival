@@ -37,8 +37,10 @@ contextBridge.exposeInMainWorld('zsModtools', {
 });
 
 /* Fichiers de l'éditeur (servis par le launcher, pas inclus dans le jeu des joueurs). ow-* : cartes
-   ouvertes (Khamsin, jeu 2.0.0) ; main.js en dernier (il démarre les Mod Tools). */
-const FILES = ['core.js', 'tools.js', 'plan.js', 'view3d.js', 'ui.js', 'ow-core.js', 'ow-tools.js', 'ow-terrain.js', 'ow-plan.js', 'ow-view.js', 'ow-ui.js', 'main.js'];
+   ouvertes (Khamsin, jeu 2.0.0) ; launcher 1.3.3 : thumbs.js (vignettes en cache), gizmo.js (flèches de
+   la sélection), browser.js (navigateurs de textures et de modèles) ; main.js en dernier (il démarre
+   les Mod Tools). */
+const FILES = ['core.js', 'thumbs.js', 'tools.js', 'plan.js', 'view3d.js', 'ui.js', 'ow-core.js', 'ow-tools.js', 'ow-terrain.js', 'ow-plan.js', 'ow-view.js', 'ow-ui.js', 'gizmo.js', 'browser.js', 'main.js'];
 window.addEventListener('DOMContentLoaded', () => {
   const css = document.createElement('link');
   css.rel = 'stylesheet';

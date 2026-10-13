@@ -466,7 +466,7 @@
     if (k < 0) {
       if (m.palette.length >= PAL().length) { compactPalette(m); k = m.palette.indexOf(id); }
       if (k < 0) {
-        if (m.palette.length >= PAL().length) throw new Error('Trop de textures différentes sur cette carte (62 au maximum).');
+        if (m.palette.length >= PAL().length) throw new Error(`Trop de textures peintes case par case sur cette carte (${PAL().length} différentes au maximum). Les textures d’une pièce (inspecteur de la pièce → « Textures de la pièce ») et celles de la carte (onglet Carte) ne comptent pas.`);
         k = m.palette.length;
         m.palette.push(id);
       }

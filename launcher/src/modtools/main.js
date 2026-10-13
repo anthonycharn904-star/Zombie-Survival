@@ -424,6 +424,7 @@
     UI.build();
     MT.plan.init($('mt-plan'));
     MT.v3.init();
+    if (MT.browser) MT.browser.init();          // navigateurs : glisser une vignette vers le plan ou la 3D
     ZS.G.editorSession = true;
     ZS.G.state = 'editor';
     ZS.showScreen(null);

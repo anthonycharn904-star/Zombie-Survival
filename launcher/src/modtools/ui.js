@@ -58,6 +58,14 @@
     ground: '<path d="M14 4l6 6-8.5 8.5a2.5 2.5 0 0 1-3.5 0L5.5 16a2.5 2.5 0 0 1 0-3.5z"/><path d="M3 21h8"/>',
     roads: '<path d="M8.5 3L5 21M15.5 3L19 21"/><path d="M12 4v3M12 10.5v3M12 17v3"/>',
     buildings: '<path d="M3.5 20.5V10l8.5-6 8.5 6v10.5z"/><path d="M9.5 20.5V14h5v6.5"/>',
+    // flèches de la sélection (gizmo), navigateurs, vue XY (launcher 1.3.3)
+    gizmo: '<path d="M12 12V3.5M12 12l7.5 4.3M12 12l-7.5 4.3"/><path d="M9.8 5.7L12 3.5l2.2 2.2M17.6 13.6l1.9 2.7-3.2.6M7.7 16.9l-3.2-.6 1.9-2.7"/>',
+    move: '<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>',
+    scale: '<rect x="3.5" y="10" width="10.5" height="10.5"/><path d="M11 3.5h9.5V13M20.5 3.5L13 11"/>',
+    star: '<path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z"/>',
+    books: '<path d="M4 4h5v16H4zM9 4h5v16H9z"/><path d="M14.5 5.2l4.8-1.3 3.3 15.5-4.8 1.3z"/>',
+    texlib: '<rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><path d="M13 13h8v8h-8z M13 17h8M17 13v8"/>',
+    xy: '<path d="M4 20V4M4 20h16"/><path d="M8 8l8 8M16 8l-8 8"/>',
   };
   function icon(name, cls = '') {
     const s = h('span', { class: `ic ${cls}`, 'aria-hidden': 'true' });
@@ -158,7 +166,14 @@
   function section(title, ...kids) { return h('section', { class: 'p-sec' }, h('h3', null, title), ...kids); }
   /* Modification immédiate (aperçu) puis validation (historique). */
   const live = (label, kind, fn, detail) => { if (!S.map) return; MT.begin(label); fn(S.map); MT.touch(kind, detail); };
-  const commit = (label, kind, fn, detail) => { if (!S.map) return; MT.begin(label); fn(S.map); MT.touch(kind, detail); MT.commit(); };
+  const commit = (label, kind, fn, detail) => {
+    if (!S.map) return;
+    MT.begin(label);
+    // refus du moteur ou des Mod Tools (ex. : plus de 62 textures peintes sur la carte) : un message, rien de cassé
+    try { fn(S.map); } catch (e) { MT.commit(); MT.toast(e.message, 'error'); return; }
+    MT.touch(kind, detail);
+    MT.commit();
+  };
   /* ------------------------------------------------------------ tailles --
      Jeu 2.0.3 (interface 5 du moteur) : objets en mètres (largeur, hauteur, profondeur), textures
      par carte et variantes, éléments de jeu (facteur). Avec un moteur plus ancien : un facteur. */
@@ -224,83 +239,21 @@
   UI.f = { field, num, slider, color, select, check, text, seg, btn, section, sizeFields, kField, setK, decFr };
 
   /* ------------------------------------------------------- vignettes -- */
-  const TH = { r: null, scene: null, cam: null, cache: new Map(), queue: [], pending: new Map(), timer: 0 };
-  const thumbKey = () => `mt.thumbs.${ZS.version}`;
-  try { const c = JSON.parse(localStorage.getItem(thumbKey()) || '{}'); for (const k in c) TH.cache.set(k, c[k]); } catch (e) { /* aucun cache */ }
-  const saveThumbs = debounce(() => {
-    try { const o = {}; for (const [k, v] of TH.cache) if (!k.startsWith('u_')) o[k] = v; localStorage.setItem(thumbKey(), JSON.stringify(o)); } catch (e) { /* stockage plein : tant pis */ }
-  }, 1500);
-  function thumbRenderer() {
-    if (TH.r) return TH.r;
-    TH.r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    TH.r.setSize(112, 112);
-    TH.r.outputEncoding = THREE.sRGBEncoding;
-    TH.r.toneMapping = THREE.ACESFilmicToneMapping;
-    TH.r.toneMappingExposure = 1.25;
-    TH.scene = new THREE.Scene();
-    TH.scene.background = new THREE.Color(0x1d2122).convertSRGBToLinear();
-    TH.scene.add(new THREE.HemisphereLight(0xe8eeff, 0x3a3226, 1.25));
-    const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
-    sun.position.set(3, 6, 4);
-    TH.scene.add(sun);
-    TH.cam = new THREE.PerspectiveCamera(28, 1, 0.05, 200);
-    return TH.r;
-  }
-  function renderModelThumb(id) {
-    const r = thumbRenderer();
-    const obj = ZS.makePropObject({ m: id });
-    const box = new THREE.Box3().setFromObject(obj);
-    if (box.isEmpty()) box.set(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 1, 0.5));
-    const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
-    const def = ZS.MODELS[id];
-    const dir = def && def.decal && !def.wall ? new THREE.Vector3(0.15, 1, 0.35) : new THREE.Vector3(1.1, 0.75, 1.5);
-    dir.normalize();
-    const radius = Math.max(0.2, sz.length() / 2);
-    const dist = radius / Math.sin((TH.cam.fov * Math.PI) / 360) * 1.02;
-    TH.cam.position.copy(c).addScaledVector(dir, dist);
-    TH.cam.lookAt(c);
-    TH.cam.near = Math.max(0.01, dist - radius * 2); TH.cam.far = dist + radius * 3;
-    TH.cam.updateProjectionMatrix();
-    TH.scene.add(obj);
-    r.render(TH.scene, TH.cam);
-    const url = r.domElement.toDataURL('image/jpeg', 0.84);
-    TH.scene.remove(obj);
-    obj.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-    return url;
-  }
-  function pumpThumbs() {
-    TH.timer = 0;
-    const t0 = performance.now();
-    while (TH.queue.length && performance.now() - t0 < 14) {
-      const id = TH.queue.shift();
-      let url = '';
-      try { url = renderModelThumb(id); } catch (e) { console.warn(`Vignette ${id}`, e); }
-      TH.cache.set(id, url);
-      for (const fn of TH.pending.get(id) || []) fn(url);
-      TH.pending.delete(id);
-    }
-    saveThumbs();
-    if (TH.queue.length) TH.timer = requestAnimationFrame(pumpThumbs);
-  }
-  MT.modelThumb = (id, cb) => {
-    if (TH.cache.has(id)) { cb(TH.cache.get(id)); return; }
-    // modèle importé : vignette quand il est décodé
-    if (ZS.MODELS[id] && ZS.MODELS[id].glb && !TH.pending.has(id)) {
-      TH.pending.set(id, [cb]);
-      ZS.glbReady(id).then(() => { TH.queue.push(id); if (!TH.timer) TH.timer = requestAnimationFrame(pumpThumbs); });
-      return;
-    }
-    if (!TH.pending.has(id)) { TH.pending.set(id, []); TH.queue.push(id); }
-    TH.pending.get(id).push(cb);
-    if (!TH.timer) TH.timer = requestAnimationFrame(pumpThumbs);
-  };
+  /* Vignettes des modèles et des textures : thumbs.js (faites à la demande, gardées dans IndexedDB ;
+     launcher 1.3.3). L'ancien cache (stockage local, trop petit pour des milliers de modèles) est vidé. */
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith('mt.thumbs.')) localStorage.removeItem(k); } catch (e) { /* rien */ }
+  MT.modelThumb = (id, cb, px = 112) => { MT.thumbs.get('model', id, px).then((url) => cb(url)); };
   const texThumbUrl = new Map();
+  /* Vignette d'une texture tout de suite (pastilles des inspecteurs) : data URL, ou le canvas d'une image
+     importée (dessiné quand elle est chargée). */
   MT.texThumb = (id) => {
     if (id === 'none') return null;
     if (!texThumbUrl.has(id)) {
-      const c = ZS.textureThumb(id, 96);
+      const raw = typeof ZS.textureThumbRaw === 'function';
+      const c = raw ? ZS.textureThumbRaw(id, 96) : ZS.textureThumb(id, 96);
       if (ZS.TEXLIB[id] && ZS.TEXLIB[id].image) return c; // image importée : dessinée quand elle est chargée
       texThumbUrl.set(id, c.toDataURL('image/jpeg', 0.85));
+      if (texThumbUrl.size > 600) texThumbUrl.delete(texThumbUrl.keys().next().value);
     }
     return texThumbUrl.get(id);
   };
@@ -314,24 +267,11 @@
       io.unobserve(tile);
       const fill = tile.querySelector('.lib-img');
       if (!fill) continue;
-      if (tile.dataset.kind === 'tex') {
-        const v = MT.texThumb(tile.dataset.id);
-        if (typeof v === 'string') fill.style.backgroundImage = `url(${v})`;
-        else if (v && v.nodeType) { v.classList.add('lib-canvas'); fill.append(v.cloneNode ? copyCanvas(v) : v); }
-      } else {
-        MT.modelThumb(tile.dataset.id, (url) => { if (url) fill.style.backgroundImage = `url(${url})`; });
-      }
+      const alive = () => tile.isConnected;
+      MT.thumbs.get(tile.dataset.kind === 'tex' ? 'tex' : 'model', tile.dataset.id, tile.dataset.kind === 'tex' ? 96 : 112, alive).then((url) => { if (url) fill.style.backgroundImage = `url(${url})`; });
     }
   }, { rootMargin: '120px' });
-  function copyCanvas(src) {
-    const c = document.createElement('canvas');
-    c.width = src.width; c.height = src.height;
-    c.className = 'lib-canvas';
-    const draw = () => { const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.drawImage(src, 0, 0); };
-    draw();
-    setTimeout(draw, 400); setTimeout(draw, 1500);
-    return c;
-  }
+  const LIB_PAGE = 240;
   /* kind : 'tex' | 'model' ; opts.value, opts.onPick(id), opts.layer (textures), opts.compact */
   function library(kind, opts = {}) {
     const st = UI.lib[kind];
@@ -357,11 +297,18 @@
         if (st.cat === 'recent') items = S.recent.model.map((id) => ZS.MODELS[id]).filter(Boolean);
         else if (st.cat !== 'all') items = items.filter((d) => d.cat === st.cat);
       }
-      if (q) items = items.filter((d) => slug(`${d.name} ${d.id}`).replace(/-/g, ' ').includes(q));
+      if (q) { const words = q.split(' ').filter(Boolean); items = items.filter((d) => { const t = slug(`${d.name} ${d.id}`, 200).replace(/-/g, ' '); return words.every((w) => t.includes(w)); }); }
       const special = kind === 'tex' && opts.layer === 'ceil' && (st.cat === 'all' || st.cat === 'plafond') && !q;
       if (special) grid.append(tile({ id: 'none', name: 'Ciel ouvert (pas de plafond)' }));
-      for (const d of items) grid.append(tile(d));
-      count.textContent = `${items.length + (special ? 1 : 0)}`;
+      // jeu 2.0.4 : des milliers d'éléments — la liste se montre par paquets (le navigateur, lui, les montre tous)
+      const lim = st.limit || LIB_PAGE;
+      for (const d of items.slice(0, lim)) grid.append(tile(d));
+      if (items.length > lim) {
+        grid.append(h('div', { class: 'lib-more' },
+          h('button', { type: 'button', class: 'mt-btn sm', onclick: () => { const top = grid.scrollTop; st.limit = lim + LIB_PAGE; fill(); grid.scrollTop = top; } }, `Afficher ${Math.min(LIB_PAGE, items.length - lim)} de plus (${(items.length - lim).toLocaleString('fr-BE')} restants)`),
+          MT.browser ? h('button', { type: 'button', class: 'mt-btn sm', onclick: () => { if (UI.modalOpen && UI.closeModal) UI.closeModal(); MT.browser.open(kind === 'tex' ? 'tex' : 'model'); } }, kind === 'tex' ? 'Navigateur de textures' : 'Navigateur de modèles') : null));
+      }
+      count.textContent = `${(items.length + (special ? 1 : 0)).toLocaleString('fr-BE')}`;
       if (!items.length && !special) grid.append(h('p', { class: 'lib-empty' }, st.cat === 'import' ? (kind === 'tex' ? 'Aucune image importée pour l’instant.' : 'Aucun modèle importé pour l’instant.') : st.cat === 'variant' ? 'Pas de variante sur cette carte : outil Peinture, « Créer une variante… ».' : 'Rien ne correspond.'));
     };
     const tile = (d) => {
@@ -375,9 +322,9 @@
     };
     const drawChips = () => {
       chips.textContent = '';
-      for (const [id, label] of cats) chips.append(h('button', { type: 'button', class: st.cat === id ? 'on' : '', onclick: () => { st.cat = id; st.scroll = 0; grid.scrollTop = 0; drawChips(); fill(); } }, label));
+      for (const [id, label] of cats) chips.append(h('button', { type: 'button', class: st.cat === id ? 'on' : '', onclick: () => { st.cat = id; st.scroll = 0; st.limit = 0; grid.scrollTop = 0; drawChips(); fill(); } }, label));
     };
-    search.addEventListener('input', debounce(() => { st.q = search.value; st.scroll = 0; fill(); }, 120));
+    search.addEventListener('input', debounce(() => { st.q = search.value; st.scroll = 0; st.limit = 0; fill(); }, 120));
     drawChips();
     fill();
     grid.addEventListener('scroll', () => { st.scroll = grid.scrollTop; }, { passive: true });
@@ -457,6 +404,9 @@
       h('header', { class: 'mt-top' },
         h('div', { class: 'mt-brand' }, h('b', null, 'Mod Tools'), h('small', null, 'Zombie Survival')),
         h('button', { type: 'button', class: 'mt-btn', id: 'mt-maps', title: 'Cartes : ouvrir, créer, importer, publier', onclick: () => UI.mapManager() }, icon('maps'), h('span', null, 'Cartes')),
+        h('div', { class: 'mt-group mt-libs' },
+          h('button', { type: 'button', class: 'mt-btn', id: 'mt-br-tex', title: 'Navigateur de textures (Maj+T) : toutes les textures du jeu, filtres, favoris', onclick: () => MT.browser && MT.browser.toggle('tex') }, icon('texlib'), h('span', null, 'Textures')),
+          h('button', { type: 'button', class: 'mt-btn', id: 'mt-br-model', title: 'Navigateur de modèles (Maj+O) : tous les objets du jeu, filtres, favoris', onclick: () => MT.browser && MT.browser.toggle('model') }, icon('books'), h('span', null, 'Modèles'))),
         h('div', { class: 'mt-title' },
           h('input', { id: 'mt-name', type: 'text', spellcheck: false, maxLength: 60, title: 'Nom de la carte' }),
           h('span', { id: 'mt-dirty', class: 'mt-dirty' })),
@@ -477,11 +427,19 @@
         h('section', { class: 'mt-pane mt-plan', id: 'mt-plan-pane' },
           h('canvas', { id: 'mt-plan', 'aria-label': 'Plan de la carte' }),
           h('div', { class: 'mt-pane-bar' },
-            h('span', { class: 'mt-pane-title' }, 'Plan'),
+            h('span', { class: 'mt-pane-title', id: 'mt-plan-title' }, 'Plan'),
             h('button', { type: 'button', class: 'mt-icon-btn sm', title: 'Recentrer (toute la carte)', onclick: () => MT.plan.fit() }, icon('fit')),
+            toggleBtn('xy', 'Vue XY façon Radiant (« XY Top ») : fond gris, règles en mètres, grille au pas de la pose, contour et nom de tout ; mêmes clics et glisser', () => MT.plan.style === 'xy', (v) => MT.plan.setStyle(v ? 'xy' : 'plan')),
             grid(toggleBtn('grid', 'Grille', () => MT.plan.showGrid, (v) => { MT.plan.showGrid = v; MT.plan.need = true; })),
             toggleBtn('zones', 'Pièces colorées et noms (carte ouverte : noms des lieux)', () => MT.plan.showZones, (v) => { MT.plan.showZones = v; MT.plan.baseRev++; MT.plan.need = true; }),
-            toggleBtn('props', 'Objets', () => MT.plan.showProps, (v) => { MT.plan.showProps = v; MT.plan.need = true; }))),
+            toggleBtn('props', 'Objets', () => MT.plan.showProps, (v) => { MT.plan.showProps = v; MT.plan.need = true; }),
+            h('span', { class: 'mt-xy-only' },
+              toggleBtn('tag', 'Noms (vue XY)', () => MT.plan.xyNames, (v) => MT.plan.setXY('xyNames', v)),
+              h('span', { class: 'mt-open-only' }, toggleBtn('terrain', 'Relief en fond (vue XY)', () => MT.plan.xyRelief, (v) => MT.plan.setXY('xyRelief', v)))),
+            h('label', { class: 'mt-grid-step', title: 'Pas de la grille : pose des objets, glisser, flèches de la sélection ([ et ] pour changer, Alt : libre)' },
+              h('span', null, 'Grille'),
+              h('select', { class: 'f-select sm', id: 'mt-grid-step', onchange: (e) => { S.opts.props.snap = parseFloat(e.target.value) || 0; MT.emit('tool-opts'); MT.plan.need = true; } },
+                [0, ...MT.plan.GRID_STEPS].map((v) => h('option', { value: String(v), selected: (S.opts.props.snap || 0) === v }, MT.plan.stepLabel(v))))))),
         h('div', { class: 'mt-split', id: 'mt-split', title: 'Glisser pour changer la taille des vues' }),
         h('section', { class: 'mt-pane mt-3d', id: 'mt-3d-pane' },
           h('div', { class: 'mt-pane-bar' },
@@ -493,7 +451,11 @@
             grid(toggleBtn('fog', 'Brouillard de la carte', () => MT.v3.fog, (v) => MT.v3.setOption('fog', v))),
             toggleBtn('power', 'Aperçu : courant rétabli', () => MT.v3.power, (v) => MT.v3.setOption('power', v)),
             grid(toggleBtn('bulb', 'Scintillement des lumières', () => MT.v3.animate, (v) => { MT.v3.setOption('animate', v); if (!v) MT.v3.forceRebuild(); })),
-            toggleBtn('tag', 'Noms des pièces (carte ouverte : des lieux et des emplacements)', () => MT.v3.labels, (v) => MT.v3.setOption('labels', v))),
+            toggleBtn('tag', 'Noms des pièces (carte ouverte : des lieux et des emplacements)', () => MT.v3.labels, (v) => MT.v3.setOption('labels', v)),
+            h('div', { class: 'mt-gz', id: 'mt-gz', role: 'group', 'aria-label': 'Flèches de la sélection' },
+              h('button', { type: 'button', class: 'mt-icon-btn sm toggle', id: 'mt-gz-show', title: 'Flèches sur la sélection (gizmo) : glisser une flèche, un carré ou l’anneau', onclick: () => { if (MT.gizmo) MT.gizmo.setShow(!MT.gizmo.show); } }, icon('gizmo')),
+              ...[['move', 'Déplacer : flèches X, Y, Z, carrés des plans, cube du centre sur le sol (X : mode suivant)'], ['rotate', 'Tourner autour de la verticale : l’anneau (Maj : par 45°, Alt : libre)'], ['scale', 'Taille : une poignée par axe, le cube du centre pour les trois']].map(([mode, title]) =>
+                h('button', { type: 'button', class: 'mt-icon-btn sm', dataset: { gz: mode }, title, onclick: () => { if (MT.gizmo) MT.gizmo.setMode(mode); } }, icon(mode))))),
           h('div', { class: 'mt-3d-help' }, 'Clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · Maj : vite · molette : zoom · clic milieu : glisser'))),
       h('aside', { class: 'mt-side' },
         h('div', { class: 'mt-tabs', role: 'tablist' },
@@ -529,10 +491,21 @@
     MT.on('issues', refreshIssues);
     MT.on('cursor', refreshCursor);
     MT.on('library', () => { if (UI.tab === 'tool' && S.tool === 'paint') renderPanel(); });
+    const syncPlanBar = () => {
+      const sel = $('mt-grid-step');
+      if (sel) sel.value = String(S.opts.props.snap || 0);
+      const t = $('mt-plan-title');
+      if (t) t.textContent = MT.plan.style === 'xy' ? 'XY Top' : 'Plan';
+      document.body.classList.toggle('mt-xy', MT.plan.style === 'xy');
+    };
+    MT.on('tool-opts', syncPlanBar);
+    MT.on('plan-style', syncPlanBar);
+    syncPlanBar();
     MT.on('level', () => { refreshLevels(); renderPanel(); refreshTop(); });
     refreshToolbar();
     UI.setTab('tool');
     UI.setView(UI.view);
+    if (MT.gizmo) MT.gizmo.refreshButtons();
   };
   /* Bouton des seules cartes en grille (caché sur une carte ouverte). */
   function grid(el) { el.classList.add('grid-only'); return el; }
@@ -888,7 +861,7 @@
     return [
       section('Objet', cur, lib, h('div', { class: 'p-actions' }, btn('Importer un modèle 3D (.glb)…', () => UI.importModel(), { ic: 'upload' }))),
       section('Pose',
-        field('Grille', seg(String(o.snap), [['0', 'Libre'], ['0.1', '10 cm'], ['0.25', '25 cm'], ['0.5', '50 cm'], ['1', '1 m']], (v) => { o.snap = parseFloat(v); MT.emit('tool-opts'); }), 'Alt : pose libre'),
+        field('Grille', select({ value: String(o.snap || 0), options: [0, ...MT.plan.GRID_STEPS].map((v) => [String(v), MT.plan.stepLabel(v)]), onChange: (v) => { o.snap = parseFloat(v) || 0; MT.emit('tool-opts'); MT.plan.need = true; } }), 'Pas de la pose, du glisser et des flèches · [ et ] · Alt : libre'),
         field('Rotation', h('span', { class: 'f-inline' },
           num({ value: o.rot, min: 0, max: 359, step: 1, unit: '°', digits: 1, width: '64px', onCommit: (v) => { o.rot = v; MT.emit('preview'); } }),
           select({ value: o.rotStep, options: [[15, 'pas de 15°'], [45, 'pas de 45°'], [90, 'pas de 90°']], onChange: (v) => { o.rotStep = parseInt(v, 10); } })), 'R / Maj+R'),
@@ -1659,11 +1632,14 @@
     if (e.key === 'F1') { e.preventDefault(); UI.help(); return; }
     if (t) return;
     if (e.repeat && !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'BracketLeft', 'BracketRight'].includes(e.code)) return;
+    // navigateurs (launcher 1.3.3) : Maj+T textures, Maj+O modèles
+    if (e.shiftKey && !e.altKey && (e.code === 'KeyT' || e.code === 'KeyO') && MT.browser) { e.preventDefault(); MT.browser.toggle(e.code === 'KeyT' ? 'tex' : 'model'); return; }
     const tool = MT.tools.available().find((x) => x.key === e.code);
     if (tool && !e.altKey) { e.preventDefault(); MT.setTool(tool.id); return; }
     switch (e.code) {
       case 'Escape':
-        if (MT.tools.drag) MT.tools.cancel();
+        if (MT.gizmo && MT.gizmo.drag) MT.gizmo.cancel();
+        else if (MT.tools.drag) MT.tools.cancel();
         else if (S.sel) MT.select(null);
         else if (S.tool !== 'select') MT.setTool('select');
         break;
@@ -1671,9 +1647,12 @@
       case 'KeyR': MT.tools.rotate(e.altKey ? -1 : 1, e.shiftKey); break;
       case 'KeyF': focusSel(); break;
       case 'KeyH': MT.v3.topView(); break;
+      case 'KeyX': if (MT.gizmo) MT.gizmo.cycle(); break;
       case 'Tab': e.preventDefault(); UI.setView(UI.view === 'split' ? 'plan' : UI.view === 'plan' ? '3d' : 'split'); break;
       case 'Space': MT.plan.space = true; e.preventDefault(); break;
       case 'BracketLeft': case 'BracketRight': {
+        // pas de la grille (sélection, objets, éléments, escaliers ; comme Radiant) ; taille du pinceau (construire, textures)
+        if (S.tool !== 'paint' && S.tool !== 'build') { MT.gridStep(e.code === 'BracketRight' ? 1 : -1); break; }
         const o = S.tool === 'paint' ? S.opts.paint : S.opts.build;
         o.size = clamp(o.size + (e.code === 'BracketRight' ? 1 : -1), 1, 9);
         MT.emit('tool-opts'); MT.emit('preview');
@@ -1718,6 +1697,9 @@
       ['3D', 'clic droit maintenu : regarder · ZQSD/WASD : avancer · A/E : descendre/monter · Maj : vite · molette : avancer vers le curseur · clic milieu : glisser · Alt+glisser : tourner autour · F : montrer la sélection · H : vue de dessus'],
       ['Construire', '1 à 9 : type de case · [ et ] : taille du pinceau · clic droit : effacer · Alt+clic : pipette'],
       ['Vues', 'Tab : plan / 3D / les deux · glisser la séparation pour la taille'],
+      ['Flèches (3D)', 'sur la sélection : Déplacer (flèche X rouge vers l’est, Y verte vers le haut, Z bleue vers le sud ; un carré : dans son plan ; le cube du centre : sur le sol) · Tourner (l’anneau ; Maj : par 45°, Alt : libre) · Taille (une poignée par axe, le cube du centre pour les trois) · X : mode suivant · boutons de la barre de la 3D · recalé sur la grille (Alt : libre) · un geste = une annulation · Échap pendant le geste : annulé'],
+      ['Vue XY', 'bouton XY du plan (« XY Top » de Radiant) : fond gris, règles en mètres (x vers l’est, z vers le sud), contour et nom de tout ce qui est sur la carte, sélection en rouge · mêmes clics et glisser que le plan · [ et ] : pas de la grille (5 cm à 32 m, ou libre) pour la sélection, les objets, les éléments et les flèches · Alt : libre'],
+      ['Navigateurs', 'Maj+T : textures · Maj+O : modèles (boutons Textures et Modèles de la barre du haut) · la fenêtre reste ouverte pendant le travail · Toutes, Sur la carte, Favoris, Récentes · recherche par mots · filtres (textures : usage, origine, surface, matière, famille, teinte, état ; modèles : catégorie, famille, matière, taille, état) · clic : choisir · double-clic : peindre avec ou poser · glisser une vignette vers le plan ou la 3D : peindre la case, la surface visée, ou poser l’objet là'],
       ['Tailles', 'objet : onglet Sélection → Taille (largeur, hauteur, profondeur en mètres ; « Garder les proportions » ; « Taille d’origine ») ou outil Objets → Taille à la pose · texture : outil Textures → Taille sur cette carte (toute la carte), « Créer une variante… » pour une autre taille au même endroit · éléments de jeu : Taille ×0,4 à ×3 dans leur inspecteur · bâtiments des cartes ouvertes : Cotes (largeur, profondeur, hauteur des murs)'],
       ['Carte ouverte (Khamsin)', 'V sélection · O objets · G éléments de jeu (1 départ · 2 arme au mur · 3 atout · 4 boîte · 5 véhicule · 6 jerricans · 7 disjoncteur · 8 lieu nommé) · les éléments se recalent seuls (mur, sol) · plan : de 4 km à quelques mètres · 3D : Maj pour voler très vite'],
       ['Décor de la base', 'outil Sélection : clic sur le décor des lieux (plan ou 3D) ; « Un clic choisit » : une surface (un mur, un toit, une poutre…), une pièce (une tente, une caisse, une maison, un module…) ou la construction entière · la ligne « A › B › C » de l’inspecteur sélectionne ce qui porte la sélection ; « Ce qu’elle porte » liste ses pièces et ses surfaces · glisser : déplacer · R : tourner (Maj : 90°) · Page haut/bas : hauteur · Taille dans l’inspecteur · Matières : une autre texture (bibliothèque ou vos images), une teinte · « Remplacer par un objet… » · Suppr : retirer · ce qui est posé dedans suit, les éléments de jeu aussi ; ce qui en dépend dans la partie (air de la base, échelle et ascenseur de la tour, quête…) suit · « Rétablir l’origine » ; ce qui est retiré se remet depuis la liste « Décor de la base » (outil Sélection, rien de sélectionné)'],

@@ -8,7 +8,7 @@
    ========================================================================= */
 (() => {
   const MT = window.MT, ZS = window.ZS;
-  const { clamp, DIRS } = MT.util;
+  const { clamp, DIRS, round } = MT.util;
   const S = MT.state;
   const P = (MT.plan = {
     cam: { x: 16, z: 12, zoom: 24 }, canvas: null, g: null, w: 1, h: 1, dpr: 1,
@@ -306,8 +306,256 @@
     }
   }
 
+  /* ============================================ vue XY façon Radiant (launcher 1.3.3) ==
+     Demande d'Anthony du 12 octobre 2026 au soir (capture de Radiant, « XY Top ») : fond gris, grille
+     au pas de la grille de pose (S.opts.props.snap ; [ et ] la changent), règles graduées en mètres,
+     le contour et le nom de tout ce qui est sur la carte, la sélection en rouge. Mêmes outils, même
+     souris que le plan (clic : sélectionner, glisser : déplacer, recalé sur la grille ; Alt : libre). */
+  const PLAN_PREF = 'mt.plan';
+  P.style = 'plan'; P.xyRelief = true; P.xyNames = true;
+  try { const p = JSON.parse(localStorage.getItem(PLAN_PREF) || '{}'); if (p.style === 'xy') P.style = 'xy'; if (p.relief === false) P.xyRelief = false; if (p.names === false) P.xyNames = false; } catch (e) { /* réglages par défaut */ }
+  const savePlan = () => { try { localStorage.setItem(PLAN_PREF, JSON.stringify({ style: P.style, relief: P.xyRelief, names: P.xyNames })); } catch (e) { /* rien */ } };
+  P.setStyle = (st) => { P.style = st === 'xy' ? 'xy' : 'plan'; savePlan(); P.baseRev++; P.need = true; MT.emit('plan-style', P.style); };
+  P.setXY = (k, v) => { P[k] = v; savePlan(); P.need = true; MT.emit('plan-style', P.style); };
+  const XY = (P.XY = {
+    bg: '#a3a6a4', minor: 'rgba(16,20,24,0.10)', major: 'rgba(16,20,24,0.27)', edge: 'rgba(8,10,12,0.62)',
+    brush: '#18268f', brushFill: 'rgba(24,38,143,0.10)', prop: '#3b1f7a', propFill: 'rgba(59,31,122,0.07)', floor: 'rgba(255,255,255,0.17)',
+    ent: '#bf2419', label: '#08561f', sel: '#e3211a', selFill: 'rgba(227,33,26,0.13)', ruler: 'rgba(213,216,214,0.95)', rulerText: '#0b3f1d',
+  });
+  /* Pas de la grille (mètres ; 0 : libre) : celui de la pose des objets, du gizmo et des glisser. */
+  const STEPS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
+  P.GRID_STEPS = [0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32];
+  P.stepLabel = (v) => (!v ? 'libre' : v < 1 ? `${Math.round(v * 100)} cm` : `${v} m`);
+  MT.gridStep = (dir) => {
+    const o = S.opts.props, L = P.GRID_STEPS;
+    let i = L.indexOf(o.snap);
+    if (i < 0) i = o.snap ? L.findIndex((v) => v >= o.snap) : -1;
+    i = clamp(i + dir, -1, L.length - 1);
+    o.snap = i < 0 ? 0 : L[i];
+    MT.emit('tool-opts');
+    P.need = true;
+    MT.toast(`Grille : ${P.stepLabel(o.snap)}`);
+  };
+  const niceStep = (minPx) => STEPS.find((v) => v * P.cam.zoom >= minPx) || STEPS[STEPS.length - 1];
+  const numFr = (v) => String(round(v, 2)).replace('.', ',');
+  /* Grille (les deux sortes de cartes) : lignes fines au pas de la grille de pose quand elles sont assez
+     écartées, lignes appuyées tous les « major » mètres, bord de la carte. */
+  P.xyGrid = (g, mw, mh) => {
+    const Z = P.cam.zoom, w0 = P.toWorld(0, 0), w1 = P.toWorld(P.w, P.h), gs = S.opts.props.snap || 0;
+    const minor = gs && gs * Z >= 7 ? gs : niceStep(9);
+    const major = STEPS.find((v) => v >= minor * 4 - 1e-9 && v * Z >= 60) || minor * 8;
+    const lines = (step, color) => {
+      g.strokeStyle = color; g.lineWidth = 1; g.beginPath();
+      for (let x = Math.ceil(w0.x / step) * step; x <= w1.x; x += step) { const sx = Math.round(P.w / 2 + (x - P.cam.x) * Z) + 0.5; g.moveTo(sx, 0); g.lineTo(sx, P.h); }
+      for (let z = Math.ceil(w0.z / step) * step; z <= w1.z; z += step) { const sy = Math.round(P.h / 2 + (z - P.cam.z) * Z) + 0.5; g.moveTo(0, sy); g.lineTo(P.w, sy); }
+      g.stroke();
+    };
+    if (minor * Z >= 5 && minor < major) lines(minor, XY.minor);
+    lines(major, XY.major);
+    const [ox, oy] = P.toScreen(0, 0), [ex, ey] = P.toScreen(mw, mh);
+    g.strokeStyle = XY.edge; g.lineWidth = 1.5;
+    g.strokeRect(Math.round(ox) + 0.5, Math.round(oy) + 0.5, Math.round(ex - ox), Math.round(ey - oy));
+    return { minor, major };
+  };
+  /* Règles graduées (haut et gauche), titre du coin, pas de la grille en bas. */
+  P.xyRulers = (g, major, title) => {
+    const w0 = P.toWorld(0, 0), w1 = P.toWorld(P.w, P.h), TOP = 17, LEFT = 40;
+    g.fillStyle = XY.ruler; g.fillRect(0, 0, P.w, TOP); g.fillRect(0, 0, LEFT, P.h);
+    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, TOP, P.w, 1); g.fillRect(LEFT, 0, 1, P.h);
+    g.font = '600 11px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.fillStyle = XY.rulerText;
+    for (let x = Math.ceil(w0.x / major) * major; x <= w1.x; x += major) {
+      const sx = Math.round(P.toScreen(x, 0)[0]);
+      if (sx < LEFT + 2) continue;
+      g.fillRect(sx, TOP - 5, 1, 5);
+      g.fillText(numFr(x), sx + 3, TOP / 2);
+    }
+    for (let z = Math.ceil(w0.z / major) * major; z <= w1.z; z += major) {
+      const sy = Math.round(P.toScreen(0, z)[1]);
+      if (sy < TOP + 8) continue;
+      g.fillRect(LEFT - 5, sy, 5, 1);
+      g.fillText(numFr(z), 3, sy - 6);
+    }
+    g.fillStyle = XY.ruler; g.fillRect(0, 0, LEFT, TOP);
+    g.fillStyle = XY.rulerText; g.font = '700 11px "Barlow Condensed", "Arial Narrow", sans-serif'; g.fillText('x → · z ↓', 3, TOP / 2);
+    // titre (en haut à droite, sous la barre du panneau) et pas de la grille (en bas)
+    const t = `${title}`, gsT = `Grille : ${P.stepLabel(S.opts.props.snap || 0)} · [ ] pour changer · Alt : libre`;
+    g.font = '700 12px "Barlow Condensed", "Arial Narrow", sans-serif';
+    const tw = g.measureText(t).width;
+    g.fillStyle = 'rgba(14,18,16,0.78)'; g.fillRect(P.w - tw - 20, TOP + 6, tw + 14, 19);
+    g.fillStyle = '#e9f2e6'; g.fillText(t, P.w - tw - 13, TOP + 16);
+    g.font = '600 11.5px "Barlow Condensed", "Arial Narrow", sans-serif';
+    const gw = g.measureText(gsT).width;
+    g.fillStyle = 'rgba(14,18,16,0.72)'; g.fillRect(LEFT + 6, P.h - 22, gw + 12, 18);
+    g.fillStyle = '#e9f2e6'; g.fillText(gsT, LEFT + 12, P.h - 13);
+  };
+  /* Étiquette d'une entité (vert, comme les noms de Radiant). */
+  P.xyLabel = (g, text, sx, sy, { color = XY.label, size = 11, align = 'left', bold = false } = {}) => {
+    g.font = `${bold ? 700 : 600} ${size}px "Barlow Condensed", "Arial Narrow", sans-serif`;
+    g.textBaseline = 'middle'; g.textAlign = align;
+    g.lineWidth = 3; g.strokeStyle = 'rgba(214,218,215,0.75)'; g.strokeText(text, sx, sy);
+    g.fillStyle = color; g.fillText(text, sx, sy);
+    g.textAlign = 'left';
+  };
+  P.xyPoly = (g, pts, stroke, fill, lw = 1.3, dash = null) => {
+    g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
+    if (fill) { g.fillStyle = fill; g.fill(); }
+    if (dash) g.setLineDash(dash);
+    g.strokeStyle = stroke; g.lineWidth = lw; g.stroke();
+    if (dash) g.setLineDash([]);
+  };
+  P.xyEntity = (g, x, z, half, label, { color = XY.ent, sel = false, fill = null } = {}) => {
+    const [sx, sy] = P.toScreen(x, z), r = Math.max(3.5, half * P.cam.zoom);
+    if (fill) { g.fillStyle = fill; g.fillRect(sx - r, sy - r, r * 2, r * 2); }
+    g.strokeStyle = sel ? XY.sel : color; g.lineWidth = sel ? 2.2 : 1.4; g.strokeRect(Math.round(sx - r) + 0.5, Math.round(sy - r) + 0.5, Math.round(r * 2), Math.round(r * 2));
+    if (label && P.xyNames) P.xyLabel(g, label, sx + r + 4, sy - r + 3, { color: sel ? XY.sel : XY.label });
+  };
+
+  /* Carte en grille, style XY : sols et cours en clair, murs en contours bleus (comme des brosses),
+     fenêtres, portes, piliers, caisses ; escaliers ; objets en contours violets avec leur nom ;
+     éléments de jeu en rouge avec leur nom ; pièces nommées. */
+  function drawXY() {
+    const g = P.g, m = S.map, Z = P.cam.zoom;
+    g.setTransform(P.dpr, 0, 0, P.dpr, 0, 0);
+    g.fillStyle = XY.bg; g.fillRect(0, 0, P.w, P.h);
+    if (!m) return;
+    const G = MT.grid(), w0 = P.toWorld(0, 0), w1 = P.toWorld(P.w, P.h);
+    const vx0 = clamp(Math.floor(w0.x) - 1, 0, m.w), vx1 = clamp(Math.ceil(w1.x) + 1, 0, m.w), vz0 = clamp(Math.floor(w0.z) - 1, 0, m.h), vz1 = clamp(Math.ceil(w1.z) + 1, 0, m.h);
+    const vis = (x, z, pad = 2) => x >= vx0 - pad && x <= vx1 + pad && z >= vz0 - pad && z <= vz1 + pad;
+    const wallLike = (ch) => ch === '#' || ch === 'W' || ch === 'D' || ch === 'P';
+    const at = (x, z) => (x >= 0 && z >= 0 && x < m.w && z < m.h ? G[z][x] : ' ');
+    // sols (pièces), cours, niveau du dessous en transparence
+    for (let z = vz0; z < vz1; z++) {
+      for (let x = vx0; x < vx1; x++) {
+        const ch = G[z][x];
+        if (ch === ' ' || wallLike(ch)) continue;
+        const [sx, sy] = P.toScreen(x, z);
+        g.fillStyle = ch === 'o' ? 'rgba(52,120,48,0.16)' : XY.floor;
+        g.fillRect(sx, sy, Z + 0.5, Z + 0.5);
+      }
+    }
+    const grid = P.xyGrid(g, m.w, m.h);
+    // murs : remplissage léger, contour seulement là où le mur touche autre chose qu'un mur
+    g.fillStyle = XY.brushFill;
+    for (let z = vz0; z < vz1; z++) for (let x = vx0; x < vx1; x++) { if (G[z][x] === '#') { const [sx, sy] = P.toScreen(x, z); g.fillRect(sx, sy, Z + 0.5, Z + 0.5); } }
+    g.strokeStyle = XY.brush; g.lineWidth = Z >= 6 ? 1.5 : 1;
+    g.beginPath();
+    for (let z = vz0; z < vz1; z++) {
+      for (let x = vx0; x < vx1; x++) {
+        const ch = G[z][x];
+        if (!wallLike(ch)) continue;
+        const [sx, sy] = P.toScreen(x, z);
+        if (!wallLike(at(x, z - 1))) { g.moveTo(sx, sy); g.lineTo(sx + Z, sy); }
+        if (!wallLike(at(x, z + 1))) { g.moveTo(sx, sy + Z); g.lineTo(sx + Z, sy + Z); }
+        if (!wallLike(at(x - 1, z))) { g.moveTo(sx, sy); g.lineTo(sx, sy + Z); }
+        if (!wallLike(at(x + 1, z))) { g.moveTo(sx + Z, sy); g.lineTo(sx + Z, sy + Z); }
+      }
+    }
+    g.stroke();
+    // fenêtres, portes, piliers, caisses, murets
+    for (let z = vz0; z < vz1; z++) {
+      for (let x = vx0; x < vx1; x++) {
+        const ch = G[z][x];
+        if (!'WDPxm'.includes(ch)) continue;
+        const [sx, sy] = P.toScreen(x, z);
+        if (ch === 'W') { g.fillStyle = 'rgba(16,140,150,0.45)'; g.fillRect(sx + Z * 0.1, sy + Z * 0.1, Z * 0.8, Z * 0.8); g.strokeStyle = '#0c6f78'; g.lineWidth = 1; g.strokeRect(sx + Z * 0.1, sy + Z * 0.1, Z * 0.8, Z * 0.8); }
+        else if (ch === 'D') { g.fillStyle = 'rgba(150,62,20,0.55)'; g.fillRect(sx + Z * 0.06, sy + Z * 0.06, Z * 0.88, Z * 0.88); }
+        else if (ch === 'P') { g.fillStyle = 'rgba(24,38,143,0.55)'; g.fillRect(sx + Z * 0.15, sy + Z * 0.15, Z * 0.7, Z * 0.7); }
+        else if (ch === 'x') { g.strokeStyle = '#5a3d14'; g.lineWidth = 1; g.strokeRect(sx + Z * 0.12, sy + Z * 0.12, Z * 0.76, Z * 0.76); if (Z >= 8) { g.beginPath(); g.moveTo(sx + Z * 0.12, sy + Z * 0.12); g.lineTo(sx + Z * 0.88, sy + Z * 0.88); g.moveTo(sx + Z * 0.88, sy + Z * 0.12); g.lineTo(sx + Z * 0.12, sy + Z * 0.88); g.stroke(); } }
+        else if (ch === 'm') { g.setLineDash([3, 3]); g.strokeStyle = XY.brush; g.lineWidth = 1; g.strokeRect(sx + 1.5, sy + 1.5, Z - 3, Z - 3); g.setLineDash([]); }
+      }
+    }
+    drawStairs(g, m);
+    // portes payantes : leur prix
+    m.doors.forEach((d) => {
+      if (!MT.here(d) || Z < 10) return;
+      let cx = 0, cz = 0;
+      for (const [x, z] of d.cells) { cx += x + 0.5; cz += z + 0.5; }
+      cx /= d.cells.length; cz /= d.cells.length;
+      if (vis(cx, cz)) { const [sx, sy] = P.toScreen(cx, cz); P.xyLabel(g, `porte · ${d.cost}`, sx, sy, { align: 'center', color: '#5a1d06', bold: true }); }
+    });
+    // objets
+    if (P.showProps) {
+      const sel = new Set(MT.selectedProps());
+      m.props.forEach((pr, i) => {
+        if (!MT.here(pr) || !vis(pr.x, pr.z, 4)) return;
+        const def = ZS.MODELS[pr.m], on = sel.has(i);
+        const pts = MT.propCorners(pr).map(([x, z]) => P.toScreen(x, z));
+        P.xyPoly(g, pts, on ? XY.sel : def && def.decal ? 'rgba(150,40,40,0.8)' : XY.prop, on ? XY.selFill : XY.propFill, on ? 2.2 : 1.1, def && def.decal ? [3, 3] : null);
+        const [sx, sy] = P.toScreen(pr.x, pr.z);
+        if (on || Z >= 26) { const r = pr.r || 0; arrow(g, sx, sy, Math.sin(r), Math.cos(r), Math.min(16, Z * 0.35), on ? XY.sel : 'rgba(59,31,122,0.55)', 1.3); }
+        if (P.xyNames && (on || Z >= 34)) P.xyLabel(g, def ? def.name : pr.m, sx, sy - Math.max(8, Z * 0.35), { align: 'center', color: on ? XY.sel : XY.label });
+      });
+    }
+    // éléments de jeu
+    const S0 = S.sel || {}, isSel = (kind, i) => S0.kind === kind && (S0.i === i || i === undefined);
+    const H = MT.here;
+    for (let i = 0; i < m.risers.length; i++) { const r = m.risers[i]; if (!H(r) || !vis(r[0], r[1])) continue; P.xyEntity(g, r[0] + 0.5, r[1] + 0.5, 0.22, Z >= 22 ? 'apparition' : '', { color: '#2f7a1f', sel: isSel('riser', i), fill: 'rgba(60,150,40,0.35)' }); }
+    m.perks.forEach((p, i) => { if (!H(p) || !vis(p.cell[0], p.cell[1])) return; const def = ZS.PERKS[p.p]; P.xyEntity(g, p.cell[0] + 0.5, p.cell[1] + 0.5, 0.42, def ? def.name : p.p, { sel: isSel('perk', i), fill: def ? hexA(def.color, 0.45) : null }); const [cx, cy] = P.toScreen(p.cell[0] + 0.5, p.cell[1] + 0.5); if (Z >= 10) arrow(g, cx, cy, p.face[0], p.face[1], Math.max(5, Z * 0.4), isSel('perk', i) ? XY.sel : XY.ent, 1.4); });
+    m.boxes.forEach((b, i) => {
+      if (!H(b)) return;
+      const x0 = Math.min(b.cells[0][0], b.cells[1][0]), z0 = Math.min(b.cells[0][1], b.cells[1][1]), w = b.cells[0][0] === b.cells[1][0] ? 1 : 2, hh = w === 1 ? 2 : 1;
+      if (!vis(x0, z0)) return;
+      const on = isSel('box', i), [sx, sy] = P.toScreen(x0 + 0.1, z0 + 0.1);
+      g.fillStyle = 'rgba(47,111,200,0.3)'; g.fillRect(sx, sy, (w - 0.2) * Z, (hh - 0.2) * Z);
+      g.strokeStyle = on ? XY.sel : '#1d4c94'; g.lineWidth = on ? 2.2 : 1.4; g.strokeRect(sx, sy, (w - 0.2) * Z, (hh - 0.2) * Z);
+      if (P.xyNames) P.xyLabel(g, `Boîte ${i + 1}${i === m.boxStart ? ' (départ)' : ''}`, sx + (w - 0.2) * Z + 4, sy + 6, { color: on ? XY.sel : XY.label });
+    });
+    if (m.amp && H(m.amp)) {
+      const b = m.amp, x0 = Math.min(b.cells[0][0], b.cells[1][0]), z0 = Math.min(b.cells[0][1], b.cells[1][1]), w = b.cells[0][0] === b.cells[1][0] ? 1 : 2, hh = w === 1 ? 2 : 1;
+      const on = isSel('amp'), [sx, sy] = P.toScreen(x0 + 0.1, z0 + 0.1);
+      g.fillStyle = 'rgba(106,47,176,0.3)'; g.fillRect(sx, sy, (w - 0.2) * Z, (hh - 0.2) * Z);
+      g.strokeStyle = on ? XY.sel : '#4a1f80'; g.lineWidth = on ? 2.2 : 1.4; g.strokeRect(sx, sy, (w - 0.2) * Z, (hh - 0.2) * Z);
+      if (P.xyNames) P.xyLabel(g, 'Le Glas (Pack-A-Punch)', sx + (w - 0.2) * Z + 4, sy + 6, { color: on ? XY.sel : XY.label });
+    }
+    const onWall = (cell, n, label, on) => {
+      const [x, z] = cell;
+      if (!vis(x, z)) return;
+      const cx = x + 0.5 + n[0] * 0.32, cz = z + 0.5 + n[1] * 0.32, hw = n[0] ? 0.14 : 0.42, hd = n[0] ? 0.42 : 0.14;
+      const [sx, sy] = P.toScreen(cx - hw, cz - hd);
+      g.fillStyle = 'rgba(240,236,220,0.7)'; g.fillRect(sx, sy, hw * 2 * Z, hd * 2 * Z);
+      g.strokeStyle = on ? XY.sel : XY.ent; g.lineWidth = on ? 2.2 : 1.3; g.strokeRect(sx, sy, hw * 2 * Z, hd * 2 * Z);
+      if (P.xyNames && Z >= 12) { const [lx, ly] = P.toScreen(x + 0.5 + n[0] * 1.05, z + 0.5 + n[1] * 1.05); P.xyLabel(g, label, lx, ly, { align: 'center', color: on ? XY.sel : XY.label }); }
+    };
+    m.wallbuys.forEach((w, i) => { if (H(w)) onWall(w.cell, w.n, `${ZS.WEAPONS[w.w] ? ZS.WEAPONS[w.w].name : w.w} · ${ZS.wallbuyPrice(w)}`, isSel('wallbuy', i)); });
+    if (m.power && H(m.power)) onWall(m.power.cell, m.power.n, 'Courant', isSel('power'));
+    if (m.digipass && H(m.digipass)) onWall(m.digipass.cell, m.digipass.n, 'Digi pass', false);
+    m.signs.forEach((sg, i) => {
+      const [x, z] = MT.signCell(sg);
+      if (!H(sg) || !vis(x, z)) return;
+      const along = sg.n[0] ? [0, 1] : [1, 0], hw = 0.85 * (sg.k || 1), on = isSel('sign', i);
+      const a = P.toScreen(sg.pos[0] - along[0] * hw, sg.pos[2] - along[1] * hw), b = P.toScreen(sg.pos[0] + along[0] * hw, sg.pos[2] + along[1] * hw);
+      g.strokeStyle = on ? XY.sel : XY.ent; g.lineWidth = Math.max(2, Z * 0.1); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+      if (P.xyNames && Z >= 12) { const [lx, ly] = P.toScreen(sg.pos[0] + sg.n[0] * 0.6, sg.pos[2] + sg.n[1] * 0.6); P.xyLabel(g, `« ${sg.text} »`, lx, ly, { align: 'center', color: on ? XY.sel : XY.label }); }
+    });
+    m.lights.forEach((l, i) => { if (!H(l) || !vis(l.pos[0], l.pos[2])) return; P.xyEntity(g, l.pos[0], l.pos[2], 0.18, Z >= 18 ? 'lumière' : '', { color: '#7a5a00', sel: isSel('light', i), fill: ZS.colorHex(l.color) }); });
+    if (H(m.spawn)) {
+      const sp = m.spawn, on = isSel('spawn');
+      P.xyEntity(g, sp.pos[0], sp.pos[1], 0.32, 'Départ', { color: '#1e6a2a', sel: on, fill: 'rgba(47,168,74,0.45)' });
+      const [sx, sy] = P.toScreen(sp.pos[0], sp.pos[1]);
+      arrow(g, sx, sy, -Math.sin(sp.yaw), -Math.cos(sp.yaw), Math.max(12, Z * 0.9), on ? XY.sel : '#1e6a2a', 2);
+    }
+    // pièces nommées
+    if (P.showZones && Z >= 6) {
+      const A = MT.analysis(), acc = A.zones.map(() => ({ x: 0, z: 0, n: 0 }));
+      for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) { const zi = MT.zoneIndexAt(x, z); if (zi >= 0) { const q = acc[zi]; q.x += x + 0.5; q.z += z + 0.5; q.n++; } }
+      A.zones.forEach((zone, i) => { const q = acc[i]; if (!q.n || q.n < 2 || zone.auto) return; const [sx, sy] = P.toScreen(q.x / q.n, q.z / q.n); P.xyLabel(g, zone.name, sx, sy, { align: 'center', size: clamp(Z * 0.5, 11, 16), color: '#14301c', bold: true }); });
+    }
+    drawSelection(g, m);
+    drawPreview(g);
+    drawIssues(g);
+    drawCamera(g);
+    if (P.hover && MT.inb(P.hover.x, P.hover.z) && !MT.preview.cells && Z >= 8) {
+      const [sx, sy] = P.toScreen(P.hover.x, P.hover.z);
+      g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 1;
+      g.strokeRect(Math.round(sx) + 0.5, Math.round(sy) + 0.5, Math.round(Z) - 1, Math.round(Z) - 1);
+    }
+    P.xyRulers(g, grid.major, `XY Top · ${MT.levels().length > 1 ? MT.levelName(S.level) : 'vue de dessus'}`);
+  }
+  P.selColor = () => (P.style === 'xy' ? XY.sel : '#ffd27a');
+
   /* ------------------------------------------------------------ dessin -- */
   P.draw = () => {
+    if (P.style === 'xy') { if (OWP() && OWP().drawXY) OWP().drawXY(P); else if (!OWP()) drawXY(); else OWP().draw(P); return; }
     if (OWP()) { OWP().draw(P); return; }
     const g = P.g, m = S.map, Z = P.cam.zoom;
     g.setTransform(P.dpr, 0, 0, P.dpr, 0, 0);
@@ -652,7 +900,7 @@
   function drawSelection(g, m) {
     const s = S.sel, Z = P.cam.zoom;
     if (!s) return;
-    g.strokeStyle = '#ffd27a'; g.lineWidth = 2;
+    g.strokeStyle = P.selColor(); g.lineWidth = 2;
     const box = (x0, z0, w, hh) => { const [sx, sy] = P.toScreen(x0, z0); g.strokeRect(sx - 1, sy - 1, w * Z + 2, hh * Z + 2); };
     switch (s.kind) {
       case 'light': {

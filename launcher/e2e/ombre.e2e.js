@@ -44,7 +44,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.3' && ZS.version === v, `jeu 2.0.3 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
+      ok(GAME_VERSION === '2.0.4' && ZS.version === v, `jeu 2.0.4 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
       ok(MAPS.list.join() === 'bunker7,khamsin,ombre', 'catalogue : Bunker 7, Khamsin, puis Ombre éternelle (troisième carte)', MAPS.list);
       const M = MAPS.byId.ombre;
       ok(M && M.open && M.base === 'ombre' && M.name === 'Ombre éternelle' && /^data:image\/jpeg/.test(M.thumb || ''), 'Ombre éternelle : carte ouverte (base ombre), vignette du plan en relief', M && { open: M.open, base: M.base, name: M.name, thumb: (M.thumb || '').slice(0, 22) });

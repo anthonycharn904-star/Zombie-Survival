@@ -195,6 +195,13 @@
   function onDown(e) {
     if (!V.active || !S.map) return;
     V.canvas.focus({ preventScroll: true });
+    // flèches de la sélection (gizmo, launcher 1.3.3) : avant les outils
+    if (e.button === 0 && !e.altKey && MT.gizmo && MT.gizmo.down(e)) {
+      V.drag = { mode: 'gizmo' };
+      V.canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     if (e.button === 2 || e.button === 1 || (e.button === 0 && e.altKey)) {
       const mode = e.button === 2 ? 'look' : e.button === 1 ? 'pan' : 'orbit';
       let pivot = null;
@@ -217,6 +224,7 @@
   function onMove(e) {
     if (!V.active) return;
     const d = V.drag;
+    if (d && d.mode === 'gizmo') { MT.gizmo.move(e); return; }
     if (d && d.mode !== 'tool') {
       const dx = e.movementX || 0, dy = e.movementY || 0;
       if (Math.abs(dx) + Math.abs(dy) > 0) d.moved = true;
@@ -248,6 +256,7 @@
     V.canvas.classList.remove('looking', 'panning');
     try { V.canvas.releasePointerCapture(e.pointerId); } catch (err) { /* rien */ }
     if (!d) return;
+    if (d.mode === 'gizmo') { MT.gizmo.up(e); return; }
     if (d.mode === 'tool') {
       const pd = MT.tools.drag;
       const p = pd && pd.planeY !== undefined ? planePick(e, pd.planeY) : V.pick(e);
@@ -276,6 +285,7 @@
     let p;
     if (V.drag && V.drag.mode === 'tool' && d && d.planeY !== undefined) p = planePick(e, d.planeY);
     else p = V.pick(e);
+    if (MT.gizmo && !V.drag) MT.gizmo.hoverAt(e);
     MT.tools.move(p, ev);
     MT.emit('cursor', p);
   }
@@ -324,6 +334,8 @@
     if (!S.map) return;
     if (OWV()) { OWV().onChange(kind, detail); return; }
     if (kind === 'prop-move') { applyPropTransforms(detail && detail.list); V.selDirty = true; return; }
+    // départ glissé ou tourné (gizmo) : seul son repère bouge ; le monde est refait au relâcher
+    if (kind === 'spawn-live') { V.helpersDirty = true; V.selDirty = true; return; }
     if (kind === 'light-live') { applyLightLive(detail); V.selDirty = true; V.helpersDirty = true; return; }
     if (kind === 'ambiance') { ZS.applyAmbiance(S.map.ambiance); applyOverrides(); return; }
     if (kind === 'props') { V.propsDirty = true; V.selDirty = true; schedule(20); return; }
@@ -598,7 +610,7 @@
     V.canvas.addEventListener('pointerenter', () => { V.hovering = true; });
     V.canvas.addEventListener('pointerleave', () => {
       V.hovering = false;
-      if (!V.drag) { for (const c in V.keys) V.keys[c] = false; MT.tools.move(null, { view: '3d' }); MT.emit('cursor', null); }
+      if (!V.drag) { for (const c in V.keys) V.keys[c] = false; MT.tools.move(null, { view: '3d' }); MT.emit('cursor', null); if (MT.gizmo) MT.gizmo.hoverAt(null); }
     });
     V.canvas.addEventListener('dblclick', (e) => {
       if (!V.active || e.altKey) return;
@@ -649,6 +661,7 @@
     updateGhost();
     if (V.animate) ZS.updateLights(dt, V.t);
     applyOverrides();
+    if (MT.gizmo) MT.gizmo.frame();
   };
   /* Pour les cartes ouvertes (ow-view.js). */
   V.int = { setRay, ray, applyCamera, forward, textSprite, disposeTree, schedule };

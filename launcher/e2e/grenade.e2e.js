@@ -41,7 +41,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.3', 'version du jeu : 2.0.3', GAME_VERSION);
+      ok(GAME_VERSION === '2.0.4', 'version du jeu : 2.0.4', GAME_VERSION);
       const n = buildNade('hi'), P = n.userData.parts;
       ok(['body', 'fuze', 'lever', 'pin', 'ring'].every((k) => P[k]), 'grenade : corps, fusée, cuillère, goupille et anneau');
       const b = new THREE.Box3().setFromObject(P.body), all = new THREE.Box3().setFromObject(n);

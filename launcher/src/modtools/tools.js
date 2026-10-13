@@ -174,7 +174,7 @@
       d.list.forEach((i, k) => { const pr = m.props[i]; if (pr) { pr.x = round(d.orig[k][0] + dx); pr.z = round(d.orig[k][1] + dz); } });
       MT.touch('prop-move', { list: d.list });
     } else if (d.mode === 'light') {
-      const step = ev.alt ? 0 : 0.25;
+      const step = ev.alt ? 0 : S.opts.props.snap || 0;
       const l = m.lights[d.i];
       const nx = round(snapV(d.orig[0] + p.wx - d.start[0], step)), nz = round(snapV(d.orig[1] + p.wz - d.start[1], step));
       if (nx === l.pos[0] && nz === l.pos[2]) return;
@@ -182,7 +182,7 @@
       l.pos[0] = nx; l.pos[2] = nz;
       MT.touch('light-live', { i: d.i, move: true });
     } else if (d.mode === 'spawn') {
-      const step = ev.alt ? 0 : 0.25;
+      const step = ev.alt ? 0 : S.opts.props.snap || 0;
       const nx = round(snapV(d.orig[0] + p.wx - d.start[0], step)), nz = round(snapV(d.orig[1] + p.wz - d.start[1], step));
       if (nx === m.spawn.pos[0] && nz === m.spawn.pos[1]) return;
       d.moved = true;
@@ -849,6 +849,8 @@
 
   const TOOLS = { select, build, paint, props, elements, stairs };
   T.impl = TOOLS;
+  /* Gizmo (launcher 1.3.3) : déplace un élément posé sur les cases vers la case p (mêmes contrôles qu'au plan). */
+  T.moveElementTo = (sel, p, from) => moveElement(sel, p, from);
   T.placement = placement;
   T.texName = texName;
   T.tileName = tileName;
