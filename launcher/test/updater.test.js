@@ -91,3 +91,45 @@ test('version livrée : installée au premier lancement, réinstallée à numér
     assert.match(html(), /en ligne/);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
+
+test('version livrée : à numéro et éditeur égaux, réinstallée si sa construction est plus récente (GAME_BUILD)', async () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Updater, gameBuildOf } = require('../src/main/updater');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zs-upd-build-'));
+  const game = (dir, version, api, build, mark) => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'game.json'), JSON.stringify({ version }));
+    const b = build === null ? '' : `\nconst GAME_BUILD = ${build};`;
+    fs.writeFileSync(path.join(dir, 'index.html'), `<script>const EDITOR_API = ${api};                       // ${mark}${b}</script>`);
+  };
+  try {
+    const bundle = path.join(tmp, 'bundle'), data = path.join(tmp, 'data');
+    const logs = [];
+    const u = new Updater({ dataDir: data, bundledDir: bundle, updateUrl: '', publicKey: '', log: (m) => logs.push(m) });
+    const html = () => fs.readFileSync(path.join(u.getInstalled().dir, 'index.html'), 'utf8');
+    // installé : le 2.0.4 du premier launcher 1.3.3 (interface 9, sans construction)
+    game(bundle, '2.0.4', 9, null, 'premier');
+    await u.ensureBundled();
+    assert.equal(gameBuildOf(u.getInstalled().dir), 0);
+    // le launcher 1.3.3 refait livre le 2.0.4 construction 1 (le khépesh) : il remplace l'installé
+    game(bundle, '2.0.4', 9, 1, 'khepesh');
+    await u.ensureBundled();
+    assert.match(html(), /khepesh/);
+    assert.equal(gameBuildOf(u.getInstalled().dir), 1);
+    assert.equal(logs[1], 'Version livrée réinstallée : 2.0.4 (construction 1 au lieu de 0)');
+    // même construction : rien ne change ; construction plus ancienne : rien non plus
+    game(bundle, '2.0.4', 9, 1, 'pareil');
+    await u.ensureBundled();
+    game(bundle, '2.0.4', 9, 0, 'ancienne');
+    await u.ensureBundled();
+    assert.match(html(), /khepesh/);
+    assert.equal(logs.length, 2);
+    // l'interface de l'éditeur passe avant la construction : une interface plus ancienne ne remplace rien
+    game(bundle, '2.0.4', 8, 7, 'interface 8');
+    await u.ensureBundled();
+    assert.match(html(), /khepesh/);
+    assert.equal(logs.length, 2);
+    // dossier sans jeu : construction 0
+    assert.equal(gameBuildOf(path.join(tmp, 'rien')), 0);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});

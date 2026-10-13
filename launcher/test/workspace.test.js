@@ -159,6 +159,8 @@ test('paquet du jeu : dossier maps/ remplacé par les cartes publiées', () => {
 test('jeu : l’éditeur de cartes est disponible dans le moteur (EDITOR_API)', () => {
   const html = fs.readFileSync(SOURCE, 'utf8');
   assert.match(html, /const EDITOR_API = [1-9]\d*;/);
+  // construction du jeu (2.0.4 refait : le khépesh) : le launcher remplace une construction installée plus ancienne
+  assert.match(html, /const GAME_BUILD = [1-9]\d*;/);
   assert.match(html, /window\.ZS = \{/);
   // les Mod Tools ne sont pas dans le jeu des joueurs
   assert.doesNotMatch(html, /modtools\/core\.js/);

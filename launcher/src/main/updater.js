@@ -232,6 +232,14 @@ function editorApiOf(dir) {
     return m ? parseInt(m[1], 10) : 0;
   } catch (e) { return 0; }
 }
+/* Construction d'un jeu, à numéro et interface égaux (« const GAME_BUILD = n » dans son index.html) ;
+   0 sans construction (les jeux d'avant le 2.0.4 refait le 13 octobre 2026, le khépesh de Khamsin). */
+function gameBuildOf(dir) {
+  try {
+    const m = /const GAME_BUILD = (\d+);/.exec(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'));
+    return m ? parseInt(m[1], 10) : 0;
+  } catch (e) { return 0; }
+}
 
 class Updater {
   constructor({ dataDir, bundledDir, updateUrl, publicKey, fetchImpl, log, timeoutMs = 15000 }) {
@@ -279,19 +287,25 @@ class Updater {
 
   /* Premier lancement : installe la version livrée avec le launcher. À numéro égal, la version livrée
      remplace l'installée quand l'interface de son éditeur est plus récente : un jeu reconstruit sans
-     changer de numéro (2.0.0 et la Lune ; 2.0.3 et le décor des lieux, launcher 1.3.2). */
+     changer de numéro (2.0.0 et la Lune ; 2.0.3 et le décor des lieux, launcher 1.3.2) ; à interface
+     égale, quand sa construction est plus récente (2.0.4 et le khépesh de Khamsin, launcher 1.3.3). */
   async ensureBundled() {
     const b = this.bundledInfo();
     const inst = this.getInstalled();
     const cmp = b && inst ? compareVersions(b.version, inst.version) : 0;
     const apiB = b ? editorApiOf(this.bundledDir) : 0, apiI = inst ? editorApiOf(inst.dir) : 0;
-    const rebuilt = !!(b && inst && cmp === 0 && apiB > apiI);
+    const sameApi = !!(b && inst && cmp === 0 && apiB === apiI);
+    const buildB = sameApi ? gameBuildOf(this.bundledDir) : 0, buildI = sameApi ? gameBuildOf(inst.dir) : 0;
+    const newerApi = !!(b && inst && cmp === 0 && apiB > apiI), newerBuild = sameApi && buildB > buildI;
+    const rebuilt = newerApi || newerBuild;
     if (b && (!inst || cmp > 0 || rebuilt)) {
       await fsp.mkdir(this.versionsDir, { recursive: true });
       const tmp = path.join(this.versionsDir, `.${b.version}-bundle-${Date.now()}`);
       await fsp.cp(this.bundledDir, tmp, { recursive: true });
       await this.activate(tmp, b.version);
-      this.log(rebuilt ? `Version livrée réinstallée : ${b.version} (éditeur ${apiB} au lieu de ${apiI || 'aucun'})` : `Version livrée installée : ${b.version}`);
+      this.log(!rebuilt ? `Version livrée installée : ${b.version}`
+        : newerApi ? `Version livrée réinstallée : ${b.version} (éditeur ${apiB} au lieu de ${apiI || 'aucun'})`
+        : `Version livrée réinstallée : ${b.version} (construction ${buildB} au lieu de ${buildI})`);
     }
     return this.getInstalled();
   }
@@ -391,4 +405,4 @@ class Updater {
   }
 }
 
-module.exports = { Updater, UpdateError, verifyManifest, compareVersions, parseVersion, downloadFile, extractZip, editorApiOf };
+module.exports = { Updater, UpdateError, verifyManifest, compareVersions, parseVersion, downloadFile, extractZip, editorApiOf, gameBuildOf };

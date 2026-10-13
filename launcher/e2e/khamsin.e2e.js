@@ -4,7 +4,7 @@
    ouvert de 4 × 3 km (sept lieux, relief, mini-carte, boussole), consignes du menu, éléments (arme au
    mur, atout, boîte mystère, jerricans, disjoncteurs et courant), véhicules (achat, conduite, vue,
    pas de tir au volant, sortie), Desséchés (points de vie, allures, types selon le lieu, yeux), Rôdeur
-   (prise, couteau), tempêtes, sanctuaire (porte, escalier, autel aux paliers du Glas), draisine,
+   (prise, khépesh depuis le jeu 2.0.4), tempêtes, sanctuaire (porte, escalier, autel aux paliers du Glas), draisine,
    sauvegarde, quête et évasion (trois pièces, Gardien, décollage, victoire), écran « Modèles » ;
    retour au Bunker 7 (moteur de grille, Fantassins, consignes d'origine).
      xvfb-run -a node e2e/khamsin.e2e.js   (Linux sans écran) */
@@ -235,7 +235,7 @@ const USER = path.join(TMP, 'joueur');
     ok(z.zombieHp === 150 && z.alive > 0 && z.types.every((t) => /^kh_(arch|ouvrier|villageois)$/.test(t)) && z.eyes && z.onGround && z.rodeurs === 0,
       `manche 1 : ${z.alive} Desséchés debout (yeux turquoise), aucun Rôdeur hors tempête`, z);
 
-    // ------------------------------------------------------- tempêtes ; Rôdeur : prise, couteau
+    // ------------------------------------------------------- tempêtes ; Rôdeur : prise, khépesh (V)
     const r = await game.evaluate(() => {
       __play();
       const out = {};
@@ -260,7 +260,7 @@ const USER = path.join(TMP, 'joueur');
       const p0 = player.pos.clone();
       Input.keys.KeyW = true; st(0.5); Input.keys.KeyW = false;
       out.held = +Math.hypot(player.pos.x - p0.x, player.pos.z - p0.z).toFixed(2);
-      // couteau (V), face au Rôdeur
+      // khépesh (V, l'arme de corps-à-corps du désert depuis le jeu 2.0.4), face au Rôdeur
       player.yaw = Math.atan2(-(zr.pos.x - player.pos.x), -(zr.pos.z - player.pos.z)); player.pitch = -0.2;
       Input.keys.KeyV = true; Input.down.KeyV = true; __zs.step(1); Input.keys.KeyV = false;
       let freed = false, state = null;
@@ -274,7 +274,7 @@ const USER = path.join(TMP, 'joueur');
     });
     ok(!r.round3 && r.round4 && r.phase !== 'calme' && r.lv > 0 && r.reset, `tempête à la manche 4 (pas à la 3) ; au bout de 90 s : ${r.phase}, niveau ${r.lv}`, r);
     ok(r.spawned && r.grabbed && r.held < 0.2, 'Rôdeur (en tempête) : il charge et agrippe ; on ne bouge plus', r);
-    ok(r.freed && r.state === 'stun' && r.dead, 'couteau (V) : le Rôdeur lâche prise, étourdi ; il meurt sous les balles', r);
+    ok(r.freed && r.state === 'stun' && r.dead, 'khépesh (V) : le Rôdeur lâche prise, étourdi ; il meurt sous les balles', r);
 
     // ------------------------------------------------------- sanctuaire, autel (paliers du Glas)
     const s = await game.evaluate(() => {

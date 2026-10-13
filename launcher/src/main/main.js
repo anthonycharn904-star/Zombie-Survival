@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
-const { Updater, UpdateError, compareVersions, parseVersion, editorApiOf } = require('./updater');
+const { Updater, UpdateError, compareVersions, parseVersion, editorApiOf, gameBuildOf } = require('./updater');
 const publisher = require('./publisher');
 const github = require('./github');
 const { readGameVersion } = require('./gamepack');
@@ -381,15 +381,16 @@ function authorMode(refresh = false) {
 }
 /* Jeu servi aux Mod Tools : la version la plus récente (installée ou livrée) qui contient l'éditeur ;
    à numéro égal, celle dont l'interface de l'éditeur est la plus récente (le jeu 2.0.0 a reçu la Lune
-   sans changer de numéro : interface 4 au lieu de 3). */
+   sans changer de numéro : interface 4 au lieu de 3), puis la construction la plus récente (le jeu
+   2.0.4 a reçu le khépesh de Khamsin sans changer de numéro ni d'interface : construction 1). */
 function editorEngine() {
   const cands = [];
   const inst = updater.getInstalled();
   if (inst) cands.push({ dir: inst.dir, version: inst.version, source: 'installed' });
   const b = updater.bundledInfo();
   if (b) cands.push({ dir: BUNDLE_DIR, version: b.version, source: 'bundled' });
-  for (const c of cands) c.api = editorApiOf(c.dir);
-  return cands.filter((c) => c.api >= 1).sort((a, c) => compareVersions(c.version, a.version) || c.api - a.api)[0] || null;
+  for (const c of cands) { c.api = editorApiOf(c.dir); c.build = gameBuildOf(c.dir); }
+  return cands.filter((c) => c.api >= 1).sort((a, c) => compareVersions(c.version, a.version) || c.api - a.api || c.build - a.build)[0] || null;
 }
 function getWorkspace() {
   if (!workspace) workspace = new Workspace(userFile('modtools'));
