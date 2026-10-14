@@ -1,6 +1,6 @@
 # CLAUDE.md — Zombie Survival
 
-Guide de reprise du développement. À lire en entier au début de chaque session, puis `docs/transmission.md` (préférences d'Anthony, décisions et leurs raisons, demandes en attente, écarts connus, leçons). Le détail de chaque système se trouve dans `README.md` (sections citées plus bas) ; l'atelier du moteur est décrit dans `engine/README.md`.
+Guide de reprise du développement. À lire en entier au début de chaque session, puis `docs/transmission.md` (préférences d'Anthony, décisions et leurs raisons, demandes en attente, écarts connus, leçons), puis le document privé de reprise désigné par `CLAUDE.local.md` (hors du dépôt : environnement, protections locales, état vérifié, problèmes connus). Le détail de chaque système se trouve dans `README.md` (sections citées plus bas) ; l'atelier du moteur est décrit dans `engine/README.md`.
 
 ## 1. Le projet
 
@@ -20,9 +20,11 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
   - Khamsin : désert égyptien de 4 × 3 km, monde ouvert, véhicules, tempêtes, boss, évasion.
   - Ombre éternelle : mine de glace en gradins sur la Lune, monde ouvert, 1/6 g, oxygène.
   - Les autres cartes viennent des Mod Tools.
-- **État au 13 octobre 2026.**
+- **Environnement de développement (depuis le 14 octobre 2026).** Claude Code dans Ubuntu 24.04 (WSL2), sur le PC d'Anthony, ouvert depuis l'appli de bureau Claude. Le bac à sable de Claude Code est actif. L'ancienne conversation claude.ai et son Projet sont des archives.
+- **État au 14 octobre 2026.**
   - Jeu 2.0.4, construction 2 (le khépesh sur Khamsin seulement) ; interface des Mod Tools 9 ; launcher 1.3.3.
   - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.4`, construction 1, publiée par Anthony le 13 octobre 2026 à 19 h 35. La construction 2 ne change rien pour eux (le Désert vierge n'est pas dans leur menu) ; elle partira avec la prochaine version du jeu.
+  - Migration vers WSL terminée le 14 octobre 2026 : reconstruction identique du jeu, tests unitaires 30 sur 31 (§5), 918 vérifications de bout en bout sur 918.
   - **Publier une version pour les joueurs est l'action d'Anthony, jamais celle de Claude.**
 
 ## 2. Où est quoi
@@ -41,15 +43,16 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
 | `README.md` | Documentation complète : chaque fonctionnalité, ses règles, « Où modifier », la publication et l'historique. |
 | `docs/transmission.md` | Transmission du 13 octobre 2026 : préférences et règles d'Anthony, décisions et leurs raisons, demandes en attente (Marteau gravitationnel, carte du marécage…), écarts entre ses planches et le jeu, leçons, questions ouvertes. Public : jamais de secret dedans. |
 
+**Clones locaux (WSL) et branches**
+- `~/dev/zs-verif` : l'atelier (`origin` = le clone de référence). On y travaille sur la branche `dev` : modifications, constructions, `npm ci`, tests, essais, installateur.
+- `~/dev/Zombie-Survival` : le clone de référence, sur `main`. Il ne reçoit que des modifications essayées et validées par Anthony ; on n'y modifie rien à la main.
+- `main` reste stable : c'est le dernier état validé, d'où partent les installateurs et les publications.
+- L'envoi vers GitHub est désactivé dans les deux clones jusqu'à ce qu'Anthony crée une identification (jeton ou clé, saisis par lui seul).
+
 **Hors du dépôt**
-- **Projet claude.ai « Zombie Survival ».**
-  - Il contient le document privé `claude/zombie-survival-notes.md`. On y trouve l'historique détaillé des livraisons (empreintes, envois, copies sur le PC), les échanges et décisions avec Anthony, l'état « en ligne / prêt », et le **code du digi pass**.
-  - Une session rattachée au Projet le lit avec l'outil Projects (`project_read`, `project_search`).
-  - **Ne plus copier le jeu dans le Projet**, pour une raison de place : la limite est de 2 millions de jetons et le jeu en prenait environ 1,7. C'est le choix d'Anthony du 13 octobre 2026.
-- **PC d'Anthony.**
-  - Il héberge le launcher installé, le jeu installé (`%APPDATA%\Zombie Survival`) et sa clé privée de publication.
-  - Il garde aussi ses copies de livraisons dans `Téléchargements\Zombie Survival …`.
-  - Accès uniquement quand la conversation est reliée à son ordinateur, par l'appli de bureau Claude. Ce lien ne sert qu'à copier des livraisons : le développement ne dépend pas du PC.
+- **Dossier privé de reprise** (dans WSL, désigné par `CLAUDE.local.md`, jamais versionné) : document de reprise (environnement, protections locales, état vérifié, problèmes connus, contradictions), notes privées détaillées (historique des livraisons, empreintes, échanges et décisions), scripts privés (garde Git, essais de bout en bout, sauvegarde chiffrée). Il est sauvegardé chiffré hors de WSL.
+- **Projet claude.ai « Zombie Survival »** : archive. Son document `claude/zombie-survival-notes.md` reste la référence historique ; c'est le seul document qui contient le **code du digi pass**. La copie du jeu qu'il contient (construction 1) est redondante avec l'historique Git : son retrait est décidé (choix d'Anthony du 13 octobre 2026, pour la place) et c'est son action.
+- **PC d'Anthony (Windows)** : launcher et jeu installés (`%APPDATA%\Zombie Survival`), clé privée de publication, copies de livraisons dans `Téléchargements\Zombie Survival …`. Claude Code n'écrit jamais dans le jeu ni dans le launcher installés et ne lit jamais leur dossier `publisher`.
 
 ## 3. Architecture du jeu (`game/zombie-survival.html`)
 
@@ -85,20 +88,30 @@ Sections : chercher les marqueurs `/* ===… NN NOM ==`.
 - **Carte qui utilise une bibliothèque.** Une carte qui utilise des textures `gx_` ou des modèles `gm_` demande le jeu 2.0.4 ou plus récent.
 
 **Où modifier**
-Le README a une section par système, avec ses noms de fonctions : Cartes, Khamsin, Ombre éternelle, Étages et escaliers, Atouts, Le Glas, Statistiques, Modèles, Manches de chiens, Animations des zombies, Armes et rechargements, Grenade, Couteau, Khépesh, Rang, Digi pass, Abords, Mod Tools (et ses sous-sections), Launcher, Publier. Les notes privées du Projet contiennent en plus un tableau « Où modifier quoi » plus détaillé.
+Le README a une section par système, avec ses noms de fonctions : Cartes, Khamsin, Ombre éternelle, Étages et escaliers, Atouts, Le Glas, Statistiques, Modèles, Manches de chiens, Animations des zombies, Armes et rechargements, Grenade, Couteau, Khépesh, Rang, Digi pass, Abords, Mod Tools (et ses sous-sections), Launcher, Publier. Les notes privées contiennent en plus un tableau « Où modifier quoi » plus détaillé.
 
 ## 4. Méthode de travail
 
-**Modifier le jeu**
+**Règle générale.** Accord explicite d'Anthony avant toute installation (y compris `npm ci`), modification importante, commit, envoi, publication ou suppression ; rapport avant chaque étape importante. Aucune mécanique du jeu modifiée sans son accord.
+
+**Modifier le jeu** (dans `~/dev/zs-verif`, sur la branche `dev`)
 1. **Vérification de départ.** Lancer `python3 engine/tools/build.py --out /tmp/zs.html`, puis `cmp /tmp/zs.html game/zombie-survival.html`. S'ils diffèrent, quelqu'un a modifié le HTML hors de l'atelier : reporter ces changements dans `engine/` d'abord.
 2. **Modifier dans `engine/`.**
    - Un nouveau système ou un système du monde ouvert va dans un module de `engine/src/`. L'ordre alphabétique des fichiers est l'ordre d'insertion.
    - Un changement dans le code du jeu 1.9.0 (sections 00 à 11) passe par un point d'accroche, dans un fichier `engine/tools/hooks-<sujet>.py` exécuté par `build.py`. On utilise `rep(ancien, nouveau)` ; le texte doit être trouvé exactement une fois.
 3. **Construire.** Lancer `python3 engine/tools/build.py`, puis `python3 engine/tools/dupcheck.py game/zombie-survival.html`, puis `cd launcher && node scripts/prepare-game.js`.
-4. **Vérifier vite.** `node engine/tools/tzeval.js corps.js` exécute du code dans le jeu, au menu. Il sert aux mesures, aux contrôles et aux simulations avec `__zs.step`. Les images se font avec `khshot.js` ou `khepshot.js`.
-5. **Écrire ou adapter un essai** dans `launcher/e2e/`, et l'ajouter à `test:e2e` dans `launcher/package.json`.
+4. **Vérifier vite.** `node engine/tools/tzeval.js corps.js` exécute du code dans le jeu, au menu. Il sert aux mesures, aux contrôles et aux simulations avec `__zs.step`. Les images se font avec `khshot.js` ou `khepshot.js` (`ZS_CHROMIUM` désigne le Chromium de Playwright). Ces outils lancent Chromium : à vérifier dans le bac à sable (§5) avant d'en dépendre.
+5. **Écrire ou adapter un essai** dans `launcher/e2e/`, et l'ajouter à `test:e2e` dans `launcher/package.json`. Anthony le lance avec la méthode E2 (§5).
 6. **Documenter.** Mettre à jour le README (section du système, « Où modifier », « Historique ») et ce fichier si une règle change.
-7. **Commiter** sur `main`, en français, avec un message détaillé : ce qui change, pourquoi, et ce qui est signalé à Anthony. Ajouter à la fin les lignes d'attribution données par la session.
+7. **Commiter** sur `dev`, dans `~/dev/zs-verif`, **avec l'accord d'Anthony**, en français, avec un message détaillé : ce qui change, pourquoi, et ce qui est signalé à Anthony. Ajouter à la fin les lignes d'attribution données par la session. La garde Git locale contrôle chaque commit (secrets, fichiers privés) ; ne jamais la contourner. Tant que l'envoi est désactivé, les commits restent locaux.
+
+**Intégrer dans `main`** (après les essais de bout en bout et l'accord d'Anthony)
+1. Dans le clone de référence, resté sur `main` : `git fetch ~/dev/zs-verif dev:dev` (copie la branche, sans toucher `main`).
+2. `git merge --ff-only dev` : `main` avance jusqu'à `dev`, sans commit de fusion. Si l'avance simple est impossible, s'arrêter et en parler à Anthony.
+3. Dans `~/dev/zs-verif` : `git fetch origin`, puis, avant de construire un installateur, mettre `main` à jour (`git switch main`, `git merge --ff-only origin/main`).
+4. Refaire la sauvegarde du dépôt (document privé de reprise). Envoyer `main` sur GitHub quand l'envoi sera rétabli.
+- Les protections interdisent d'écrire `.git/config` : pas de branche suivie (`--track`, `branch -u`) ; toujours nommer la branche (`origin/main`, `dev:dev`). Git affiche alors « error: could not write config file » puis prétend avoir réglé le suivi : rien n'a été écrit.
+- Un gros chantier peut avoir sa propre branche, `chantier/<sujet>` (par exemple `chantier/marteau`), créée depuis `dev` et ramenée dans `dev` avant l'intégration. Git refuse `dev/<sujet>` à côté de `dev`.
 
 **Numéros**
 - Un nouveau contenu prend un nouveau numéro de jeu, choisi avec Anthony.
@@ -118,11 +131,13 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 
 ## 5. Essais
 
-- **Tests unitaires** : `cd launcher && npm test` (31 tests).
-- **Essais de bout en bout** : `cd launcher && xvfb-run -a node e2e/<nom>.e2e.js`, **un par un**, sans autre rendu lourd à côté (pas de construction de l'installateur pendant ce temps).
-  - Suite complète : `npm run test:e2e`.
-  - 26 essais, 918 vérifications (14 octobre 2026), environ 1 h 45 en rendu logiciel. Le plus long est `modtools-biblio` (23 min) ; les plus courts sont `publish-online` (40 s) et la plupart des essais du jeu (1 à 3 min).
+- **Tests unitaires** : `cd launcher && npm test` dans `~/dev/zs-verif` (31 tests). Dans WSL, `workspace.test.js` échoue (collision d'horodatages des sauvegardes des Mod Tools, problème connu non corrigé) : 30 sur 31 attendu.
+- **Essais de bout en bout** : 26 essais, 918 vérifications (14 octobre 2026), environ 39 minutes dans WSL. Le plus long est `modtools-biblio` (14 min) ; le plus court `publish-online` (15 s).
   - Les 26 essais : `modtools`, `game-menu`, `publish-online`, `stairs`, `rank`, `perk-drink`, `outskirts`, `zone-zombies`, `glas`, `elixirs`, `zombie-anims`, `weapons`, `dogs`, `grenade`, `knife`, `khamsin`, `khepesh`, `modtools-khamsin`, `modtools-desert`, `ombre`, `modtools-ombre`, `modtools-sizes`, `modtools-decor`, `modtools-surfaces`, `modtools-pyramides`, `modtools-biblio`.
+  - **Ils ne tournent pas dans une session Claude Code** : le bac à sable interdit les sockets Unix, et Electron s'arrête au démarrage. Ne jamais les relancer hors du bac à sable.
+  - **Méthode E2** : Claude prépare dans `~/dev/zs-verif` (construction, `prepare-game.js`) ; Anthony lance les essais dans un terminal Ubuntu séparé avec le script privé indiqué dans `CLAUDE.local.md`, qui confine chaque essai (système en lecture seule, dossier personnel et disques Windows masqués) ; Claude analyse ensuite `resume.tsv` et les journaux.
+  - Un par un, sans autre rendu lourd à côté. `modtools-khamsin` échoue parfois sur « atout posé au clic en 3D » (2 fois sur 8) : relancer cet essai seul.
+  - 16 essais lancent le vrai launcher, qui lit le manifeste en ligne au démarrage : si une version plus récente est publiée, ils la téléchargent et l'essaient à la place de celle du clone. Vérifier la version en ligne avant une suite complète.
 - **Rendu logiciel sous Linux** (SwiftShader : `--use-angle=swiftshader --enable-unsafe-swiftshader --disable-gpu-watchdog`). Points à connaître :
   - une image toutes les 2 à 6 s ;
   - `requestAnimationFrame` est affamé pendant que les vignettes se font : attendre des images, interroger la page toutes les 250 ms ;
@@ -131,25 +146,23 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 
 ## 6. Livrer à Anthony
 
-1. **Installateur.** `cd launcher && npm run dist:win` (sous Linux, avec wine) produit `launcher/dist/Zombie-Survival-Setup-<version>.exe`, d'environ 104 Mo. Vérifier dans `dist/win-unpacked/resources/game-bundle/` que le jeu livré est le bon.
-2. **Envoi dans la conversation** (limite de 30 Mio par fichier).
-   - Créer un **nouveau dossier unique** sous `/mnt/user-data/outputs/`. Ne jamais réutiliser un ancien chemin ; noter le nom réel du dossier.
-   - Y mettre les morceaux de 29 000 000 octets (`split -b 29000000 -d -a 1`) et `recoller-installateur.bat` (fins de ligne CRLF, texte ASCII). Ce script recolle par `copy /b` et affiche l'empreinte SHA-256 attendue.
-   - Joindre `zombie-survival.html` si utile.
-3. **Copie sur le PC** quand il est relié : dossier `Téléchargements`, par `device_commit_files` (30 Mo au plus par fichier et 100 Mo par appel : copier les morceaux, en deux appels pour quatre morceaux). **Relire les empreintes SHA-256** de chaque copie.
-4. **Fin de livraison.**
-   - Dire à Anthony comment installer (recoller, fermer le launcher, lancer l'installateur par-dessus) et comment vérifier : la ligne du journal du launcher et ce qu'il doit voir en jeu.
+La méthode de l'ancien environnement claude.ai (envoi en morceaux dans la conversation, copie par `device_commit_files`) ne s'applique plus. Dans WSL, elle reste à établir à la première livraison :
+1. **Installateur.** `cd launcher && npm run dist:win` dans `~/dev/zs-verif`, sur `main` (dernier état validé), produit `launcher/dist/Zombie-Survival-Setup-<version>.exe`, d'environ 104 Mo. Il demande wine, absent de WSL au 14 octobre 2026 (installation : accord d'Anthony). Vérifier dans `dist/win-unpacked/resources/game-bundle/` que le jeu livré est le bon.
+2. **Remise.** Claude n'écrit pas sur les disques Windows (bac à sable). Anthony récupère l'installateur depuis Windows dans le dossier `launcher/dist/` du clone de vérification (chemin réseau `\\wsl.localhost\…`) et contrôle son empreinte SHA-256 (PowerShell : `Get-FileHash`), donnée par Claude.
+3. **Fin de livraison.**
+   - Dire à Anthony comment installer (fermer le launcher, lancer l'installateur par-dessus) et comment vérifier : la ligne du journal du launcher et ce qu'il doit voir en jeu.
    - Rappeler que la publication pour les joueurs passe par l'outil de publication, et qu'elle est **son** action.
-5. **Notes privées du Projet.** Mettre à jour l'état, les empreintes et les décisions. Pour envoyer un fichier local avec `project_write` (`local_path`), il doit être dans le dossier de travail : le copier dans `.upload-tmp/`, l'envoyer, relire par empreinte, puis supprimer `.upload-tmp/`.
+4. **Notes privées.** Mettre à jour l'état, les empreintes et les décisions dans les notes du dossier privé de reprise (plus dans le Projet claude.ai, devenu archive).
 
 ## 7. Règles impératives (sécurité)
 
 - **Clé privée de signature.** Elle ne doit **jamais** entrer dans le dépôt, un fichier ou un message (`.gitignore` bloque `*.pem`, `*.key`, `*.p12`, `*.pfx`). Ne pas lire `%APPDATA%\Zombie Survival\publisher`.
 - **Jeton GitHub.** Seul Anthony le colle, et seulement dans le launcher. Jamais dans la conversation ; ne jamais le taper soi-même ; ne pas regarder l'écran après « Generate token ».
-- **Code du digi pass.** Il ne doit **jamais** apparaître en clair dans ce dépôt public (README, code, essais, ce fichier). Il est dans les notes privées.
+- **Code du digi pass.** Il ne doit **jamais** apparaître en clair dans ce dépôt public (README, code, essais, ce fichier), ni dans le dossier privé de reprise, un journal ou la conversation. Il se trouve seulement dans les notes du Projet claude.ai (archive). Pour un essai : un code fictif.
 - **E-mail d'Anthony.** Il sert uniquement à l'attribution.
-- **Ordinateur d'Anthony.** Ne pas taper dans un terminal de son ordinateur par contrôle de l'écran.
-- **Dépôt public.** Ne pas y publier les planches et PDF d'Anthony, ni ses données personnelles.
+- **Ordinateur d'Anthony.** Ne pas taper dans un terminal de son ordinateur par contrôle de l'écran. Ne jamais modifier le jeu ni le launcher installés.
+- **Protections locales.** Garde Git, règles de Claude Code (refus et demandes d'autorisation), bac à sable : ne jamais les modifier, désactiver ni contourner sans l'autorisation explicite d'Anthony. Si une protection gêne, lui présenter le problème et proposer une exception limitée. Les essayer seulement sur des fichiers fictifs.
+- **Dépôt public.** Ne pas y publier les planches et PDF d'Anthony, ses données personnelles, ni le contenu du dossier privé de reprise.
 - **Suppressions.** Aucune suppression de ses fichiers ni des documents du Projet sans son accord explicite, donné pour cette suppression (13 octobre 2026 : « Ne supprime aucun fichier avant […] d'avoir obtenu mon autorisation »).
 
 ## 8. Pièges déjà rencontrés
@@ -159,7 +172,13 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 - **Tailles du jeu.** Le jeu fait 46 500 lignes. Lire par plages et chercher avec `grep -n` : ne pas le lire en entier.
 - **Bibliothèques.** Les identifiants de la bibliothèque doivent être en minuscules (`/^gx_[a-z0-9_]+$/`, `/^gm_[a-z0-9_]+$/`) : le moteur signale les autres dans la console.
 - **Corps-à-corps.** Le couteau et le khépesh ne tapent ni à travers les murs ni d'un étage à l'autre ; les règles sont celles du jeu (`knifeReach`, `khepeshCan`).
-- **Place du Projet claude.ai.** La limite est de 2 millions de jetons. N'y mettre que des notes, jamais le jeu ni des données en base64.
+- **`npm install`** peut réécrire `package-lock.json` : utiliser `npm ci`.
+- **Bac à sable.**
+  - Pas de socket Unix : Electron, D-Bus et X11 ne démarrent pas dans une session (§5).
+  - Pendant une session, `git status` du dossier de travail montre des fichiers non suivis (`.bashrc`, `.mcp.json`, `.claude/`…) : ce sont des montages du bac à sable, rien sur le disque. Ne jamais faire `git add -A` ni `git add .`.
+  - Écriture permise seulement dans le dossier de travail, le clone de vérification, ses journaux et `/tmp` ; les fichiers de configuration (Claude Code, Git, `CLAUDE.local.md`) restent protégés.
+- **Commandes de lecture soumises à autorisation.** `git tag` et `git remote -v` demandent l'accord ; préférer `git for-each-ref refs/tags` et `git config --get-regexp '^remote\.'`. La lecture de `core.hooksPath` par `git config` est refusée : utiliser `git rev-parse --git-path hooks`.
+- **Instructions dans les dossiers.** Un `CLAUDE.md` ou `CLAUDE.local.md` est lu comme des instructions dès que Claude travaille dans son dossier, sous-dossiers compris.
 - **Mémoire des conversations.** Une longue conversation est condensée et le détail des échanges se perd. Écrire chaque décision d'Anthony le jour même : dans les notes privées, et dans le README ou ce fichier si elle peut être publique.
 
 ## 9. Décisions et travaux en attente
@@ -170,17 +189,18 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
   - **À faire à la prochaine version du jeu.**
     - Retirer `engine/src/P2-khepesh-reflets.js` et l'option `envMap: khepeshEnv()` dans `buildKhepesh`. Le module recalcule alors ses reflets, au pixel près. L'image ne fait gagner que 1 à 2 s en rendu logiciel, pour 230 Ko de plus.
     - Corriger les commentaires et le README qui parlaient d'un gain de 25 s.
-- **Projet claude.ai.** Retirer la copie du jeu (`claude/zombie-survival.html`) est décidé, mais attend l'accord d'Anthony (« Non, attends », 13 octobre).
+- **Projet claude.ai.** Le retrait de la copie du jeu (`claude/zombie-survival.html`) est décidé et sans risque (construction 1 dans l'historique Git) : c'est l'action d'Anthony. Le document des notes reste.
 - **Marteau gravitationnel (Lune) et carte du marécage** : toujours prévus (Anthony, 13 octobre, 23 h 39). Rien n'est commencé.
 - **Demandes en attente et écarts connus** : `docs/transmission.md` §5 et §6. On y trouve le Marteau gravitationnel, la carte du marécage, le bogue du halo de Vif-Argent, le faisceau coupé pendant la tempête, etc. Ne rien corriger sans la demande d'Anthony.
+- **Environnement WSL, à décider par Anthony** : identification GitHub pour rétablir l'envoi ; création de la branche `dev` dans `~/dev/zs-verif` (§4, avec son accord) ; installation de wine pour l'installateur (§6) ; corrections proposées (horodatages des Mod Tools, `ZS_CHROMIUM` dans 5 essais, `.gitattributes`, adresse locale pour les 16 essais qui lisent le manifeste en ligne) ; sort de la branche `editeur-cartes`.
 - **Numéros refaits.** Plusieurs jeux ont été refaits sous le même numéro (2.0.0, 2.0.3, 2.0.4) ; le launcher départage par interface puis par construction.
-- **Historique.** `README.md` « Historique », `git log` (messages détaillés) et les notes privées du Projet.
+- **Historique.** `README.md` « Historique », `git log` (messages détaillés) et les notes privées.
 
 ## 10. Reprendre le travail (liste)
 
-1. `git pull`, puis lire ce fichier, `docs/transmission.md` et la section du README qui concerne la demande.
-2. Si la session est rattachée au Projet : lire les notes privées (`project_read claude/zombie-survival-notes.md` : état au dernier jour, décisions en cours).
-3. `cd launcher && npm install` (si `node_modules` manque), puis `node scripts/prepare-game.js`.
-4. Faire la vérification de départ de l'atelier (§4.1), puis lancer les tests unitaires.
+1. Lire ce fichier, `docs/transmission.md`, puis le document privé de reprise désigné par `CLAUDE.local.md` (s'il n'est pas dans le contexte, le lire avec `cat`) et appliquer sa liste de vérification de session.
+2. Lire dans les notes privées la section utile à la demande.
+3. Synchroniser avec GitHub (`git pull` dans le clone de référence) seulement avec l'accord d'Anthony.
+4. Dans `~/dev/zs-verif`, sur `dev` : `npm ci` si `node_modules` manque (accord d'Anthony), `node scripts/prepare-game.js`, vérification de départ (§4.1), tests unitaires.
 5. Pour une demande d'Anthony : commencer tout de suite si elle est claire. Ne poser une question que si une mauvaise supposition coûterait cher : gros chantier, ambiguïté, décision irréversible.
-6. Avant de livrer : faire la suite des essais concernés (toute la suite si le cœur change), le README, les notes, le commit, l'installateur, l'envoi et la vérification des empreintes.
+6. Avant de livrer : essais de bout en bout par Anthony (méthode E2), README, notes privées, commit (accord), installateur, remise et vérification des empreintes.
