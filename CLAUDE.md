@@ -24,7 +24,8 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
 - **État au 14 octobre 2026.**
   - Jeu 2.0.4, construction 2 (le khépesh sur Khamsin seulement) ; interface des Mod Tools 9 ; launcher 1.3.3.
   - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.4`, construction 1, publiée par Anthony le 13 octobre 2026 à 19 h 35. La construction 2 ne change rien pour eux (le Désert vierge n'est pas dans leur menu) ; elle partira avec la prochaine version du jeu.
-  - Migration vers WSL terminée le 14 octobre 2026 : reconstruction identique du jeu, tests unitaires 30 sur 31 (§5), 918 vérifications de bout en bout sur 918.
+  - Migration vers WSL terminée le 14 octobre 2026 : reconstruction identique du jeu, 918 vérifications de bout en bout sur 918, 31 tests unitaires dont un intermittent (30 ou 31 réussis, §5).
+  - Git : `main` est le dernier état validé ; le travail se fait sur `dev` (§4). Tant que l'envoi est désactivé, le `main` local est en avance sur GitHub.
   - **Publier une version pour les joueurs est l'action d'Anthony, jamais celle de Claude.**
 
 ## 2. Où est quoi
@@ -45,7 +46,7 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
 
 **Clones locaux (WSL) et branches**
 - `~/dev/zs-verif` : l'atelier (`origin` = le clone de référence). On y travaille sur la branche `dev` : modifications, constructions, `npm ci`, tests, essais, installateur.
-- `~/dev/Zombie-Survival` : le clone de référence, sur `main`. Il ne reçoit que des modifications essayées et validées par Anthony ; on n'y modifie rien à la main.
+- `~/dev/Zombie-Survival` : le clone de référence, sur `main`. Il ne reçoit que des modifications essayées et validées par Anthony ; on n'y modifie rien à la main. Il garde une copie de `dev`, mise à jour à chaque intégration.
 - `main` reste stable : c'est le dernier état validé, d'où partent les installateurs et les publications.
 - L'envoi vers GitHub est désactivé dans les deux clones jusqu'à ce qu'Anthony crée une identification (jeton ou clé, saisis par lui seul).
 
@@ -103,13 +104,17 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 4. **Vérifier vite.** `node engine/tools/tzeval.js corps.js` exécute du code dans le jeu, au menu. Il sert aux mesures, aux contrôles et aux simulations avec `__zs.step`. Les images se font avec `khshot.js` ou `khepshot.js` (`ZS_CHROMIUM` désigne le Chromium de Playwright). Ces outils lancent Chromium : à vérifier dans le bac à sable (§5) avant d'en dépendre.
 5. **Écrire ou adapter un essai** dans `launcher/e2e/`, et l'ajouter à `test:e2e` dans `launcher/package.json`. Anthony le lance avec la méthode E2 (§5).
 6. **Documenter.** Mettre à jour le README (section du système, « Où modifier », « Historique ») et ce fichier si une règle change.
-7. **Commiter** sur `dev`, dans `~/dev/zs-verif`, **avec l'accord d'Anthony**, en français, avec un message détaillé : ce qui change, pourquoi, et ce qui est signalé à Anthony. Ajouter à la fin les lignes d'attribution données par la session. La garde Git locale contrôle chaque commit (secrets, fichiers privés) ; ne jamais la contourner. Tant que l'envoi est désactivé, les commits restent locaux.
+7. **Commiter** sur `dev`, dans `~/dev/zs-verif`, **avec l'accord d'Anthony**, après lui avoir présenté les différences. En français, avec un message détaillé : ce qui change, pourquoi, et ce qui est signalé à Anthony. Ajouter à la fin les lignes d'attribution données par la session.
+   - Indexer seulement les fichiers nommés (`git add -- <fichiers>`, jamais `-A` ni `.`), puis contrôler l'index (`git diff --cached --name-status`).
+   - Aucune identité n'est enregistrée dans la configuration Git : la donner à la commande, `git -c user.name=Claude -c user.email=noreply@anthropic.com commit -F <message>` (choix d'Anthony du 14 octobre 2026, comme l'essentiel de l'historique). Son adresse personnelle n'entre pas dans l'historique public.
+   - La garde Git locale contrôle chaque commit (secrets, fichiers privés) ; ne jamais la contourner. Tant que l'envoi est désactivé, les commits restent locaux.
 
 **Intégrer dans `main`** (après les essais de bout en bout et l'accord d'Anthony)
 1. Dans le clone de référence, resté sur `main` : `git fetch ~/dev/zs-verif dev:dev` (copie la branche, sans toucher `main`).
-2. `git merge --ff-only dev` : `main` avance jusqu'à `dev`, sans commit de fusion. Si l'avance simple est impossible, s'arrêter et en parler à Anthony.
-3. Dans `~/dev/zs-verif` : `git fetch origin`, puis, avant de construire un installateur, mettre `main` à jour (`git switch main`, `git merge --ff-only origin/main`).
-4. Refaire la sauvegarde du dépôt (document privé de reprise). Envoyer `main` sur GitHub quand l'envoi sera rétabli.
+2. Contrôler avant d'intégrer : `git log --oneline main..dev` (les commits attendus), `git diff --name-only main dev` (les fichiers attendus), `git rev-list dev..main` (doit être vide). S'arrêter au moindre écart.
+3. `git merge --ff-only dev` : `main` avance jusqu'à `dev`, sans commit de fusion. Si l'avance simple est impossible, s'arrêter et en parler à Anthony.
+4. Synchroniser l'atelier sans accès à GitHub : `git -C ~/dev/zs-verif fetch origin main:main` (avance `main` et `origin/main` ; `dev` reste la branche courante).
+5. Refaire la sauvegarde du dépôt (document privé de reprise). Envoyer `main` sur GitHub quand l'envoi sera rétabli, avec l'autorisation d'Anthony.
 - Les protections interdisent d'écrire `.git/config` : pas de branche suivie (`--track`, `branch -u`) ; toujours nommer la branche (`origin/main`, `dev:dev`). Git affiche alors « error: could not write config file » puis prétend avoir réglé le suivi : rien n'a été écrit.
 - Un gros chantier peut avoir sa propre branche, `chantier/<sujet>` (par exemple `chantier/marteau`), créée depuis `dev` et ramenée dans `dev` avant l'intégration. Git refuse `dev/<sujet>` à côté de `dev`.
 
@@ -131,7 +136,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 
 ## 5. Essais
 
-- **Tests unitaires** : `cd launcher && npm test` dans `~/dev/zs-verif` (31 tests). Dans WSL, `workspace.test.js` échoue (collision d'horodatages des sauvegardes des Mod Tools, problème connu non corrigé) : 30 sur 31 attendu.
+- **Tests unitaires** : `cd launcher && npm test` dans `~/dev/zs-verif` (31 tests). Un test est intermittent : `workspace.test.js` (« cinq versions au plus »), à cause de la collision d'horodatages des sauvegardes des Mod Tools, nommées à la milliseconde (problème connu, correction proposée mais pas faite). Il a échoué à chaque passage pendant la migration et réussi le 14 octobre 2026 à 15 h 50. Résultat attendu : 30 ou 31 sur 31 ; tout autre échec est un vrai problème.
 - **Essais de bout en bout** : 26 essais, 918 vérifications (14 octobre 2026), environ 39 minutes dans WSL. Le plus long est `modtools-biblio` (14 min) ; le plus court `publish-online` (15 s).
   - Les 26 essais : `modtools`, `game-menu`, `publish-online`, `stairs`, `rank`, `perk-drink`, `outskirts`, `zone-zombies`, `glas`, `elixirs`, `zombie-anims`, `weapons`, `dogs`, `grenade`, `knife`, `khamsin`, `khepesh`, `modtools-khamsin`, `modtools-desert`, `ombre`, `modtools-ombre`, `modtools-sizes`, `modtools-decor`, `modtools-surfaces`, `modtools-pyramides`, `modtools-biblio`.
   - **Ils ne tournent pas dans une session Claude Code** : le bac à sable interdit les sockets Unix, et Electron s'arrête au démarrage. Ne jamais les relancer hors du bac à sable.
@@ -162,6 +167,10 @@ La méthode de l'ancien environnement claude.ai (envoi en morceaux dans la conve
 - **E-mail d'Anthony.** Il sert uniquement à l'attribution.
 - **Ordinateur d'Anthony.** Ne pas taper dans un terminal de son ordinateur par contrôle de l'écran. Ne jamais modifier le jeu ni le launcher installés.
 - **Protections locales.** Garde Git, règles de Claude Code (refus et demandes d'autorisation), bac à sable : ne jamais les modifier, désactiver ni contourner sans l'autorisation explicite d'Anthony. Si une protection gêne, lui présenter le problème et proposer une exception limitée. Les essayer seulement sur des fichiers fictifs.
+  - Garde Git (crochets de commit et d'envoi) : bloque clés, jetons, code du digi pass, fichiers privés et fichiers trop gros pour GitHub.
+  - Claude Code : demande l'accord d'Anthony pour tout commit, toute relance hors du bac à sable et toute modification des réglages, des `CLAUDE.md`, des `CLAUDE.local.md` et de la configuration Git ; refuse l'envoi et la lecture du dossier `publisher`.
+  - Bac à sable : écriture limitée au dossier de travail, au clone de vérification et à `/tmp`, fichiers de configuration exclus ; réseau limité ; pas de socket Unix.
+  - Le détail, les essais et le retour arrière sont dans le document privé de reprise.
 - **Dépôt public.** Ne pas y publier les planches et PDF d'Anthony, ses données personnelles, ni le contenu du dossier privé de reprise.
 - **Suppressions.** Aucune suppression de ses fichiers ni des documents du Projet sans son accord explicite, donné pour cette suppression (13 octobre 2026 : « Ne supprime aucun fichier avant […] d'avoir obtenu mon autorisation »).
 
@@ -179,6 +188,9 @@ La méthode de l'ancien environnement claude.ai (envoi en morceaux dans la conve
   - Écriture permise seulement dans le dossier de travail, le clone de vérification, ses journaux et `/tmp` ; les fichiers de configuration (Claude Code, Git, `CLAUDE.local.md`) restent protégés.
 - **Commandes de lecture soumises à autorisation.** `git tag` et `git remote -v` demandent l'accord ; préférer `git for-each-ref refs/tags` et `git config --get-regexp '^remote\.'`. La lecture de `core.hooksPath` par `git config` est refusée : utiliser `git rev-parse --git-path hooks`.
 - **Instructions dans les dossiers.** Un `CLAUDE.md` ou `CLAUDE.local.md` est lu comme des instructions dès que Claude travaille dans son dossier, sous-dossiers compris.
+- **Avertissement `.gitmodules`.** Un `git fetch` lancé dans le clone de référence affiche « warning: unable to access '…/.gitmodules': Permission denied » : le bac à sable protège ce chemin. Sans effet, le dépôt n'ayant aucun sous-module ; tout autre avertissement est un écart.
+- **Identité Git absente.** Sans `-c user.name=… -c user.email=…` (§4), Git refuse le commit avant de le créer. Ne pas écrire d'identité dans la configuration sans l'accord d'Anthony.
+- **Contrôles automatiques.** Ne jamais figer une sortie que Git met à l'échelle (barres de `--stat`) ni une date : contrôler par empreintes, identifiants de commit, `--name-only` et `rev-list`. Un motif de barre trop strict a arrêté une intégration pourtant conforme (14 octobre 2026).
 - **Mémoire des conversations.** Une longue conversation est condensée et le détail des échanges se perd. Écrire chaque décision d'Anthony le jour même : dans les notes privées, et dans le README ou ce fichier si elle peut être publique.
 
 ## 9. Décisions et travaux en attente
@@ -192,7 +204,8 @@ La méthode de l'ancien environnement claude.ai (envoi en morceaux dans la conve
 - **Projet claude.ai.** Le retrait de la copie du jeu (`claude/zombie-survival.html`) est décidé et sans risque (construction 1 dans l'historique Git) : c'est l'action d'Anthony. Le document des notes reste.
 - **Marteau gravitationnel (Lune) et carte du marécage** : toujours prévus (Anthony, 13 octobre, 23 h 39). Rien n'est commencé.
 - **Demandes en attente et écarts connus** : `docs/transmission.md` §5 et §6. On y trouve le Marteau gravitationnel, la carte du marécage, le bogue du halo de Vif-Argent, le faisceau coupé pendant la tempête, etc. Ne rien corriger sans la demande d'Anthony.
-- **Environnement WSL, à décider par Anthony** : identification GitHub pour rétablir l'envoi ; création de la branche `dev` dans `~/dev/zs-verif` (§4, avec son accord) ; installation de wine pour l'installateur (§6) ; corrections proposées (horodatages des Mod Tools, `ZS_CHROMIUM` dans 5 essais, `.gitattributes`, adresse locale pour les 16 essais qui lisent le manifeste en ligne) ; sort de la branche `editeur-cartes`.
+- **Organisation `main`/`dev`** : en place depuis le 14 octobre 2026 (premier passage complet : commit `f92c715`, ce fichier pour WSL, intégré dans `main` par avance simple).
+- **Environnement WSL, à décider par Anthony** : identification GitHub pour rétablir l'envoi, puis envoi de `main` (en avance sur GitHub) ; installation de wine pour l'installateur (§6) ; corrections proposées (horodatages des Mod Tools, `ZS_CHROMIUM` dans 5 essais, `.gitattributes`, adresse locale pour les 16 essais qui lisent le manifeste en ligne) ; sort de la branche `editeur-cartes`.
 - **Numéros refaits.** Plusieurs jeux ont été refaits sous le même numéro (2.0.0, 2.0.3, 2.0.4) ; le launcher départage par interface puis par construction.
 - **Historique.** `README.md` « Historique », `git log` (messages détaillés) et les notes privées.
 
@@ -201,6 +214,6 @@ La méthode de l'ancien environnement claude.ai (envoi en morceaux dans la conve
 1. Lire ce fichier, `docs/transmission.md`, puis le document privé de reprise désigné par `CLAUDE.local.md` (s'il n'est pas dans le contexte, le lire avec `cat`) et appliquer sa liste de vérification de session.
 2. Lire dans les notes privées la section utile à la demande.
 3. Synchroniser avec GitHub (`git pull` dans le clone de référence) seulement avec l'accord d'Anthony.
-4. Dans `~/dev/zs-verif`, sur `dev` : `npm ci` si `node_modules` manque (accord d'Anthony), `node scripts/prepare-game.js`, vérification de départ (§4.1), tests unitaires.
+4. Dans `~/dev/zs-verif`, sur `dev` : `npm ci` si `node_modules` manque (accord d'Anthony), `node scripts/prepare-game.js`, vérification de départ (§4.1), tests unitaires. Branches : clone de référence sur `main`, `zs-verif` sur `dev` (`git branch --show-current`) ; travail pas encore intégré : `git -C ~/dev/zs-verif log --oneline main..dev`.
 5. Pour une demande d'Anthony : commencer tout de suite si elle est claire. Ne poser une question que si une mauvaise supposition coûterait cher : gros chantier, ambiguïté, décision irréversible.
 6. Avant de livrer : essais de bout en bout par Anthony (méthode E2), README, notes privées, commit (accord), installateur, remise et vérification des empreintes.
