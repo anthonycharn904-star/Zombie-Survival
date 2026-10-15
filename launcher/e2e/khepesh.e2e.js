@@ -1,8 +1,8 @@
 'use strict';
-/* Khépesh (jeu 2.0.4 refait, construction 2), dans la fenêtre du jeu du launcher : arme de corps-à-corps
+/* Khépesh (depuis le jeu 2.0.4 ; reflets calculés au chargement depuis le 2.0.5), dans la fenêtre du jeu du launcher : arme de corps-à-corps
    de Khamsin (et des cartes faites à partir d'elle ; le Désert vierge garde le couteau depuis la
    construction 2), faite d'après le fichier khepesh-melee.js d'Anthony (module intégré au script du
-   jeu, sans variable globale ni écoute du clavier ; reflets du bronze du fichier calculés d'avance ;
+   jeu, sans variable globale ni écoute du clavier ; reflets du bronze du fichier préfiltrés par le module au chargement ;
    bras aux couleurs des gants et des manches du jeu). Touché quand la lame arrive (0,3 s) : jusqu'à
    3 zombies, 150, 113 et 75 dégâts, +10 par touche ; saignement (la moitié des dégâts en 4 s, sans
    points ; mort au corps-à-corps, +130) ; raté (personne, trop loin, hors de l'arc), mur ; Rôdeur qui
@@ -47,7 +47,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.4' && GAME_BUILD === 2 && ZS.build === 2, 'jeu 2.0.4, construction 2 (le launcher remplace les constructions 0 et 1 installées)', { GAME_VERSION, GAME_BUILD, b: ZS.build });
+      ok(GAME_VERSION === '2.0.5' && GAME_BUILD === 1 && ZS.build === 1, 'jeu 2.0.5, construction 1', { GAME_VERSION, GAME_BUILD, b: ZS.build });
       ok(typeof creerKhepesh === 'function' && window.creerKhepesh === undefined, 'module du khépesh dans le script du jeu, sans variable globale');
       ok(Khepesh === null && CUR.map && CUR.map.id === 'bunker7' && meleeName() === 'Couteau' && $('key-melee').textContent === 'Couteau',
         'au menu sur Bunker 7 : « V ou E : Couteau », pas de khépesh', { map: CUR.map && CUR.map.id, key: $('key-melee').textContent });
@@ -71,7 +71,6 @@ const USER = path.join(TMP, 'joueur');
       if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
       G.roundState = 'pre'; G.roundT = 1e9;
       clearZombies();
-      await new Promise((r) => { const w = () => (KHEPESH.envReady ? r() : setTimeout(w, 20)); w(); });
       window.__run = (sec, fn) => { const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { update(1 / 60); endFrameInput(); if (fn && fn((i + 1) / 60) === false) break; } };
       window.__press = (c) => { Input.keys[c] = true; Input.down[c] = true; };
       window.__S = { x: 2150, z: 1470 };   // sable ouvert, à l'est du plateau des pyramides
@@ -133,8 +132,7 @@ const USER = path.join(TMP, 'joueur');
       ok(Khepesh && khepeshOn() && meleeName() === 'Khépesh' && meleeCur() === Khepesh && $('key-melee').textContent === 'Khépesh',
         `Khamsin : khépesh fait au chargement (${KHEPESH.buildMs} ms), menu « V ou E : Khépesh »`, { key: $('key-melee').textContent, ms: KHEPESH.buildMs });
       ok(Khepesh.sceneVue && Khepesh.sceneVue !== vmScene && Khepesh.sceneVue !== Couteau.sceneVue && Khepesh.rig.parent && !Khepesh.rig.visible, 'bras au khépesh dans sa propre vue, caché au repos');
-      // reflets du bronze : la salle aux torches du fichier, préfiltrée d'avance (cubeUV, comme PMREMGenerator)
-      const env = KHEPESH.env;
+      // reflets du bronze : la salle aux torches du fichier, préfiltrée par le module au chargement (PMREMGenerator, cubeUV)
       let bronze = null, glove = false, sleeve = 0, tris = 0;
       Khepesh.rig.traverse((m) => {
         if (m.geometry) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
@@ -143,8 +141,9 @@ const USER = path.join(TMP, 'joueur');
         const c = m.material && m.material.color;
         if (c && Math.abs(c.r - MAT.glove.color.r) + Math.abs(c.g - MAT.glove.color.g) + Math.abs(c.b - MAT.glove.color.b) < 1e-6) glove = true;
       });
-      ok(env && env.mapping === THREE.CubeUVReflectionMapping && env.encoding === THREE.sRGBEncoding && env.image && env.image.width === 768 && KHEPESH.envReady
-        && bronze && bronze.envMap === env, 'reflets du bronze : salle aux torches du fichier préfiltrée d’avance (768 × 768, cubeUV, sRGB)', env && { w: env.image && env.image.width, m: env.mapping });
+      const env = bronze && bronze.envMap;
+      ok(env && env.mapping === THREE.CubeUVReflectionMapping && env.image && env.image.width === 768 && typeof khepeshEnv === 'undefined' && !('env' in KHEPESH),
+        'reflets du bronze : salle aux torches du fichier préfiltrée par le module au chargement (768 × 768, cubeUV), plus de reflets calculés d’avance', env && { w: env.image && env.image.width, m: env.mapping });
       // couleur du bronze du fichier (0xc98f52), convertie comme les matières du jeu
       const want = new THREE.Color(0xc98f52).convertSRGBToLinear();
       ok(bronze && Math.abs(bronze.color.r - want.r) + Math.abs(bronze.color.g - want.g) + Math.abs(bronze.color.b - want.b) < 1e-6, 'bronze du fichier (0xc98f52), converti en linéaire comme le jeu');

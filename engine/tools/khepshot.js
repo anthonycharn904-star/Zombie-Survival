@@ -27,7 +27,6 @@ const server = http.createServer((req, res) => {
     __zs.map('khamsin'); __zs.start(); __zs.god(true);
     if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
     G.roundState = 'pre'; G.roundT = 1e9; clearZombies(); HUD.el.hud.hidden = true;
-    await new Promise((r) => { const w = () => (KHEPESH.envReady ? r() : setTimeout(w, 20)); w(); });
     window.__run = (sec) => { const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { update(1 / 60); endFrameInput(); } };
     window.__mk = (dist, ang, hp) => {
       const a = player.yaw - ang, fx = -Math.sin(a), fz = -Math.cos(a);
@@ -39,7 +38,7 @@ const server = http.createServer((req, res) => {
     };
     window.__draw = () => { renderEnabled = true; render(); renderEnabled = false; };
     __zs.tp(2160, 1480, 0.6); player.pitch = -0.08; __run(0.5);
-    return { gy: player.gy, envReady: KHEPESH.envReady };
+    return { gy: player.gy };
   });
   console.log(JSON.stringify(info));
   const seq = async (name, setup, times) => {

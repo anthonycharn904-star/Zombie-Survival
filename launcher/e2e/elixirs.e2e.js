@@ -106,12 +106,19 @@ const USER = path.join(TMP, 'joueur');
       const items = byId.detente;
       const pr = Features.interactables.find((i) => i.machine === items).prompt();
       ok(pr && pr.text === "Il faut d'abord rétablir le courant" && pr.disabled, 'Toccata sans courant : « Il faut d’abord rétablir le courant »', pr);
+      const haloOff = vif.parts.globeHalo.material.opacity;   // halo du globe de Vif-Argent, sans courant
       __zs.power();
       __run(1.3);
       const first = byId.mainleste.litK, later = byId.cuirasse.litK;
       __run(3);
       ok(M.every((m) => m.lit && m.litK === 1 && m.lightI > 0.3) && first > 0 && first < 1 && later === 0, 'courant rétabli : les machines s’éveillent l’une après l’autre (en 0,8 s chacune)', { first, later, k: M.map((m) => m.litK) });
       ok(pel.parts.stream.visible && vif.parts.flames.every((f) => f.visible) && byId.cuirasse.parts.flame.visible, 'allumées : la source coule, flammes froides, lueur du col');
+      // halo du globe de Vif-Argent (jamais affiché de 1.8.0 à 2.0.4, rétabli en 2.0.5)
+      const vh = vif.parts.globeHalo;
+      let anc = vh.parent; while (anc && anc !== vif.group) anc = anc.parent;
+      ok(anc === vif.group && vh.position.x === 0 && Math.abs(vh.position.y - 2.02) < 1e-6 && Math.abs(vh.position.z - vif.parts.zc) < 1e-6,
+        'Vif-Argent : halo du globe dans la machine, au centre du globe (2,02 m)', { attache: anc === vif.group, pos: vh.position.toArray() });
+      ok(haloOff < 1e-6 && Math.abs(vh.material.opacity - 0.8) < 1e-6, 'Vif-Argent : halo du globe éteint sans courant, à 0,8 avec le courant', { off: haloOff, on: vh.material.opacity });
       // couleurs dans le HUD : icône de la teinte foncée, halo de la lueur
       player.perks.add('endurance'); HUD.perks();
       const ic = document.querySelector('#perks .perk');
@@ -193,7 +200,8 @@ const USER = path.join(TMP, 'joueur');
       at(m, 0.4); const sq = V.bellows.scale.y;
       at(m, 0.75); const needle = V.needle.rotation.z;
       ok(Math.abs(sq - 0.55) < 0.03 && Math.abs(needle - (2.2 - (80 * Math.PI) / 180)) < 0.25, 'Vif-Argent : le soufflet pompe (×0,55), l’aiguille du manomètre bondit à 80°', { sq, needle });
-      at(m, 0.9); const coil = V.coilMat.emissiveIntensity;
+      at(m, 0.9); const coil = V.coilMat.emissiveIntensity, haloUp = V.globeHalo.material.opacity;
+      ok(Math.abs(haloUp - 1) < 1e-6, 'Vif-Argent : le halo du globe s’intensifie pendant la boisson (0,8 → 1)', haloUp);
       at(m, 1.9); const fill = m.vial.visible && m.vial.userData.liquid.scale.y < m.vial.userData.shape.liquidH * 0.5;
       at(m, 2.1);
       const turns = (V.mercury.rotation.y - m.spin0) / (2 * Math.PI);

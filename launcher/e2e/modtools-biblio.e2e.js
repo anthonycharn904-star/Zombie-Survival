@@ -1,5 +1,5 @@
 'use strict';
-/* Essai de bout en bout : outils façon Radiant (jeu 2.0.4, interface 9 ; launcher 1.3.3). Copie
+/* Essai de bout en bout : outils façon Radiant (jeu 2.0.5, interface 9 ; launcher 1.3.3). Copie
    temporaire du launcher avec une clé de test, dossier de données jetable.
 
      xvfb-run -a node e2e/modtools-biblio.e2e.js
@@ -87,7 +87,7 @@ async function run(userData) {
       return g;
     };
 
-    /* ======================================================= moteur 2.0.4 */
+    /* ======================================================= moteur 2.0.5 */
     await mt.evaluate(() => { MT.openGameMap('bunker7'); MT.ui.setView('split'); });
     await until(() => MT.state.map && MT.state.map.id === 'bunker7', null);
     await rebuilt();
@@ -104,7 +104,7 @@ async function run(userData) {
         glow: T.filter((d) => d.glow).length, thumb: c && c.width === 64, legacy: ['bunker_wall', 'kh_pyrstone', 'lu_glass', 'concrete'].every((id) => ZS.TEXLIB[id] && ZS.TEXLIB[id].state),
       };
     });
-    ok(eng.v === '2.0.4' && eng.api >= 9, `jeu 2.0.4, interface 9 des Mod Tools ${JSON.stringify({ v: eng.v, api: eng.api })}`);
+    ok(eng.v === '2.0.5' && eng.api >= 9, `jeu 2.0.5, interface 9 des Mod Tools ${JSON.stringify({ v: eng.v, api: eng.api })}`);
     ok(eng.st.gen >= 4000 && eng.st.textures >= 4170 && eng.st.genModels >= 5000 && eng.st.models >= 5200 && eng.dup === 0 && eng.facets >= 8,
       `bibliothèques : ${eng.st.textures} textures (${eng.st.gen} générées, ${eng.st.families} familles), ${eng.st.models} modèles (${eng.st.genModels} générés, ${eng.st.modelFamilies} familles), enregistrées en ${eng.st.ms} ms`);
     ok(eng.meta && eng.mmeta && eng.legacy && eng.thumb && eng.glow >= 30, `métadonnées (famille, surface, état, usages), identifiants stables gx_/gm_, textures lumineuses (${eng.glow}), vignette sans cache ${JSON.stringify({ meta: eng.meta, mmeta: eng.mmeta, legacy: eng.legacy })}`);

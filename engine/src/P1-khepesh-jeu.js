@@ -24,7 +24,6 @@ const KHEPESH = {
   radius: 0.35, bossRadius: 0.6,     // demi-largeur d'un zombie (fichier) ; du Gardien (3,2 m)
   volume: 0.21,                      // niveau des sons du module dans le bus des effets du jeu : le coup sonne comme celui
                                      // du couteau (à 0,27, comme le couteau, il sonnait 2 dB plus fort ; fichier : 0,7)
-  env: null, envReady: false,        // reflets du bronze du fichier, calculés d'avance (khepeshEnv, bloc suivant)
   buildMs: 0,                        // temps de construction mesuré (essais)
 };
 let Khepesh = null;
@@ -86,15 +85,16 @@ function khepeshBleed(z, dose) {
   return false;
 }
 /* Le module : bras ganté aux couleurs des gants et des manches du jeu (manche : MAT.sleeve), vue à part
-   rendue par-dessus l'arme (render), reflets du bronze du fichier (sa salle aux torches préfiltrée,
-   calculée d'avance au pixel près : khepeshEnv ; préfiltrée au chargement, elle prenait 25 à 30 s en
-   rendu logiciel), son dans le bus des effets du jeu, règles du jeu ; il n'écoute pas le clavier (V et E
+   rendue par-dessus l'arme (render), reflets du bronze du fichier (sa salle aux torches, préfiltrée par le
+   module au chargement, comme dans le fichier : 1 à 2 s en rendu logiciel, plus environ 23 s la première
+   fois pour compiler le shader à reflets cubeUV ; rien de tel sur une vraie carte graphique. Jusqu'au
+   jeu 2.0.4, ces reflets étaient calculés d'avance, pour un gain réel de 1 à 2 s seulement : retirés en
+   2.0.5), son dans le bus des effets du jeu, règles du jeu ; il n'écoute pas le clavier (V et E
    passent par updateArms) et ne secoue pas la vue. Fait une fois, au premier chargement de Khamsin en partie. */
 function buildKhepesh() {
   const t0 = performance.now();
   Khepesh = creerKhepesh(THREE, {
-    camera, scene, renderer,
-    envMap: khepeshEnv(),                                     // la salle aux torches du fichier, préfiltrée d'avance
+    camera, scene, renderer,                                  // sans envMap : le module préfiltre lui-même les reflets
     ecouterClavier: false, vueSeparee: true, fovVue: 72, enchainement: true,
     portee: KHEPESH.range, angleCone: KHEPESH.cone, ciblesMax: KHEPESH.max, facteurs: KHEPESH.factors,
     degats: KHEPESH.damage, saignement: KHEPESH.bleed, rayonCible: KHEPESH.radius,

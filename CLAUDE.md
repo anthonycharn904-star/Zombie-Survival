@@ -22,8 +22,8 @@ Guide de reprise du développement. À lire en entier au début de chaque sessio
   - Les autres cartes viennent des Mod Tools.
 - **Environnement de développement (depuis le 14 octobre 2026).** Claude Code dans Ubuntu 24.04 (WSL2), sur le PC d'Anthony, ouvert depuis l'appli de bureau Claude. Le bac à sable de Claude Code est actif. L'ancienne conversation claude.ai et son Projet sont des archives.
 - **État au 14 octobre 2026.**
-  - Jeu 2.0.4, construction 2 (le khépesh sur Khamsin seulement) ; interface des Mod Tools 9 ; launcher 1.3.3.
-  - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.4`, construction 1, publiée par Anthony le 13 octobre 2026 à 19 h 35. La construction 2 ne change rien pour eux (le Désert vierge n'est pas dans leur menu) ; elle partira avec la prochaine version du jeu.
+  - Jeu 2.0.5, construction 1 : halo du globe de Vif-Argent rétabli, reflets du khépesh préfiltrés au chargement ; reprend la construction 2 du 2.0.4 (le khépesh sur Khamsin seulement). Interface des Mod Tools 9 ; launcher 1.3.3.
+  - Pour les joueurs (GitHub Releases), la dernière version en ligne est `v2.0.4`, construction 1, publiée par Anthony le 13 octobre 2026 à 19 h 35. La 2.0.5 partira chez eux quand Anthony la publiera.
   - Migration vers WSL terminée le 14 octobre 2026 : reconstruction identique du jeu, 918 vérifications de bout en bout sur 918, 31 tests unitaires dont un intermittent (30 ou 31 réussis, §5).
   - Git : `main` est le dernier état validé ; le travail se fait sur `dev` (§4). Tant que l'envoi est désactivé, le `main` local est en avance sur GitHub.
   - **Publier une version pour les joueurs est l'action d'Anthony, jamais celle de Claude.**
@@ -114,7 +114,8 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 2. Contrôler avant d'intégrer : `git log --oneline main..dev` (les commits attendus), `git diff --name-only main dev` (les fichiers attendus), `git rev-list dev..main` (doit être vide). S'arrêter au moindre écart.
 3. `git merge --ff-only dev` : `main` avance jusqu'à `dev`, sans commit de fusion. Si l'avance simple est impossible, s'arrêter et en parler à Anthony.
 4. Synchroniser l'atelier sans accès à GitHub : `git -C ~/dev/zs-verif fetch origin main:main` (avance `main` et `origin/main` ; `dev` reste la branche courante).
-5. Refaire la sauvegarde du dépôt (document privé de reprise). Envoyer `main` sur GitHub quand l'envoi sera rétabli, avec l'autorisation d'Anthony.
+5. Refaire la sauvegarde du dépôt (document privé de reprise).
+6. **Envoyer sur GitHub chaque nouvelle version du jeu** (2.0.5, 2.0.6…) une fois intégrée dans `main` : consigne d'Anthony du 14 octobre 2026. Elle s'appliquera dès que l'envoi sera rétabli (identification GitHub créée par Anthony, exception aux protections validée par lui). La publication pour les joueurs, avec l'outil de publication du launcher, reste son action.
 - Les protections interdisent d'écrire `.git/config` : pas de branche suivie (`--track`, `branch -u`) ; toujours nommer la branche (`origin/main`, `dev:dev`). Git affiche alors « error: could not write config file » puis prétend avoir réglé le suivi : rien n'a été écrit.
 - Un gros chantier peut avoir sa propre branche, `chantier/<sujet>` (par exemple `chantier/marteau`), créée depuis `dev` et ramenée dans `dev` avant l'intégration. Git refuse `dev/<sujet>` à côté de `dev`.
 
@@ -137,7 +138,7 @@ Le README a une section par système, avec ses noms de fonctions : Cartes, Khams
 ## 5. Essais
 
 - **Tests unitaires** : `cd launcher && npm test` dans `~/dev/zs-verif` (31 tests). Un test est intermittent : `workspace.test.js` (« cinq versions au plus »), à cause de la collision d'horodatages des sauvegardes des Mod Tools, nommées à la milliseconde (problème connu, correction proposée mais pas faite). Il a échoué à chaque passage pendant la migration et réussi le 14 octobre 2026 à 15 h 50. Résultat attendu : 30 ou 31 sur 31 ; tout autre échec est un vrai problème.
-- **Essais de bout en bout** : 26 essais, 918 vérifications (14 octobre 2026), environ 39 minutes dans WSL. Le plus long est `modtools-biblio` (14 min) ; le plus court `publish-online` (15 s).
+- **Essais de bout en bout** : 26 essais, 921 vérifications (jeu 2.0.5, 15 octobre 2026), environ 39 minutes dans WSL. Le plus long est `modtools-biblio` (14 min) ; le plus court `publish-online` (15 s).
   - Les 26 essais : `modtools`, `game-menu`, `publish-online`, `stairs`, `rank`, `perk-drink`, `outskirts`, `zone-zombies`, `glas`, `elixirs`, `zombie-anims`, `weapons`, `dogs`, `grenade`, `knife`, `khamsin`, `khepesh`, `modtools-khamsin`, `modtools-desert`, `ombre`, `modtools-ombre`, `modtools-sizes`, `modtools-decor`, `modtools-surfaces`, `modtools-pyramides`, `modtools-biblio`.
   - **Ils ne tournent pas dans une session Claude Code** : le bac à sable interdit les sockets Unix, et Electron s'arrête au démarrage. Ne jamais les relancer hors du bac à sable.
   - **Méthode E2** : Claude prépare dans `~/dev/zs-verif` (construction, `prepare-game.js`) ; Anthony lance les essais dans un terminal Ubuntu séparé avec le script privé indiqué dans `CLAUDE.local.md`, qui confine chaque essai (système en lecture seule, dossier personnel et disques Windows masqués) ; Claude analyse ensuite `resume.tsv` et les journaux.
@@ -198,12 +199,10 @@ La méthode de l'ancien environnement claude.ai (envoi en morceaux dans la conve
 - **Khépesh (jeu 2.0.4, construction 2).**
   - Il sert d'arme de corps-à-corps sur Khamsin et sur les cartes faites à partir d'elle dans les Mod Tools (base « khamsin » : `khepeshOn`, `OW.baseId`). Partout ailleurs, Désert vierge compris, c'est le couteau. Décision d'Anthony du 13 octobre 2026, 23 h 39 ; la construction 1 le donnait aussi au Désert vierge.
   - Ses flaques gardent la couleur du fichier, presque noire : décision d'Anthony (13 octobre, 23 h 39).
-  - **À faire à la prochaine version du jeu.**
-    - Retirer `engine/src/P2-khepesh-reflets.js` et l'option `envMap: khepeshEnv()` dans `buildKhepesh`. Le module recalcule alors ses reflets, au pixel près. L'image ne fait gagner que 1 à 2 s en rendu logiciel, pour 230 Ko de plus.
-    - Corriger les commentaires et le README qui parlaient d'un gain de 25 s.
+  - Reflets du bronze : calculés d'avance jusqu'au 2.0.4, préfiltrés par le module au chargement depuis le 2.0.5 (`P2-khepesh-reflets.js` et `envMap: khepeshEnv()` retirés ; le gain réel de l'ancien calcul n'était que de 1 à 2 s en rendu logiciel, pour 230 Ko).
 - **Projet claude.ai.** Le retrait de la copie du jeu (`claude/zombie-survival.html`) est décidé et sans risque (construction 1 dans l'historique Git) : c'est l'action d'Anthony. Le document des notes reste.
 - **Marteau gravitationnel (Lune) et carte du marécage** : toujours prévus (Anthony, 13 octobre, 23 h 39). Rien n'est commencé.
-- **Demandes en attente et écarts connus** : `docs/transmission.md` §5 et §6. On y trouve le Marteau gravitationnel, la carte du marécage, le bogue du halo de Vif-Argent, le faisceau coupé pendant la tempête, etc. Ne rien corriger sans la demande d'Anthony.
+- **Demandes en attente et écarts connus** : `docs/transmission.md` §5 et §6. On y trouve le Marteau gravitationnel, la carte du marécage, le faisceau coupé pendant la tempête, etc. (le bogue du halo de Vif-Argent est réglé au jeu 2.0.5). Ne rien corriger sans la demande d'Anthony.
 - **Organisation `main`/`dev`** : en place depuis le 14 octobre 2026 (premier passage complet : commit `f92c715`, ce fichier pour WSL, intégré dans `main` par avance simple).
 - **Environnement WSL, à décider par Anthony** : identification GitHub pour rétablir l'envoi, puis envoi de `main` (en avance sur GitHub) ; installation de wine pour l'installateur (§6) ; corrections proposées (horodatages des Mod Tools, `ZS_CHROMIUM` dans 5 essais, `.gitattributes`, adresse locale pour les 16 essais qui lisent le manifeste en ligne) ; sort de la branche `editeur-cartes`.
 - **Numéros refaits.** Plusieurs jeux ont été refaits sous le même numéro (2.0.0, 2.0.3, 2.0.4) ; le launcher départage par interface puis par construction.

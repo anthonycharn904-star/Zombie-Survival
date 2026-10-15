@@ -18,6 +18,7 @@ cd launcher && node scripts/prepare-game.js         # copie hors ligne dans laun
    - `hooks-pyramides.py` : intérieur des pyramides (2.0.3).
    - `hooks-libs.py` : bibliothèques de textures et de modèles (2.0.4).
    - `hooks-khepesh.py` : khépesh de Khamsin, constructions 1 et 2 (2.0.4).
+   - `hooks-elixirs.py` : halo du globe de Vif-Argent rétabli, numéro 2.0.5 (2.0.5).
 3. Il concatène les modules `src/*.js` dans l'ordre alphabétique et les insère avant la ligne `/* --- Catalogue des cartes -- */`.
 
 Vérification de départ, à faire avant toute modification : `python3 engine/tools/build.py --out /tmp/zs.html`, puis comparer avec `game/zombie-survival.html` (`cmp` ou SHA-256). Le 13 octobre 2026, la reconstruction donne exactement le jeu du dépôt (jeu 2.0.4, construction 1, SHA-256 `496ed859…9dda`) ; depuis le 14 octobre : construction 2, `632973eb…ce8c`. Si ce n'est plus le cas, quelqu'un a modifié le HTML sans passer par l'atelier : reporter ses changements ici avant de reconstruire.
@@ -33,7 +34,7 @@ Vérification de départ, à faire avant toute modification : `python3 engine/to
 | `N0-tex-gen` à `N6-mod-nature` | Bibliothèques du jeu 2.0.4 : générateurs et catalogue des textures (`gx_…`), modèles générés (`gm_…`) par familles. **Ne jamais renommer un identifiant** : les cartes les enregistrent. |
 | `P0-khepesh` | Module `creerKhepesh` : le fichier d'Anthony, `orig/khepesh-melee.js`, transformé par `tools/make-khepesh.py`. Seuls changements : ceux d'intégration, contrôlés par empreinte. Ne pas le modifier à la main : modifier le script, puis le relancer. |
 | `P1-khepesh-jeu` | Règles du jeu du khépesh (`KHEPESH`, `khepeshOn`, `khepeshChoose`, `buildKhepesh`…). |
-| `P2-khepesh-reflets` | Reflets du bronze calculés d'avance (`tools/make-khepesh-env.py`). **À retirer à la prochaine version** : le gain n'est que de 1 à 2 s en rendu logiciel, pour 230 Ko de plus. Il suffit d'enlever `envMap: khepeshEnv()` dans `buildKhepesh` : le module calcule alors les reflets lui-même, au pixel près. |
+| `P2-khepesh-reflets` (retiré) | Reflets du bronze calculés d'avance, **retirés au jeu 2.0.5** : leur gain n'était que de 1 à 2 s en rendu logiciel, pour 230 Ko. Sans `envMap` dans `buildKhepesh`, le module préfiltre lui-même les reflets au chargement, au pixel près. Le fichier reste dans l'historique Git (jusqu'au commit `ecabdbf`). |
 
 ## Outils (`tools/`)
 
@@ -41,7 +42,7 @@ Vérification de départ, à faire avant toute modification : `python3 engine/to
 - `dupcheck.py` : vérifie qu'aucune déclaration n'est en double.
 - `hooks*.py` : points d'accroche, exécutés par `build.py`.
 - `make-khepesh.py` : refait `src/P0-khepesh.js` depuis le fichier d'Anthony, en vérifiant son empreinte.
-- `make-khepesh-env.py` : refait `src/P2-khepesh-reflets.js` (PMREMGenerator dans Chromium sans tête).
+- `make-khepesh-env.py` : refaisait `src/P2-khepesh-reflets.js` (PMREMGenerator dans Chromium sans tête) ; sans usage depuis le jeu 2.0.5, gardé pour mémoire.
 - `tzeval.js` : `node engine/tools/tzeval.js corps.js` exécute le corps d'une fonction async dans le jeu au menu (Chromium sans tête, rendu logiciel), puis affiche le résultat et les erreurs de la page. Il faut préparer le jeu d'abord (`prepare-game.js`). Chromium : `/opt/pw-browsers/chromium`, ou la variable `ZS_CHROMIUM`.
 - `khshot.js` : images de Khamsin depuis des caméras libres. Usage : `node khshot.js <dossier> "nom:x,y,z:lx,ly,lz;…"`.
 - `khepshot.js` : vues du joueur pendant un coup de khépesh, touché et raté. Usage : `node khepshot.js <dossier>`.

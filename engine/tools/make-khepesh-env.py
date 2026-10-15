@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Jeu 2.0.4 : src/P2-khepesh-reflets.js = les reflets du bronze du khépesh, calculés d'avance.
+"""Sans usage depuis le jeu 2.0.5 : les reflets calculés d'avance sont retirés (le module les préfiltre au
+chargement, comme dans le fichier) ; outil gardé pour mémoire.
+Jeu 2.0.4 : src/P2-khepesh-reflets.js = les reflets du bronze du khépesh, calculés d'avance.
 Le fichier d'Anthony dessine une « salle chaude éclairée aux torches » (texEnvironnement) et la
-préfiltre au chargement avec THREE.PMREMGenerator (three r128). Ce préfiltrage prenait 25 à 30 s en
-rendu logiciel (compilation des shaders de flou). Ici : le même code (texte exact du fichier, extrait
+préfiltre au chargement avec THREE.PMREMGenerator (three r128). On croyait que ce préfiltrage prenait 25 à
+30 s en rendu logiciel ; mesuré ensuite : 1 à 2 s (le reste est la compilation des matières du bronze). Ici : le même code (texte exact du fichier, extrait
 de orig/khepesh-melee.js) passe une fois dans PMREMGenerator (Chromium sans tête), l'image cubeUV
 obtenue (768 × 768, sRGB, 8 bits) est relue et rangée sans perte (WebP sans perte, vérifié).
 Usage : make-khepesh-env.py [--keep-raw]   (le jeu doit être dans launcher/game : prepare-game.js)"""

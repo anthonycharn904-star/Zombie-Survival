@@ -117,7 +117,7 @@ Ces préférences sont réglées dans son compte claude.ai. Une session Claude C
 | Le khépesh sert sur Khamsin seulement : la carte et celles faites à partir d'elle (base « khamsin »). Le Désert vierge garde le couteau (construction 2). | 13 oct., 23 h 39 | Décision d'Anthony, conforme à sa demande d'origine (« uniquement dans la 2ème map, Khamsin »). La construction 1 donnait aussi le khépesh au Désert vierge, qui est le même monde. Les cartes faites à partir de Khamsin le gardent, puisque c'est ainsi qu'Anthony retouche Khamsin dans les Mod Tools. |
 | Volume du khépesh : 0,21 (0,7 dans le fichier). | 13 oct. | Mesuré : à 0,27, la valeur du couteau, le coup sonnait 2 dB plus fort que le couteau ; à 0,21, ils sonnent pareil. |
 | Flaques du khépesh presque noires (`0x1c0202`). | 13 oct., 23 h 39 | Fidélité au fichier ; Anthony a décidé de les garder noires. |
-| Reflets du bronze calculés d'avance (`P2-khepesh-reflets.js`), à retirer. | 13 oct. | Annoncés à tort comme un gain de 25 s ; mesurés ensuite : 1 à 2 s en rendu logiciel, pour 230 Ko. Retrait à la prochaine version du jeu (`CLAUDE.md` §9). |
+| Reflets du bronze calculés d'avance (`P2-khepesh-reflets.js`) : retirés au jeu 2.0.5. | 13 oct. | Annoncés à tort comme un gain de 25 s ; mesurés ensuite : 1 à 2 s en rendu logiciel, pour 230 Ko. |
 | Textures, modèles et sons générés par le code. | 3 oct. | Le jeu tient en un seul fichier. Depuis l'environnement cloud, aucun site de ressources libres (CC0) n'était joignable : seuls GitHub et les registres de paquets l'étaient. Une session avec un réseau ouvert pourrait en télécharger : à décider avec Anthony (poids du fichier, licences). |
 
 ## 5. Demandé ou annoncé, pas encore fait
@@ -173,7 +173,7 @@ Copié ici pour une session sans accès au Projet ; la liste complète est dans 
   - Option « mouvements de caméra réduits ».
 - **Noms** : noms des atouts d'après la planche, quand Anthony le voudra.
 
-**Travaux techniques prévus** (`CLAUDE.md` §9) : à la prochaine version du jeu, retirer `P2-khepesh-reflets.js` et `envMap: khepeshEnv()`, et corriger les commentaires qui parlent de 25 à 30 s (`P1-khepesh-jeu.js`, `P2`, README).
+**Travaux techniques** : le retrait des reflets précalculés du khépesh (`P2-khepesh-reflets.js`, `envMap: khepeshEnv()`) et la correction des commentaires « 25 à 30 s », prévus pour la prochaine version, sont faits au jeu 2.0.5.
 
 ## 6. Écarts entre ses fichiers de conception et le jeu (absents des docs)
 
@@ -225,15 +225,12 @@ Les écarts déjà notés sont dans les notes privées, sections « Limites conn
 
 ### Élixirs (machines d'atouts)
 
-1. **Bogue : le halo du globe de Vif-Argent n'est jamais ajouté** (élevée).
-   - Ligne 9201 du jeu construit : `const globeHalo = elixSprite(...); // teinte foncée : violette même sur un mur clair globeHalo.position.set(0, 2.02, zc); root.add(globeHalo);`.
-   - Le commentaire avale la fin de la ligne : le halo est créé mais jamais placé dans la scène.
-   - Présent depuis le jeu 1.8.0 (commit `7c76a22`).
-   - Correction : un point d'accroche qui passe à la ligne avant `globeHalo.position…`, car ce code fait partie de la base 1.9.0. À faire dans une nouvelle version du jeu, avec l'accord d'Anthony.
-2. **Couleurs de la Cuirasse et du Pèlerin** (élevée).
+Le bogue du halo du globe de Vif-Argent (jamais affiché depuis le jeu 1.8.0) est réglé au jeu 2.0.5 : README, « Historique ».
+
+1. **Couleurs de la Cuirasse et du Pèlerin** (élevée).
    - Acier de la Cuirasse (`M.steel` de `elixirResources`) : `#B4BEC8` dans le jeu, `#76808A` (plus sombre) sur la planche.
    - Les couleurs « Cœur » de la planche ne sont pas utilisées : `#FFE4DA` (Cuirasse) et `#F2FFE8` (Pèlerin).
-3. **Détails** (moyenne).
+2. **Détails** (moyenne).
    - Lazare : feux follets sur un rayon de 0,3 m (0,25 sur la planche) ; son âme ne monte que de 0,56 m sous le plafond de Bunker 7.
    - Cuirasse : plastron en ellipsoïde plein ; lames sans rivets.
 
@@ -265,7 +262,6 @@ Les écarts déjà notés sont dans les notes privées, sections « Limites conn
 - **README et notes, Gardien** : il « traverse la carte ». Il traverse en fait 260 m de la zone du joueur.
 - **README, notes et `ZRIG`, Fantassin** : 1,80 m annoncé, 1,755 m mesuré.
 - **Notes, « Sources et sauvegardes »** : le dernier commit cité est `64ee430`. Une mise à jour est prête mais pas appliquée (§8).
-- **Commentaires du khépesh** (25 à 30 s) : à corriger avec la prochaine version du jeu.
 
 ## 7. Problèmes rencontrés et leurs solutions
 
@@ -319,7 +315,7 @@ Les écarts déjà notés sont dans les notes privées, sections « Limites conn
 
 1. Retrait du jeu du Projet (étape 1) : quand donne-t-il son accord ?
 2. Marteau gravitationnel (Lune) et carte du marécage : une planche ou un module va-t-il arriver, comme pour le khépesh ?
-3. Écarts du §6 : lesquels corriger à la prochaine version ? Les plus visibles : le halo de Vif-Argent, le faisceau pendant la tempête, les pistes ensablées.
+3. Écarts du §6 : lesquels corriger à la prochaine version ? Les plus visibles : le faisceau pendant la tempête, les pistes ensablées (le halo de Vif-Argent est réglé au jeu 2.0.5).
 4. Valeurs « à équilibrer » du Molosse et du Fantassin : les régler après une partie d'essai ?
 
 **Réponses d'Anthony du 13 octobre, 23 h 39**

@@ -43,6 +43,8 @@ exec(open(os.path.join(HERE, 'hooks-pyramides.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-libs.py'), encoding='utf-8').read())
 # jeu 2.0.4 refait : le khépesh, arme de corps-à-corps du désert de Khamsin (construction 1)
 exec(open(os.path.join(HERE, 'hooks-khepesh.py'), encoding='utf-8').read())
+# jeu 2.0.5 : halo du globe de Vif-Argent rétabli, numéro 2.0.5 (construction 1)
+exec(open(os.path.join(HERE, 'hooks-elixirs.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
