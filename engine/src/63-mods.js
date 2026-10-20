@@ -196,8 +196,12 @@ function owApplyMods(map, rect = null) {
 
 /* ---- Lieux nommés : ceux de la base (Khamsin) et ceux de la carte (numérotés). */
 function owNamedLocs(map = OW.map) {
-  const out = owBaseHasPlaces() ? (OW.locs || KH.locs).slice() : [];
-  ((map && map.locs) || []).forEach((L, i) => out.push({ id: String(i + 1), name: L.name, x: L.x, z: L.z, r: L.r, user: true }));
+  // jeu 2.0.6, en partie (pas dans les Mod Tools, qui gardent tous les lieux) : les cercles « Zone jouable » ne
+  // sont pas des lieux à l'écran ; avec une zone, les lieux de la base restés dehors (dans la tempête) ne
+  // s'affichent plus (ni nom en entrant, ni repère sur la mini-carte)
+  const game = !CUR.editor, zc = game ? zoneCirclesOf(map) : [], inZone = (L) => !zc.length || zc.some((c) => Math.hypot(L.x - c.x, L.z - c.z) < c.r);
+  const out = owBaseHasPlaces() ? (OW.locs || KH.locs).filter(inZone) : [];
+  ((map && map.locs) || []).forEach((L, i) => { if (!game || !zoneIsLoc(L)) out.push({ id: String(i + 1), name: L.name, x: L.x, z: L.z, r: L.r, user: true }); });
   return out;
 }
 /* Lieu nommé le plus proche (dans son cercle : d < 0), ou null. */

@@ -408,7 +408,7 @@ function khAltarAnimate(amp, dt) {
 function khAltarPrompt(amp) {
   const T = GLAS.tiers;
   switch (amp.state) {
-    case 'mute': return { text: 'L’autel est éteint : il faut du courant (centrale du Nil)', disabled: true };
+    case 'mute': return { text: 'L’autel est éteint : il faut du courant (disjoncteurs)', disabled: true };
     case 'wake': return { text: 'Le faisceau s’éveille…', disabled: true };
     case 'ritual': {
       const n = glasNext(amp);
@@ -540,7 +540,7 @@ function khPortalInteractables() {
   const D = KHSAN.door, P = KH.places.B.kiosk, sq = owPt(P.node, (P.door[0] + P.door[2]) / 2, P.y, P.door[3] + 0.9);
   Features.interactables.push({
     kind: 'seal', x: sq.x, z: sq.z, y: sq.y, r: 1.6,
-    prompt() { return OW.doors[D.i].open || D.opening ? null : { text: 'Porte scellée : rétablissez le courant à la centrale du Nil', disabled: true }; },
+    prompt() { return OW.doors[D.i].open || D.opening ? null : { text: 'Porte scellée : rétablissez le courant (disjoncteurs)', disabled: true }; },
     use() {},
   });
 }

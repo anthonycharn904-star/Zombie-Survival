@@ -251,17 +251,18 @@ async function run(userData) {
       return null;
     });
     ok(JSON.stringify(dims) === '{"w":12,"d":8,"h":4}' && !!spot, `outil Bâtiments : cotes à la pose 12 × 8 m, murs de 4 m ${JSON.stringify({ dims, spot })}`);
+    const nb0 = await mt.evaluate(() => MT.state.map.buildings.length);   // jeu 2.0.6 : Khamsin a déjà ses trois bâtiments
     await view(spot[0], spot[1], 6);
     await click(spot[0], spot[1]);
     await rebuilt();
-    const b1 = await mt.evaluate(() => {
+    const b1 = await mt.evaluate((nb0) => {
       const m = MT.state.map, b = m.buildings[m.buildings.length - 1], R = ZS.ow.bldRect(b);
       const y = b.y, wall = ZS.ow.height((R.x0 + R.x1) / 2, R.z0 + 0.3) - y;
-      return { n: m.buildings.length, b, R: [R.w, R.d], wall: Math.round(wall * 100) / 100, objs: ZS.ow.objs.building.length, errors: MT.state.issues.errors.length };
-    });
+      return { n: m.buildings.length - nb0, nAll: m.buildings.length, b, R: [R.w, R.d], wall: Math.round(wall * 100) / 100, objs: ZS.ow.objs.building.length - nb0, errors: MT.state.issues.errors.length };
+    }, nb0);
     ok(b1.n === 1 && b1.b.w === 12 && b1.b.d === 8 && b1.b.h === 4 && b1.R.join() === '12,8' && b1.wall >= 3.9 && b1.objs === 1 && b1.errors === 0, `maison posée à 12 × 8 m, murs pleins de 4 m ${JSON.stringify(b1)}`);
     // B2. inspecteur : largeur 10 m ; tournée : cotes gardées ; autre modèle : cotes du catalogue (annulé)
-    const bi = b1.n - 1;
+    const bi = b1.nAll - 1;
     await mt.evaluate((i) => { MT.setTool('select'); MT.select({ kind: 'building', i }); MT.ui.setTab('sel'); }, bi);
     await render();
     ok(await setField('Largeur', 10, 'Cotes'), 'inspecteur du bâtiment : section Cotes');
@@ -350,7 +351,7 @@ async function run(userData) {
         const m = ZS.MAPS_ALL.byId.khamsin, b = m.buildings[m.buildings.length - 1], R = ZS.ow.bldRect(b);
         return { src: m.source, b: [b.type, b.w, b.d, b.h, b.rot], R: [R.w, R.d], objs: ZS.ow.objs.building.length, perk: ZS.Features.perkMachines[0] && Math.round(ZS.Features.perkMachines[0].s * 1000) / 1000, br: ZS.ow.objs.breaker[0] && Math.round(ZS.ow.objs.breaker[0].scale.x * 100) / 100 };
       });
-      ok(g2.src === 'package' && g2.b.join() === 'maison,10,8,4,1' && g2.R.join() === '8,10' && g2.objs === 1 && g2.perk > 0.8 && g2.br === 1.4 && !perr.length, `jeu publié : Khamsin avec la maison de 10 × 8 m et les éléments agrandis ${JSON.stringify(g2)} ${perr.slice(0, 2).join(' | ')}`);
+      ok(g2.src === 'package' && g2.b.join() === 'maison,10,8,4,1' && g2.R.join() === '8,10' && g2.objs === 4 && g2.perk > 0.8 && g2.br === 1.4 && !perr.length, `jeu publié : Khamsin avec la maison de 10 × 8 m (et ses trois bâtiments) et les éléments agrandis ${JSON.stringify(g2)} ${perr.slice(0, 2).join(' | ')}`);
     } finally { await browser.close(); server.close(); }
   } finally { await closeAll(app); }
 }

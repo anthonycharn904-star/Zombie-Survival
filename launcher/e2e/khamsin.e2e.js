@@ -44,7 +44,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.5' && ZS.version === v, `jeu 2.0.5 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
+      ok(GAME_VERSION === '2.0.6' && ZS.version === v, `jeu 2.0.6 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
       ok(MAPS.list.length === 3 && MAPS.list[0] === 'bunker7' && MAPS.list[1] === 'khamsin' && MAPS.list[2] === 'ombre', 'catalogue : Bunker 7, puis Khamsin (deuxième carte), puis Ombre éternelle', MAPS.list);
       const K = MAPS.byId.khamsin;
       ok(K && K.open && K.name === 'Khamsin' && /^data:image\/jpeg/.test(K.thumb || '') && K.altar === true, 'Khamsin : carte ouverte, vignette tirée de son plan, autel du sanctuaire', K && { open: K.open, name: K.name, thumb: (K.thumb || '').slice(0, 22) });
@@ -77,25 +77,26 @@ const USER = path.join(TMP, 'joueur');
       window.__play = () => { if (G.state === 'paused') { showScreen(null); G.state = 'playing'; } __zs.god(true); };
       __play(); G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
       ok(OW.on && G.mapId === 'khamsin' && CUR.map === MAPS.byId.khamsin, 'Khamsin chargée par le moteur du monde ouvert');
-      ok(OW.W === 4000 && OW.D === 3000, 'zone jouable : 4 × 3 km', [OW.W, OW.D]);
+      ok(OW.W === 4000 && OW.D === 3000, 'monde : 4 × 3 km (le désert entier reste en décor)', [OW.W, OW.D]);
       const names = KH.locs.map((L) => L.name);
       ok(names.length === 7 && names.join('|') === 'Camp de fouilles|Plateau des pyramides|Relais Km 47|Oasis de Sekhet|Centrale du Nil|Nécropole des falaises|Aérodrome', 'sept lieux de la planche', names);
       let lo = 1e9, hi = -1e9;
       for (let x = 50; x < 4000; x += 100) for (let z = 50; z < 3000; z += 100) { const h = owH(x, z); lo = Math.min(lo, h); hi = Math.max(hi, h); }
       ok(hi - lo > 30, `relief : ${Math.round(lo)} à ${Math.round(hi)} m (dunes, falaises, vallée du Nil)`, { lo, hi });
-      const sp = KH.spawn.pos, dy = Math.abs(player.gy - owGroundAt(0, player.pos.x, player.pos.z));
-      ok(Math.hypot(player.pos.x - sp[0], player.pos.z - sp[1]) < 2 && dy < 0.05, 'départ au camp de fouilles, les pieds sur le sol', { x: player.pos.x, z: player.pos.z, dy });
+      // jeu 2.0.6 : départ au camp du plateau, dans la zone jouable
+      const sp = CUR.map.spawn.pos, dy = Math.abs(player.gy - owGroundAt(0, player.pos.x, player.pos.z)), zd = zoneDist(player.pos.x, player.pos.z);
+      ok(Math.hypot(player.pos.x - sp[0], player.pos.z - sp[1]) < 2 && dy < 0.05 && zd < -40, 'départ au camp du plateau, dans la zone jouable, les pieds sur le sol', { x: player.pos.x, z: player.pos.z, dy, zd });
       ok(G.points === 500 && curSlot() && curSlot().id === 'm1911', 'départ : 500 points et M1911', { points: G.points, w: curSlot() && curSlot().id });
       __zs.step(30);
       ok(OWH.map && OWH.map.isConnected && !OWH.map.hidden && OWH.comp && OWH.comp.isConnected, 'HUD : mini-carte et boussole');
-      ok(VEH.list.map((V) => V.type).join(',') === 'jeep,jeep,jeep,buggy,truck', 'véhicules : trois 4×4, le buggy, le camion blindé', VEH.list.map((V) => V.type));
+      ok(VEH.list.map((V) => V.type).join(',') === 'jeep,jeep,jeep', 'véhicules : les trois jeeps (ni buggy ni camion blindé depuis le jeu 2.0.6)', VEH.list.map((V) => V.type));
       ok(Features.perkMachines.length === 5 && KHF.breakers.length === 3 && Features.box.locs.length === 8, 'cinq atouts, trois disjoncteurs, huit emplacements de la boîte (le dernier dans la chambre du Roi)', { perks: Features.perkMachines.length, breakers: KHF.breakers.length, box: Features.box.locs.length });
       return out;
     })).forEach(report);
     // une image du désert (shaders compilés sans erreur)
     const draw = await game.evaluate(() => {
       __play();
-      __zs.tp(2290, 1860, 0.6); player.pitch = 0; __zs.step(4);
+      __zs.tp(CUR.map.spawn.pos[0], CUR.map.spawn.pos[1], CUR.map.spawn.yaw); player.pitch = 0; __zs.step(4);
       owUpdateTerrainLod(true); owUpdateRoads();
       renderer.info.autoReset = false; renderer.info.reset();
       renderEnabled = true; render(); renderEnabled = false;
@@ -114,7 +115,8 @@ const USER = path.join(TMP, 'joueur');
       G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
       const near = (kind, pred) => Features.interactables.filter((q) => q.kind === kind && (!pred || pred(q))).sort((a, b) => Math.hypot(a.x - player.pos.x, a.z - player.pos.z) - Math.hypot(b.x - player.pos.x, b.z - player.pos.z))[0];
       __zs.points(50000);
-      __zs.tp(2310, 1961, 0); __zs.step(3);
+      const W = CUR.map.wallbuys.find((w) => w.w === 'mp40');
+      __zs.tp(W.x + W.nx * 0.9, W.z + W.nz * 0.9, Math.atan2(W.nx, W.nz)); __zs.step(3);
       let it = near('wallbuy');
       out.wallPrompt = it.prompt() && it.prompt().text; it.use(); __zs.step(60);
       out.mp40 = Arms.slots.some((s) => s && s.id === 'mp40');
@@ -133,7 +135,6 @@ const USER = path.join(TMP, 'joueur');
       V.x = fu.x + 6; V.z = fu.z + 2; V.yaw = 0; V.fuel = 300; vehPose(V, 0, true);
       __zs.tp(fu.x + 0.2, fu.z - 1.2, 0); __zs.step(3);
       it = near('fuel'); out.fuelPrompt = it.prompt().text; it.use(); out.fuel = Math.round(V.fuel); out.fuelMax = V.T.fuel;
-      out.truck0 = Features.interactables.find((q) => q.veh && q.veh.type === 'truck').prompt();
       const D = KHSAN.door;
       out.door0 = OW.doors[D.i].open;
       out.power0 = G.power;
@@ -151,25 +152,21 @@ const USER = path.join(TMP, 'joueur');
       out.power = G.power;
       out.lit = Features.perkMachines.every((m) => m.lit);
       out.door = OW.doors[D.i].open;
-      out.truck = Features.interactables.find((q) => q.veh && q.veh.type === 'truck').prompt().text;
       return out;
     });
     ok(f.mp40 && /MP40/i.test(f.wallPrompt || ''), 'arme au mur (craie) : MP40 achetée', f);
     ok(f.souffle && f.locked.length === 4 && !f.locked.includes('0'), 'atouts : Souffle sans courant ; les quatre autres attendent le courant', f);
     ok(f.boxPaid === 950 && (f.boxState === 'offer' || f.boxState === 'idle'), 'boîte mystère : 950 points, arme proposée', f);
     ok(/plein|jerrican/i.test(f.fuelPrompt) && f.fuel === f.fuelMax, 'jerricans : plein du 4×4 le plus proche', f);
-    ok(f.truck0 && f.truck0.disabled && !f.power0 && !f.door0, 'sans courant : camion blindé arrêté, sanctuaire scellé', f);
-    ok(f.steps === '001' && f.power && f.lit && f.door && /Conduire le camion/.test(f.truck), 'trois disjoncteurs (F maintenue) : courant, atouts allumés, porte du sanctuaire, camion', f);
+    ok(!f.power0 && !f.door0, 'sans courant : sanctuaire scellé', f);
+    ok(f.steps === '001' && f.power && f.lit && f.door, 'trois disjoncteurs (F maintenue, hangar du plateau) : courant, atouts allumés, porte du sanctuaire', f);
 
     // ------------------------------------------------------- véhicules
     const v = await game.evaluate(() => {
       __play();
       const out = {};
       G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
-      const Bg = VEH.list[3], ib = Features.interactables.find((q) => q.veh === Bg);
-      __zs.tp(Bg.x + 3, Bg.z, 1.57); __zs.step(2);
-      const pb = ib.prompt(); out.buggy = pb && { text: pb.text, cost: pb.cost };
-      const pts0 = G.points; ib.use(); __zs.step(2); out.buggyPaid = pts0 - G.points; out.buggyBought = Bg.bought;
+      out.types = VEH.list.map((V) => V.type).join(',');
       if (VEH.drive) { Input.down.KeyF = true; __zs.step(2); }
       const V = VEH.list[2], it = Features.interactables.find((q) => q.veh === V);
       V.yaw = -Math.PI / 2; V.v = 0; V.fuel = V.T.fuel; vehPose(V, 0, true);
@@ -177,6 +174,10 @@ const USER = path.join(TMP, 'joueur');
       out.prompt = it.prompt() && it.prompt().text;
       it.use(); __zs.step(2);
       out.driving = !!VEH.drive && owDriving();
+      // jeu 2.0.6 : la jeep démarre d'abord (démarreur de 0,9 à 1,6 s)
+      let crank = 0;
+      while (V.mech.state.engine !== 'running' && crank < 150) { __zs.step(1); crank++; }
+      out.start = +(crank / 60).toFixed(2);
       const x0 = V.x, z0 = V.z, f0 = V.fuel;
       Input.keys.KeyW = true; let vmax = 0;
       for (let i = 0; i < 60 * 4; i++) { __zs.step(1); vmax = Math.max(vmax, Math.abs(V.v)); }
@@ -200,12 +201,144 @@ const USER = path.join(TMP, 'joueur');
       out.firedOnFoot = m2 - s2.mag;
       return out;
     });
-    ok(v.buggy && v.buggy.cost === 1500 && /Acheter le buggy/.test(v.buggy.text) && v.buggyPaid === 1500 && v.buggyBought, 'buggy des sables : acheté 1 500 points', v);
+    ok(v.types === 'jeep,jeep,jeep' && !Object.prototype.hasOwnProperty.call(v, 'buggy'), 'ni buggy ni camion blindé : leurs types restent dans les Mod Tools', v);
     ok(v.driving && /Conduire le 4×4/.test(v.prompt || ''), '4×4 : F pour conduire', v);
-    ok(v.kmh > 20 && v.moved > 25 && v.burnt && v.hud, `conduite : ${v.kmh} km/h, ${v.moved} m en 4 s, carburant consommé, compteur affiché`, v);
+    ok(v.start < 2 && v.kmh > 20 && v.moved > 15 && v.burnt && v.hud, `conduite : moteur en marche en ${v.start} s, puis ${v.kmh} km/h, ${v.moved} m en 4 s, carburant consommé, compteur affiché`, v);
     ok(v.fired === 0 && v.firedOnFoot > 0, 'au volant, on ne tire pas (à pied, si)', v);
     ok(v.view[0] !== v.view[1] && v.stopped, 'C : vue du conducteur ; Espace : frein à main', v);
     ok(v.out && v.dist < 6 && v.ground, 'F : on descend à côté du véhicule, sur le sol', v);
+
+    // ------------------------------------------------------- jeep d'archéologie (jeu 2.0.6) : critères de son INTEGRATION.md
+    const jp = await game.evaluate(async () => {
+      __play();
+      const out = {}, wait = (ms) => new Promise((r) => setTimeout(r, ms)), step = (n = 1) => __zs.step(n, 1 / 60);
+      G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
+      if (VEH.drive) { Input.down.KeyF = true; step(2); }
+      // jeu 2.0.6 : la piste de l'aérodrome est hors de la zone jouable ; la zone est suspendue le temps de cet essai
+      const zoneC = ZONE.circles; ZONE.circles = [];
+      out.types = [typeof createArcheoJeep, typeof createJeepDrive, typeof createJeepAudio].join();
+      out.jeeps = VEH.list.filter((V) => V.type === 'jeep').map((V) => (V.jeep && V.mech ? 1 : 0)).join('');
+      const V = VEH.list[0], save = { x: V.x, z: V.z, yaw: V.yaw, fuel: V.fuel };
+      // piste de l'aérodrome : droite et plate
+      const pts = [];
+      for (let x = 2; x < OW.W; x += 6) for (let z = 2; z < OW.D; z += 6) if (owBioAt(x, z) === OWB.RUNWAY) pts.push([x, z]);
+      let mx = 0, mz = 0; for (const [x, z] of pts) { mx += x; mz += z; } mx /= pts.length; mz /= pts.length;
+      let sxx = 0, sxz = 0, szz = 0; for (const [x, z] of pts) { sxx += (x - mx) ** 2; sxz += (x - mx) * (z - mz); szz += (z - mz) ** 2; }
+      const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz), ux = Math.cos(ang), uz = Math.sin(ang);
+      let lo = 1e9; for (const [x, z] of pts) lo = Math.min(lo, (x - mx) * ux + (z - mz) * uz);
+      const P0 = [mx + ux * (lo + 25), mz + uz * (lo + 25)], yaw = Math.atan2(-ux, -uz);
+      V.x = P0[0]; V.z = P0[1]; V.yaw = yaw; V.v = 0; V.fuel = V.T.fuel; vehPose(V, 0, true);
+      __zs.tp(V.x + 3 * Math.cos(yaw), V.z - 3 * Math.sin(yaw), yaw); step(2);
+      // durée du démarreur sur l'horloge du jeu : pendant les attentes, la boucle du jeu avance aussi la jeep
+      const g0 = G.time;
+      Features.interactables.find((q) => q.veh === V).use();
+      while (V.mech.state.engine !== 'running' && G.time - g0 < 3) { step(1); await wait(16); }
+      out.start = +(G.time - g0).toFixed(2);
+      let t = 0;
+      for (let i = 0; i < 30; i++) { step(1); await wait(16); }
+      out.mode = V.jsnd && V.jsnd.mode;
+      // gaz à fond : passages de rapports
+      Input.keys.KeyW = true;
+      const ev = {}; let sh0 = false; t = 0;
+      for (let i = 0; i < 60 * 10; i++) {
+        step(1); t += 1 / 60;
+        const s = V.mech.state;
+        if (s.shifting && !sh0) ev[`g${s.gear + 1}`] = [+t.toFixed(2), +s.speedKmh.toFixed(1)];
+        sh0 = s.shifting;
+      }
+      Input.keys.KeyW = false;
+      out.shifts = ev;
+      // frein maintenu à l'arrêt : marche arrière
+      Input.keys.KeyS = true;
+      let tStop = null; t = 0; out.rev = null; out.back = null;
+      for (let i = 0; i < 60 * 10 && out.back === null; i++) {
+        step(1); t += 1 / 60;
+        if (tStop === null && Math.abs(V.v) < 0.05) tStop = t;
+        if (tStop !== null && out.rev === null && V.mech.state.gear === -1) out.rev = +(t - tStop).toFixed(2);
+        if (out.rev !== null && V.v < -0.3) { out.back = +(t - tStop).toFixed(2); OWH.t = 0; owUpdateHud(0); out.hudAR = OWH.dName.textContent; }   // compteur rafraîchi 20 fois par seconde : forcé ici
+      }
+      Input.keys.KeyS = false;
+      Input.keys.Space = true; step(150); Input.keys.Space = false;
+      out.hand = +Math.abs(V.v).toFixed(3);
+      // descente : à 1,3 m à gauche, moteur coupé
+      Input.down.KeyF = true; step(2);
+      const [fx, fz] = vehFwd(V.yaw), rx = -fz, rz = fx;
+      out.exit = [+((player.pos.x - V.x) * fx + (player.pos.z - V.z) * fz).toFixed(2), +((player.pos.x - V.x) * rx + (player.pos.z - V.z) * rz).toFixed(2)];
+      out.off = V.mech.state.engine;
+      for (let i = 0; i < 120; i++) step(1);
+      out.released = !V.jsnd;
+      // le son baisse avec la distance (moteur relancé au ralenti, sans conducteur)
+      const bus = Sound.bus(), an = bus.ctx.createAnalyser(); an.fftSize = 4096; bus.sortie.connect(an);
+      const buf = new Float32Array(an.fftSize);
+      const rms = async () => { let s = 0; for (let i = 0; i < 6; i++) { await wait(60); an.getFloatTimeDomainData(buf); let a = 0; for (const x of buf) a += x * x; s += Math.sqrt(a / buf.length); } return 20 * Math.log10(s / 6 + 1e-9); };
+      V.mech.startEngine(); jeepSoundOn(V);
+      for (let i = 0; i < 150; i++) { step(1); await wait(10); }
+      const db = [];
+      for (const d of [2, 20]) {
+        __zs.tp(V.x + rx * -(d + 0.8), V.z + rz * -(d + 0.8), V.yaw); step(1);
+        scene.updateMatrixWorld(true); camera.updateMatrixWorld(true); await wait(120);
+        step(1); scene.updateMatrixWorld(true); camera.updateMatrixWorld(true); await wait(500);
+        db.push(+(await rms()).toFixed(1));
+      }
+      bus.sortie.disconnect(an);
+      out.db = db; out.ctx = bus.ctx.state;
+      V.mech.stopEngine(); for (let i = 0; i < 120; i++) step(1);
+      // zombies devant le pare-chocs
+      const zr = [];
+      for (const sp of [3, 5, 9]) {
+        clearZombies(); V.x = P0[0]; V.z = P0[1]; V.yaw = yaw; vehPose(V, 0, true); vehEnter(V); step(1);
+        const [ax, az] = vehFwd(V.yaw), x = V.x + ax * 2, z = V.z + az * 2, gy = owGroundAt(0, x, z);
+        const zb = spawnZombie({ riser: true, x, z, y: gy, li: 0, k: owLocate(x, z, gy), layer: 0, zone: 0 }, 1000);
+        zb.state = 'chase'; zb.t = 0; zb.pos.set(x, gy, z); zb.gy = gy; zb.speed = 0.0001; zb.hp = zb.maxHp = 1000;
+        V.v = sp; V.mech.state.speed = sp;
+        Input.keys.KeyW = true; step(1); Input.keys.KeyW = false;
+        zr.push([sp, Math.max(0, Math.round(zb.hp)), zb.alive ? 1 : 0, +(V.v / sp).toFixed(2)]);
+        V.v = 0; V.mech.state.speed = 0; vehExit(true); step(2);
+      }
+      clearZombies();
+      out.zombies = zr;
+      // coût : draw calls et triangles (passe principale, sans les ombres)
+      V.x = P0[0]; V.z = P0[1]; V.yaw = yaw; vehPose(V, 0, true);
+      camera.position.set(V.x + 5, V.y + 2.2, V.z + 5); camera.lookAt(V.x, V.y + 0.8, V.z); camera.updateMatrixWorld(true);
+      const au = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+      const meas = () => { renderer.info.autoReset = false; renderer.info.reset(); renderer.render(scene, camera); renderer.info.autoReset = true; return [renderer.info.render.calls, renderer.info.render.triangles]; };
+      const a1 = meas(); V.jeep.object.visible = false; const a0 = meas(); V.jeep.object.visible = true;
+      renderer.shadowMap.autoUpdate = au;
+      out.cost = [a1[0] - a0[0], a1[1] - a0[1], V.jeep.stats.triangles, V.extraTris];
+      // descente jamais coincée : 100 places tirées au sort près des murs et des objets
+      let seed = 7, n = 0, stuck = 0, refused = 0;
+      const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      const C = Features.interactables.filter((q) => Number.isFinite(q.x) && q.veh !== V).map((q) => [q.x, q.z]);
+      for (let i = 0; i < 20000 && n < 100; i++) {
+        const c = C[Math.floor(rnd() * C.length)], a = rnd() * 6.283, d = 0.5 + rnd() * 5, x = c[0] + Math.cos(a) * d, z = c[1] + Math.sin(a) * d, yw = rnd() * 6.283;
+        const g = owGroundAt(0, x, z);
+        if (!Number.isFinite(g)) continue;
+        V.y = g; if (vehBlocked(V, x, z, yw)) continue;
+        V.x = x; V.z = z; V.yaw = yw; V.v = 0; vehPose(V, 0, true); n++;
+        vehEnter(V); V.v = 0; vehExit(false);
+        if (VEH.drive === V) { refused++; vehExit(true); }
+        const px = player.pos.x, pz = player.pos.z, p0 = player.pos.clone();
+        const inBox = VEH.list.some((W) => vehInside(W, px, pz, 0.3));
+        owSettle(player, 0.3);
+        if (inBox || player.pos.distanceTo(p0) > 0.005) stuck++;
+      }
+      out.sweep = [n, stuck, refused];
+      V.x = save.x; V.z = save.z; V.yaw = save.yaw; V.fuel = save.fuel; V.v = 0; vehPose(V, 0, true);
+      ZONE.circles = zoneC;
+      return out;
+    });
+    ok(jp.types === 'function,function,function' && jp.jeeps === '111', 'jeep : fichiers d’Anthony chargés (createArcheoJeep, createJeepDrive, createJeepAudio), les trois 4×4 sur son modèle', jp);
+    ok(jp.start > 0.8 && jp.start < 2 && jp.mode === 'worklet', `jeep : démarreur, puis moteur en marche en ${jp.start} s ; son en AudioWorklet`, jp);
+    ok(jp.shifts.g2 && jp.shifts.g3 && Math.abs(jp.shifts.g2[1] - 31) < 3 && Math.abs(jp.shifts.g2[0] - 3) < 0.8 && Math.abs(jp.shifts.g3[1] - 53) < 4 && Math.abs(jp.shifts.g3[0] - 7) < 1.2,
+      `jeep : gaz à fond sur la piste, 2e à ${jp.shifts.g2 && jp.shifts.g2[1]} km/h (${jp.shifts.g2 && jp.shifts.g2[0]} s), 3e à ${jp.shifts.g3 && jp.shifts.g3[1]} km/h (${jp.shifts.g3 && jp.shifts.g3[0]} s)`, jp);
+    ok(jp.rev !== null && jp.rev < 0.8 && jp.back !== null && /· AR ·/.test(jp.hudAR || ''), `jeep : frein maintenu à l’arrêt, marche arrière en ${jp.rev} s, elle recule ; compteur « AR »`, jp);
+    ok(jp.hand < 0.05, 'jeep : Espace (frein à main) l’arrête', jp);
+    ok(Math.abs(jp.exit[0] + 0.35) < 0.05 && Math.abs(jp.exit[1] + 1.3) < 0.05 && jp.off === 'off' && jp.released, 'jeep : on descend à 1,3 m à gauche, moteur coupé ; son rendu quand il se tait', jp);
+    ok(jp.db[0] > jp.db[1] + 5, `jeep : le son baisse avec la distance (${jp.db[0]} dB à 2 m, ${jp.db[1]} dB à 20 m)`, jp);
+    ok(jp.zombies[0][1] === 1000 && jp.zombies[0][2] === 1 && Math.abs(jp.zombies[1][1] - 375) < 15 && jp.zombies[1][2] === 1 && jp.zombies[2][2] === 0 && Math.abs(jp.zombies[2][3] - 0.85) < 0.03,
+      'jeep : zombie au pare-chocs, rien à 3 m/s, dégâts proportionnels à 5 m/s, mort à 9 m/s ; la jeep perd 15 % de sa vitesse', jp);
+    ok(jp.cost[0] === 31 && Math.abs(jp.cost[2] - 15600) < 200 && jp.cost[3] > 0 && jp.cost[1] === jp.cost[2] + jp.cost[3], `jeep : ${jp.cost[0]} draw calls, ${jp.cost[1]} triangles (${jp.cost[2]} du fichier, ${jp.cost[3]} des passages de roue avant)`, jp);
+    ok(jp.sweep[0] === 100 && jp.sweep[1] === 0, `jeep : descente jamais coincée (100 places près des murs et des objets, ${jp.sweep[2]} descentes forcées)`, jp);
 
     // ------------------------------------------------------- Desséchés
     const z = await game.evaluate(() => {
@@ -216,7 +349,7 @@ const USER = path.join(TMP, 'joueur');
       out.r5 = mix(5); out.r6 = mix(6);
       const ty = (zi) => { const c = {}; for (let i = 0; i < 600; i++) { const t = zoneZombieType(zi).id; c[t] = (c[t] || 0) + 1; } return c; };
       out.camp = ty(0); out.oasis = ty(3);
-      __zs.tp(2350, 1992, 2.45); __zs.step(5);
+      __zs.tp(CUR.map.spawn.pos[0], CUR.map.spawn.pos[1], CUR.map.spawn.yaw); __zs.step(5);
       __zs.round(1); __zs.step(5);
       out.zombieHp = G.zombieHp;
       __zs.step(60 * 10);
@@ -315,143 +448,122 @@ const USER = path.join(TMP, 'joueur');
     ok(s.ritual.maxTier >= 1 && s.after.same && s.after.tier >= 1 && s.glasSource, `autel du sanctuaire : rituel du Glas (palier ${s.after.tier})`, s);
     ok(s.up.layer === 0 && s.up.view === 'surface' && s.up.terrain, 'remontée au plateau par l’escalier', s.up);
 
-    // ------------------------------------------------------- draisine (nécropole → sanctuaire)
-    const t = await game.evaluate(() => {
+    // ------------------------------------------------------- quête, Gardien et draisine retirés (jeu 2.0.6)
+    const nq = await game.evaluate(() => {
       __play();
-      const out = {};
-      const st = (sec) => { for (let i = 0; i < sec * 30; i++) __zs.step(1, 1 / 30); };
+      const out = {}, st = (sec) => { for (let i = 0; i < sec * 30; i++) __zs.step(1, 1 / 30); };
       G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
-      const E = KHT.endF;
-      __zs.tp(E.x, E.z + 1.2, 0); st(0.2);
-      const it = Features.interactables.find((i) => i.kind === 'portal' && Math.hypot(i.x - E.x, i.z - (E.z + 0.4)) < 0.1);
-      out.prompt = it.prompt() && it.prompt().text;
-      it.use(); st(3);
-      out.riding = !!KHT.ride; out.view = KHSAN.view;
-      st(8);
-      out.arrived = { riding: !!KHT.ride, layer: player.layer, view: KHSAN.view, d: +Math.hypot(player.pos.x - KHT.endB.x, player.pos.z - KHT.endB.z).toFixed(1) };
-      const F = KHSAN.stairFoot; __zs.tp(F.x, F.z - 0.5, Math.PI, -1); __zs.step(3);
-      Features.interactables.find((i) => i.kind === 'portal' && i.y < 0).use(); __zs.step(60 * 1.2);
+      out.quest = Features.interactables.filter((i) => i.kind === 'quest').length;
+      out.items = KHQ.items; out.hud = !KHQ.hud || KHQ.hud.hidden; out.pilot = !KHQ.pilot;
+      out.draisine = Features.interactables.filter((i) => i.prompt && /draisine/.test((i.prompt() || {}).text || '')).length + (KHT.group ? 1 : 0);
+      // un pic de Khamsin (alerte 60 s, tempête 90 s, Khamsin) : le Gardien ne traverse plus
+      __zs.tp(CUR.map.spawn.pos[0], CUR.map.spawn.pos[1], 0); st(0.2);
+      khStormStart(); st(60 + 90 + 15);
+      out.phase = KHS.on ? KHS_PHASES[KHS.i][0] : 'calme';
+      out.gardien = !!(KHG.e && !KHG.e.removed) || Zombies.list.some((z) => z.alive && z.boss);
+      khStormReset(); clearZombies(); khEnemiesReset(); KHR.t = 1e9;
+      out.fiches = SPECIMEN_TYPES.filter((t) => t.boss || t.pilot).length;
       return out;
     });
-    ok(t.riding && t.view === 'tunnel' && !t.arrived.riding && t.arrived.layer === 1 && t.arrived.view === 'under' && t.arrived.d < 2, 'draisine : la galerie mène de la nécropole au sanctuaire', t);
+    ok(nq.quest === 0 && nq.items === null && nq.hud && nq.pilot, 'quête retirée : ni pièces de l’avion, ni pilote, ni objectifs à l’écran', nq);
+    ok(nq.draisine === 0, 'draisine retirée (elle menait à la nécropole, dans la tempête)', nq);
+    ok(nq.phase === 'khamsin' && !nq.gardien && nq.fiches === 0, 'Gardien retiré : il ne traverse plus au pic de Khamsin ; ni lui ni le pilote dans l’écran Modèles', nq);
 
     // ------------------------------------------------------- sauvegarde de la partie (rechargement à chaud)
     const sv = await game.evaluate(() => {
       __play();
-      KHQ.have.fuel = true; KHQ.placed.battery = true; KHQ.frags[1] = true; KHQ.charge = 0.5;
       const V = VEH.list[1]; V.x += 30; V.z += 10; V.fuel = 7;
       const want = [Math.round(V.x), Math.round(V.z)];
       const save = JSON.parse(JSON.stringify(serializeGame()));
       quitToMenu();
-      const cleared = !KHQ.have.fuel;
+      const cleared = Math.round(VEH.list[1].x) !== want[0];
       startGame(save);
       if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
       __zs.god(true); G.roundState = 'pre'; G.roundT = 1e9; __zs.step(5);
       const W = VEH.list[1];
-      return { cleared, map: save.map, have: KHQ.have.fuel, placed: KHQ.placed.battery, frag: KHQ.frags[1], charge: KHQ.charge, veh: [Math.round(W.x), Math.round(W.z), W.fuel], want, power: G.power, door: OW.doors[KHSAN.door.i].open };
+      return { cleared, map: save.map, veh: [Math.round(W.x), Math.round(W.z), W.fuel], want, power: G.power, door: OW.doors[KHSAN.door.i].open };
     });
-    ok(sv.map === 'khamsin' && sv.cleared && sv.have && sv.placed && sv.frag && sv.charge === 0.5 && sv.veh[0] === sv.want[0] && sv.veh[1] === sv.want[1] && sv.veh[2] === 7 && sv.power && sv.door,
-      'sauvegarde : pièces, fragment, charge, véhicules, courant et porte retrouvés', sv);
+    ok(sv.map === 'khamsin' && sv.cleared && sv.veh[0] === sv.want[0] && sv.veh[1] === sv.want[1] && sv.veh[2] === 7 && sv.power && sv.door,
+      'sauvegarde : véhicules, courant et porte du sanctuaire retrouvés', sv);
 
-    // ------------------------------------------------------- quête : trois pièces, avion, Gardien, évasion
-    const q1 = await game.evaluate(() => {
+    // ------------------------------------------------------- zone jouable et tempête permanente (jeu 2.0.6)
+    const zj = await game.evaluate(() => {
       __play();
-      const out = {}, st = (sec) => { for (let i = 0; i < sec * 30; i++) __zs.step(1, 1 / 30); };
-      const hold = (it, sec) => { Input.keys.KeyF = true; for (let i = 0; i < sec * 30; i++) { it.useHold(1 / 30); __zs.step(1, 1 / 30); } Input.keys.KeyF = false; };
-      khQuestReset(); G.roundState = 'pre'; G.roundT = 1e9; clearZombies();
-      const Q = Features.interactables.filter((i) => i.kind === 'quest');
-      const near = (x, zz) => Q.reduce((b, i) => (Math.hypot(i.x - x, i.z - zz) < Math.hypot(b.x - x, b.z - zz) ? i : b));
-      const T = KH.places.C.fuelTank;
-      __zs.tp(T.x, T.z - 1.6, 0); st(0.2);
-      const iFuel = near(T.x, T.z - 1.3);
-      out.fuelPrompt = iFuel.prompt().text;
-      hold(iFuel, 4.3);
-      out.fuel = KHQ.have.fuel;
-      const B = KH.places.E.battery, iBat = near(B.x, B.z - 0.9);
-      st(46);
-      __zs.tp(B.x, B.z - 1.2, 0); st(0.2);
-      out.batPrompt = iBat.prompt().text;
-      iBat.use(); out.battery = KHQ.have.battery;
-      __zs.tp(KH.oasis.x + 110, KH.oasis.z, 1.57); st(1);
-      out.pilot = !!KHQ.pilot && KHQ.pilot.model === 'kh_pilote';
-      if (KHQ.pilot) { damageZombie(KHQ.pilot, 1e7, { kind: 'bullet', dx: 1, dz: 0 }); st(0.3); }
-      out.keyDropped = !!KHQ.key;
-      if (KHQ.key) { const k = KHQ.key.g.position; __zs.tp(k.x, k.z + 1, 0); st(0.1); KHQ.key.it.use(); }
-      out.key = KHQ.have.key;
-      const A = KH.places.G.plane;
-      for (const [x, zz] of [[A.x + 2, A.z + 2.9], [A.x - 10.5, A.z], [A.x - 5.4, A.z - 2.4]]) { __zs.tp(x, zz + (zz > A.z ? 0.8 : -0.8), 0); st(0.1); hold(near(x, zz), 1.7); }
-      out.ready = KHQ.ready;
-      out.objectives = khObjectives().map((l) => l[1]).join(' | ');
+      const out = {}, step = (n = 1) => __zs.step(n, 1 / 60);
+      G.roundState = 'pre'; G.roundT = 1e9; G.spawnT = 1e9; clearZombies();
+      if (VEH.drive) { Input.down.KeyF = true; step(2); }
+      const M = CUR.map;
+      out.cercles = ZONE.circles.length;
+      out.dehors = [...M.wallbuys, ...M.perks, ...M.boxes, ...M.fuel, ...M.breakers, ...M.vehicles].filter((e) => zoneDist(e.x, e.z) > 0).length;
+      out.lieux = (OW.locsShown || []).map((L) => L.name).join(' | ');
+      out.rideau = !!ZONE.curtain && !!ZONE.curtain.parent;
+      // la piste du camp (ab) descend du plateau : on y passe le bord
+      const T = KH.roads.find((r) => r.id === 'ab'), pts = ((T.line && T.line.pts) || T.pts).slice().reverse();
+      const along = [];
+      for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]); for (let s = 0; s < L; s += 2) along.push([a[0] + ((b[0] - a[0]) * s) / L, a[1] + ((b[1] - a[1]) * s) / L]); }
+      const idx = (d) => { let i = 0; while (i < along.length - 1 && zoneDist(along[i][0], along[i][1]) < d) i++; return i; };
+      const tpAt = (i, back) => { const p = along[i], q = along[Math.min(along.length - 1, i + 3)], y = Math.atan2(-(q[0] - p[0]), -(q[1] - p[1])); __zs.tp(p[0], p[1], back ? y + Math.PI : y); };
+      // apparitions : le joueur 20 m avant le bord, puis 30 et 90 m dehors
+      const sp = { dedans: 0, dehors: 0 };
+      for (const d of [-20, 30, 90]) { tpAt(idx(d)); step(1); for (let k = 0; k < 60; k++) { const q = owPickSpawn(); if (q) { if (zoneDist(q.x, q.z) > -4) sp.dehors++; else sp.dedans++; } } }
+      out.apparitions = sp;
+      // un zombie près du bord, le joueur 60 m dehors : il reste dedans ; le champ de flux ne passe pas dehors
+      tpAt(idx(-12)); step(2);
+      const p0 = player.pos.clone(), gy0 = owGroundAt(0, p0.x, p0.z);
+      const zb = spawnZombie({ riser: true, x: p0.x, z: p0.z, y: gy0, li: 0, k: owLocate(p0.x, p0.z, gy0), layer: 0, zone: 0 }, 500);
+      zb.state = 'chase'; zb.t = 0;
+      OWNAV.ready = false; owComputeFlow();
+      let flux = 0;
+      for (let j = 0; j < OWNAV.N; j++) for (let i = 0; i < OWNAV.N; i++) if (OWNAV.walk[j * OWNAV.N + i] && zoneDist(OWNAV.x0 + i + 0.5, OWNAV.z0 + j + 0.5) > 0.5) flux++;
+      out.flux = flux;
+      tpAt(idx(60)); let zmax = -1e9;
+      for (let k = 0; k < 60 * 8; k++) { step(1); if (zb.alive) zmax = Math.max(zmax, zoneDist(zb.pos.x, zb.pos.z)); }
+      out.zmax = +zmax.toFixed(2);
+      clearZombies();
+      // niveaux de la tempête : 20 m avant le bord, puis 30 m dehors
+      const lv = (d) => { tpAt(idx(d)); for (let k = 0; k < 150; k++) step(1); return { lv: +KHS.lv.toFixed(2), vis: Math.round(Math.sqrt(3) / scene.fog.density), carte: OW.mapMode, bandeau: !OWH.storm.hidden ? OWH.storm.textContent : '' }; };
+      out.avant = lv(-20); out.dehors30 = lv(30);
+      tpAt(idx(-150)); for (let k = 0; k < 240; k++) step(1);
+      // à pied, sans dieu : 3 s dehors, puis demi-tour
+      const walk = (turn, max = 40) => {
+        __zs.god(false); player.hp = player.maxHp; ZONE.expo = 0; ZONE.killed = false;
+        let f = idx(-45), t = 0, out0 = null, back = false, min = player.hp;
+        tpAt(f); step(2);
+        while (t < max && G.state === 'playing') {
+          const d = zoneDist(player.pos.x, player.pos.z);
+          if (d > 0 && out0 === null) out0 = t;
+          if (turn !== undefined && out0 !== null && t - out0 >= turn) back = true;
+          f = Math.max(0, Math.min(along.length - 1, f + ((back ? -1 : 1) * 5) / 60 / 2));
+          const p = along[Math.floor(f)]; player.pos.x = p[0]; player.pos.z = p[1]; player.k = -1; player.gy = NaN;
+          step(1); t += 1 / 60; min = Math.min(min, player.hp);
+          if (back && d < -45) break;
+        }
+        return { mort: G.state === 'gameover', dehors: out0 === null ? 0 : +(t - out0).toFixed(1), min: Math.round(min), max: player.maxHp, titre: document.getElementById('go-title').textContent };
+      };
+      out.retour = walk(3);
+      step(60 * 5);
+      out.retour.pvApres = Math.round(player.hp); out.retour.out = ZONE.out; out.retour.expo = +ZONE.expo.toFixed(2);
+      __zs.god(true);
+      // manche de tempête pendant qu'on est au camp : ses phases, sans les dégâts de la zone
+      __zs.tp(M.spawn.pos[0], M.spawn.pos[1], 0); step(2);
+      khStormStart(); for (let k = 0; k < 30 * 175; k++) __zs.step(1, 1 / 30);
+      out.manche = { phase: KHS.on ? KHS_PHASES[KHS.i][0] : 'calme', out: ZONE.out, expo: ZONE.expo };
+      khStormReset(); clearZombies(); khEnemiesReset(); KHR.t = 1e9;
+      // Mastodonte et second souffle, on continue tout droit : la mort, sans réanimation
+      player.perks.add('cuirasse'); player.perks.add('souffle'); player.souffleUses = 0; player.maxHp = RULES.playerHp * 2.5;
+      out.mort = walk(undefined, 60);
       return out;
     });
-    ok(q1.fuel && q1.battery && q1.pilot && q1.keyDropped && q1.key, 'quête : carburant (relais), batterie chargée (centrale), clé sur le pilote (oasis)', q1);
-    ok(q1.ready, 'quête : les trois pièces posées, l’avion est prêt', q1);
-    const q2 = await game.evaluate(() => {
-      __play();
-      const out = {}, st = (sec) => { for (let i = 0; i < sec * 30; i++) __zs.step(1, 1 / 30); };
-      // fragments du Sceptre : les tombes brillent pendant les tempêtes
-      khStormStart(); st(1);
-      const Q = Features.interactables.filter((i) => i.kind === 'quest');
-      for (const ti of [0, 2, 4]) {
-        const T = KH.places.F.tombs[ti], cx = (T.x0 + T.x1) / 2;
-        __zs.tp(cx, T.z0 + 3.6, 0); st(0.2);
-        const it = Q.reduce((b, i) => (Math.hypot(i.x - cx, i.z - (T.z0 + 3.3)) < Math.hypot(b.x - cx, b.z - (T.z0 + 3.3)) ? i : b));
-        it.use();
-      }
-      out.sceptre = KHQ.sceptre;
-      khStormReset(); KHG.lastCross = KHS.n;
-      // le Gardien, au sanctuaire
-      const K = KHSAN.kiosk;
-      __zs.tp(K.x, K.z + 0.5, 0); st(0.2);
-      Features.interactables.find((i) => i.kind === 'portal' && i.y > 0 && Math.hypot(i.x - K.x, i.z - K.z) < 3).use(); st(1.2);
-      const A = KHSAN.altar;
-      __zs.tp(A.x, A.z - 2.6, Math.PI, -1); st(0.2);
-      const wake = Features.interactables.find((i) => i.kind === 'quest' && Math.hypot(i.x - A.x, i.z - (A.z - 1.9)) < 0.1);
-      out.wakePrompt = wake.prompt().text;
-      Input.keys.KeyF = true; for (let i = 0; i < 3.2 * 30; i++) { wake.useHold(1 / 30); __zs.step(1, 1 / 30); } Input.keys.KeyF = false;
-      const e = KHG.e;
-      out.spawned = !!e && e.boss;
-      st(5);
-      out.bar = !!document.querySelector('.kh-boss') && !document.querySelector('.kh-boss').hidden;
-      const hp0 = e.hp; damageZombie(e, 1000, { kind: 'bullet', dx: 0, dz: -1 }); out.chip = Math.round(hp0 - e.hp);
-      __zs.tp(A.x, 1229, Math.PI, -1); e.slamT = 0; let seen = 0;
-      for (let i = 0; i < 30 * 8 && !seen; i++) { __zs.step(1, 1 / 30); if (e.window > 0) seen = 1; }
-      out.window = !!seen;
-      const hp1 = e.hp; damageZombie(e, 1000, { kind: 'bullet', dx: 0, dz: -1 }); out.full = Math.round(hp1 - e.hp);
-      for (let i = 0; i < 80 && e.alive; i++) {
-        e.window = 3; if (e.gstate === 'roar' || e.gstate === 'rise' || e.gstate === 'whirl') { st(0.5); continue; }
-        damageZombie(e, e.maxHp * 0.06, { kind: 'bullet', dx: 0, dz: -1 }); st(0.2);
-      }
-      out.dead = !e.alive && KHG.dead; out.calm = Math.round(KHS.calmT);
-      st(4);
-      return out;
-    });
-    ok(q2.sceptre, 'Sceptre : trois fragments ramassés dans les tombes pendant la tempête', q2);
-    ok(q2.spawned && q2.bar && q2.window && q2.full > q2.chip * 1.5, 'Gardien : réveillé à l’autel (barre de vie) ; touché à pleine force seulement pendant ses fenêtres de tir', q2);
-    ok(q2.dead && q2.calm > 200, `Gardien abattu : la tempête se calme (${q2.calm} s)`, q2);
-    const q3 = await game.evaluate(() => {
-      __play();
-      const out = {}, st = (sec) => { for (let i = 0; i < sec * 30; i++) __zs.step(1, 1 / 30); };
-      const F = KHSAN.stairFoot; __zs.tp(F.x, F.z - 0.5, Math.PI, -1); st(0.1);
-      Features.interactables.find((i) => i.kind === 'portal' && i.y < 0 && Math.hypot(i.x - F.x, i.z - F.z) < 3).use(); st(1.2);
-      const A = KH.places.G.plane;
-      __zs.tp(A.x - 5.4, A.z - 3.2, 0); st(0.2);
-      const it = Features.interactables.find((i) => i.kind === 'quest' && Math.hypot(i.x - (A.x - 5.4), i.z - (A.z - 2.4)) < 0.1);
-      out.escPrompt = it.prompt().text;
-      Input.keys.KeyF = true; for (let i = 0; i < 1.2 * 30; i++) { it.useHold(1 / 30); __zs.step(1, 1 / 30); } Input.keys.KeyF = false;
-      out.escape = !!KHQ.escape;
-      st(61);
-      out.endPrompt = it.prompt().text;
-      Input.keys.KeyF = true; for (let i = 0; i < 1 * 30; i++) { it.useHold(1 / 30); __zs.step(1, 1 / 30); } Input.keys.KeyF = false;
-      out.won = KHQ.won;
-      st(10);
-      out.state = G.state;
-      out.title = document.getElementById('go-title').textContent;
-      out.rounds = document.getElementById('go-rounds').textContent;
-      return out;
-    });
-    ok(q3.escape && q3.won, 'évasion : 60 s de démarrage, puis décollage', q3);
-    ok(q3.state === 'gameover' && q3.title === 'Évasion réussie' && /quitté le Khamsin/.test(q3.rounds), 'victoire : « Évasion réussie »', q3);
+    ok(zj.cercles === 6 && zj.dehors === 0 && zj.lieux === 'Plateau des pyramides' && zj.rideau, 'zone jouable : six cercles « Zone jouable » (le plateau) ; tous les éléments dedans ; seul le plateau à l’écran ; rideau de poussière', zj);
+    ok(zj.apparitions.dedans > 0 && zj.apparitions.dehors === 0, `apparitions des zombies : jamais hors de la zone (${zj.apparitions.dedans} dedans)`, zj.apparitions);
+    ok(zj.zmax <= 0.05 && zj.flux === 0, `le joueur dehors, un zombie reste dans la zone (au plus ${zj.zmax} m dehors) ; leur champ de flux ne passe pas dehors`, zj);
+    ok(zj.avant.lv > 0.2 && zj.avant.lv < 1 && zj.dehors30.lv >= 2 && zj.dehors30.vis < 160 && zj.dehors30.carte === 'off' && zj.dehors30.bandeau === 'Tempête mortelle · faites demi-tour',
+      `tempête permanente : vent avant le bord (niveau ${zj.avant.lv}) ; 30 m dehors : niveau ${zj.dehors30.lv}, ${zj.dehors30.vis} m de visibilité, mini-carte coupée, bandeau`, zj);
+    ok(!zj.retour.mort && zj.retour.min > 0 && zj.retour.min < zj.retour.max && zj.retour.pvApres === zj.retour.max && !zj.retour.out && zj.retour.expo === 0,
+      `demi-tour après 3 s dehors : on survit (${zj.retour.min} PV au plus bas) ; dedans, plus de dégâts, la vie remonte`, zj.retour);
+    ok(zj.manche.phase === 'khamsin' && !zj.manche.out && zj.manche.expo === 0, 'manche de tempête au camp : ses phases (Khamsin), sans les dégâts de la zone', zj.manche);
+    ok(zj.mort.mort && zj.mort.titre === 'Emporté par le Khamsin' && zj.mort.dehors > 5 && zj.mort.dehors < 16,
+      `Mastodonte et second souffle, on continue : mort dans la tempête après ${zj.mort.dehors} s dehors, sans réanimation`, zj.mort);
     await game.waitForFunction(() => !document.getElementById('gameover').hidden, null, { timeout: 30000 });
     await game.click('#btn-go-menu');
     await game.waitForFunction(() => ZS.G.state === 'menu' && !document.getElementById('menu').hidden);
@@ -462,18 +574,19 @@ const USER = path.join(TMP, 'joueur');
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
       const vis = (id) => !document.getElementById(id).hidden;
       const txt = (id) => document.getElementById(id).textContent;
-      ok(/Khamsin/.test(txt('menu-eyebrow')) && /trois pièces de l’avion/.test(txt('menu-lead')), 'menu : rapport d’incident et consigne de Khamsin', [txt('menu-eyebrow'), txt('menu-lead')]);
-      ok(!vis('tip-planks') && vis('tip-box') && /voyage de lieu en lieu/.test(txt('tip-box')) && vis('tip-power') && /centrale du Nil/.test(txt('tip-power')) && vis('tip-veh') && vis('tip-storm'),
-        'consignes de Khamsin : pas de planches ; boîte qui voyage, centrale du Nil, véhicules, tempêtes', ['tip-planks', 'tip-box', 'tip-power', 'tip-veh', 'tip-storm'].map((id) => (vis(id) ? '' : '[caché] ') + txt(id).slice(0, 40)));
+      ok(/Khamsin/.test(txt('menu-eyebrow')) && /plateau des pyramides/.test(txt('menu-eyebrow')) && /la tempête tue/.test(txt('menu-lead')), 'menu : rapport d’incident et consigne de Khamsin (le plateau, la tempête)', [txt('menu-eyebrow'), txt('menu-lead')]);
+      ok(!vis('tip-planks') && vis('tip-box') && /voyage de lieu en lieu/.test(txt('tip-box')) && vis('tip-power') && /hangar du plateau/.test(txt('tip-power')) && vis('tip-veh') && vis('tip-storm'),
+        'consignes de Khamsin : pas de planches ; boîte qui voyage, disjoncteurs du hangar, véhicules, tempêtes', ['tip-planks', 'tip-box', 'tip-power', 'tip-veh', 'tip-storm'].map((id) => (vis(id) ? '' : '[caché] ') + txt(id).slice(0, 40)));
       return out;
     })).forEach(report);
 
-    // ------------------------------------------------------- écran « Modèles » : Desséchés, pilote, Rôdeur, Gardien
+    // ------------------------------------------------------- écran « Modèles » : Desséchés et Rôdeur (jeu 2.0.6 : ni pilote, ni Gardien)
     await game.click('#btn-models');
     await game.waitForFunction(() => !document.getElementById('models').hidden);
     const md = await game.evaluate(() => {
       const out = {};
-      for (const id of ['kh_arch', 'kh_ouvrier', 'kh_villageois', 'kh_pilote', 'kh_rodeur', 'kh_gardien']) {
+      for (const id of ['kh_pilote', 'kh_gardien']) out[id] = { listed: !!document.querySelector(`#md-tabs [data-id="${id}"]`) };
+      for (const id of ['kh_arch', 'kh_ouvrier', 'kh_villageois', 'kh_rodeur']) {
         const listed = !!document.querySelector(`#md-tabs [data-id="${id}"]`);
         selectSpecimen(id);
         for (let i = 0; i < 12; i++) renderModels(1 / 30);
@@ -482,8 +595,8 @@ const USER = path.join(TMP, 'joueur');
       }
       return out;
     });
-    const mdOk = Object.values(md).every((m) => m.listed && m.name && m.drawn > 0.005);
-    ok(mdOk, 'Modèles : fiches et modèles 3D des trois Desséchés, du pilote, du Rôdeur et du Gardien', md);
+    const mdOk = ['kh_arch', 'kh_ouvrier', 'kh_villageois', 'kh_rodeur'].every((id) => md[id].listed && md[id].name && md[id].drawn > 0.005) && !md.kh_pilote.listed && !md.kh_gardien.listed;
+    ok(mdOk, 'Modèles : fiches et modèles 3D des trois Desséchés et du Rôdeur ; ni pilote ni Gardien', md);
     await game.evaluate(() => showScreen('menu'));
 
     // ------------------------------------------------------- retour au Bunker 7

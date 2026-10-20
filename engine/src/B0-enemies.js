@@ -323,6 +323,7 @@ function khRodeurs(dt) {
     const cx = Math.floor(x), cz = Math.floor(z);
     if (owKind(OW.surf, cx, cz) !== OWK.TERRAIN || !owWalkCell(0, cx, cz)) continue;   // dans le sable, pas dans un lieu
     if (Math.abs(owGroundAt(0, x, z) - player.gy) > 6) continue;
+    if (zoneOn() && zoneDist(x, z) > -4) continue;                                       // jeu 2.0.6 : pas hors de la zone jouable
     if (khSpawnRodeur(x, z)) return;
   }
 }
@@ -657,7 +658,7 @@ function khSpecimenSetup() {
   SPECIMEN_FACTS.kh = (type) => {
     const hit = RULES.zombieHit * type.mult.damage, mh = type.mult.hp, hp = (r) => fmtNum(khHp(r) * mh, 0), d = type.drop, pct = (x) => `${fmtNum(x * 100, 2)} %`;
     const sp = (k) => `${fmtNum(SPEEDS[k][0])} à ${fmtNum(SPEEDS[k][1])}`;
-    const where = { kh_arch: 'Surtout au camp de fouilles et au plateau', kh_ouvrier: 'Surtout à la centrale, au relais Km 47 et à l’aérodrome', kh_villageois: 'Surtout à l’oasis de Sekhet', kh_pilote: 'Seul, autour du bassin de l’oasis de Sekhet' }[type.id] || 'Partout';
+    const where = { kh_arch: 'Sur le plateau des pyramides', kh_ouvrier: 'Sur le plateau des pyramides', kh_villageois: 'Sur le plateau des pyramides, plus rarement', kh_pilote: 'Seul, autour du bassin de l’oasis de Sekhet' }[type.id] || 'Partout';
     const details = [
       ['Apparaît', 'Khamsin', '', `${where} ; ils sortent du sable autour de vous`],
       ['Points de vie', `${hp(1)} → ${hp(10)} → ${hp(20)}`, '', mh > 1 ? `Manches 1, 10 et 20 : ${fmtNum(mh, 0)} fois ceux d’un Desséché` : 'Manches 1, 10 et 20 : 150, +100 par manche jusqu’à la 10, puis ×1,1'],

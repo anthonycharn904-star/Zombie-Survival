@@ -186,6 +186,9 @@ async function run(userData) {
     const mi = await idx(MESS);
     const D0 = await mt.evaluate(() => ZS.ow.placeItems().map((d) => !!d.surf));
     const tables0 = await mt.evaluate(([mi, D0]) => ZS.ow.placeItems()[mi].kids.filter((k) => !D0[k]).map((k) => { const s = ZS.ow.placeState(MT.state.map)[k]; return [s.x, s.z]; }), [mi, D0]);
+    // jeu 2.0.6 : les armes du camp sont au camp du plateau ; on remet les trois armes d'avant au fond de la tente
+    await mt.evaluate(() => MT.edit('Arme au mur', (m) => { for (const [w, x] of [['kar98k', 2300], ['g43', 2305], ['mp40', 2310]]) m.wallbuys.push({ w, x, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 }); }, 'ow-el'));
+    await rebuilt();
     const wb0 = await mt.evaluate(() => MT.state.map.wallbuys.map((w) => [w.x, w.z]));
     await mt.evaluate((mi) => { MT.select({ kind: 'place', i: mi }); MT.ui.setTab('sel'); }, mi);
     await render();

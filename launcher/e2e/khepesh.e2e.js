@@ -3,7 +3,7 @@
    de Khamsin (et des cartes faites à partir d'elle ; le Désert vierge garde le couteau depuis la
    construction 2), faite d'après le fichier khepesh-melee.js d'Anthony (module intégré au script du
    jeu, sans variable globale ni écoute du clavier ; reflets du bronze du fichier préfiltrés par le module au chargement ;
-   bras aux couleurs des gants et des manches du jeu). Touché quand la lame arrive (0,3 s) : jusqu'à
+   bras aux couleurs d'Anthony, gant de ses mitaines et manche de sa veste, jeu 2.0.6). Touché quand la lame arrive (0,3 s) : jusqu'à
    3 zombies, 150, 113 et 75 dégâts, +10 par touche ; saignement (la moitié des dégâts en 4 s, sans
    points ; mort au corps-à-corps, +130) ; raté (personne, trop loin, hors de l'arc), mur ; Rôdeur qui
    agrippe : il lâche prise ; enchaînement ; vue immobile ; arme baissée puis revenue ; pas de tir
@@ -47,7 +47,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.5' && GAME_BUILD === 1 && ZS.build === 1, 'jeu 2.0.5, construction 1', { GAME_VERSION, GAME_BUILD, b: ZS.build });
+      ok(GAME_VERSION === '2.0.6' && GAME_BUILD === 1 && ZS.build === 1, 'jeu 2.0.6, construction 1', { GAME_VERSION, GAME_BUILD, b: ZS.build });
       ok(typeof creerKhepesh === 'function' && window.creerKhepesh === undefined, 'module du khépesh dans le script du jeu, sans variable globale');
       ok(Khepesh === null && CUR.map && CUR.map.id === 'bunker7' && meleeName() === 'Couteau' && $('key-melee').textContent === 'Couteau',
         'au menu sur Bunker 7 : « V ou E : Couteau », pas de khépesh', { map: CUR.map && CUR.map.id, key: $('key-melee').textContent });
@@ -133,13 +133,16 @@ const USER = path.join(TMP, 'joueur');
         `Khamsin : khépesh fait au chargement (${KHEPESH.buildMs} ms), menu « V ou E : Khépesh »`, { key: $('key-melee').textContent, ms: KHEPESH.buildMs });
       ok(Khepesh.sceneVue && Khepesh.sceneVue !== vmScene && Khepesh.sceneVue !== Couteau.sceneVue && Khepesh.rig.parent && !Khepesh.rig.visible, 'bras au khépesh dans sa propre vue, caché au repos');
       // reflets du bronze : la salle aux torches du fichier, préfiltrée par le module au chargement (PMREMGenerator, cubeUV)
-      let bronze = null, glove = false, sleeve = 0, tris = 0;
+      const lin = (h) => new THREE.Color(h).convertSRGBToLinear(), near = (c, w) => c && Math.abs(c.r - w.r) + Math.abs(c.g - w.g) + Math.abs(c.b - w.b) < 1e-6;
+      const gant = lin(PERSO_BRAS_COULEURS.gant), manche = lin(PERSO_BRAS_COULEURS.manche);
+      let bronze = null, glove = false, sleeve = 0, old = 0, tris = 0;
       Khepesh.rig.traverse((m) => {
         if (m.geometry) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
-        if (m.material === MAT.sleeve) sleeve++;
+        if (m.material === MAT.sleeve) old++;
         if (m.material && m.material.metalness === 1 && m.material.roughnessMap) bronze = m.material;
         const c = m.material && m.material.color;
-        if (c && Math.abs(c.r - MAT.glove.color.r) + Math.abs(c.g - MAT.glove.color.g) + Math.abs(c.b - MAT.glove.color.b) < 1e-6) glove = true;
+        if (near(c, gant)) glove = true;
+        if (m.isMesh && near(c, manche)) sleeve++;
       });
       const env = bronze && bronze.envMap;
       ok(env && env.mapping === THREE.CubeUVReflectionMapping && env.image && env.image.width === 768 && typeof khepeshEnv === 'undefined' && !('env' in KHEPESH),
@@ -147,7 +150,7 @@ const USER = path.join(TMP, 'joueur');
       // couleur du bronze du fichier (0xc98f52), convertie comme les matières du jeu
       const want = new THREE.Color(0xc98f52).convertSRGBToLinear();
       ok(bronze && Math.abs(bronze.color.r - want.r) + Math.abs(bronze.color.g - want.g) + Math.abs(bronze.color.b - want.b) < 1e-6, 'bronze du fichier (0xc98f52), converti en linéaire comme le jeu');
-      ok(glove && sleeve === 2, 'bras : gant à la couleur des gants du jeu, manche et revers dans la matière des manches du jeu', { glove, sleeve });
+      ok(glove && sleeve === 2 && old === 0, 'bras aux couleurs d’Anthony : gant de ses mitaines, manche et revers de sa veste (plus le treillis du jeu)', { glove, sleeve, old });
       ok(tris > 30000 && tris < 120000, `bras et khépesh : ${Math.round(tris)} triangles (dessinés seulement pendant le coup)`);
       ok(Math.abs(Khepesh.debug.contact.touche - 0.3) < 1e-9 && Math.abs(Khepesh.debug.duree.touche - 1.06) < 1e-9 && Math.abs(Khepesh.debug.duree.rate - 1.14) < 1e-9,
         'animations du fichier : la lame arrive à 0,3 s ; touché 1,06 s, raté 1,14 s', { c: Khepesh.debug.contact, d: Khepesh.debug.duree });

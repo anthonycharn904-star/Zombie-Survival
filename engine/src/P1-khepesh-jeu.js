@@ -100,13 +100,13 @@ function buildKhepesh() {
     degats: KHEPESH.damage, saignement: KHEPESH.bleed, rayonCible: KHEPESH.radius,
     choisirCible: khepeshChoose, onHit: khepeshOnHit, onSaignement: khepeshBleed,
     getHitPoint: (z) => khepeshPoint(z, _khpP), getSol: (z) => z.gy,
-    couleurs: { gant: 0x3b2a1d, manche: 0x4f5638 },          // MAT.glove, MAT.sleeve
+    couleurs: persoCouleursBras(),                           // jeu 2.0.6 : ceux d'Anthony (veste, mitaines)
     gravite: 9.81, hauteurSol: 0,
     son: true, volume: KHEPESH.volume, audio: () => Sound.bus(),
     secousseCamera: false, secousseFOV: false, modeCamera: 'reinitialise',
   });
-  // manche : la matière des bras du jeu (même couleur, même toile), comme pour le couteau
-  Khepesh.rig.traverse((m) => { if (m.material && m.material.color && !m.material.map && m.material.color.equals(MAT.sleeve.color)) m.material = MAT.sleeve; });
+  // manche : sans le modèle d'Anthony, la matière des bras du jeu (même couleur, même toile), comme pour le couteau
+  persoMancheBras(Khepesh.rig);
   // matières compilées au chargement : pas d'à-coup au premier coup
   Khepesh.rig.visible = true; renderer.compile(Khepesh.sceneVue, Khepesh.cameraVue); Khepesh.rig.visible = false;
   KHEPESH.buildMs = Math.round(performance.now() - t0);

@@ -1,8 +1,10 @@
 # Noms déclarés au niveau du script (const/let/var/function/class en début de ligne) : doublons ?
 import re, sys
 src = open(sys.argv[1], encoding='utf-8').read()
-# le script principal : entre <script> (le dernier gros bloc)
-m = max(re.finditer(r'<script>(.*?)</script>', src, re.S), key=lambda x: len(x.group(1)))
+# le script principal : le bloc <script> qui déclare GAME_VERSION (depuis le jeu 2.0.6, les données du
+# personnage forment un bloc presque aussi gros : le plus gros bloc ne suffit plus à le reconnaître)
+blocs = [b for b in re.finditer(r'<script>(.*?)</script>', src, re.S) if 'const GAME_VERSION' in b.group(1)]
+m = blocs[0] if len(blocs) == 1 else max(re.finditer(r'<script>(.*?)</script>', src, re.S), key=lambda x: len(x.group(1)))
 code = m.group(1)
 names = {}
 for ln, line in enumerate(code.split('\n'), 1):

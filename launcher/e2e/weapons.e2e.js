@@ -1,5 +1,7 @@
 'use strict';
-/* Armes et rechargements (jeu 1.9.0) dans la fenêtre du jeu du launcher : modèles aux dimensions
+/* Armes et rechargements (jeu 1.9.0 ; prise des armes du jeu 2.0.6 : prises déclarées et solveur anatomique,
+   index sur la détente et détente tirée au tir, poignets dans leurs limites, pièces saisies au rechargement)
+   dans la fenêtre du jeu du launcher : modèles aux dimensions
    réelles (pièces mobiles, paliers du Glas, dessins à la craie, présentoirs), mains articulées
    ajustées sur chaque arme (paume, doigts et pouce contre l'arme, sans la traverser ; pouce posé
    sur l'arme ou les doigts ; poignet dans l'axe de l'avant-bras ; pistolets tenus d'une main, la
@@ -44,7 +46,7 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(ZS.version === v && GAME_VERSION === '2.0.5', `jeu ${v}`, ZS.version);
+      ok(ZS.version === v && GAME_VERSION === '2.0.6', `jeu ${v}`, ZS.version);
       const REAL = { m1911: 0.216, kar98k: 1.11, g43: 1.13, mp40: 0.833, thompson: 0.851, trench: 1.0, dbarrel: 1.1, stg44: 0.94, bar: 1.214, ppsh: 0.843, type100: 0.89, fg42: 0.975, mg42: 1.22, panzer: 1.64 };
       const ids = Object.keys(WEAPONS);
       ok(ids.length === 16 && ids.every((id) => GUN_MODELS[id] && RELOADS[id]), '16 armes : un modèle et un rechargement chacune', ids);
@@ -94,19 +96,47 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
           if (palmHit(G, hand)) pen.push([id, side, 'paume']);
           hand.fingers.forEach((bs, i) => bs.forEach((b, j) => { if (!(side === 'R' && i === 0) && phalanxHit(G, b, HAND.fingers[i].L[j], HAND.fingers[i].r[j] * 0.35, j === 2)) pen.push([id, side, `doigt ${i}.${j}`]); }));
           hand.thumb.forEach((b, j) => { if (phalanxHit(G, b, HAND.thumb.L[j], HAND.thumb.r[j] * 0.35, j === 2)) pen.push([id, side, `pouce ${j}`]); });
-          // pouce posé : au moins deux phalanges à moins de 4 mm de l'arme ou des doigts de la même main
+          // pouce posé : au moins deux phalanges à moins de 4 mm de l'arme ou des doigts de la même main, ou (jeu
+          // 2.0.6) le bout à moins de 4 mm et le milieu à moins de 15 mm (sous un fût large, le pouce monte en biais
+          // le long du flanc, bout en appui)
           const TF = []; for (const f of hand.fingers) objTris(f[0], TF);
           const TT = new Float32Array(TN.length + TF.length); TT.set(TN); TT.set(TF, TN.length);
-          const GT = triGrid(TT, c, 0.16);
-          let near = 0; hand.thumb.forEach((b, j) => { if (phalanxHit(GT, b, HAND.thumb.L[j], HAND.thumb.r[j] + 0.004, j === 2)) near++; });
-          if (near < 2) air.push([id, side, near]);
+          const GT = triGrid(TT, c, 0.16), th = hand.thumb, TH = HAND.thumb;
+          let near = 0; th.forEach((b, j) => { if (phalanxHit(GT, b, TH.L[j], TH.r[j] + 0.004, j === 2)) near++; });
+          const tipOn = phalanxHit(GT, th[2], TH.L[2], TH.r[2] + 0.004, true), midNear = phalanxHit(GT, th[1], TH.L[1], TH.r[1] + 0.015, false);
+          if (near < 2 && !(tipOn && midNear)) air.push([id, side, { near, bout: tipOn, milieu: midNear }]);
         }
       }
       ok(!pen.length, 'mains ajustées sur chaque arme : paume, doigts et pouce sans traverser l’arme', pen);
-      ok(!air.length, 'chaque pouce posé sur l’arme ou enroulé sur les doigts (pas de pouce en l’air)', air);
+      ok(!air.length, 'chaque pouce posé sur l’arme ou enroulé sur les doigts (bout en appui, pas de pouce en l’air ni dressé)', air);
       ok(!one.length, 'M1911 et Désintégrateur tenus d’une main (main gauche hors champ au repos), les autres à deux mains', one);
       ok(!nofit.length, 'chaque doigt et chaque pouce trouve sa place contre l’arme (index sur la détente)', nofit);
       ok(!Object.keys(slow).length, `ajustement des mains en moins de 150 ms par arme (calculé pendant le menu ; le plus long : ${maxMs} ms)`, slow);
+      // prise des armes (jeu 2.0.6) : prise déclarée et solveur anatomique pour chaque arme ; pulpe de l'index sur
+      // la face avant de la détente ; gant écrasé de 2,5 mm au plus contre l'arme (index des pistolets : il
+      // traverse l'ouverture étroite du pontet, 8,5 mm tolérés) ; articulations dans leurs limites ; prise
+      // « détente tirée » ; pièces saisies au rechargement (chargeur, levier) ajustées
+      {
+        const nodecl = ids.filter((id) => !PRISES[id]), far = [], deep = [], lim = [], nopress = [], rl = [];
+        for (const id of ids) {
+          const g = buildGun(id, 0); g.updateMatrixWorld(true);
+          const H = gunHold(g), M = prMeasureHold(g, H);
+          if (!(M.R && M.R.detente_mm <= 4.5)) far.push([id, M.R && M.R.detente_mm]);
+          for (const side of ['R', 'L']) {
+            if (!M[side]) continue;
+            for (const [k, v] of Object.entries(M[side].pen)) if (v > (side === 'R' && k[0] === 'i' && ['m1911', 'raygun'].includes(id) ? 8.5 : 2.5)) deep.push([id, side, k, v]);
+            if (M[side].limites.length) lim.push([id, side, M[side].limites]);
+          }
+          if (!H.R.press) nopress.push(id);
+          const cfg = RELOADS[id].cfg, R = PRISES[id] && PRISES[id].recharge;
+          if (R) { prFitReload(g); if ((R.chargeur && !cfg.grip._pr) || (R.levier && !cfg.bolt.grip._pr)) rl.push(id); }
+        }
+        ok(!nodecl.length, 'prise déclarée (PRISES) et solveur anatomique pour chacune des 16 armes', nodecl);
+        ok(!far.length, 'index sur la détente : pulpe à 4,5 mm au plus de sa face avant, chaque arme', far);
+        ok(!deep.length, 'mains posées sans traverser l’arme (gant écrasé de 2,5 mm au plus)', deep);
+        ok(!lim.length, 'doigts et pouces dans les limites de leurs articulations', lim);
+        ok(!nopress.length && !rl.length, 'prise « détente tirée » pour chaque arme ; chargeur et levier ajustés sur leurs pièces (STG-44, MP40, Thompson, FG42)', { nopress, rl });
+      }
       // M1911 (tenu d'une main) : main basse sur la poignée (base de l'index pas plus haut que la détente,
       // majeur sous le pontet), pouce passé derrière la poignée et posé sur le flanc gauche
       {
@@ -168,6 +198,32 @@ const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'game', 'game.json'), 'u
         }
       }
       ok(!Object.keys(bent).length, 'poignets dans l’axe de l’avant-bras (moins de 70° de pli à la hanche, chaque arme)', bent);
+      // poignets dans leurs limites confortables (jeu 2.0.6 : le coude tourne pour garder le poignet neutre) :
+      // extension et flexion 40°, inclinaison 30° vers l'auriculaire, 15° vers le pouce
+      const strain = {};
+      for (const id of ids) {
+        __zs.give(id, 0); step(40);
+        for (const arm of [Arms.armR, Arms.armL]) {
+          if (!arm.root.visible) continue;
+          const w = arm.hand.wrist, fa = w.position.clone().sub(arm.elbow.position).normalize(), a = prWristAngles(fa, w.quaternion, arm.left);
+          const ext = a.ext * 180 / Math.PI, uln = a.uln * 180 / Math.PI;
+          if (Math.abs(ext) > 40 || uln > 30 || uln < -15) strain[`${id}${arm.left ? 'G' : 'D'}`] = [Math.round(ext), Math.round(uln)];
+        }
+      }
+      ok(!Object.keys(strain).length, 'poignets dans leurs limites : extension et flexion 40°, inclinaison 30° vers l’auriculaire, 15° vers le pouce', strain);
+      // tir : la détente recule et l'index se plie avec elle, puis tout revient au repos
+      {
+        __zs.give('stg44', 0); step(40);
+        const s = curSlot(); s.mag = wstat(s, 'mag'); s.res = 999;
+        // pulpe de l'index dans le repère de l'arme (z vers l'arrière)
+        const F = HAND.fingers[0], pad = () => { Arms.root.updateMatrixWorld(true); const v = Arms.armR.hand.fingers[0][2].localToWorld(new THREE.Vector3(0, -F.r[2] * 0.92, -F.L[2] * 0.55)); return Arms.gun.worldToLocal(v).z; };
+        const tp = Arms.gun.userData.parts.trigger, z0 = pad();
+        Input.lmb = true; Input.lmbDown = true; step(1); Input.lmbDown = false; step(3);
+        const ang = tp.quaternion.angleTo(tp.userData.restQ), z1 = pad();
+        Input.lmb = false; step(40);
+        const back = tp.quaternion.angleTo(tp.userData.restQ), z2 = pad();
+        ok(ang > 0.2 && z1 - z0 > 0.0015 && back < 1e-4 && Math.abs(z2 - z0) < 2e-4, `tir : la détente recule (${ang.toFixed(2)} rad), la pulpe de l’index la suit (${((z1 - z0) * 1000).toFixed(1)} mm), puis tout revient`, { ang, z0, z1, z2, back });
+      }
       // rechargements : tactique et à vide, durée, munitions, pièces revenues en place
       const durs = {}, fails = [];
       for (const id of ids) {

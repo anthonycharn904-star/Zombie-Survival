@@ -203,17 +203,25 @@ function khPlanDraw(c, opts = {}, clip = null) {
    Khamsin dans le catalogue : une carte « ouverte » (open), sans grille. */
 const KHAMSIN = {
   id: 'khamsin', open: true, format: 1, name: 'Khamsin',
-  description: 'Désert égyptien. Douze kilomètres carrés entre la mer de sable et le Nil, sept lieux reliés par la route du Km 47. Le faisceau de la Grande Pyramide guide les survivants.',
-  eyebrow: 'Rapport d’incident · Khamsin · route du Km 47',
-  lead: 'Survivez dans le désert le plus longtemps possible, ou réunissez les trois pièces de l’avion, abattez le Gardien du sanctuaire et décollez de l’aérodrome.',
+  // jeu 2.0.6 : la carte ramenée au plateau des pyramides, cerné par la tempête (Anthony, 18 octobre 2026)
+  description: 'Désert égyptien. Le plateau des trois pyramides, cerné par une tempête de sable qui ne retombe jamais. Le faisceau de la Grande Pyramide guide les survivants.',
+  eyebrow: 'Rapport d’incident · Khamsin · plateau des pyramides',
+  lead: 'Survivez sur le plateau des pyramides le plus longtemps possible. Au-delà du plateau, la tempête tue.',
   rules: { startPoints: 500, startWeapon: 'm1911', powerOn: false, boxWeapons: null },
-  spawn: { pos: [2350, 1992], yaw: 0.47, lv: 0 },
+  spawn: { pos: [2160, 1500], yaw: 0.153, lv: 0 },       // jeu 2.0.6 : camp du plateau (avant : camp de fouilles)
   ambiance: { sky: '#e6ad74', fog: '#e6ad74', fogDensity: 0.00058, hemiSky: '#9aa9c2', hemiGround: '#c8915c', hemi: 0.8, exposure: 1.0, moon: false, trees: 0, pipes: false, wallHeight: 3.5 },
   boxes: [], perks: [], doors: [], wallbuys: [], lights: [], signs: [], props: [], zones: [], risers: [], power: null, amp: null, digipass: null, altar: true,
-  thumb: null, menuCam: null, seed: 4747, updated: '2026-10-09',
+  thumb: null, menuCam: null, seed: 4747, updated: '2026-10-18',
 };
 function khThumb() {
-  if (!KHAMSIN.thumb) { try { KHAMSIN.thumb = khPlanCanvas(640, 360).toDataURL('image/jpeg', 0.86); } catch (e) { KHAMSIN.thumb = null; } }
+  // jeu 2.0.6 : le plan en relief et le bord de la zone jouable (les lieux du dehors n'y sont plus)
+  if (!KHAMSIN.thumb) {
+    try {
+      const zc = zoneCirclesOf(KHAMSIN), c = khPlanCanvas(640, 360, zc.length ? { pins: false } : undefined);
+      zoneMapOutline(c, zc);
+      KHAMSIN.thumb = c.toDataURL('image/jpeg', 0.86);
+    } catch (e) { KHAMSIN.thumb = null; }
+  }
   return KHAMSIN.thumb;
 }
 /* Catalogue vu par les Mod Tools (window.ZS.MAPS) : sans les cartes ouvertes, qui ne s'éditent pas. */
@@ -248,7 +256,8 @@ function owLoad(map, opts = {}) {
   owUseBase(map.base);
   const places = owBaseHasPlaces();
   if (!map.menuCam) {
-    const cam = [2405, 0, 2085];
+    // jeu 2.0.6 : avec une zone jouable, depuis le départ du joueur (le camp est dans la tempête)
+    const cam = zoneCirclesOf(map).length && map.spawn ? [map.spawn.pos[0], 0, map.spawn.pos[1]] : [2405, 0, 2085];
     cam[1] = owH(cam[0], cam[2]) + 2.4;
     map.menuCam = { pos: cam, look: [2120, owH(2120, 1240) + 70, 1240], sway: [3, 1.5], auto: true };
   }
@@ -287,6 +296,7 @@ function owLoad(map, opts = {}) {
   owBuildElements(root, map, { perProp: !!opts.editor });
   owBuildFarRing(root);
   owBuildSandWall(root);
+  owZoneSetup(root, map, opts);                         // jeu 2.0.6 : zone jouable et tempête permanente
   World.root = root;
   linearizeTree(root);
   scene.add(root);
@@ -364,6 +374,7 @@ function owUpdate(dt) {
   if (OW.sandFX) OW.sandFX.update(dt);
   const places = owBaseHasPlaces();
   khStormUpdate(dt);
+  zoneUpdate(dt);                                       // jeu 2.0.6 : exposition, dégâts et rideau de la zone jouable
   if (places) { khSanctuaryUpdate(dt); khPyrUpdate(dt); }
   owVehUpdate(dt);
   khRodeurs(dt);
@@ -397,7 +408,10 @@ function owHud(on) {
   }
   if (OWH.map) { OWH.map.hidden = !on; OWH.comp.hidden = !on; OWH.drive.hidden = true; OWH.storm.hidden = true; }
   if (!on) { luO2Hud(false); if (LUQ.hud) LUQ.hud.hidden = true; }
-  if (on && !OWH.bg && OW.H) OWH.bg = OW.worldId === 'lune' ? luPlanCanvas(1000, 1000, { relief: true, pins: false }) : khPlanCanvas(1000, 750, { relief: true, pins: owBaseHasPlaces() });
+  if (on && !OWH.bg && OW.H) {
+    OWH.bg = OW.worldId === 'lune' ? luPlanCanvas(1000, 1000, { relief: true, pins: false }) : khPlanCanvas(1000, 750, { relief: true, pins: owBaseHasPlaces() && !zoneOn() });
+    zoneMapOutline(OWH.bg);                              // jeu 2.0.6 : bord de la zone jouable
+  }
 }
 function owUpdateHud(dt) {
   OWH.t -= dt;
@@ -408,7 +422,9 @@ function owUpdateHud(dt) {
   HUD.el.hud.classList.toggle('ow-driving', !!V);
   OWH.drive.hidden = !V;
   if (V) {
-    OWH.dName.textContent = V.T.name;
+    // jeu 2.0.6, jeep : rapport (AR en marche arrière) et régime à côté du nom
+    const J = V.mech && V.mech.state;
+    OWH.dName.textContent = !J ? V.T.name : `${V.T.name} · ${J.engine === 'off' ? 'moteur coupé' : J.engine === 'cranking' ? 'démarreur' : `${J.gear === -1 ? 'AR' : J.gear === 1 ? '1re' : `${J.gear}e`} · ${(Math.round(J.rpm / 50) * 50).toLocaleString('fr-FR')} tr/min`}`;
     OWH.dSpd.textContent = Math.round(Math.abs(V.v) * 3.6);
     OWH.dFuel.style.width = `${Math.round((V.fuel / V.T.fuel) * 100)}%`;
     OWH.dFuel.parentNode.classList.toggle('low', V.fuel / V.T.fuel < 0.2);
@@ -537,6 +553,7 @@ function owDecalSlope(x, y, z) {
 function owResetWorld() {
   if (OW.worldId === 'lune') { luResetWorld(); khEnemiesReset(); owResetFeatures(); return; }
   khStormReset();
+  zoneReset();
   if (owBaseHasPlaces()) { khSanctuaryReset(); khGardienReset(); khQuestReset(); khTunnelReset(); khPyrReset(); }
   khEnemiesReset();
   owResetVehicles();

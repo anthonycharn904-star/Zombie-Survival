@@ -26,7 +26,11 @@ const GARDIEN_TYPE = {
   desc: 'Le gardien du sanctuaire sous la Grande Pyramide. Le sceau brisé l’a réveillé ; la tempête est son souffle.',
   mult: { hp: 1, speed: 1, damage: 1.5 }, headMult: 1.5, ability: 'Tourbillon',
 };
-SPECIMEN_TYPES.push(GARDIEN_TYPE, KH_PILOTE_TYPE);   // onglets dans l'ordre des numéros : K-05, K-06
+/* Jeu 2.0.6 : le Gardien retiré de Khamsin avec la quête (Anthony, 18 octobre 2026) : ni traversée aux pics
+   de Khamsin, ni combat au sanctuaire ; le pilote (pièce ③ de la quête) non plus. Leurs fiches quittent
+   l'écran Modèles ; le code reste, éteint. */
+const KHG_ON = false;
+if (KHG_ON) SPECIMEN_TYPES.push(GARDIEN_TYPE, KH_PILOTE_TYPE);   // onglets dans l'ordre des numéros : K-05, K-06
 
 /* ---- Matières : corps de basalte fendu (fissures turquoise en émission), or, faïence, lin */
 function khGardienMats() {
@@ -510,6 +514,7 @@ function khGardienSpark(x, y, z, dx, dz) {
 
 /* ---- Traversée au pic du Khamsin : le long du couloir, il renverse les véhicules */
 function khGardienStormTick(dt) {
+  if (!KHG_ON) return;                                 // jeu 2.0.6 : Gardien retiré
   if (KHG.hintT > 0) KHG.hintT -= dt;
   khPushUpdate(dt);
   if (KHG.R && (!KHG.e || KHG.e.removed)) { KHG.R.root.visible = false; if (KHG.tornado) KHG.tornado.group.visible = false; }

@@ -6,12 +6,20 @@
    chocs contre les murs, les falaises, l'eau et les autres véhicules ; les zombies sont écrasés
    au-dessus d'une vitesse, repoussés en dessous. Seul, le conducteur ne tire pas.
    Repère d'un véhicule : x à droite, y en haut, l'avant vers -z (comme la caméra) ; yaw comme
-   celui du joueur (avant = (-sin yaw, -cos yaw)). */
+   celui du joueur (avant = (-sin yaw, -cos yaw)).
+   Jeu 2.0.6 : le 4×4 de fouilles est la jeep d'archéologie d'Anthony (engine/orig/jeep/, insérée telle
+   quelle par build.py) : son modèle (createArcheoJeep), sa mécanique (createJeepDrive : 60 ch, trois
+   rapports, démarreur, marche arrière au frein maintenu) et son son (createJeepAudio). Le jeu garde ses
+   règles : plafonds de vitesse de la planche selon le sol, carburant, ensablement, tempête, pente,
+   collisions, renversement par le Gardien. Le buggy et le camion ne changent pas. */
 const VEH_TYPES = {
+  // jeep : mesures de son modèle et de son INTEGRATION.md (boîte de collision 1,62 × 3,51 m, empattement
+  // 2,03 m, voie 1,24 m, roues de 0,343 m, yeux du conducteur seatEye) ; kill : mort au pare-chocs à 8 m/s,
+  // hurt : dégâts dès 4 m/s ; exit : où descendre (1,3 m à gauche, 0,4 m derrière l'origine du modèle)
   jeep: {
-    name: '4×4 de fouilles', short: 'le 4×4', len: 4.5, wid: 1.86, hgt: 2.1, wb: 2.8, track: 1.56, wr: 0.41,
-    vmax: { road: 80, track: 50, sand: 25 }, acc: 4.6, brake: 9, rev: 4.5, steer: 0.56, fuel: 6000,
-    protect: 0.5, noise: 60, kill: 6, bog: true, seat: [-0.43, 0.98, 0.1], eye: 0.66, cam: [7.4, 2.8], engine: [34, 1.0],
+    name: '4×4 de fouilles', short: 'le 4×4', archeo: true, len: 3.51, wid: 1.62, hgt: 1.4, wb: 2.03, track: 1.24, wr: 0.343,
+    vmax: { road: 80, track: 50, sand: 25 }, fuel: 6000,
+    protect: 0.5, noise: 60, kill: 8, hurt: 4, bog: true, seat: [-0.29, 0.98, 0.37], eye: 0.5, cam: [7.4, 2.5], exit: [-0.35, -1.3],
   },
   buggy: {
     name: 'Buggy des sables', short: 'le buggy', len: 3.7, wid: 1.9, hgt: 1.75, wb: 2.4, track: 1.62, wr: 0.42,
@@ -27,7 +35,8 @@ const VEH_TYPES = {
 };
 // emplacements : ceux de la carte (KHAMSIN.vehicles pour la carte intégrée, plan page 2 : deux 4×4 au
 // camp, un à l'oasis, le buggy au garage du relais, le camion à la centrale)
-const VEH = { list: [], drive: null, view: 0, lookYaw: 0, lookPitch: 0, lookT: 0, light: null, snd: null, hornT: 0, camPos: new THREE.Vector3(), camInit: false };
+const VEH = { list: [], drive: null, view: 0, lookYaw: 0, lookPitch: 0, lookT: 0, light: null, snd: null, hornT: 0, camPos: new THREE.Vector3(), camInit: false,
+  thr: 0, brk: 0, steer: 0 };                   // jeu 2.0.6 : commandes lissées de la jeep (gaz, frein, direction)
 const _vf = new THREE.Vector3(), _vr = new THREE.Vector3(), _vq = new THREE.Quaternion(), _ve = new THREE.Euler();
 const vehFwd = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
 
@@ -112,57 +121,25 @@ function vehWheel(r, w, rimHex = 0xb9b2a4) {
 }
 
 /* ---- Modèles (dimensions de la planche, graduée en mètres) */
-function vehModelJeep(V) {
-  const B = vehBuilder(), K = 0xb7a57a, KD = 0x8f7f5c, DK = 0x2b2622;
-  // caisse, capot, ailes
-  B.box('paint', K, 0, 0.98, 0.15, 1.82, 0.72, 4.0);                 // bas de caisse
-  B.box('paint', K, 0, 1.39, -1.68, 1.66, 0.12, 1.12);                // capot
-  B.box('paint', KD, 0, 1.31, -1.68, 1.74, 0.06, 1.16);               // joint du capot
-  B.box('paint', K, -0.84, 1.2, -1.68, 0.2, 0.36, 1.16).box('paint', K, 0.84, 1.2, -1.68, 0.2, 0.36, 1.16);   // ailes avant
-  // habitacle : montants, toit, panneaux sous les vitres
-  B.box('paint', K, 0, 1.96, 0.62, 1.82, 0.07, 3.06);                 // toit
-  for (const x of [-0.88, 0.88]) {
-    B.box('paint', K, x, 1.67, -0.9, 0.07, 0.58, 0.08, 0.1);        // montant A
-    B.box('paint', K, x, 1.67, 0.16, 0.07, 0.58, 0.1);               // montant B
-    B.box('paint', K, x, 1.67, 1.2, 0.07, 0.58, 0.1);                // montant C
-    B.box('paint', K, x, 1.67, 2.1, 0.07, 0.58, 0.12);               // montant D
-  }
-  B.box('paint', K, 0, 1.4, 2.13, 1.82, 0.12, 0.06);                   // bas de la vitre arrière
-  B.box('paint', K, 0, 1.4, -0.92, 1.7, 0.1, 0.08);                    // bas du pare-brise
-  // vitres (teintées, un peu en retrait)
-  B.add('glass', GEO.box, mtx(0, 1.68, -0.9, 0.1, 0, 0, 1.68, 0.5, 0.02), 0xffffff);
-  for (const x of [-0.89, 0.89]) for (const [z, l] of [[-0.37, 0.95], [0.68, 0.94], [1.65, 0.8]]) B.add('glass', GEO.box, mtx(x, 1.68, z, 0, 0, 0, 0.02, 0.5, l), 0xffffff);
-  B.add('glass', GEO.box, mtx(0, 1.68, 2.14, 0, 0, 0, 1.6, 0.48, 0.02), 0xffffff);
-  // calandre, pare-chocs, passages de roues, marchepieds
-  B.box('dark', DK, 0, 1.08, -2.27, 1.3, 0.5, 0.06).box('dark', 0x4a4540, 0, 1.08, -2.3, 1.18, 0.04, 0.02);
-  for (let i = 0; i < 6; i++) B.box('dark', 0x5c554c, -0.42 + i * 0.17, 1.1, -2.31, 0.03, 0.4, 0.02);
-  B.box('dark', DK, 0, 0.58, -2.33, 1.96, 0.2, 0.18).box('dark', DK, 0, 0.6, 2.28, 1.9, 0.18, 0.14);
-  for (const z of [-1.4, 1.4]) for (const x of [-0.98, 0.98]) B.box('dark', DK, x, 1.02, z, 0.16, 0.12, 1.1);
-  B.box('dark', DK, -0.96, 0.5, 0, 0.18, 0.06, 1.2).box('dark', DK, 0.96, 0.5, 0, 0.18, 0.06, 1.2);
-  // roue de secours sur la porte arrière
-  B.cyl('dark', 0x24211e, 0, 1.3, 2.36, 0.38, 0.24, Math.PI / 2).cyl('metal', 0xb9b2a4, 0, 1.3, 2.49, 0.22, 0.04, Math.PI / 2);
-  // galerie : cadre, jerricans (vert, rouge), bâche roulée, plaques de désensablage (orange) sur le flanc
-  for (const x of [-0.84, 0.84]) B.box('dark', DK, x, 2.06, 0.65, 0.04, 0.04, 2.8);
-  for (const z of [-0.7, 0.2, 1.1, 2.0]) B.box('dark', DK, 0, 2.06, z, 1.7, 0.04, 0.04);
-  B.box('paint', 0x4f6b3a, -0.45, 2.3, 0.55, 0.18, 0.46, 0.34).box('paint', 0x4f6b3a, -0.22, 2.3, 0.55, 0.18, 0.46, 0.34).box('paint', 0x9c2f22, 0.05, 2.3, 0.55, 0.18, 0.46, 0.34);
-  B.cyl('cloth', 0xa58f68, 0.1, 2.2, 1.55, 0.17, 1.5, 0, 0, Math.PI / 2);
-  for (let i = 0; i < 2; i++) B.box('paint', 0xe9884d, 0.94, 1.05 + i * 0.07, -0.2 + i * 0.03, 0.04, 0.3, 1.25);
-  // phares (ronds), feux arrière, rampe de toit
-  for (const x of [-0.62, 0.62]) B.cyl('dark', DK, x, 1.08, -2.29, 0.13, 0.05, Math.PI / 2);
-  // antenne fouet et fanion rouge
-  B.cyl('dark', 0x1c1a18, 0.86, 2.95, 2.1, 0.012, 2.0);
-  // inscriptions des portières : « MISSION ARCHÉO » et le numéro
-  for (const sd of [-1, 1]) {
-    const d = vehDecal([['MISSION ARCHÉO', 0.22, 0.28, 600], ['03', 0.52, 0.68, 800]], 0.9, 0.42, '#2b2116');
-    d.position.set(sd * 0.917, 1.06, -0.32); d.rotation.y = sd * Math.PI / 2;
-    V.group.add(d);
-  }
-  B.build(V.group);
-  // fanion (toile qui flotte : animée)
-  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.36, 6, 1).translate(0.31, 0, 0), new THREE.MeshStandardMaterial({ color: 0xa8432a, roughness: 0.9, side: THREE.DoubleSide }));
-  flag.position.set(0.86, 3.75, 2.1);
-  V.group.add(flag); V.flag = flag;
-  vehLamps(V, [[-0.62, 1.08, -2.32], [0.62, 1.08, -2.32]], [[-0.84, 1.15, 2.32], [0.84, 1.15, 2.32]], [[-0.3, 2.04, -0.95], [0, 2.04, -0.95], [0.3, 2.04, -0.95]]);
+/* Jeu 2.0.6 : la jeep d'archéologie (fichier d'Anthony). Son repère (avant +z, gauche +x, origine au sol entre
+   les essieux) est tourné d'un demi-tour pour celui du jeu (avant -z) et avancé de 5 cm : sa boîte de collision
+   (centrée en z = -0,05 dans son repère) est alors centrée sur le véhicule. Couleurs du fichier : converties une
+   fois de sRGB en linéaire, comme tout le monde, par linearizeTree au chargement (aucune conversion ici : la
+   première version en ajoutait une, la jeep sortait brun foncé ; Anthony a choisi le rendu de la démo le 18
+   octobre 2026). Phares : le projecteur partagé du jeu et les halos (aucun
+   SpotLight par jeep, donc aucune recompilation des matières). */
+function vehModelArcheo(V) {
+  const J = createArcheoJeep(THREE, { shadows: true, lights: false });
+  V.extraTris = jeepWheelWells(J);
+  J.object.rotation.y = Math.PI;
+  J.object.position.z = -0.05;
+  V.group.add(J.object);
+  V.jeep = J;
+  V.mech = createJeepDrive();
+  V.glass0 = J.materials.glass.opacity;
+  V.heads = [[-0.615, 0.905, -1.63], [0.615, 0.905, -1.63]];      // phares du fichier (±0,615 ; 0,905 ; 1,58)
+  vehHalos(V, V.heads);
+  J.update(0, V.mech.state);
 }
 function vehModelBuggy(V) {
   const B = vehBuilder(), O = 0xe9884d, DK = 0x26221e, ST = 0x3b3833;
@@ -242,7 +219,67 @@ function vehLamps(V, heads, tails, extra) {
   const m1 = new THREE.Mesh(mergeGeometries(g1), head), m2 = new THREE.Mesh(mergeGeometries(g2), tail);
   V.group.add(m1, m2);
   V.lampHead = head; V.lampTail = tail; V.heads = heads;
-  // halos des phares (sprites additifs, visibles dans la poussière)
+  vehHalos(V, heads);
+}
+/* Jeu 2.0.6 : passages des roues avant de la jeep (Anthony, 18 octobre 2026 : « le dessus des roues n'est pas
+   modélisé »). Le fichier n'a, à l'avant, qu'une aile plate posée au niveau du capot, sans rien dessous (ni
+   passage de roue, ni tablier, ni moteur) : on voyait le décor à travers, entre l'aile et le châssis. Ajoutés
+   sans toucher au fichier, dans son repère (avant +z, gauche +x), et fusionnés dans ses matières de la caisse
+   (aucun draw call de plus) : sous chaque aile, un passage de roue arrondi (rayon 0,455 m autour de l'essieu :
+   le pneu, au plus à 0,354 m de son axe, ne le touche jamais, même braqué à fond), et le tablier intérieur qui
+   ferme le compartiment moteur. Rend le nombre de triangles ajoutés. */
+function jeepWheelWells(J) {
+  const R = 0.343, AXF = 1.015, RW = 0.455, Y0 = 0.49, YF = 0.8025, t0 = Math.asin((Y0 - R) / RW);
+  const add = { paint: [], paintDark: [] };
+  // coque du passage de roue (arc supérieur, de Y0 à Y0) : on en voit l'intérieur, faces retournées
+  const shell = (x0, x1) => {
+    const g = new THREE.CylinderGeometry(RW, RW, x1 - x0, 24, 1, true, t0, Math.PI - 2 * t0).toNonIndexed();
+    g.applyMatrix4(new THREE.Matrix4().makeRotationZ(Math.PI / 2).setPosition((x0 + x1) / 2, R, AXF));
+    const p = g.attributes.position.array, n = g.attributes.normal.array;
+    for (let i = 0; i < p.length; i += 9) {
+      for (let k = 0; k < 3; k++) { const a = i + 3 + k, b = i + 6 + k; [p[a], p[b]] = [p[b], p[a]]; [n[a], n[b]] = [n[b], n[a]]; }
+    }
+    for (let i = 0; i < n.length; i++) n[i] = -n[i];
+    return g;
+  };
+  // tablier intérieur : du tablier de l'habitacle à la calandre, du châssis à l'aile, échancré par le passage
+  const ap = new THREE.Shape();
+  ap.moveTo(0.33, Y0);
+  ap.lineTo(AXF - RW * Math.cos(t0), Y0);
+  ap.absarc(AXF, R, RW, Math.PI - t0, t0, true);
+  ap.lineTo(1.47, Y0);
+  ap.lineTo(1.47, YF);
+  ap.lineTo(0.33, YF);
+  ap.lineTo(0.33, Y0);
+  const apron = (x) => new THREE.ExtrudeGeometry(ap, { depth: 0.02, bevelEnabled: false, curveSegments: 12 })
+    .applyMatrix4(new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(x, 0, 0));
+  add.paintDark.push(shell(0.445, 0.80), shell(-0.80, -0.445));
+  add.paint.push(apron(0.465), apron(-0.445));
+  let tris = 0;
+  for (const k in add) {
+    const mesh = J.body.children.find((o) => o.isMesh && o.name === `caisse:${k}`);
+    const parts = [mesh.geometry, ...add[k]];
+    let count = 0;
+    for (const g of parts) count += g.attributes.position.count;
+    const pos = new Float32Array(count * 3), nor = new Float32Array(count * 3);
+    let o = 0;
+    for (const g of parts) {
+      if (!g.attributes.normal) g.computeVertexNormals();
+      pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3);
+      o += g.attributes.position.count;
+      if (g !== mesh.geometry) tris += g.attributes.position.count / 3;
+      g.dispose();
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    out.computeBoundingBox(); out.computeBoundingSphere();
+    mesh.geometry = out;
+  }
+  return tris;
+}
+/* Halos des phares (sprites additifs, visibles dans la poussière). */
+function vehHalos(V, heads) {
   V.halos = heads.map((p) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffe2b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     s.position.set(p[0], p[1], p[2] - 0.08); s.scale.set(1.3, 1.3, 1);
@@ -250,11 +287,12 @@ function vehLamps(V, heads, tails, extra) {
     return s;
   });
 }
-const VEH_MODELS = { jeep: vehModelJeep, buggy: vehModelBuggy, truck: vehModelTruck };
+const VEH_MODELS = { jeep: vehModelArcheo, buggy: vehModelBuggy, truck: vehModelTruck };
 
 /* ---- Création, remise à zéro */
 function owBuildVehicles(root, map) {
   vehMaterials();
+  for (const V of VEH.list) jeepSoundOff(V);           // jeu 2.0.6 : sons des jeeps de la carte précédente
   VEH.list = [];
   VEH.drive = null;
   const g = new THREE.Group();
@@ -268,8 +306,8 @@ function owBuildVehicles(root, map) {
     V.group = V.body;                          // les pièces vont dans le corps (qui penche) ; les roues aussi
     VEH_MODELS[sp.type](V);
     V.group = save;
-    // roues : avant (directrices) et arrière ; essieux du camion
-    const axles = T.axles || [-T.wb / 2, T.wb / 2];
+    // roues : avant (directrices) et arrière ; essieux du camion (la jeep a les siennes)
+    const axles = T.archeo ? [] : T.axles || [-T.wb / 2, T.wb / 2];
     for (const az of axles) for (const s of [-1, 1]) {
       const w = vehWheel(T.wr, sp.type === 'truck' ? 0.42 : 0.3);
       const pivot = new THREE.Group();
@@ -301,7 +339,9 @@ function owResetVehicles() {
   for (const V of VEH.list) {
     V.x = V.sp.x; V.z = V.sp.z; V.yaw = V.sp.yaw; V.v = 0; V.steer = 0; V.fuel = V.T.fuel; V.bought = !V.T.cost; V.lights = false; V.stuckT = 0; V.stuck = false; V.bogT = 0; V.plateT = 0;
     V.flipT = 0; V.flipped = V.flipping = V.unflipping = false; V.unflipT = 0; V.dented = false;
+    if (V.mech) { jeepSoundOff(V); V.mech = createJeepDrive(); V.honk = false; V.smokeT = 0; V.engPrev = 'off'; }   // jeu 2.0.6 : moteur coupé, boîte en 1re
     vehPose(V, 0, true);
+    if (V.jeep) { jeepLights(V, false); V.jeep.update(0, V.mech.state); }
   }
 }
 /* Sol sous le véhicule : route, piste ou sable mou. */
@@ -406,7 +446,7 @@ function vehInteractable(V) {
 }
 function vehEnter(V) {
   VEH.drive = V;
-  VEH.view = 0; VEH.lookYaw = 0; VEH.lookPitch = -0.12; VEH.lookT = 0; VEH.camInit = false;
+  VEH.view = V.mech ? 1 : 0; VEH.lookYaw = 0; VEH.lookPitch = VEH.view ? 0 : -0.12; VEH.lookT = 0; VEH.camInit = false;   // jeep : vue du conducteur (son INTEGRATION.md)
   if (Couteau) Couteau.annuler();
   if (Khepesh) Khepesh.annuler();                      // jeu 2.0.4 : le khépesh du désert
   KnifeLunge.m = 0;
@@ -415,7 +455,16 @@ function vehEnter(V) {
   player.sprinting = false; player.ads = 0; player.crouch = 0; player.y = 0; player.vy = 0; player.grounded = true;
   player.yaw = V.yaw; player.pitch = 0;
   vehSeat(V);
-  HUD.hint('Z/S accélérer, freiner · Q/D tourner · Espace frein · C vue · L phares · F descendre', 5);
+  if (V.mech) {
+    // jeu 2.0.6 : la jeep démarre (démarreur de 0,9 à 1,6 s) si le réservoir n'est pas vide ; son créé ici
+    VEH.thr = VEH.brk = VEH.steer = 0;
+    if (V.fuel > 0 && V.mech.state.engine === 'off') V.mech.startEngine();
+    jeepSoundOn(V);
+    vehGlass(V);
+    HUD.hint('Z accélérer · S freiner, maintenu à l’arrêt : marche arrière · Q/D tourner · Espace frein à main · H klaxon · C ou T vue · L phares · F descendre', 6);
+    return;
+  }
+  HUD.hint('Z/S accélérer, freiner · Q/D tourner · Espace frein · C ou T vue · L phares · F descendre', 5);
   vehSoundStart(V);
 }
 /* Le joueur suit le siège du conducteur. */
@@ -434,20 +483,45 @@ function vehExit(force) {
   if (!force && Math.abs(V.v) > 4) { HUD.hint('Ralentissez pour descendre', 1.5); return; }
   const T = V.T, [fx, fz] = vehFwd(V.yaw), rx = -fz, rz = fx;
   const spots = [[T.seat[2] * -1, -(T.wid / 2 + 0.7)], [T.seat[2] * -1, T.wid / 2 + 0.7], [-(T.len / 2 + 0.9), 0], [T.len / 2 + 0.9, 0], [0, -(T.wid / 2 + 1.6)], [0, T.wid / 2 + 1.6]];
+  if (T.exit) spots.unshift(T.exit);
+  // jeu 2.0.6, descente forcée (à terre, renversé) : une couronne de places plus loin avant le dernier recours
+  if (force) for (let d = 2.5; d <= 6; d += 1.5) for (let a = 0; a < 8; a++) spots.push([Math.cos(a * Math.PI / 4) * (T.len / 2 + d), Math.sin(a * Math.PI / 4) * (T.wid / 2 + d)]);
   let pos = null;
   for (const [f, r] of spots) {
     const x = V.x + fx * f + rx * r, z = V.z + fz * f + rz * r;
-    if (!owWalkCell(0, Math.floor(x), Math.floor(z)) || VEH.list.some((O) => vehInside(O, x, z, 0.35))) continue;
-    if (Math.abs(owGroundAt(0, x, z) - V.y) > 1.5) continue;
+    if (!vehSpotFree(x, z, V.y)) continue;
     pos = [x, z]; break;
   }
   if (!pos) { if (!force) { HUD.hint('Pas de place pour descendre ici', 1.5); return; } pos = [V.x + rx * -(T.wid / 2 + 0.7), V.z + rz * -(T.wid / 2 + 0.7)]; }
   VEH.drive = null;
+  if (V.mech) {
+    // jeu 2.0.6 : moteur coupé (il ralentit puis se tait), klaxon relâché, pare-brise rendu
+    V.mech.stopEngine();
+    if (V.honk) { V.honk = false; if (V.jsnd) V.jsnd.horn(false); }
+    vehGlass(V);
+  }
   Arms.root.visible = true;
   vehSoundStop();
   player.yaw = V.yaw + VEH.lookYaw; player.pitch = 0;
   placePlayer(pos[0], pos[1]);
   player.vel.set(0, 0, 0);
+}
+/* Place libre pour un joueur debout (jeu 2.0.6 ; rayon 0,3 m de owSettle, plus une marge) : cases praticables
+   sous tout son disque, sans marche de plus de 0,75 m, hors de toute caisse, sol à moins de 1,5 m de celui du
+   véhicule. Le joueur n'y est donc jamais coincé. */
+function vehSpotFree(x, z, gy) {
+  const r = 0.35;
+  if (VEH.list.some((O) => vehInside(O, x, z, r))) return false;
+  const g = owGroundAt(0, x, z);
+  if (!Number.isFinite(g) || Math.abs(g - gy) > 1.5) return false;
+  for (let cx = Math.floor(x - r); cx <= Math.floor(x + r); cx++) {
+    for (let cz = Math.floor(z - r); cz <= Math.floor(z + r); cz++) {
+      const nx = clamp(x, cx, cx + 1) - x, nz = clamp(z, cz, cz + 1) - z;
+      if (nx * nx + nz * nz >= r * r) continue;
+      if (!owWalkCell(0, cx, cz) || owGroundAt(0, cx + 0.5, cz + 0.5) > g + 0.75) return false;
+    }
+  }
+  return true;
 }
 const owDriving = () => !!VEH.drive;
 
@@ -456,7 +530,8 @@ function owDriveStep(dt) {
   const V = VEH.drive, p = player;
   if (p.down) { vehExit(true); return; }
   if (pressed('KeyF')) { vehExit(false); if (!VEH.drive) { Input.down.KeyF = false; return; } }
-  if (pressed('KeyC')) { VEH.view = 1 - VEH.view; VEH.lookYaw = 0; VEH.lookPitch = VEH.view ? 0 : -0.12; }
+  if (pressed('KeyC') || pressed('KeyT')) { VEH.view = 1 - VEH.view;   // jeu 2.0.6 : T aussi (vue FPS ou TPS du personnage)
+    VEH.lookYaw = 0; VEH.lookPitch = VEH.view ? 0 : -0.12; vehGlass(V); }
   if (pressed('KeyL')) V.lightsManual = !V.lightsManual;
   // regard : la souris tourne la vue autour du véhicule (elle revient derrière après un moment)
   const sens = 0.0015 * settings.sens;
@@ -471,6 +546,15 @@ function owDriveStep(dt) {
     s: (key('KeyD') || key('ArrowRight') ? 1 : 0) - (key('KeyA') || key('ArrowLeft') ? 1 : 0),
     hand: key('Space'),
   };
+  if (V.mech) {
+    // jeu 2.0.6, jeep : gaz, frein et direction lissés comme dans sa démo ; H : klaxon tant que la touche est tenue
+    VEH.thr += ((key('KeyW') ? 1 : 0) - VEH.thr) * Math.min(1, dt * 7);
+    VEH.brk += ((key('KeyS') ? 1 : 0) - VEH.brk) * Math.min(1, dt * 10);
+    VEH.steer += (ctl.s - VEH.steer) * Math.min(1, dt * 6);
+    ctl.thr = VEH.thr; ctl.brk = VEH.brk; ctl.steer = VEH.steer;
+    const horn = key('KeyH');
+    if (horn !== !!V.honk) { V.honk = horn; if (V.jsnd) V.jsnd.horn(horn); }
+  }
   vehStep(V, dt, ctl);
   vehSeat(V);
   p.yaw = V.yaw + VEH.lookYaw;
@@ -487,22 +571,14 @@ function owPlayerVitals(dt) {
 }
 /* Un pas de physique (conduit ou en roue libre). */
 function vehStep(V, dt, ctl) {
-  const T = V.T, surf = vehSurface(V.x, V.z);
-  let vmax = T.vmax[surf] / 3.6;
-  if (OW.stormVmax) vmax = Math.min(vmax, OW.stormVmax / 3.6);
-  if (V.stuckT > 0) { V.stuckT -= dt; vmax = Math.min(vmax, 0.4); }
-  if (V.stuck) vmax = Math.min(vmax, 0.25);
-  // ensablement : à faible allure dans le sable mou, en montée, en forçant
-  if (T.bog && V === VEH.drive && !V.stuck) {
-    if (surf === 'sand' && ctl.f !== 0 && Math.abs(V.v) < 1.6 && Math.sin(V.pitch) * Math.sign(ctl.f) > 0.1) V.bogT = (V.bogT || 0) + dt;
-    else V.bogT = Math.max(0, (V.bogT || 0) - dt * 0.5);
-    if (V.bogT > 2.2) { V.stuck = true; V.plateT = 0; V.bogT = 0; HUD.hint('Ensablé ! Descendez et posez les plaques de désensablage (F maintenu, 10 s)', 4); }
-  }
+  if (V.mech) { vehStepArcheo(V, dt, ctl); return; }
+  const T = V.T, surf = vehSurface(V.x, V.z), vmax = vehVmax(V, dt, surf);
+  vehBog(V, dt, ctl, surf);
   const [fx, fz] = vehFwd(V.yaw);
   // pente : la gravité freine en montée, pousse en descente
   const slope = Math.sin(V.pitch);
   let f = ctl.f;
-  if (V.fuel <= 0 && f !== 0) { f = 0; if (!V.dryT || G.time - V.dryT > 4) { V.dryT = G.time; HUD.hint('Réservoir vide : jerricans au relais Km 47, à la centrale ou à l\'aérodrome', 3); } }
+  if (V.fuel <= 0 && f !== 0) { f = 0; if (!V.dryT || G.time - V.dryT > 4) { V.dryT = G.time; HUD.hint('Réservoir vide : faites le plein aux jerricans', 3); } }
   if (f > 0) V.v = V.v < -0.3 ? approach(V.v, 0, T.brake * dt) : approach(V.v, vmax, T.acc * dt * (1 - Math.max(0, V.v) / (vmax * 1.25)));
   else if (f < 0) V.v = V.v > 0.3 ? approach(V.v, 0, T.brake * dt) : approach(V.v, -T.rev, T.acc * 0.7 * dt);
   else V.v = approach(V.v, 0, (surf === 'sand' ? 2.6 : 1.1) * dt);
@@ -529,6 +605,30 @@ function vehStep(V, dt, ctl) {
   }
   const dist = Math.abs(V.v) * dt;
   V.fuel = Math.max(0, V.fuel - dist);
+  vehDust(V, dt, ctl, surf);
+  V.rot += (V.v * dt) / T.wr;
+  vehPose(V, dt);
+  vehZombies(V, dt);
+}
+const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
+/* Vitesse maximale (m/s) : planche selon le sol, tempête, ensablement. */
+function vehVmax(V, dt, surf) {
+  let vmax = V.T.vmax[surf] / 3.6;
+  if (OW.stormVmax) vmax = Math.min(vmax, OW.stormVmax / 3.6);
+  if (V.stuckT > 0) { V.stuckT -= dt; vmax = Math.min(vmax, 0.4); }
+  if (V.stuck) vmax = Math.min(vmax, 0.25);
+  return vmax;
+}
+/* Ensablement : à faible allure dans le sable mou, en montée, en forçant. */
+function vehBog(V, dt, ctl, surf) {
+  if (!V.T.bog || V !== VEH.drive || V.stuck) return;
+  if (surf === 'sand' && ctl.f !== 0 && Math.abs(V.v) < 1.6 && Math.sin(V.pitch) * Math.sign(ctl.f) > 0.1) V.bogT = (V.bogT || 0) + dt;
+  else V.bogT = Math.max(0, (V.bogT || 0) - dt * 0.5);
+  if (V.bogT > 2.2) { V.stuck = true; V.plateT = 0; V.bogT = 0; HUD.hint('Ensablé ! Descendez et posez les plaques de désensablage (F maintenu, 10 s)', 4); }
+}
+/* Poussière derrière les roues (hors route), sable projeté quand les roues patinent. */
+function vehDust(V, dt, ctl, surf) {
+  const T = V.T, [fx, fz] = vehFwd(V.yaw);
   V.dustT = (V.dustT || 0) - dt;
   const spin = V.stuck && ctl.f !== 0;
   if (V.dustT <= 0 && (spin || (Math.abs(V.v) > 4 && surf !== 'road'))) {
@@ -536,13 +636,60 @@ function vehStep(V, dt, ctl) {
     const back = -Math.sign(V.v || 1) * T.len * 0.45;
     for (const s of [-1, 1]) spawnPuff(V.x + fx * back + -fz * s * T.track * 0.5, V.y + 0.35, V.z + fz * back + fx * s * T.track * 0.5, rand(0.9, 1.6) + Math.abs(V.v) * 0.05, rand(0.9, 1.6), surf === 'sand' ? 0xb08458 : 0xa08060, 0.42, 0.5);
   }
-  V.rot += (V.v * dt) / T.wr;
+}
+
+/* ---- Jeep d'archéologie (jeu 2.0.6) : un pas, conduite ou en roue libre. La mécanique (moteur, boîte, freins,
+   direction) est celle de son fichier (createJeepDrive) ; la vitesse du jeu (V.v) fait foi, la mécanique la
+   reprend à chaque pas (chocs, poussées, pente) et le jeu la plafonne (planche, tempête, ensablement). Sans
+   conducteur ou frein à main (Espace) : le frein à main du jeu (pas la pédale : maintenue à l'arrêt, elle
+   passerait la marche arrière). */
+const _ve2 = new THREE.Vector3();
+function vehStepArcheo(V, dt, ctl) {
+  const T = V.T, D = V.mech, st = D.state, surf = vehSurface(V.x, V.z), driven = V === VEH.drive, vmax = vehVmax(V, dt, surf);
+  vehBog(V, dt, ctl, surf);
+  // réservoir vide : le moteur cale (on ne redémarre qu'après le plein)
+  if (V.fuel <= 0 && st.engine !== 'off') D.stopEngine();
+  if (V.fuel <= 0 && driven && ctl.f !== 0 && (!V.dryT || G.time - V.dryT > 4)) { V.dryT = G.time; HUD.hint('Réservoir vide : faites le plein aux jerricans', 3); }
+  const hand = !driven || ctl.hand;
+  st.speed = V.v - 9.8 * Math.sin(V.pitch) * 0.55 * dt;        // pente (comme les autres véhicules)
+  D.update(dt, driven && !ctl.hand ? { throttle: ctl.thr, brake: ctl.brk, steer: ctl.steer } : driven ? { steer: ctl.steer } : {});
+  let v = st.speed;
+  if (hand) v = approach(v, 0, D.params.brakeDecel * 1.3 * dt);
+  if (Math.abs(v) > vmax) v = approach(v, Math.sign(v) * vmax, (surf === 'sand' ? 9 : 4) * dt);
+  const nyaw = V.yaw + st.yawRate * dt, [nfx, nfz] = vehFwd(nyaw);
+  const nx = V.x + nfx * v * dt, nz = V.z + nfz * v * dt;
+  const hit = Math.abs(v) > 0.01 ? vehBlocked(V, nx, nz, nyaw) : null;
+  if (!hit) { V.x = nx; V.z = nz; V.yaw = nyaw; }
+  else {
+    // choc : repoussée, vitesse × -0,15, bruit de carrosserie selon la vitesse (son INTEGRATION.md)
+    const sp = Math.abs(v);
+    if (sp > 1.5 && V.jsnd) V.jsnd.clunk(Math.min(2, sp / 6));
+    if (sp > 3 && driven) { FX.shake = Math.min(1, FX.shake + sp / 25); if (!V.jsnd) Sound.bodyFall({ x: hit.x, z: hit.z }); }
+    v *= -0.15;
+    if (hit.veh) hit.veh.v += v * 0.3;
+    if (!vehBlocked(V, V.x, V.z, nyaw)) V.yaw = nyaw;
+  }
+  V.v = v; st.speed = v; st.speedKmh = v * 3.6;
+  V.fuel = Math.max(0, V.fuel - Math.abs(v) * dt);
+  vehDust(V, dt, ctl, surf);
+  // fumée du pot au démarrage
+  if (st.engine === 'running' && V.engPrev === 'cranking') V.smokeT = 1.2;
+  V.engPrev = st.engine;
+  if (V.smokeT > 0) {
+    V.smokeT -= dt;
+    if (Math.random() < dt * 14) { V.jeep.exhaust.getWorldPosition(_ve2); spawnPuff(_ve2.x, _ve2.y, _ve2.z, 0.35, 1.6, 0x8a8478, 0.4, 0.35); }
+  }
   vehPose(V, dt);
   vehZombies(V, dt);
+  V.jeep.update(dt, st);
+  jeepSoundUpdate(V);
 }
-const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
 
-/* Zombies contre le véhicule : écrasés au-dessus de T.kill (m/s), repoussés en dessous. */
+/* Zombies contre le véhicule : écrasés au-dessus de T.kill (m/s), repoussés en dessous.
+   Jeu 2.0.6, jeep (son INTEGRATION.md) : un zombie devant le pare-chocs (repère du modèle : |x| < 0,9 m et
+   1,4 m < z < 2,4 m ; l'origine du modèle est 5 cm devant le centre) quand elle avance à plus de T.hurt
+   (4 m/s) reçoit des dégâts proportionnels à la vitesse (toute sa vie à T.kill, 8 m/s : mort), est projeté, la
+   carrosserie cogne et la jeep perd 15 % de sa vitesse ; un même zombie n'est touché qu'une fois en 0,6 s. */
 function vehZombies(V, dt) {
   const T = V.T, [fx, fz] = vehFwd(V.yaw), sp = Math.abs(V.v), R = T.len / 2 + 1;
   for (const z of Zombies.list) {
@@ -550,9 +697,19 @@ function vehZombies(V, dt) {
     const dx = z.pos.x - V.x, dz = z.pos.z - V.z;
     if (dx * dx + dz * dz > R * R) continue;
     const lf = dx * fx + dz * fz, lr = dx * -fz + dz * fx, m = 0.32;
+    if (T.archeo && V.v > T.hurt && Math.abs(lr) < 0.9 && lf - 0.05 > 1.4 && lf - 0.05 < 2.4 && !(G.time - (z.jeepT ?? -9) < 0.6)) {
+      z.jeepT = G.time;
+      const k = Math.min(1, V.v / T.kill);
+      damageZombie(z, k >= 1 ? 1e6 : z.maxHp * k, { kind: 'vehicle', dx: fx, dz: fz, force: Math.min(14, V.v * 0.8) });
+      bloodBurst(z.pos.x, z.gy + 0.9, z.pos.z, fx, fz, Math.round(6 + 6 * k), 0.8 + 0.6 * k);
+      if (V.jsnd) V.jsnd.clunk(1); else Sound.bodyFall(z.pos);
+      if (V === VEH.drive) FX.shake = Math.min(1, FX.shake + 0.12);
+      V.v *= 0.85;
+      continue;
+    }
     if (Math.abs(lf) > T.len / 2 + m || Math.abs(lr) > T.wid / 2 + m) continue;
     const front = V.v >= 0 ? lf > T.len / 2 - 0.9 : lf < -T.len / 2 + 0.9;
-    if (sp > T.kill && front) {
+    if (!T.archeo && sp > T.kill && front) {
       const k = Math.sign(V.v) || 1;
       damageZombie(z, 1e6, { kind: 'vehicle', dx: fx * k, dz: fz * k, force: Math.min(14, sp * 0.8) });
       bloodBurst(z.pos.x, z.gy + 0.9, z.pos.z, fx * k, fz * k, 12, 1.4);
@@ -591,6 +748,7 @@ function vehCamera(V, dt) {
   if (VEH.view) {
     // poste de conduite : la tête suit la caisse (tangage, roulis)
     _vc.set(T.seat[0], T.seat[1] + T.eye, T.seat[2]).applyQuaternion(V.group.quaternion).add(V.group.position);
+    if (V.jeep) { V.group.updateMatrixWorld(true); persoDriverEye(V, _vc); }   // jeu 2.0.6 : aux yeux d'Anthony assis au volant
     camera.position.copy(_vc);
     _ve.set(V.pitch + VEH.lookPitch, V.yaw + VEH.lookYaw, V.roll * 0.6, 'YXZ');
     camera.quaternion.setFromEuler(_ve);
@@ -618,7 +776,14 @@ function owVehUpdate(dt) {
   for (const V of VEH.list) {
     if (V.flipping || V.unflipping) { khVehFlipStep(V, dt); V.v = 0; vehPose(V, dt); }
     else if (V.flipped) V.v = 0;
-    else if (V !== VEH.drive && (Math.abs(V.v) > 0.01 || V.y > owGroundAt(0, V.x, V.z) + 0.3)) vehStep(V, dt, { f: 0, s: 0, hand: true });
+    else if (V !== VEH.drive && (Math.abs(V.v) > 0.01 || V.y > owGroundAt(0, V.x, V.z) + 0.3 || (V.mech && (V.mech.state.engine !== 'off' || V.mech.state.rpm > 0)))) vehStep(V, dt, { f: 0, s: 0, hand: true });
+    else if (V !== VEH.drive && V.mech) {
+      // jeu 2.0.6 : jeep à l'arrêt, moteur éteint : fanion et lanterne bougent quand on la voit ; son rendu
+      V.mech.state.speed = 0;
+      if (V.jsnd) jeepSoundOff(V);
+      if (Math.abs(V.x - camera.position.x) + Math.abs(V.z - camera.position.z) < 160) V.jeep.update(dt, V.mech.state);
+    }
+    if (V.mech && (V.flipping || V.unflipping || V.flipped)) { V.mech.state.speed = 0; V.mech.update(dt, {}); V.mech.state.speed = 0; V.jeep.update(dt, V.mech.state); jeepSoundUpdate(V); }   // renversée : le moteur se tait
     // roues : rotation, braquage
     for (const w of V.wheels) {
       w.w.rotation.x = -V.rot;
@@ -632,8 +797,11 @@ function owVehUpdate(dt) {
     const on = V === VEH.drive && (dark > 0.35 || V.lightsManual);
     if (on !== V.lights) {
       V.lights = on;
-      V.lampHead.color.setHex(on ? 0xfff2d6 : 0x6e6a60);
-      V.lampTail.color.setHex(on ? 0xff2a1a : 0x4a0d08);
+      if (V.jeep) jeepLights(V, on);
+      else {
+        V.lampHead.color.setHex(on ? 0xfff2d6 : 0x6e6a60);
+        V.lampTail.color.setHex(on ? 0xff2a1a : 0x4a0d08);
+      }
     }
     for (const h of V.halos) h.material.opacity = on ? 0.55 + dark * 0.3 : 0;
   }
@@ -657,6 +825,70 @@ function owDarkness() {
   if (!g) return 0;
   const day = g.sunI * Math.max(0, g.dir.y) * 1.4 + g.hemiI * 0.45;
   return clamp(Math.max(1 - (day - 0.25) / 0.55, OW.stormDark || 0, KHPY.view), 0, 1);     // dans une pyramide : la nuit des lampes
+}
+
+/* ---- Jeep (jeu 2.0.6) : phares, pare-brise, son */
+/* Phares et feux arrière de la jeep (matières de son fichier : lampes, rouge). */
+function jeepLights(V, on) {
+  V.jeep.setHeadlights(on);
+  V.jeep.materials.red.emissiveIntensity = on ? 1.2 : 0.25;
+}
+/* Pare-brise : vu du poste de conduite, le verre gêne moins (comme dans sa démo). */
+function vehGlass(V) {
+  if (V.jeep) V.jeep.materials.glass.opacity = VEH.drive === V && VEH.view ? V.glass0 * 0.35 : V.glass0;
+}
+/* Son de la jeep : createJeepAudio de son fichier, sur le contexte et le bus des effets du jeu (un seul
+   AudioContext ; volume général, son étouffé et compresseur du jeu). Le jeu n'avait pas d'AudioListener de
+   three.js (ses sons se placent eux-mêmes) : un seul, sur la caméra, branché sur ce bus. Le son de chaque jeep
+   est un PositionalAudio sur sa caisse (distance de référence 5 m) : créé à la montée (le contexte du jeu est
+   ouvert depuis le clic « Jouer »), rendu quand la jeep se tait. */
+const JSND = { listener: null, ctx: null, volume: 0.9 };
+function jeepListener() {
+  const b = Sound.bus();
+  if (!b) return null;
+  if (JSND.listener && JSND.ctx === b.ctx) return JSND.listener;
+  THREE.AudioContext.setContext(b.ctx);
+  const L = new THREE.AudioListener();
+  L.gain.disconnect();
+  L.gain.connect(b.sortie);
+  camera.add(L);
+  JSND.listener = L; JSND.ctx = b.ctx;
+  return L;
+}
+function jeepSoundOn(V) {
+  if (V.jsnd || V.jsndP) return;
+  const L = jeepListener();
+  if (!L) return;
+  const P = createJeepAudio(L.context, { volume: JSND.volume });
+  V.jsndP = P;
+  P.then((S) => {
+    if (V.jsndP !== P) { S.dispose(); return; }       // rendu entre-temps (autre carte, nouvelle partie)
+    V.jsndP = null;
+    const pos = new THREE.PositionalAudio(L);
+    pos.setNodeSource(S.output);
+    pos.setRefDistance(5);
+    pos.position.set(0, 0.8, 0.3);
+    V.jeep.body.add(pos);
+    V.jsnd = S; V.jpos = pos; V.jsurf = null;
+    if (V.honk) S.horn(true);
+  }, (e) => { if (V.jsndP === P) V.jsndP = null; console.warn('Son de la jeep indisponible', e); });
+}
+function jeepSoundOff(V) {
+  V.jsndP = null;
+  if (!V.jsnd) return;
+  V.jsnd.dispose();
+  try { V.jpos.gain.disconnect(); V.jpos.panner.disconnect(); } catch (e) { /* déjà débranché */ }
+  if (V.jpos.parent) V.jpos.parent.remove(V.jpos);
+  V.jsnd = V.jpos = null;
+}
+/* À chaque pas : état du moteur, sol sous les pneus (1 sable, 0,4 dalles et route, 1,5 cailloux). */
+function jeepSoundUpdate(V) {
+  const S = V.jsnd;
+  if (!S) return;
+  S.update(V.mech.state);
+  const cx = Math.floor(V.x), cz = Math.floor(V.z), ch = owChunk(OW.surf, cx, cz), b = owBioAt(V.x, V.z);
+  const k = (ch && ch.kind[owIdx(cx, cz)] !== OWK.TERRAIN) || b === OWB.ROAD || b === OWB.RUNWAY ? 0.4 : b === OWB.ROCK || b === OWB.PLATEAU || b === OWB.WADI ? 1.5 : 1;
+  if (k !== V.jsurf) { V.jsurf = k; S.setSurface(k); }
 }
 
 /* ---- Moteur (synthétisé) : grondement selon le régime et la charge */

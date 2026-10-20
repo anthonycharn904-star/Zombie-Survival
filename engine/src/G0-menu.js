@@ -4,7 +4,7 @@
    retrouvent les textes du jeu (refreshMenu écrit tip-power ; tip-box est remis ici). */
 const KH_TIPS = {
   box: (m) => `La boîte mystère (${RULES.boxCost} points) voyage de lieu en lieu${m && m.base === 'khamsin' && (m.adds || []).includes('pyramides') ? ', jusque dans Khéops une fois sa herse levée' : ''}\u00a0; la mini-carte la marque en bleu.`,
-  power: 'Trois disjoncteurs à la centrale du Nil\u00a0: le courant alimente les atouts, ouvre le sanctuaire et charge la batterie de l’avion.',
+  power: 'Trois disjoncteurs dans le hangar du plateau\u00a0: le courant alimente les atouts et ouvre le sanctuaire.',   // jeu 2.0.6
   boxBase: () => `La boîte mystère donne une arme au hasard pour ${RULES.boxCost} points.`,
 };
 const KH_NUM = ['aucun', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze'];
@@ -14,14 +14,14 @@ const khBreakersWord = (n) => `${KH_NUM[n] || n} disjoncteur${n > 1 ? 's' : ''}`
    nombre et les lieux où ils sont (une carte des Mod Tools). */
 function khPowerTip(map) {
   const B = map.breakers || [], desert = map.base === 'desert';
-  const fed = desert ? 'les atouts' : 'les atouts, le sanctuaire et la batterie de l’avion';
+  const fed = desert ? 'les atouts' : 'les atouts et le sanctuaire';                    // jeu 2.0.6 : plus d'avion
   if (map.rules && map.rules.powerOn) return `Courant rétabli dès le départ\u00a0: ${fed} sont alimentés.`;
-  if (!B.length) return desert ? 'Pas de disjoncteur sur cette carte\u00a0: les atouts électriques restent sans courant.' : 'Pas de disjoncteur sur cette carte\u00a0: atouts électriques, sanctuaire et batterie de l’avion restent sans courant.';
+  if (!B.length) return desert ? 'Pas de disjoncteur sur cette carte\u00a0: les atouts électriques restent sans courant.' : 'Pas de disjoncteur sur cette carte\u00a0: atouts électriques et sanctuaire restent sans courant.';
   if (!desert && JSON.stringify(B) === JSON.stringify(KHAMSIN.breakers)) return KH_TIPS.power;
   const named = owNamedLocsOf(map);
   const where = [...new Set(B.map((b) => { let best = null, bd = Infinity; for (const L of named) { const d = Math.hypot(b.x - L.x, b.z - L.z) - L.r; if (d < bd) { bd = d; best = L; } } return best && bd < 200 ? best.name : null; }).filter(Boolean))].join(', ');
   const w = khBreakersWord(B.length);
-  return `${w[0].toUpperCase()}${w.slice(1)}${where ? ` (${where})` : ''}\u00a0: le courant alimente ${desert ? 'les atouts' : 'les atouts, ouvre le sanctuaire et charge la batterie de l’avion'}.`;
+  return `${w[0].toUpperCase()}${w.slice(1)}${where ? ` (${where})` : ''}\u00a0: le courant alimente ${desert ? 'les atouts' : 'les atouts et ouvre le sanctuaire'}.`;
 }
 /* Lieux nommés d'une carte sans la charger (ceux de Khamsin si sa base les a, puis les siens). */
 function owNamedLocsOf(map) {

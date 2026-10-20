@@ -246,7 +246,8 @@ async function run(userData) {
     // 11. Khamsin à côté : ses lieux, son terrain ; puis la carte relue depuis l'atelier
     await mt.evaluate(() => MT.openGameMap('khamsin'));
     await until(() => MT.state.map.id === 'khamsin' && MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !MT.v3.worldDirty, null, 120000);
-    const kh = await mt.evaluate(([x, z]) => ({ base: ZS.ow.baseId, named: ZS.ow.namedLocs().length, g: ZS.ow.ground(x, z), inter: ZS.Features.interactables.length, where: MT.ow.where(2350, 1992) }), [HX, HZ]);
+    const kh = await mt.evaluate(([x, z]) => ({ base: ZS.ow.baseId, named: ZS.ow.namedLocs().filter((L) => !L.user).length, g: ZS.ow.ground(x, z), inter: ZS.Features.interactables.length, where: MT.ow.where(2350, 1992) }), [HX, HZ]);
+    // jeu 2.0.6 : les lieux de la base seulement (Khamsin a aussi ses six lieux « Zone jouable »)
     ok(kh.base === 'khamsin' && kh.named === 7 && Math.abs(kh.g - h0) < 0.02 && kh.inter > 30 && kh.where === 'Camp de fouilles', `Khamsin intacte : sept lieux, terrain d’origine ${JSON.stringify(kh)}`);
     await mt.evaluate(() => MT.openWorkspaceMap('mon-desert'));
     await until(() => MT.state.id === 'mon-desert' && MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !MT.v3.worldDirty, null, 120000);

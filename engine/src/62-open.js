@@ -44,64 +44,81 @@ const KH_PYR_ADDS = {
   ],
   boxes: [{ x: 2121.5, y: 63.619, z: 1254.5, face: [0, -1] }],
 };
-/* Éléments de la carte intégrée (relevés sur ses lieux : tente-réfectoire, relais, oasis, centrale,
-   tombeaux, hangars, pyramides). Ordre des emplacements de la boîte : camp (départ), relais, oasis,
-   centrale, aérodrome, plateau, nécropole, chambre du Roi (Khéops). */
+/* Éléments de la carte intégrée. Jeu 2.0.6 (demande d'Anthony du 18 octobre 2026) : la carte est ramenée au
+   plateau des pyramides ; la zone jouable est l'union des six lieux « Zone jouable » (calés sur son tracé : le
+   bord du plateau), dehors la tempête permanente (A1-zone). Disposition provisoire, qu'il refait dans les Mod
+   Tools : tout est groupé au camp du plateau, au sud-est de Khéops, autour de trois bâtiments du catalogue
+   (atelier : armes au mur et Souffle ; hangar : armes au mur et disjoncteurs ; conteneur rouge : les quatre
+   atouts électriques) ; trois jeeps et leurs jerricans à côté ; la boîte voyage sur le plateau (départ, est
+   de Khéops, nord de Khéops, ouest du plateau, Mykérinos, camp de l'équipe, nord-ouest, chambre du Roi). Plus
+   de buggy ni de camion blindé (leurs types restent dans les Mod Tools). Chaque élément a été posé par
+   owEditorPlace, la fonction des Mod Tools. Ordre des emplacements de la boîte : le premier est le départ. */
 Object.assign(KHAMSIN, {
   base: 'khamsin', format: OPEN_FORMAT, w: OW.W, h: OW.D,
   rules: { ...OPEN_RULES },
   wallbuys: [
-    { w: 'kar98k', x: 2300, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 },
-    { w: 'g43', x: 2305, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 },
-    { w: 'mp40', x: 2310, y: 8.563, z: 1959.17, nx: 0, nz: 1, h: 1.58 },
-    { w: 'trench', x: 1400.5, y: 17.028, z: 2587.92, nx: 0, nz: -1, h: 1.7 },
-    { w: 'thompson', x: 1404.5, y: 17.028, z: 2587.92, nx: 0, nz: -1, h: 1.7 },
-    { w: 'dbarrel', x: 849, y: 8.758, z: 749.1, nx: 0, nz: 1, h: 1.6 },
-    { w: 'type100', x: 853, y: 8.758, z: 749.1, nx: 0, nz: 1, h: 1.6 },
-    { w: 'stg44', x: 3521.08, y: 2.982, z: 1589, nx: 1, nz: 0, h: 1.7 },
-    { w: 'bar', x: 3521.08, y: 2.982, z: 1599.5, nx: 1, nz: 0, h: 1.7 },
-    { w: 'mg42', x: 406.92, y: 2.14, z: 2132.5, nx: -1, nz: 0, h: 1.6 },
-    { w: 'ppsh', x: 2791.08, y: 8.676, z: 376, nx: 1, nz: 0, h: 1.7 },
-    { w: 'fg42', x: 2791.08, y: 8.676, z: 384, nx: 1, nz: 0, h: 1.7 },
+    { w: 'kar98k', x: 2126.85, y: 30.95, z: 1445.92, nx: 0, nz: -1, h: 1.6 },
+    { w: 'g43', x: 2130.5, y: 30.945, z: 1445.92, nx: 0, nz: -1, h: 1.6 },
+    { w: 'mp40', x: 2133.85, y: 30.943, z: 1445.92, nx: 0, nz: -1, h: 1.6 },
+    { w: 'trench', x: 2126.85, y: 31.131, z: 1455.08, nx: 0, nz: 1, h: 1.6 },
+    { w: 'thompson', x: 2130.5, y: 31.076, z: 1455.08, nx: 0, nz: 1, h: 1.6 },
+    { w: 'dbarrel', x: 2133.85, y: 31.017, z: 1455.08, nx: 0, nz: 1, h: 1.6 },
+    { w: 'type100', x: 2214.92, y: 30.992, z: 1465.85, nx: -1, nz: 0, h: 1.6 },
+    { w: 'stg44', x: 2214.92, y: 31.061, z: 1469.85, nx: -1, nz: 0, h: 1.6 },
+    { w: 'bar', x: 2214.92, y: 31.136, z: 1473.85, nx: -1, nz: 0, h: 1.6 },
+    { w: 'mg42', x: 2235.08, y: 31.12, z: 1465.85, nx: 1, nz: 0, h: 1.6 },
+    { w: 'ppsh', x: 2235.08, y: 31.171, z: 1469.85, nx: 1, nz: 0, h: 1.6 },
+    { w: 'fg42', x: 2235.08, y: 31.241, z: 1473.85, nx: 1, nz: 0, h: 1.6 },
     ...KH_PYR_ADDS.wallbuys,
   ],
   perks: [
-    { p: 'souffle', x: 2358, y: 8.513, z: 1978, face: [-1, 0] },
-    { p: 'endurance', x: 1406.95, y: 17.028, z: 2582.8, face: [-1, 0], roomH: 3.4 },
-    { p: 'detente', x: 857.3, y: 8.758, z: 772, face: [-1, 0] },
-    { p: 'cuirasse', x: 632.05, y: 2.345, z: 2133.5, face: [1, 0], roomH: 3.2 },
-    { p: 'mainleste', x: 2860.95, y: 8.676, z: 386, face: [-1, 0], roomH: 8 },
+    { p: 'souffle', x: 2136.05, y: 30.926, z: 1449.85, face: [1, 0] },
+    { p: 'endurance', x: 2176.85, y: 31.243, z: 1528.95, face: [0, -1] },
+    { p: 'detente', x: 2182.85, y: 31.266, z: 1528.95, face: [0, -1] },
+    { p: 'cuirasse', x: 2176.85, y: 31.264, z: 1532.05, face: [0, 1] },
+    { p: 'mainleste', x: 2182.85, y: 31.261, z: 1532.05, face: [0, 1] },
   ],
   boxes: [
-    { x: 2329, y: 8.513, z: 1940.2, face: [0, 1] },
-    { x: 1384, y: 17.028, z: 2582.5, face: [0, -1] },
-    { x: 836.5, y: 8.758, z: 771, face: [1, 0] },
-    { x: 3526, y: 2.982, z: 1626.5, face: [0, -1] },
-    { x: 2846, y: 8.676, z: 389.6, face: [0, -1] },
+    { x: 2160, y: 30.951, z: 1478, face: [0, 1] },
+    { x: 2300, y: 32.818, z: 1250, face: [-1, 0] },
+    { x: 2180, y: 32.715, z: 1090, face: [0, 1] },
+    { x: 1600, y: 31.082, z: 1300, face: [1, 0] },
+    { x: 1690, y: 32.563, z: 1520, face: [1, 0] },
     { x: 2244, y: 31.219, z: 1566.5, face: [0, -1] },
-    { x: 700, y: 2.292, z: 2156, face: [0, 1] },
+    { x: 1760, y: 31.648, z: 1100, face: [0, 1] },
     ...KH_PYR_ADDS.boxes,
   ],
   boxStart: 0,
   adds: ['pyramides'],
   vehicles: [
-    { type: 'jeep', x: 2386, z: 2047, yaw: 2.6 },
-    { type: 'jeep', x: 2398, z: 2056, yaw: 2.6 },
-    { type: 'jeep', x: 896, z: 752, yaw: -1.5708 },
-    { type: 'buggy', x: 1417.5, z: 2589, yaw: 1.5708 },
-    { type: 'truck', x: 3502, z: 1646, yaw: 0 },
+    { type: 'jeep', x: 2080, z: 1470, yaw: 0 },
+    { type: 'jeep', x: 2086, z: 1470, yaw: 0 },
+    { type: 'jeep', x: 2092, z: 1470, yaw: 0 },
   ],
   fuel: [
-    { x: 1393.5, y: 17.028, z: 2577.5 },
-    { x: 3512.5, y: 2.982, z: 1638 },
-    { x: 2946, y: 8.676, z: 418 },
+    { x: 2080, y: 31.784, z: 1480 },
+    { x: 2092, y: 31.594, z: 1480 },
+    { x: 2245, y: 31.421, z: 1490 },
   ],
   breakers: [
-    { x: 3550.7, y: 2.982, z: 1599.8, nx: -1, nz: 0, name: 'salle des turbines' },
-    { x: 3524.9, y: 2.982, z: 1612.5, nx: 1, nz: 0, name: 'poste de commande' },
-    { x: 3557, y: 2.982, z: 1625, nx: -1, nz: 0, name: 'transformateurs' },
+    { x: 2218.85, y: 31.183, z: 1464.02, nx: 0, nz: 1, name: 'hangar, mur nord' },
+    { x: 2230.85, y: 31.183, z: 1464.02, nx: 0, nz: 1, name: 'hangar, mur nord' },
+    { x: 2216.02, y: 31.183, z: 1474.85, nx: 1, nz: 0, name: 'hangar, mur ouest' },
   ],
-  props: [], roads: [], buildings: [], locs: [], terrain: null, ground: null,
+  buildings: [
+    { type: 'atelier', x: 2130, z: 1450, rot: 0, y: 30.997 },
+    { type: 'hangar', x: 2225, z: 1470, rot: 0, y: 31.183 },
+    { type: 'conteneur_rouge', x: 2180, z: 1530, rot: 0, y: 31.257 },
+  ],
+  locs: [
+    { name: 'Zone jouable', x: 1840, z: 1390, r: 438 },
+    { name: 'Zone jouable', x: 2335, z: 1165, r: 242 },
+    { name: 'Zone jouable', x: 2275, z: 1570, r: 150 },
+    { name: 'Zone jouable', x: 2140, z: 1165, r: 285 },
+    { name: 'Zone jouable', x: 2500, z: 1180, r: 141 },
+    { name: 'Zone jouable', x: 1945, z: 1480, r: 342 },
+  ],
+  props: [], roads: [], terrain: null, ground: null,
   custom: { models: {} },
   author: '', updated: KHAMSIN.updated,
 });
@@ -295,7 +312,7 @@ function openValidate(m, deep = false) {
   const W = (msg, at) => warnings.push({ msg, at: at || null });
   if (!m.boxes.length) W('Pas d’emplacement pour la boîte mystère : elle n’apparaîtra pas.');
   const moon = owWorldOf(m.base) === 'lune';
-  if (!m.breakers.length && !m.rules.powerOn) W(m.base === 'desert' || m.base === 'lune' ? 'Aucun disjoncteur et pas de courant au départ : les atouts électriques resteront sans courant.' : moon ? 'Aucun disjoncteur et pas de courant au départ : atouts, ascenseur de la tour et atterrisseur resteront sans courant.' : 'Aucun disjoncteur et pas de courant au départ : atouts, sanctuaire et batterie de l’avion resteront sans courant.');
+  if (!m.breakers.length && !m.rules.powerOn) W(m.base === 'desert' || m.base === 'lune' ? 'Aucun disjoncteur et pas de courant au départ : les atouts électriques resteront sans courant.' : moon ? 'Aucun disjoncteur et pas de courant au départ : atouts, ascenseur de la tour et atterrisseur resteront sans courant.' : 'Aucun disjoncteur et pas de courant au départ : atouts et sanctuaire resteront sans courant.');
   if (!m.vehicles.length && !moon) W('Aucun véhicule : la carte fait 4 × 3 km.');
   if (moon && !(m.oxy || []).length) W('Aucun poste d’oxygène : dehors, on ne tient que 4 minutes (la base recharge).');
   if (moon && m.vehicles.length) W('Véhicules sur la Lune : ils roulent comme sur Terre (1/6 g non simulé pour eux).');

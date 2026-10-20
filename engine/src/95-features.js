@@ -126,7 +126,7 @@ function owPerk(group, pm) {
     prompt() {
       if (!m.active || (Arms.state === 'drink' && Arms.drinkId === m.id)) return null;
       const perk = PERKS[m.id];
-      if (perk.power && !G.power) return { text: `Il faut d'abord rétablir le courant (${OW.worldId === 'lune' ? 'crête solaire' : 'centrale du Nil'})`, disabled: true };
+      if (perk.power && !G.power) return { text: `Il faut d'abord rétablir le courant (${OW.worldId === 'lune' ? 'crête solaire' : 'disjoncteurs'})`, disabled: true };
       if (player.perks.has(m.id)) return null;
       if (player.perks.size >= MAX_PERKS) return { text: `Vous avez déjà ${MAX_PERKS} atouts`, disabled: true };
       return { text: `Appuyez sur F pour boire ${perk.name}`, cost: perk.cost, sub: perk.desc };

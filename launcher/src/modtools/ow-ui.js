@@ -533,7 +533,7 @@
         field('Points au départ', num({ value: r.startPoints, min: 0, max: 1000000, step: 100, unit: 'pts', digits: 0, onCommit: (v) => set('Points au départ', (mm) => { mm.rules.startPoints = Math.round(v); }) })),
         field('Arme de départ', select({ value: r.startWeapon, options: Object.entries(ZS.WEAPONS).map(([id, w]) => [id, w.name]), onChange: (v) => set('Arme de départ', (mm) => { mm.rules.startWeapon = v; }) })),
         check({ checked: r.powerOn, label: 'Courant allumé dès le départ', onChange: (v) => set('Courant au départ', (mm) => { mm.rules.powerOn = v; }) }),
-        O.moon() ? null : field('Tempêtes de sable', select({ value: r.storms, options: [[0, 'Aucune'], ...[2, 3, 4, 5, 6, 8, 10].map((n) => [n, `Toutes les ${n} manches${n === 4 ? ' (Khamsin)' : ''}`])], onChange: (v) => set('Tempêtes', (mm) => { mm.rules.storms = parseInt(v, 10) || 0; }) }), 'Sans tempête : ni Rôdeurs, ni fragments du Sceptre (quête facultative)'),
+        O.moon() ? null : field('Tempêtes de sable', select({ value: r.storms, options: [[0, 'Aucune'], ...[2, 3, 4, 5, 6, 8, 10].map((n) => [n, `Toutes les ${n} manches${n === 4 ? ' (Khamsin)' : ''}`])], onChange: (v) => set('Tempêtes', (mm) => { mm.rules.storms = parseInt(v, 10) || 0; }) }), 'Sans tempête : ni Rôdeurs'),
         field('Armes de la boîte', UI.panels.boxWeapons(r), 'Aucune cochée : toutes les armes habituelles')),
       section('Menu du jeu',
         thumb,

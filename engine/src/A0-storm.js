@@ -46,12 +46,14 @@ function khPhaseLevel() {
   if (id === 'khamsin') return lerp(2, 3, smooth(clamp(k * 3, 0, 1)));
   return lerp(2.2, 0, smooth(k));
 }
-/* Niveau ressenti en (x, z) : dans le couloir, derrière le front ; dehors, un vent de sable au plus. */
+/* Niveau ressenti en (x, z) : dans le couloir, derrière le front ; dehors, un vent de sable au plus.
+   Jeu 2.0.6 : hors de la zone jouable, la tempête permanente (A1-zone) ; le plus fort des deux compte. */
 function khStormLevelAt(x, z) {
-  if (!KHS.on) return 0;
+  const zl = zoneLevelAt(x, z);
+  if (!KHS.on) return zl;
   const L = khPhaseLevel(), inC = khCorridor(x, z);
   const behind = owSmoothstep(KHS.front + 60, KHS.front - 380, khAlong(x, z));
-  return Math.max(L * inC * behind, Math.min(L, 1) * 0.55 * behind);
+  return Math.max(L * inC * behind, Math.min(L, 1) * 0.55 * behind, zl);
 }
 
 /* Chaque image (owUpdate) : phases, front, effets sur le joueur. */
@@ -80,8 +82,9 @@ function khStormUpdate(dt) {
   OW.stormVmax = KHS.lv > 2.4 ? 30 : KHS.lv > 1.4 ? 50 : 0;
   OW.stormTrack = KHS.lv > 0.6 ? 0.85 : 1;
   OW.stormDark = clamp((KHS.lv - 1) / 2, 0, 1);
-  // abrasion au cœur du Khamsin, hors des refuges (un véhicule fermé divise par deux)
-  if (KHS.lv > 2.4 && G.state === 'playing' && !player.down) {
+  // abrasion au cœur du Khamsin, hors des refuges (un véhicule fermé divise par deux) ; hors de la zone
+  // jouable (jeu 2.0.6), ce sont les dégâts de la tempête permanente (zoneUpdate)
+  if (KHS.lv > 2.4 && G.state === 'playing' && !player.down && !ZONE.out) {
     const k = khShelterFactor();
     if (k > 0) {
       KHS.abr += 3.2 * k * dt;
@@ -224,6 +227,13 @@ function khSiren() {
 /* ---- Bandeau de la tempête (sous la boussole) : phase et compte à rebours */
 function owStormHud(phase) {
   if (!OWH.storm) return;
+  if (ZONE.out) {                                      // jeu 2.0.6 : hors de la zone jouable
+    const txt = 'Tempête mortelle · faites demi-tour';
+    OWH.storm.hidden = false;
+    if (OWH.stormTxt !== txt) { OWH.storm.textContent = txt; OWH.stormTxt = txt; }
+    OWH.storm.className = 'ow-storm khamsin';
+    return;
+  }
   const on = KHS.on;
   OWH.storm.hidden = !on;
   if (!on) return;

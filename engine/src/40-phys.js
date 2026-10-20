@@ -24,6 +24,7 @@ function owSettle(b, r) {
   };
   collideCircle(b.pos, r, blocked);
   if (VEH.list.length) vehPushBody(b, r);
+  if (b !== player) zoneKeep(b, r);                    // jeu 2.0.6 : les zombies restent dans la zone jouable
   let cx = Math.floor(b.pos.x), cz = Math.floor(b.pos.z);
   if ((cx !== cx0 || cz !== cz0) && blocked(cx, cz)) {
     // case d'arrivée fermée (grand déplacement, coin) : le corps reste au bord de la sienne
@@ -265,11 +266,11 @@ function owNavInit() {
   OWNAV.hI = new Int32Array(n * 4); OWNAV.hD = new Float32Array(n * 4);
 }
 function owNavWindow(layer, pcx, pcz) {
-  const N = OWNAV.N;
+  const N = OWNAV.N, zone = zoneOn();                 // jeu 2.0.6 : le champ ne passe pas hors de la zone jouable
   OWNAV.x0 = pcx - (N >> 1); OWNAV.z0 = pcz - (N >> 1); OWNAV.layer = layer;
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
-      const cx = OWNAV.x0 + i, cz = OWNAV.z0 + j, w = owWalkCell(layer, cx, cz) ? 1 : 0;
+      const cx = OWNAV.x0 + i, cz = OWNAV.z0 + j, w = owWalkCell(layer, cx, cz) && !(zone && zoneDist(cx + 0.5, cz + 0.5) > 0.5) ? 1 : 0;
       OWNAV.walk[j * N + i] = w;
       OWNAV.g[j * N + i] = w ? owCellGround(layer, cx, cz) : 0;
     }
@@ -380,6 +381,7 @@ function owPickSpawn() {
     if (owKind(OW.surf, cx, cz) !== OWK.TERRAIN || !owWalkCell(0, cx, cz)) continue;
     const g = owGroundAt(0, x, z);
     if (Math.abs(g - p.gy) > 8) continue;
+    if (zoneOn() && zoneDist(x, z) > -4) continue;              // jeu 2.0.6 : jamais hors de la zone jouable
     if (others.some((o) => Math.hypot(o.pos.x - x, o.pos.z - z) < 3)) continue;
     const near = khNearestLoc(x, z);
     return { riser: true, x, z, li: 0, k: owK(0, cx, cz), zone: OW.locs.indexOf(near.loc), layer: 0, y: g };

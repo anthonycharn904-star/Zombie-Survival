@@ -8,6 +8,10 @@
    tombe 4 minutes ; rejoindre l'avion, tenir 60 s pendant le démarrage, décoller.
    Optionnel : les trois fragments du Sceptre, dans les tombes de la nécropole (F) qui brillent
    pendant les tempêtes (dégâts doublés sur le Gardien pendant ses fenêtres de tir). */
+/* Jeu 2.0.6 : quête retirée de Khamsin (demande d'Anthony du 18 octobre 2026 : « repartir sur une nouvelle
+   base » pour concevoir lui-même quêtes, secrets et objectifs). Ni pièces, ni avion, ni évasion, ni Sceptre,
+   ni pilote, ni objectifs à l'écran ; le code reste, éteint, pour une future quête. */
+const KHQ_ON = false;
 const KHQ = {
   have: { fuel: false, battery: false, key: false },          // pièces portées
   placed: { fuel: false, battery: false, key: false },        // pièces posées sur l'avion
@@ -24,6 +28,7 @@ const KHQ_RULES = { charge: 45, fill: 4, place: 1.5, wake: 3, start: 60, pilotNe
 
 /* ---- Construction (à chaque chargement) : vanne de la cuve, chargeur, fragments, pièces de l'avion */
 function owBuildQuest(root) {
+  if (!KHQ_ON) { KHQ.items = null; if (KHQ.hud) KHQ.hud.hidden = true; return; }   // jeu 2.0.6 : quête retirée
   const g = new THREE.Group();
   g.name = 'quête';
   root.add(g);
@@ -313,6 +318,7 @@ const khClock = (s) => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s /
 
 /* ---- Chaque image */
 function khQuestUpdate(dt) {
+  if (!KHQ_ON) return;                                 // jeu 2.0.6 : quête retirée
   // batterie : en charge dès que le courant est rétabli
   if (G.power && KHQ.charge < 1 && !KHQ.have.battery && !KHQ.placed.battery) {
     const c0 = KHQ.charge;
@@ -392,6 +398,7 @@ function khObjectivesHud(dt) {
 }
 /* Repères de la quête sur la mini-carte : pièces à prendre, avion, pilote, fragments (en tempête). */
 function khQuestMapMarks(g, X, Z, S) {
+  if (!KHQ_ON) return;
   const mark = (x, z, col, txt) => {
     const px = X(x), pz = Z(z);
     if (px < -8 || pz < -8 || px > S + 8 || pz > S + 8) return;

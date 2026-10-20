@@ -1,7 +1,7 @@
 'use strict';
 /* Couteau « Fossoyeur » ZS-1 (jeu 1.9.0), dans la fenêtre du jeu du launcher : module intégré au script
    du jeu (pas de variable globale, pas d'écoute du clavier : V et E passent par le jeu), ancien couteau
-   retiré, bras aux couleurs des gants et des manches du jeu ; touché (150 dégâts quand la lame arrive,
+   retiré, bras aux couleurs d'Anthony (gant de ses mitaines, manche de sa veste ; jeu 2.0.6) ; touché (150 dégâts quand la lame arrive,
    +10 points), élimination (+130, corps-à-corps), raté, élan doux vers le zombie, mur (bloque),
    fenêtre (porte, sans élan), chien, rampant, demi-angle de 60°, zombie verrouillé à l'appui ;
    enchaînement ; vue immobile ; arme baissée puis revenue ; pas de tir pendant le coup ; à terre ;
@@ -42,20 +42,23 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.5', 'version du jeu : 2.0.5', GAME_VERSION);
+      ok(GAME_VERSION === '2.0.6', 'version du jeu : 2.0.6', GAME_VERSION);
       ok(typeof creerCouteauMelee === 'function' && window.creerCouteauMelee === undefined, 'module du couteau dans le script du jeu, sans variable globale');
       ok(Couteau && Couteau.sceneVue && Couteau.sceneVue !== vmScene && Couteau.rig.parent && !Couteau.rig.visible, 'bras au couteau dans sa propre vue, caché au repos');
       ok(Arms.knife === undefined && typeof knifeStrike === 'undefined' && typeof KNIFE_HOLD === 'undefined' && !('knife' in Sound), 'ancien couteau retiré (modèle, coup, prise, son)');
       ok(KNIFE.damage === 150 && KNIFE.range === 2.1 && KNIFE.cone === 0.5, 'règles : 150 dégâts, 2,1 m, 60° de part et d’autre du regard', KNIFE);
-      // couleurs des bras du jeu (gant, manche), converties comme les matières du jeu
-      let glove = false, sleeve = 0, tris = 0;
+      // couleurs des bras d'Anthony (jeu 2.0.6 : gant de ses mitaines, manche de sa veste), converties comme les matières du jeu
+      const lin = (h) => new THREE.Color(h).convertSRGBToLinear(), near = (c, w) => c && Math.abs(c.r - w.r) + Math.abs(c.g - w.g) + Math.abs(c.b - w.b) < 1e-6;
+      const gant = lin(PERSO_BRAS_COULEURS.gant), manche = lin(PERSO_BRAS_COULEURS.manche);
+      let glove = false, sleeve = 0, old = 0, tris = 0;
       Couteau.rig.traverse((m) => {
         if (m.geometry) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
-        if (m.material === MAT.sleeve) sleeve++;
+        if (m.material === MAT.sleeve) old++;
         const c = m.material && m.material.color;
-        if (c && Math.abs(c.r - MAT.glove.color.r) + Math.abs(c.g - MAT.glove.color.g) + Math.abs(c.b - MAT.glove.color.b) < 1e-6) glove = true;
+        if (near(c, gant)) glove = true;
+        if (m.isMesh && near(c, manche)) sleeve++;
       });
-      ok(glove && sleeve === 2, 'bras au couteau : gant à la couleur des gants du jeu, manche et revers dans la matière des manches du jeu (couleur et toile)', { glove, sleeve });
+      ok(glove && sleeve === 2 && old === 0, 'bras au couteau aux couleurs d’Anthony : gant de ses mitaines, manche et revers de sa veste (plus le treillis du jeu)', { glove, sleeve, old });
       ok(tris > 20000 && tris < 100000, `bras et couteau : ${Math.round(tris)} triangles (dessinés seulement pendant le coup)`);
       return out;
     })).forEach(report);

@@ -67,8 +67,8 @@ async function run(userData) {
       same: JSON.stringify(MT.ow.exportObject(MT.util.deep(MT.state.map)).wallbuys) === JSON.stringify(ZS.openSerialize(ZS.MAPS_ALL.byId.khamsin).wallbuys),
       far: MT.v3.cam.far,
     }));
-    ok(open.tools === 'select,props,elements,terrain,ground,roads,buildings' && open.cls && open.levels && open.on && open.editor && open.issues === 0 && /4 × 3 km · 0 objet · 39 éléments/.test(open.st) && open.same && open.far > 3000,
-      `Khamsin ouverte dans les Mod Tools (${((Date.now() - t0) / 1000).toFixed(0)} s) : monde du jeu, 39 éléments (dont 3 armes et 1 boîte dans les pyramides), aucun problème ${JSON.stringify(open)}`);
+    ok(open.tools === 'select,props,elements,terrain,ground,roads,buildings' && open.cls && open.levels && open.on && open.editor && open.issues === 0 && /4 × 3 km · 0 objet · 37 éléments/.test(open.st) && open.same && open.far > 3000,
+      `Khamsin ouverte dans les Mod Tools (${((Date.now() - t0) / 1000).toFixed(0)} s) : monde du jeu, 37 éléments (dont 3 armes et 1 boîte dans les pyramides ; jeu 2.0.6 : plus de buggy ni de camion), aucun problème ${JSON.stringify(open)}`);
     const rt = await mt.evaluate(() => {
       const a = JSON.stringify({ ...ZS.openSerialize(ZS.MAPS_ALL.byId.khamsin), updated: '' });
       const b = JSON.stringify({ ...ZS.openSerialize(ZS.openNormalize(JSON.parse(JSON.stringify(ZS.openSerialize(MT.state.map))))), updated: '' });
@@ -104,12 +104,12 @@ async function run(userData) {
     await rebuilt();
     const pk = await mt.evaluate(() => { const m = MT.state.map, e = m.perks[m.perks.length - 1]; return { n: m.perks.length, e, machines: ZS.Features.perkMachines.length, warn: MT.state.issues.warnings.map((w) => w.msg).join(' | ') }; });
     ok(pk.n === 6 && pk.e.p === 'cuirasse' && pk.e.face.join() === '0,1' && Math.abs(pk.e.z - 2581.05) < 0.2 && pk.machines === 6 && /Mastodonte : 2 machines/.test(pk.warn),
-      `atout posé au clic en 3D, dos au mur du café ; conseil : deux Mastodonte ${JSON.stringify(pk.e)}`);
+      `atout posé au clic en 3D, dos au mur du café ; conseil : deux Mastodonte ${JSON.stringify(pk)}`);
 
     // 4. véhicule glissé dans le plan (le 4×4 suit en 3D), puis annulé
-    await mt.evaluate(() => { MT.setTool('select'); MT.select(null); MT.plan.centerOn(2392, 2052, false); MT.plan.cam.zoom = 8; MT.plan.need = true; });
-    await mt.waitForTimeout(300);
     const v0 = await mt.evaluate(() => ({ ...MT.state.map.vehicles[0] }));
+    await mt.evaluate((v) => { MT.setTool('select'); MT.select(null); MT.plan.centerOn(v.x, v.z, false); MT.plan.cam.zoom = 8; MT.plan.need = true; }, v0);   // jeu 2.0.6 : la jeep est au camp du plateau
+    await mt.waitForTimeout(300);
     const a = await planAt(v0.x, v0.z), b = await planAt(v0.x - 6, v0.z + 5);
     await mt.mouse.move(a[0], a[1]); await mt.mouse.down();
     for (let k = 1; k <= 8; k++) { await mt.mouse.move(a[0] + ((b[0] - a[0]) * k) / 8, a[1] + ((b[1] - a[1]) * k) / 8); await mt.waitForTimeout(40); }
@@ -199,7 +199,7 @@ async function run(userData) {
     await mt.evaluate(() => { const m = MT.copyOfMap(MT.gameMaps().byId.khamsin); m.id = MT.uniqueId('khamsin'); m.name = 'Khamsin bis'; MT.openMap(m, { id: m.id, source: 'new' }); });
     await until(() => MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !MT.v3.worldDirty, null, 60000);
     const cp = await mt.evaluate(() => ({ id: MT.state.id, n: MT.ow.count(), props: MT.state.map.props.length }));
-    ok(cp.id === 'khamsin-2' && cp.n === 39 && cp.props === 0, `copie de Khamsin (carte du jeu, pas celle de l’atelier) ${JSON.stringify(cp)}`);
+    ok(cp.id === 'khamsin-2' && cp.n === 37 && cp.props === 0, `copie de Khamsin (carte du jeu, pas celle de l’atelier) ${JSON.stringify(cp)}`);
     await mt.evaluate(() => MT.openGameMap('bunker7'));
     await mt.waitForTimeout(1500);
     const b7 = await mt.evaluate(() => ({ tools: MT.tools.available().map((t) => t.id).join(), cls: document.body.classList.contains('mt-open'), owOn: ZS.ow.on, far: MT.v3.cam.far, grid: !!MT.state.map.grid }));

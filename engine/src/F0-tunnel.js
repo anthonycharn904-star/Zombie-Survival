@@ -5,7 +5,11 @@
    Le trajet est un passage (comme l'escalier du kiosque) : fondu, quelques secondes dans le tunnel
    (vue depuis la draisine, lampes qui défilent), fondu, arrivée. */
 const KHT = { group: null, ride: null, len: 260, x0: 1200, y: -60, z: 2420, cart: null };
+/* Jeu 2.0.6 : draisine retirée de Khamsin (elle menait à la nécropole, dans la tempête permanente : Anthony,
+   18 octobre 2026) ; le code reste, éteint. */
+const KHT_ON = false;
 function owBuildTunnel(root) {
+  if (!KHT_ON) return;
   const K = owKit('tunnel'), { x0, y, z, len } = KHT, x1 = x0 + len, R = 2.3;
   // voûte de roche (vue de l'intérieur), sol de gravier, voie, traverses, cadres de bois, lampes
   const tube = new THREE.CylinderGeometry(R, R, len, 16, 1, true);
