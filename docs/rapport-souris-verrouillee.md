@@ -37,7 +37,7 @@ Mécanisme probable, non vérifié dans le code de Chromium : une fois le verrou
 
 ## Correction (branche `chantier/bunker7`, non fusionnée)
 
-`engine/tools/mains.js` (et donc `e2e-page.js`, qui le lance) et `engine/tools/tzeval.js`, juste après le chargement du jeu, avant toute partie :
+`engine/tools/mains.js` (et donc `e2e-page.js`, qui le lance) et `engine/tools/tzeval.js`, puis, le 2 novembre avec l'accord d'Anthony (« OK pour khshot.js et khepshot.js »), `engine/tools/khshot.js` et `engine/tools/khepshot.js`, juste après le chargement du jeu, avant toute partie :
 
 ```js
 await page.evaluate(() => {
@@ -51,7 +51,7 @@ Le jeu traite ce refus comme celui d'un navigateur qui refuse le verrou : `reque
 
 ## Résultats mesurés
 
-Même machine, priorité minimale (`nice -n 19`, `ionice -c 3`).
+Même machine, priorité minimale (`nice -n 19`, `ionice -c 3`), sauf l'essai de `khshot.js` et `khepshot.js` du 2 novembre, lancé par `zs-lourd` à sa priorité (`nice -n 10`, plus `ionice -c2 -n7` quand le système le permet).
 
 | Mesure | Souris verrouillée | Souris refusée |
 |---|---|---|
@@ -59,12 +59,12 @@ Même machine, priorité minimale (`nice -n 19`, `ionice -c 3`).
 | Essai du boss complet (8 blocs) | arrêté à 2 min 52 s (navigateur 5,3 Go, page 8 Go, mémoire libre 0,3 Go) ; le 1er novembre, tué par le système | 1 min 18 s à 1 min 31 s ; navigateur 91 Mo, page 1,7 Go au plus, rendu environ 1 Go |
 | Les 12 essais habituels dans la page (`e2e-page.js`) | 13 min 30 s (machine chargée par une autre session) | 7 min (machine peu chargée) |
 | Résultats de ces 12 essais | 460 sur 460 | 460 sur 460 (le bloc `zombie-anims` b04 reste l'échec connu de ce mode) |
+| `khshot.js` (2 vues de Khamsin) puis `khepshot.js` (20 vues du khépesh), 2 novembre, un travail `zs-lourd` | pas mesuré (le relancer ainsi ferait gonfler la mémoire) | 40 s et 61 s ; pic de mémoire 1,56 Go pour les deux ; dans `khshot.js`, sonde lue après le départ de la partie (son 3e argument, le « code avant ») : `document.pointerLockElement` nul, souris libre, partie en cours, bandeau masqué ; `khepshot.js` : même bloc, sans sonde (il ne prend que son dossier) ; aucune exception dans la page pour les deux, aucune erreur dans la console pour `khepshot.js` (le seul qui l'écoute) ; images normales |
 
 ## Ce qui n'est pas concerné
 
 - Le jeu des joueurs (Windows, launcher Electron) : le verrou y est natif ; aucun signe de boucle dans les essais d'Anthony.
-- La méthode E2 (Electron sous Linux, rendu logiciel) : **pas mesuré**. Le launcher peut accorder le verrou sans geste de l'utilisateur, et l'essai `boss-b7`, aux blocs synchrones les plus longs, ne le refuse pas. Le Chromium complet d'Electron sous X11 recentre le curseur normalement, ce qui rend la boucle peu probable ; à confirmer au prochain passage E2, en relevant la mémoire des processus d'Electron (ou `document.pointerLockElement` pendant un essai).
-- `khshot.js` et `khepshot.js` : pas changés (essais courts), mais ils ont le même défaut, puisqu'ils lancent une partie.
+- La méthode E2, côté Electron (sous Linux, rendu logiciel) : **pas mesuré**. Le launcher peut accorder le verrou sans geste de l'utilisateur, et l'essai `boss-b7`, aux blocs synchrones les plus longs, ne le refuse pas. Le Chromium complet d'Electron sous X11 recentre le curseur normalement, ce qui rend la boucle peu probable ; à confirmer au prochain passage E2, en relevant la mémoire des processus d'Electron (ou `document.pointerLockElement` pendant un essai). Après la fermeture du launcher, cinq essais E2 (`modtools-decor`, `modtools-desert`, `modtools-khamsin`, `modtools-ombre`, `modtools-sizes`) ouvrent aussi le jeu publié dans un Chromium de Playwright sans tête ; deux y lancent une partie : voir la section suivante.
 
 ## À examiner dans les autres sessions, sans modifier leurs worktrees
 
@@ -72,6 +72,7 @@ Tout outil qui ouvre le jeu dans un Chromium sans tête et lance une partie (`__
 
 1. **Lire le code.** Le jeu demande-t-il le verrou dans ce chemin ? Le banc le refuse-t-il ? À voir :
    - les copies de `tzeval.js`, `mains.js`, `e2e-page.js`, `khshot.js` et `khepshot.js` de chaque worktree ;
+   - les essais E2 `launcher/e2e/modtools-desert.e2e.js` et `modtools-ombre.e2e.js`, dans toutes les branches (`chantier/bunker7` comprise : pas changés, l'accord d'Anthony ne visant que `khshot.js` et `khepshot.js`) : après la fermeture du launcher, ils ouvrent le jeu publié dans un Chromium de Playwright sans tête (`chromium.launch` sur `/opt/pw-browsers/chromium`, sans option `headless`) et y lancent une partie (`__zs.start()`, lignes 286 et 251) sans refuser le verrou ; la partie ne dure qu'un contrôle avant `browser.close()` : risque faible, non mesuré ; correction proposée à Anthony le 2 novembre : le même refus, injecté avant `__zs.start()` ;
    - les outils de capture de la session Interface (fond animé, cadrage) ;
    - les outils et essais de la session Marécages (`engine/marecages/outils`, `essais`) ;
    - tout script Playwright privé.
@@ -81,10 +82,10 @@ Tout outil qui ouvre le jeu dans un Chromium sans tête et lance une partie (`__
 3. **Corriger** par la même ligne, injectée avant la partie, ou par `page.addInitScript`.
 4. **À proposer à Anthony** : une aide commune pour ouvrir le jeu dans le banc (serveur, Chromium, refus du verrou, garde de mémoire), plutôt qu'une copie par outil.
 
-Dans la page, le refus supprime aussi le passage « verrou perdu → pause » du jeu, qu'Electron peut prendre ; l'essai `boss-b7` simule cette perte quand la fenêtre passe en arrière-plan (critère 11). Avec le verrou refusé, une partie lancée dans le banc affiche aussi le bandeau « souris libre » (`#lockhint`) : `tzeval.js` le masque pour ses captures de la page.
+Dans la page, le refus supprime aussi le passage « verrou perdu → pause » du jeu, qu'Electron peut prendre ; l'essai `boss-b7` simule cette perte quand la fenêtre passe en arrière-plan (critère 11). Avec le verrou refusé, une partie lancée dans le banc affiche aussi le bandeau « souris libre » (`#lockhint`) : `tzeval.js`, `khshot.js` et `khepshot.js` le masquent pour leurs captures de la page (dans les deux derniers, il était déjà caché avec le HUD).
 
 ## Fichiers
 
-- `engine/tools/mains.js`, `engine/tools/tzeval.js` : la correction.
+- `engine/tools/mains.js`, `engine/tools/tzeval.js`, `engine/tools/khshot.js`, `engine/tools/khepshot.js` : la correction.
 - `engine/README.md` : outils d'essai, paragraphe « Souris verrouillée ».
 - `SUIVI-BOSS-B7.md` : étape 9, outils d'essai.
