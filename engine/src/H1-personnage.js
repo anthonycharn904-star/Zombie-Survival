@@ -628,7 +628,9 @@ function persoTpsCam() {
   C.quaternion.copy(camera.quaternion);
   const piv = camera.position, off = _psV().set(T.cote, T.haut, T.dist).applyQuaternion(camera.quaternion);
   const len = off.length(); off.normalize();
+  if (typeof B7S === 'object') B7S.cameraTps = true;            // jeu 2.0.7 : les dalles lancées par le boss ne tirent pas la caméra (vertige ; H7)
   raycast(piv.x, piv.y, piv.z, off.x, off.y, off.z, len + T.marge);
+  if (typeof B7S === 'object') B7S.cameraTps = false;
   let d = RAY.hit && RAY.t < len + T.marge ? Math.max(0.2, RAY.t - T.marge) : len;
   T.d = d < T.d || !dt ? d : damp(T.d, d, 4, dt);
   C.position.copy(piv).addScaledVector(off, T.d);

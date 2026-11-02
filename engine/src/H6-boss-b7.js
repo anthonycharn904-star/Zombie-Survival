@@ -19,7 +19,9 @@
    · Manches suspendues pendant le combat ; aucun bonus au hasard du début du combat à sa fin (D3).
    · Bonus : les vrais bonus du jeu (B7_BONUS traduit les identifiants du paquet). Armes merveilles de la récompense
      (D2) : objets au sol devant l'autel de la salle, comme les bonus, jamais perdus ; ramassées, elles remplacent
-     l'emplacement 1, puis le 2 (une arme déjà tenue est améliorée à sa place).
+     l'emplacement 1, puis le 2 (une arme déjà tenue est améliorée à sa place). Bonus de la victoire qui ont une durée
+     (Mort instantanée, Double points) : 5 min au lieu de 30 s, en rouge tant que cette durée court ; un bonus ramassé
+     pendant ce temps ne les raccourcit pas (demande d'Anthony du 2 novembre 2026).
    · Navigation : chemin (A* sur la grille : portes ouvertes, escaliers), position valide, ligne de vue (sightClear) ;
      la salle secrète fait partie de la grille de Bunker 7 (module suivant, section 22 : H7-boss-salle.js).
    · Drapeaux : ceux de la partie en cours (le jeu n'a pas de sauvegarde de partie ; le combat se joue une fois).
@@ -36,11 +38,13 @@ const B7 = {
   lieu: 'bunker', regard: null, drapeaux: {},
   retires: new Map(),                         // zombies retirés : dernière position (effets : cendres), gardée 3 s
   recompenses: [], placees: new Set(), atouts: 0,
+  victoireJusqua: { insta: 0, double: 0 },   // bonus de la victoire qui ont une durée : en cours (en rouge) jusqu'à ce G.time
   audio: null, sonsPrets: false, sonsCharges: null, volMusique: -1,
   vueZombies: [], nav: null, journal: [],
 };
 // identifiants des bonus du paquet → ceux du jeu (vente flash, points bonus, atout gratuit et machine de mort : absents)
 const B7_BONUS = { 'munitions-max': 'ammo', 'mort-instantanee': 'insta', 'points-doubles': 'double', 'bombe-nucleaire': 'nuke', 'charpentier': 'carpenter' };
+const B7_BONUS_VICTOIRE = 300;                // s : bonus de la victoire qui ont une durée (Mort instantanée, Double points ; 30 s ailleurs)
 const B7_HORS_COMBAT = ['inactif', 'termine', 'echec'];
 const B7_MUSIQUE = 1.4;                       // gain de la musique du paquet (v1.1), multiplié par le réglage du jeu
 const B7_DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -251,11 +255,23 @@ function b7Bonus(b) {
   Powerups.list[Powerups.list.length - 1].life = b.duree > 0 ? +b.duree : 30;
   return true;
 }
+/* Bonus activé par la logique : ceux de la victoire (état « recompenses ») et le repli des bonus posés (fin de phase, mort
+   d'un mini-boss). Ceux de la victoire qui ont une durée (Mort instantanée, Double points) durent B7_BONUS_VICTOIRE au
+   lieu de 30 s, en rouge (b7BonusRouge) ; un bonus ramassé ensuite ne les raccourcit pas (applyPowerup, point
+   d'accroche). Demande d'Anthony du 2 novembre 2026. */
 function b7ActiverBonus(bonusId) {
   const t = B7_BONUS[bonusId];
   if (!t) { b7Journal('avertissement', `bonus inconnu du jeu : ${bonusId}`); return false; }
   applyPowerup(t);
+  if (B7.etat === 'recompenses' && POWERUPS[t].duration) { G.timers[t] = B7_BONUS_VICTOIRE; B7.victoireJusqua[t] = G.time + B7_BONUS_VICTOIRE; }
   return true;
+}
+/* Couleur des bonus de la victoire (chaque image, nouvelle partie) : rouges tant que leur durée court, par une classe du
+   bloc des bonus du jeu (#pu-active : HUD.update n'en refait que le contenu ; règle dans le style ajouté par la section 23) ;
+   ensuite, la couleur du jeu (un bonus ramassé entre-temps continue, en vert). */
+function b7BonusRouge() {
+  const el = HUD.el['pu-active'];
+  if (el) for (const t in B7.victoireJusqua) el.classList.toggle(`b7-${t}`, G.time < B7.victoireJusqua[t]);
 }
 function b7ListeAtouts() {
   const ids = [...new Set((LAYOUT.perks || []).map((p) => p.p))].filter((id) => PERKS[id]);
@@ -508,8 +524,14 @@ function b7NouvellePartie() {
   B7.retires.clear(); B7.placees.clear();
   for (const r of B7.recompenses) scene.remove(r.m);
   B7.recompenses.length = 0;
+  B7.victoireJusqua.insta = B7.victoireJusqua.double = 0;
+  b7BonusRouge();                                          // bonus de la victoire : finis, couleur du jeu (toutes cartes)
   b7PanneauRemettre();                                     // étape 7 : vitesse du temps et invincibilité du panneau de test
   B7A.codes.secret = B7A.codes.boss = false;               // étape 8 : codes du digi pass tapés dans la partie
+  // voile rouge des blessures du jeu (#dmg), toutes cartes : HUD.full vide la mémoire du HUD sans réécrire l'opacité, et
+  // HUD.update ne la réécrit que si elle change ; à PV pleins, celui de la mort d'avant restait jusqu'au premier coup reçu,
+  // toute la partie avec le code secret du digi pass (défaut du jeu de base, relevé par Anthony le 2 novembre 2026)
+  HUD.el.dmg.style.opacity = '0';
   if (!b7Carte() || !b7Creer()) return;
   if (B7.etat !== 'inactif') B7.combat.allerA('inactif');
   b7SalleRemettre();                                       // étape 4 : dalles, piliers et cuves à neuf
@@ -528,4 +550,5 @@ function b7Update(dt) {
   b7SalleMaj(dt);                                          // étape 4 : dalles, piliers, cuves, décor animé de la salle
   b7EnnemisMaj(dt);                                        // étape 6 : mini-boss, petits Démembrés, irradiés, joueur
   b7VueMaj(dt, B7.e);                                      // étape 5 : le Septième, effets, sons, interface
+  b7BonusRouge();                                          // bonus de la victoire : rouges tant que leur durée court
 }

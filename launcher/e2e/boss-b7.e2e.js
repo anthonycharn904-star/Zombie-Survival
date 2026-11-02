@@ -6,7 +6,10 @@
    passent (côté Node, si le paquet est présent). Blocs : chargement et déclenchement (critères 1, 2, 3) ; phase 1, armes et
    calibrage (4, 13, 19, 20, 44, 45, 46) ; répit, absence, phase 3, rituel, faiblesse, chiens (5, 7, 8, 14, 15, 17, 20, 30,
    31) ; phase 2 et mini-boss (6, 21 à 29, 35 à 41, 46) ; phase 5 (3, 9, 13, 18, 32, 34, 42, 43) ; fin du combat (2, 3, 10,
-   16, 47, 48) ; robustesse (11) ; panneau de test, sons décodés et performances (12) ; changement de carte en plein combat (11).
+   16, 47, 48) ; retour dans Bunker 7 après une victoire en phase 5 (ambiance normale, armes au sol, nouvelle partie) ;
+   robustesse (11) ; panneau de test, sons décodés et performances (12) ; changement de carte en plein combat (11). Retours
+   d'Anthony du 2 novembre 2026 : dalles lancées visibles, barre vidée vers la droite, bonus de la victoire (5 min, en rouge),
+   bords de l'écran après une mort, Bunker 7 après la victoire.
      xvfb-run -a node e2e/boss-b7.e2e.js   (Linux sans écran) */
 const fs = require('fs');
 const os = require('os');
@@ -237,9 +240,16 @@ const PAQUET = path.join(ROOT, '..', 'boss-bunker7', 'le-dernier-pacte');
       const mh = player.maxHp, inf = B7.jeu.infligerDegats, coups = [];
       B7.jeu.infligerDegats = (id, f, o) => { const h0 = player.hp; const v = inf(id, f, o); if (o && o.source === 'bloc') coups.push({ f, ign: !!o.ignorerReductions, perte: +((h0 - player.hp) / player.maxHp).toFixed(3) }); return v; };
       G.god = false;
+      // retour d'Anthony du 2 novembre 2026 (défaut 1) : dalles détachées (arrachée, en lévitation, en vol) là où la logique les place
+      const wd = new THREE.Vector3(), dalles = { n: 0, ecart: 0, cachees: 0 };
       for (let i = 0; i < 60 * 20; i++) {
         T.pas(1);
         if (premier == null && Zombies.list.some((z) => z.alive && z.b7 && !z.dog && !avant.has(z.id))) premier = +(G.time - t3).toFixed(2);
+        for (const b of B7.e ? B7.e.blocs : []) if (b.position && ['arrache', 'levitation', 'vol'].includes(b.etat)) {
+          const g = B7S.monde.dalle(b.id); g.getWorldPosition(wd);
+          dalles.n++; if (!g.visible) dalles.cachees++;
+          dalles.ecart = Math.max(dalles.ecart, Math.hypot(wd.x - b.position.x, wd.y - b.position.y, wd.z - b.position.z));
+        }
       }
       B7.jeu.infligerDegats = inf; G.god = true;
       const chPhase3 = chiens(), A3 = cfg.phase3.apparitions;
@@ -249,8 +259,45 @@ const PAQUET = path.join(ROOT, '..', 'boss-bunker7', 'le-dernier-pacte');
       ok(mh > 100 && coups.length > 0 && coups.every((q) => q.f >= 0.25 && q.ign && q.perte >= 0.25 - 1e-3), `critère 7 : ${coups.length} blocs reçus avec Mastodonte (${mh} PV), chacun ≥ 25 % des PV max, sans réduction`, coups);
       T.pas(60 * 16);
       ok(T.evs('bloc', (d) => d.etat === 'reconstruit').length > 0, 'critère 7 : les murs arrachés se reforment');
+      ok(dalles.n > 0 && dalles.ecart < 0.01 && !dalles.cachees,
+        `phase 3 : dalles arrachées, en lévitation et en vol visibles là où la logique les place (${dalles.n} mesures, écart ${dalles.ecart.toFixed(3)} m)`, dalles);
+      // décision d'Anthony du 2 novembre 2026 : une dalle détachée arrête les tirs, exactement comme dans la démo ; seul le rayon
+      // de la caméra TPS la traverse (vertige). Matrices de la dalle mises à jour le temps de la mesure (le rendu le fait en jeu),
+      // puis remises : les contrôles suivants voient les dalles comme avant
+      let tirDalle = null, cachees = 0;
+      for (let i = 0; i < 60 * 12 && !tirDalle; i++) {
+        T.pas(1);
+        const b = (T.e().blocs || []).find((q) => q.etat === 'levitation');
+        if (!b) continue;
+        const g = B7S.monde.dalle(b.id), avantM = [];
+        g.traverse((o) => avantM.push([o, o.matrixWorld.clone()]));
+        g.updateMatrixWorld(true); g.getWorldPosition(wd);
+        const oy = player.gy + PLAYER_EYE, dx = wd.x - player.pos.x, dy = wd.y - oy, dz = wd.z - player.pos.z, L = Math.hypot(dx, dy, dz);
+        const rayon = (cam) => { B7S.cameraTps = cam; b7SalleRayon(player.pos.x, oy, player.pos.z, dx / L, dy / L, dz / L, L + 1); B7S.cameraTps = false; return RAY.hit ? RAY.t : Infinity; };
+        const tTir = rayon(false), tCam = rayon(true);
+        for (const [o, m] of avantM) o.matrixWorld.copy(m);
+        // les deux rayons ne diffèrent que par les dalles détachées : celui de la caméra arrêté avant le centre de la dalle, c'est
+        // qu'autre chose la cache (pilier, cuve…) : image suivante (la dalle bouge) ou dalle suivante
+        if (tCam < L) { cachees++; continue; }
+        tirDalle = { distance: +L.toFixed(2), tir: tTir < L, camera: tCam < L, cachees };
+      }
+      ok(tirDalle && tirDalle.tir && !tirDalle.camera, 'phase 3 : une dalle en lévitation arrête un tir du jeu (comme dans la démo), pas le rayon de la caméra TPS', tirDalle);
+      // H1 : persoTpsCam lance son rayon avec le drapeau des dalles détachées, puis le retire (vertige : pas de coup de zoom)
+      const rayon0 = window.b7SalleRayon; let pendant = null;
+      window.b7SalleRayon = function () { pendant = B7S.cameraTps; return rayon0.apply(this, arguments); };
+      try { persoTpsCam(); } finally { window.b7SalleRayon = rayon0; }
+      ok(pendant === true && B7S.cameraTps === false, 'caméra TPS : persoTpsCam lance son rayon avec B7S.cameraTps, puis le remet à faux', { pendant, apres: B7S.cameraTps });
       // critère 30 : sous 50 % : salves de 4 blocs lancés en moins d'une demi-seconde
       C.forcer('pvSegment', 0.49 * T.e().barre.max);
+      // retour d'Anthony du 2 novembre 2026 (défaut 3) : la barre du Septième se vide vers la droite (transitions coupées le
+      // temps de la mesure : le rouge du segment courant reste collé à son bord droit)
+      const sansTr = document.createElement('style'); sansTr.textContent = '.b7h *{transition:none!important}'; document.head.appendChild(sansTr);
+      T.pas(2);
+      const segB = [...document.querySelectorAll('.b7h-barre .b7h-seg')][T.e().barre.segment];
+      const rsB = segB && segB.getBoundingClientRect(), riB = segB && segB.querySelector('i').getBoundingClientRect();
+      sansTr.remove();
+      ok(segB && getComputedStyle(segB).transform === 'matrix(-1, 0, 0, 1, 0, 0)' && Math.abs(riB.right - rsB.right) < 1.5 && riB.left > rsB.left + 1,
+        'barre de vie du Septième vidée vers la droite : à 49 % des PV de la phase 3, le rouge reste collé au bord droit du segment', { segment: rsB && [rsB.left, rsB.right], rouge: riB && [riB.left, riB.right] });
       let salve = null;
       for (let i = 0; i < 60 * 12 && !salve; i++) { T.pas(1); const a = T.e().boss.action; if (a && a.donnees && a.donnees.salve) salve = a.donnees.blocs.slice(); }
       T.pas(60 * 3);
@@ -368,6 +415,13 @@ const PAQUET = path.join(ROOT, '..', 'boss-bunker7', 'le-dernier-pacte');
       // critère 35 : rage à la moitié de ses PV : immobile, invulnérable (« Invulnérable »), murs électrifiés 2,5 s plus tard
       T.rage(); T.pas(30);
       const pos = { x: q.position.x, z: q.position.z }, inv = T.mb() && T.mb().invulnerable, bInv = barres()[0], pvR = q.pv;
+      // demande d'Anthony du 2 novembre 2026 : la barre du mini-boss se vide vers la droite, comme celle du Septième (transitions
+      // coupées le temps de la mesure)
+      const sansTrMB = document.createElement('style'); sansTrMB.textContent = '.b7h *{transition:none!important}'; document.head.appendChild(sansTrMB);
+      const spMB = document.querySelector('.b7h-mb:not(.mort) .b span'), rsMB = spMB && spMB.getBoundingClientRect(), riMB = spMB && spMB.querySelector('i').getBoundingClientRect();
+      sansTrMB.remove();
+      ok(spMB && getComputedStyle(spMB).transform === 'matrix(-1, 0, 0, 1, 0, 0)' && Math.abs(riMB.right - rsMB.right) < 1.5 && riMB.left > rsMB.left + 1,
+        `barre du mini-boss vidée vers la droite : à ${Math.round(pvR / q.pvMax * 100)} % de ses PV, son remplissage reste collé au bord droit`, { cadre: rsMB && [rsMB.left, rsMB.right], rempli: riMB && [riMB.left, riMB.right] });
       T.blesserMB(0.05);
       const pvR2 = q.pv;
       T.pas(60);
@@ -646,6 +700,17 @@ const PAQUET = path.join(ROOT, '..', 'boss-bunker7', 'le-dernier-pacte');
       ok(armes.join() === ['blaster:3', 'raygun:3'].join() && atouts.every((p) => player.perks.has(p)) && player.perks.size > atouts0
         && bonusDonnes.join() === cfg.conclusion.recompenses.bonus.join() && minuteurs.insta > 0 && minuteurs.double > 0,
         `critère 48 : armes merveilles au palier III (${armes.join(', ')}) au sol, tous les atouts (${atouts.join(', ')}), les ${bonusDonnes.length} bonus du jeu`, { armes, bonus: bonusDonnes, minuteurs });
+      // demande d'Anthony du 2 novembre 2026 (défaut 4) : bonus de la victoire pour 5 min, en rouge ; un bonus ramassé ne les
+      // raccourcit pas ; leur durée finie, un bonus ramassé entre-temps continue, en vert
+      const pa = HUD.el['pu-active'], coul = (id) => { const q = pa.querySelector('.pu.' + id); return q ? getComputedStyle(q).color : null; };
+      const ROUGE = 'rgb(226, 49, 58)', VERT = 'rgb(141, 255, 116)', vic = { reste: { insta: G.timers.insta, double: G.timers.double }, couleurs: [coul('insta'), coul('double')] };
+      const av = G.timers.insta, avD = G.timers.double; applyPowerup('insta'); applyPowerup('double'); T.pas(1);
+      ok(minuteurs.insta > 299 && minuteurs.double > 299 && vic.reste.insta > 270 && vic.reste.double > 270 && vic.couleurs.every((c) => c === ROUGE)
+        && G.timers.insta > av - 0.1 && G.timers.insta < av && G.timers.double > avD - 0.1 && G.timers.double < avD,
+        'bonus de la victoire : Mort instantanée et Double points pour 5 min, en rouge ; un bonus ramassé ne les raccourcit pas', { minuteurs, vic, ramasse: [av, G.timers.insta, avD, G.timers.double] });
+      B7.victoireJusqua.insta = G.time + 1; G.timers.insta = 1; applyPowerup('insta'); T.pas(90);
+      ok(G.timers.insta > 28 && G.timers.insta < 29 && coul('insta') === VERT && coul('double') === ROUGE,
+        'bonus de la victoire : sa durée finie, la Mort instantanée ramassée entre-temps continue (30 s), en vert', { insta: G.timers.insta, couleurs: [coul('insta'), coul('double')] });
       // armes ramassées : l'emplacement 1, puis le 2, au palier III
       for (const r of B7.recompenses.slice()) { B7.jeu.teleporter(B7.id, { x: r.x, y: 0, z: r.z }, null, 'bunker'); T.pas(40); }
       ok(!B7.recompenses.length && ['raygun', 'blaster'].every((id) => Arms.slots.some((s) => s && s.id === id && s.tier === 3)), 'critère 48 : les deux armes merveilles ramassées, au palier III', Arms.slots.map((s) => s && `${s.id}:${s.tier}`));
@@ -661,6 +726,46 @@ const PAQUET = path.join(ROOT, '..', 'boss-bunker7', 'le-dernier-pacte');
       // critère 10 : les manches reprennent
       T.pas(60 * 15);
       ok(!B7.manches && Zombies.list.some((z) => z.alive && !z.b7 && !z.boss), 'critère 10 : les manches reprennent (zombies de la manche)', { manche: G.round });
+      T.partie(); T.pas(2); applyPowerup('double'); T.pas(1);
+      ok(G.timers.insta === 0 && G.timers.double > 29.9 && G.timers.double <= 30 && !pa.classList.contains('b7-insta') && !pa.classList.contains('b7-double') && coul('double') === VERT,
+        'bonus de la victoire : nouvelle partie : finis ; un bonus ramassé dure 30 s, en vert', { minuteurs: { ...G.timers }, classes: pa.className });
+      G.god = true;
+      return out;
+    })).forEach(report);
+    // ------------------------------------------------------------ Retour dans Bunker 7 après la victoire : ambiance normale
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      const T = window.__b7t, C = T.C(), a = CUR.map.ambiance, c0 = new THREE.Color(parseColor(a.fog, 0x05070b)).convertSRGBToLinear();
+      // retour d'Anthony du 2 novembre 2026 (défaut 5) : après la victoire, Bunker 7 restait dans l'obscurité de la phase 5.
+      // L'échange d'ambiance de la salle se fait au rendu (b7SalleAvantRendu) ; __zs.step ne dessine pas : on l'appelle à chaque pas
+      const pas = (n) => { for (let i = 0; i < n; i++) { T.pas(1); b7SalleAvantRendu(); } };
+      const brume = () => ({ densite: +scene.fog.density.toFixed(4), couleur: '#' + scene.fog.color.clone().convertLinearToSRGB().getHexString() });
+      const normale = () => Math.abs(scene.fog.density - a.fogDensity) < 1e-6
+        && Math.abs(scene.fog.color.r - c0.r) + Math.abs(scene.fog.color.g - c0.g) + Math.abs(scene.fog.color.b - c0.b) < 1e-6
+        && Math.abs(renderer.toneMappingExposure - a.exposure) < 1e-6 && !!HEMI && HEMI.visible && Math.abs(HEMI.intensity - a.hemi) < 1e-6
+        && B7V.kBunker === 1 && B7V.fx.facteurLumiere('bunker') === 1 && !B7V.fx.stats().ecran && !B7S.dans && World.root.visible;
+      T.partie(); G.god = true;
+      const avant = brume();
+      C.demarrer(); pas(60 * 9);
+      C.allerA('phase5'); pas(60 * 3);
+      const p5 = brume();
+      ok(B7.lieu === 'bunker' && p5.densite > 0.1 && B7V.kBunker < 1, 'phase 5 : Bunker 7 dans l’obscurité du combat (brume épaissie, lampes baissées)', { avant, p5, k: B7V.kBunker });
+      C.allerA('defaite');
+      for (let t = 0; t < 60 * 60 && B7.etat !== 'termine'; t++) {
+        const e = B7.e; if (e && e.interaction) { const p = e.boss.position; B7.jeu.teleporter('j1', { x: p.x + 1.2, y: 0, z: p.z }, null, B7.lieu); }
+        Input.keys.KeyF = true; pas(1);
+      }
+      Input.keys.KeyF = false; pas(60 * 2);
+      ok(B7.etat === 'termine' && B7.lieu === 'bunker' && normale(), 'de retour dans Bunker 7 après la victoire (défaite en phase 5) : ambiance normale (brume, exposition, hémisphère, lampes, voile)',
+        { etat: B7.etat, brume: brume(), carte: a.fogDensity, k: B7V.kBunker, expo: renderer.toneMappingExposure });
+      // défaut relevé le 2 novembre 2026 : combat fini, le cadavre du Septième prenait une place de zombie (23 au lieu de 24)
+      ok(!Zombies.list.some((z) => z.b7boss && z.alive) && !B7V.ent && !B7V.fxBunker.parent && !B7V.fxSalle.parent && !B7V.modele.object.parent,
+        'combat fini : le Septième ne prend plus de place de zombie, ses effets ont quitté la scène', { vivants: Zombies.list.filter((z) => z.b7boss && z.alive).length });
+      ok(B7.recompenses.length === 2 && B7.recompenses.every((r) => b7LieuDe({ x: r.x, y: r.gy, z: r.z }) === 'bunker') && B7.drapeaux[C.config.general.drapeauTermine] === true,
+        'victoire après la phase 5 : armes merveilles au sol dans Bunker 7, drapeau posé', B7.recompenses.map((r) => r.id));
+      T.partie(); pas(2);
+      ok(normale(), 'nouvelle partie sur Bunker 7 (carte non rechargée) : ambiance normale', brume());
       G.god = true;
       return out;
     })).forEach(report);
@@ -705,6 +810,12 @@ const PAQUET = path.join(ROOT, '..', 'boss-bunker7', 'le-dernier-pacte');
       const sonsFin = B7.audio ? B7.audio.stats() : null;
       T.plein = true;
       ok(G.state === 'gameover' && sonsFin && !sonsFin.musique && sonsFin.nommes.length === 0, 'critère 11 : mort pendant une image du jeu : sons du combat coupés, aucun relancé', sonsFin && { musique: sonsFin.musique, nommes: sonsFin.nommes });
+      // retour d'Anthony du 2 novembre 2026 (défaut 2) : mort pendant le combat, puis « Rejouer » : ni voile rouge des blessures
+      // du jeu (#dmg), ni « État critique » du boss
+      const voileMort = +HUD.el.dmg.style.opacity;
+      document.getElementById('btn-again').click(); T.pas(60);
+      ok(voileMort > 0.8 && HUD.el.dmg.style.opacity === '0' && !HUD.el.hud.querySelector('.b7h-critique.on') && G.state === 'playing',
+        'critère 11 : mort pendant le combat, puis « Rejouer » : les bords de l’écran ne restent pas rouges', { voileMort, apres: HUD.el.dmg.style.opacity });
       // interface du boss : rien ne reste figé après une remise à zéro (marque de touche, « Immunisé », « Étourdi », récompenses, message)
       T.partie(); C.demarrer(); T.pas(60 * 9);
       C.allerA('phase1'); T.pas(30);

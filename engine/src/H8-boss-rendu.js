@@ -19,7 +19,11 @@
      (fx.facteurLumiere : lampes de la salle ; lampes et hémisphère de Bunker 7) ; voile d'écran dessiné après l'arme
      (rendreEcran). Aucune secousse de caméra (vertige d'Anthony) : surSecousse n'est pas fourni.
    · Sons : branchés sur le combat (b7Sons) ; auditeur aux yeux du joueur.
-   · Interface (BossB7Hud) : dans le HUD du jeu (cachée avec lui) ; touche d'interaction F ; noms des deux armes merveilles.
+   · Interface (BossB7Hud) : dans le HUD du jeu (cachée avec lui) ; touche d'interaction F ; noms des deux armes merveilles ;
+     barres de vie du Septième et des mini-boss vidées vers la droite (remplissages retournés par un style ajouté,
+     b7h-css-jeu, qui met aussi en rouge les bonus de la victoire).
+   · Fin du combat (« termine », « echec ») : le Septième n'est plus dans Zombies.list (il ne prend plus de place de zombie)
+     et ses couches d'effets quittent la scène ; la musique et l'interface finissent leur fondu (b7VueMaj).
    · Interaction (achever le rituel près du cadavre) : F maintenue.
    ============================================================================ */
 const B7V = {
@@ -68,6 +72,16 @@ function b7VueCreer() {
     for (const g of [fxS, fxB]) g.traverse((o) => { if (o.isPointLight) o.decay = B7S_MARQUE; });
     V.hud = BossB7Hud.creer({ racine: HUD.el.hud, config: BOSS_B7_CONFIG, toucheInteraction: 'F', noms: { raygun: WEAPONS.raygun.name, blaster: WEAPONS.blaster.name } });
     V.hud.brancher(B7.combat);
+    // style ajouté autour de l'interface (demandes d'Anthony du 2 novembre 2026) : (1) barre de vie du Septième vidée vers la
+    // droite, dans le sens de ses segments (la phase 1, à gauche, se vide la première) ; le paquet ancre le remplissage de
+    // chaque segment à gauche : chaque segment est retourné (miroir, sans texte dedans), remplissage, traînée des dégâts et
+    // repères des mini-boss ensemble ; de même la barre de chaque mini-boss (son cadre intérieur, sans texte) ; (2) bonus de
+    // la victoire en rouge (classes posées par b7BonusRouge, section 21)
+    const st = document.createElement('style');
+    st.id = 'b7h-css-jeu';
+    st.textContent = '.b7h-seg,.b7h-mb .b span{transform:scaleX(-1)}'
+      + '#pu-active.b7-insta .pu.insta,#pu-active.b7-double .pu.double{color:var(--blood-hi);text-shadow:0 0 10px rgba(226,49,58,.55)}';
+    document.head.appendChild(st);
     V.ctxA.positionZombie = b7PositionZombie;
     return true;
   } catch (e) {
@@ -130,7 +144,9 @@ function b7VueMaj(dt, e) {
 function b7BossEntree(e) {
   const V = B7V, b = e && e.boss;
   let z = V.ent;
-  if (!b || !b.present) { if (z && !z.removed) removeZombie(z); V.ent = null; return; }
+  // combat fini (« termine », « echec ») : son cadavre reste présent pour la logique, mais il ne prend plus de place de
+  // zombie (23 en même temps au lieu de 24 pour le reste de la partie : défaut relevé le 2 novembre 2026)
+  if (!b || !b.present || !B7.actif) { if (z && !z.removed) removeZombie(z); V.ent = null; return; }
   if (!z || z.removed) {
     if (!ZR.free.length) { const c = Zombies.list.find((q) => !q.alive && !q.boss); if (c) removeZombie(c); else return; }
     const slot = ZR.free.pop();
@@ -208,7 +224,7 @@ function b7LumieresBunker(k) {
 function b7VueAvantRendu(dans) {
   const V = B7V;
   if (!V.modele) return;
-  const e = B7.e, combat = !!e && b7Carte() && G.state !== 'editor';
+  const e = B7.e, combat = !!e && B7.actif && b7Carte() && G.state !== 'editor';   // combat fini : ni Septième ni effets dans la scène
   const lieu = dans ? 'salle' : 'bunker';
   b7Attacher(V.modele.object, combat && e.boss.lieu === lieu);
   b7Attacher(V.fxSalle, combat && dans);

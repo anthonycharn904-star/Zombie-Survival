@@ -8,6 +8,7 @@ Ce que les essais automatiques ne peuvent pas juger : ils tournent en rendu logi
   - partie normale sur Bunker 7, avec le code du boss au digi pass (une fois par partie) ;
   - partie de test des Mod Tools (Bunker 7, bouton Test). **F8** y ouvre le panneau du boss : aller à un état, vitesse × 0,5 à × 4, joueur invincible, mini-boss, volumes. Il se referme seul à la fin du test.
 - **Installer ce jeu** : tant que la session d'intégration n'a pas posé les numéros, il porte ceux du jeu 2.0.6 (2.0.6, interface 9, construction 1). Un launcher qui a déjà un jeu à ces numéros ne le remplace pas par celui-ci, et les Mod Tools prennent alors le jeu installé : la façon d'installer ce jeu pour les essais (numéros posés, ou construction d'essai) est à décider avec Anthony avant de faire l'installateur.
+- **Sans installer** (façon d'Anthony du 2 novembre 2026) : le jeu de la branche servi par un serveur local sur `launcher/game` (`python3 -m http.server 8077 --bind 127.0.0.1` dans ce dossier), ouvert dans Chrome ou Edge à `http://localhost:8077/` ; recharger la page après chaque construction (`build.py`, puis `prepare-game.js`). Partie normale seulement : sans Mod Tools, donc sans panneau F8 (invincibilité de test : `__zs.god(true)` dans la console).
 - **Images par seconde** : la barre de jeu Xbox de Windows (Win + G, widget « Performances ») ou l'affichage de la carte graphique (NVIDIA, AMD).
 - **Pour chaque problème** : noter l'heure, la phase et ce qu'on voyait, faire une capture (Win + Maj + S) et me le dire.
 
@@ -83,3 +84,12 @@ Aucun son du combat n'a encore été écouté par personne.
 - [ ] `DPS_REFERENCE` = 1 393 (gardé provisoirement) ; voir le calibrage plus haut.
 - [ ] Obscurité de la phase 5 : brume plus dense, lampes à 75 %, voile sur les bords ; assez sombre, ou trop ?
 - [ ] Mesures d'équilibrage du paquet (zombies, dégâts, chargeurs) face aux règles du jeu.
+
+## 7. Corrections du 2 novembre 2026 (retours d'Anthony en jeu)
+
+- [ ] Phase 3 : les dalles arrachées se voient (fissure dans le mur, lévitation près du Septième, vol vers le joueur). Elles arrêtent les balles, comme dans la démo (une balle y laisse son trou, qui reste en l'air quand la dalle repart, comme dans la démo), et aussi les grenades (rebond) et le couteau ; en vue TPS (T), une dalle qui passe derrière le joueur ne rapproche pas la caméra (elle peut masquer la vue un instant).
+- [ ] Barres de vie du Septième et des mini-boss : la limite entre sombre et couleur avance de gauche à droite ; la traînée pâle des dégâts apparaît à gauche du remplissage.
+- [ ] Mort pendant le combat, puis « Rejouer » : les bords de l'écran ne restent pas rouges (de même après « Menu » puis « Jouer »).
+- [ ] Après la victoire : Mort instantanée et Double points à 5 minutes, en rouge ; un bonus ramassé ne les raccourcit pas ; dans une nouvelle partie, bonus normaux : 30 s, en vert.
+- [ ] Retour dans Bunker 7 après la victoire : éclairage normal, comme avant le combat ; puis menu et nouvelle partie : normal aussi.
+- [ ] Après la victoire, les manches reprennent avec jusqu'à 24 zombies en même temps (le Septième ne prend plus de place).

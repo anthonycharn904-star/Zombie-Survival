@@ -194,3 +194,11 @@ rep("""  clearZombies(); clearFX(); resetFeatures(); resetPlayer(); resetArms();
   if (G.editorSession && window.ZSEditor) {""", """  clearZombies(); clearFX(); resetFeatures(); resetPlayer(); resetArms();
   b7RetourMenu();                              // jeu 2.0.7 : combat du boss remis à zéro (musique, Septième, effets, obscurité)
   if (G.editorSession && window.ZSEditor) {""")
+
+# Retours d'Anthony du 2 novembre 2026 : bonus de la victoire (module src/H6-boss-b7.js : b7ActiverBonus, b7BonusRouge),
+# Mort instantanée et Double points pour 5 min au lieu de 30 s. Un bonus ramassé ne raccourcit jamais un bonus en cours ;
+# sans effet ailleurs (un bonus dure au plus 30 s : le ramasser le remet à 30 s, comme avant).
+rep("""    case 'insta': G.timers.insta = POWERUPS.insta.duration; break;
+    case 'double': G.timers.double = POWERUPS.double.duration; break;""",
+"""    case 'insta': G.timers.insta = Math.max(G.timers.insta, POWERUPS.insta.duration); break;   // jeu 2.0.7 : jamais raccourci (victoire du boss : 5 min)
+    case 'double': G.timers.double = Math.max(G.timers.double, POWERUPS.double.duration); break;""")

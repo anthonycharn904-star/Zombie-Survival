@@ -34,6 +34,8 @@ const B7S = {
   O: null, demi: 0,            // origine de la salle ; demi-côté de son carré englobant (m)
   cases: null,                 // cases de la salle dans la grille : { x0, x1, z0, z1, gh0, sol, murs, obstacles }
   k: null,                     // facteur appliqué aux lampes de la salle (b7SalleIntensite)
+  volantes: new Set(),         // groupes des dalles détachées à cette image (b7SalleBlocs)
+  cameraTps: false,            // rayon de la caméra TPS en cours (persoTpsCam) : les dalles détachées ne l'arrêtent pas
 };
 const B7S_AMB = { fond: 0x020203, brume: 0x05060a, densite: 0.024, exposition: 1.0 };   // ambiance de la salle du prototype
 const B7S_MARQUE = 7;          // PointLight.decay d'une lampe de la salle (aucune lampe du jeu n'a cette valeur)
@@ -222,6 +224,7 @@ function b7SalleRayon(ox, oy, oz, dx, dy, dz, maxT) {
   _b7sHits.length = 0;
   for (const m of S.monde.solides.salle) {
     if ((!m.visible && !m.userData.proxy) || (m.parent && m.parent !== S.racine && !m.parent.visible)) continue;
+    if (S.cameraTps && S.volantes.has(m.parent)) continue;   // caméra TPS : une dalle détachée ne la tire pas vers la tête (vertige)
     const g = m.geometry;
     if (!g.boundingSphere) g.computeBoundingSphere();
     _b7sSph.copy(g.boundingSphere).applyMatrix4(m.matrixWorld);
@@ -268,7 +271,12 @@ function b7SalleAmbiance(dans) {
   const S = B7S;
   S.dans = dans;
   if (dans) {
-    S.sauve = { root: World.root, rootVisible: World.root ? World.root.visible : true, fond: scene.background, brume: scene.fog.color.clone(), densite: scene.fog.density,
+    // brume de la carte (celle d'applyAmbiance), pas celle de l'instant : à la défaite du Septième (retour_salle), le joueur
+    // arrive de Bunker 7 encore dans l'obscurité de la phase 5 ; gardée ici, elle revenait dans Bunker 7 au retour et y
+    // restait, jusque dans les parties suivantes (défaut relevé par Anthony le 2 novembre 2026)
+    const a = (CUR.map || BUNKER7).ambiance || DEFAULT_AMBIANCE;
+    S.sauve = { root: World.root, rootVisible: World.root ? World.root.visible : true, fond: scene.background,
+      brume: new THREE.Color(parseColor(a.fog, 0x05070b)).convertSRGBToLinear(), densite: a.fogDensity,
       exposition: renderer.toneMappingExposure, hemi: HEMI ? HEMI.visible : true, lune: MOON ? MOON.visible : false };
     if (World.root) World.root.visible = false;
     scene.background = new THREE.Color(B7S_AMB.fond).convertSRGBToLinear();
@@ -290,6 +298,27 @@ function b7SalleAmbiance(dans) {
 }
 
 /* ------------------------------------------------------------- Combat --- */
+/* Blocs de la logique dans le repère de la salle. La logique donne leurs positions dans le monde (origine comprise) ; le
+   constructeur du prototype pose une dalle détachée (arrache, levitation, vol) à cette position sous sa racine, placée à
+   l'origine de la salle : juste dans la démo (origine nulle), à 103 m de sa place, derrière les murs, dans le jeu (la dalle
+   volait invisible, ses effets seuls se voyaient : défaut relevé par Anthony le 2 novembre 2026). Copies : B7.e garde les
+   positions du monde pour les effets, les sons et l'interface. Une dalle détachée arrête les tirs, exactement comme dans la
+   démo (décision d'Anthony du 2 novembre 2026) ; seul le rayon de la caméra TPS l'ignore (b7SalleRayon, B7S.cameraTps) :
+   sinon la caméra serait tirée vers la tête quand une dalle passe derrière le joueur (coup de zoom : vertige d'Anthony). En
+   contrepartie, une dalle qui passe entre l'œil et la caméra TPS reste dessinée devant elle : la vue est masquée le temps de
+   son passage (≈ 0,1 s en vol), sans aucun mouvement de caméra. Au-delà de la démo (où seul le tir les teste), elles arrêtent
+   aussi les projectiles, les grenades, le couteau et l'onde du Glas (rayons du jeu partis de la salle). */
+const _b7sBlocs = [];
+function b7SalleBlocs(blocs) {
+  const S = B7S, O = S.O, L = _b7sBlocs;
+  L.length = 0; S.volantes.clear();
+  if (blocs) for (const b of blocs) {
+    const p = b && b.position;
+    L.push(p ? Object.assign({}, b, { position: { x: p.x - O.x, y: p.y - O.y, z: p.z - O.z } }) : b);
+    if (p && (b.etat === 'arrache' || b.etat === 'levitation' || b.etat === 'vol')) S.volantes.add(S.monde.dalle(b.id));
+  }
+  return L;
+}
 /* Chaque image (b7Update) : dalles, piliers et cuves selon la logique ; flammes, braises, poussière, grilles et cuves
    animées tant que le joueur est dans la salle. */
 function b7SalleMaj(dt) {
@@ -297,7 +326,7 @@ function b7SalleMaj(dt) {
   if (!S.actif) return;
   const e = B7.e;
   if (e) {
-    S.monde.appliquerBlocs(e.blocs, G.time);
+    S.monde.appliquerBlocs(b7SalleBlocs(e.blocs), G.time);
     if (e.piliers) S.monde.appliquerPiliers(e.piliers, G.time);
     if (e.tubes) S.monde.appliquerTubes(e.tubes, G.time);
   }
@@ -321,7 +350,7 @@ function b7SalleRemettre() {
   const S = B7S;
   if (!S.monde) return;
   const A = BOSS_B7_ARENE.salle;
-  S.monde.appliquerBlocs([], G.time);
+  S.monde.appliquerBlocs([], G.time); S.volantes.clear();
   S.monde.appliquerPiliers(A.piliers.map((p) => ({ id: p.id, etat: 'intact', coups: 0, t: 0 })), G.time);
   S.monde.appliquerTubes((A.tubes || []).map((t) => ({ id: t.id, etat: 'intact', t: 0 })), G.time);
 }

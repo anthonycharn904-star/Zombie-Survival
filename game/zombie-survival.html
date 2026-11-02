@@ -53626,8 +53626,8 @@ function applyPowerup(type) {
   HUD.banner(POWERUPS[type].name, '', 'powerup');
   switch (type) {
     case 'ammo': refillAmmo(); G.grenades = RULES.maxGrenades; HUD.weapon(); break;
-    case 'insta': G.timers.insta = POWERUPS.insta.duration; break;
-    case 'double': G.timers.double = POWERUPS.double.duration; break;
+    case 'insta': G.timers.insta = Math.max(G.timers.insta, POWERUPS.insta.duration); break;   // jeu 2.0.7 : jamais raccourci (victoire du boss : 5 min)
+    case 'double': G.timers.double = Math.max(G.timers.double, POWERUPS.double.duration); break;
     case 'nuke':
       Sound.nuke();
       HUD.flash();
@@ -66139,7 +66139,9 @@ function persoTpsCam() {
   C.quaternion.copy(camera.quaternion);
   const piv = camera.position, off = _psV().set(T.cote, T.haut, T.dist).applyQuaternion(camera.quaternion);
   const len = off.length(); off.normalize();
+  if (typeof B7S === 'object') B7S.cameraTps = true;            // jeu 2.0.7 : les dalles lancées par le boss ne tirent pas la caméra (vertige ; H7)
   raycast(piv.x, piv.y, piv.z, off.x, off.y, off.z, len + T.marge);
+  if (typeof B7S === 'object') B7S.cameraTps = false;
   let d = RAY.hit && RAY.t < len + T.marge ? Math.max(0.2, RAY.t - T.marge) : len;
   T.d = d < T.d || !dt ? d : damp(T.d, d, 4, dt);
   C.position.copy(piv).addScaledVector(off, T.d);
@@ -67684,7 +67686,9 @@ function ptsHudCoequipier(o) { return PTS_HUD.hud ? PTS_HUD.hud.addPlayer(o) : n
    · Manches suspendues pendant le combat ; aucun bonus au hasard du début du combat à sa fin (D3).
    · Bonus : les vrais bonus du jeu (B7_BONUS traduit les identifiants du paquet). Armes merveilles de la récompense
      (D2) : objets au sol devant l'autel de la salle, comme les bonus, jamais perdus ; ramassées, elles remplacent
-     l'emplacement 1, puis le 2 (une arme déjà tenue est améliorée à sa place).
+     l'emplacement 1, puis le 2 (une arme déjà tenue est améliorée à sa place). Bonus de la victoire qui ont une durée
+     (Mort instantanée, Double points) : 5 min au lieu de 30 s, en rouge tant que cette durée court ; un bonus ramassé
+     pendant ce temps ne les raccourcit pas (demande d'Anthony du 2 novembre 2026).
    · Navigation : chemin (A* sur la grille : portes ouvertes, escaliers), position valide, ligne de vue (sightClear) ;
      la salle secrète fait partie de la grille de Bunker 7 (module suivant, section 22 : H7-boss-salle.js).
    · Drapeaux : ceux de la partie en cours (le jeu n'a pas de sauvegarde de partie ; le combat se joue une fois).
@@ -67701,11 +67705,13 @@ const B7 = {
   lieu: 'bunker', regard: null, drapeaux: {},
   retires: new Map(),                         // zombies retirés : dernière position (effets : cendres), gardée 3 s
   recompenses: [], placees: new Set(), atouts: 0,
+  victoireJusqua: { insta: 0, double: 0 },   // bonus de la victoire qui ont une durée : en cours (en rouge) jusqu'à ce G.time
   audio: null, sonsPrets: false, sonsCharges: null, volMusique: -1,
   vueZombies: [], nav: null, journal: [],
 };
 // identifiants des bonus du paquet → ceux du jeu (vente flash, points bonus, atout gratuit et machine de mort : absents)
 const B7_BONUS = { 'munitions-max': 'ammo', 'mort-instantanee': 'insta', 'points-doubles': 'double', 'bombe-nucleaire': 'nuke', 'charpentier': 'carpenter' };
+const B7_BONUS_VICTOIRE = 300;                // s : bonus de la victoire qui ont une durée (Mort instantanée, Double points ; 30 s ailleurs)
 const B7_HORS_COMBAT = ['inactif', 'termine', 'echec'];
 const B7_MUSIQUE = 1.4;                       // gain de la musique du paquet (v1.1), multiplié par le réglage du jeu
 const B7_DIAG = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -67916,11 +67922,23 @@ function b7Bonus(b) {
   Powerups.list[Powerups.list.length - 1].life = b.duree > 0 ? +b.duree : 30;
   return true;
 }
+/* Bonus activé par la logique : ceux de la victoire (état « recompenses ») et le repli des bonus posés (fin de phase, mort
+   d'un mini-boss). Ceux de la victoire qui ont une durée (Mort instantanée, Double points) durent B7_BONUS_VICTOIRE au
+   lieu de 30 s, en rouge (b7BonusRouge) ; un bonus ramassé ensuite ne les raccourcit pas (applyPowerup, point
+   d'accroche). Demande d'Anthony du 2 novembre 2026. */
 function b7ActiverBonus(bonusId) {
   const t = B7_BONUS[bonusId];
   if (!t) { b7Journal('avertissement', `bonus inconnu du jeu : ${bonusId}`); return false; }
   applyPowerup(t);
+  if (B7.etat === 'recompenses' && POWERUPS[t].duration) { G.timers[t] = B7_BONUS_VICTOIRE; B7.victoireJusqua[t] = G.time + B7_BONUS_VICTOIRE; }
   return true;
+}
+/* Couleur des bonus de la victoire (chaque image, nouvelle partie) : rouges tant que leur durée court, par une classe du
+   bloc des bonus du jeu (#pu-active : HUD.update n'en refait que le contenu ; règle dans le style ajouté par la section 23) ;
+   ensuite, la couleur du jeu (un bonus ramassé entre-temps continue, en vert). */
+function b7BonusRouge() {
+  const el = HUD.el['pu-active'];
+  if (el) for (const t in B7.victoireJusqua) el.classList.toggle(`b7-${t}`, G.time < B7.victoireJusqua[t]);
 }
 function b7ListeAtouts() {
   const ids = [...new Set((LAYOUT.perks || []).map((p) => p.p))].filter((id) => PERKS[id]);
@@ -68173,8 +68191,14 @@ function b7NouvellePartie() {
   B7.retires.clear(); B7.placees.clear();
   for (const r of B7.recompenses) scene.remove(r.m);
   B7.recompenses.length = 0;
+  B7.victoireJusqua.insta = B7.victoireJusqua.double = 0;
+  b7BonusRouge();                                          // bonus de la victoire : finis, couleur du jeu (toutes cartes)
   b7PanneauRemettre();                                     // étape 7 : vitesse du temps et invincibilité du panneau de test
   B7A.codes.secret = B7A.codes.boss = false;               // étape 8 : codes du digi pass tapés dans la partie
+  // voile rouge des blessures du jeu (#dmg), toutes cartes : HUD.full vide la mémoire du HUD sans réécrire l'opacité, et
+  // HUD.update ne la réécrit que si elle change ; à PV pleins, celui de la mort d'avant restait jusqu'au premier coup reçu,
+  // toute la partie avec le code secret du digi pass (défaut du jeu de base, relevé par Anthony le 2 novembre 2026)
+  HUD.el.dmg.style.opacity = '0';
   if (!b7Carte() || !b7Creer()) return;
   if (B7.etat !== 'inactif') B7.combat.allerA('inactif');
   b7SalleRemettre();                                       // étape 4 : dalles, piliers et cuves à neuf
@@ -68193,6 +68217,7 @@ function b7Update(dt) {
   b7SalleMaj(dt);                                          // étape 4 : dalles, piliers, cuves, décor animé de la salle
   b7EnnemisMaj(dt);                                        // étape 6 : mini-boss, petits Démembrés, irradiés, joueur
   b7VueMaj(dt, B7.e);                                      // étape 5 : le Septième, effets, sons, interface
+  b7BonusRouge();                                          // bonus de la victoire : rouges tant que leur durée court
 }
 
 /* ================================================================= 22 SALLE DU BOSS ==
@@ -68231,6 +68256,8 @@ const B7S = {
   O: null, demi: 0,            // origine de la salle ; demi-côté de son carré englobant (m)
   cases: null,                 // cases de la salle dans la grille : { x0, x1, z0, z1, gh0, sol, murs, obstacles }
   k: null,                     // facteur appliqué aux lampes de la salle (b7SalleIntensite)
+  volantes: new Set(),         // groupes des dalles détachées à cette image (b7SalleBlocs)
+  cameraTps: false,            // rayon de la caméra TPS en cours (persoTpsCam) : les dalles détachées ne l'arrêtent pas
 };
 const B7S_AMB = { fond: 0x020203, brume: 0x05060a, densite: 0.024, exposition: 1.0 };   // ambiance de la salle du prototype
 const B7S_MARQUE = 7;          // PointLight.decay d'une lampe de la salle (aucune lampe du jeu n'a cette valeur)
@@ -68419,6 +68446,7 @@ function b7SalleRayon(ox, oy, oz, dx, dy, dz, maxT) {
   _b7sHits.length = 0;
   for (const m of S.monde.solides.salle) {
     if ((!m.visible && !m.userData.proxy) || (m.parent && m.parent !== S.racine && !m.parent.visible)) continue;
+    if (S.cameraTps && S.volantes.has(m.parent)) continue;   // caméra TPS : une dalle détachée ne la tire pas vers la tête (vertige)
     const g = m.geometry;
     if (!g.boundingSphere) g.computeBoundingSphere();
     _b7sSph.copy(g.boundingSphere).applyMatrix4(m.matrixWorld);
@@ -68465,7 +68493,12 @@ function b7SalleAmbiance(dans) {
   const S = B7S;
   S.dans = dans;
   if (dans) {
-    S.sauve = { root: World.root, rootVisible: World.root ? World.root.visible : true, fond: scene.background, brume: scene.fog.color.clone(), densite: scene.fog.density,
+    // brume de la carte (celle d'applyAmbiance), pas celle de l'instant : à la défaite du Septième (retour_salle), le joueur
+    // arrive de Bunker 7 encore dans l'obscurité de la phase 5 ; gardée ici, elle revenait dans Bunker 7 au retour et y
+    // restait, jusque dans les parties suivantes (défaut relevé par Anthony le 2 novembre 2026)
+    const a = (CUR.map || BUNKER7).ambiance || DEFAULT_AMBIANCE;
+    S.sauve = { root: World.root, rootVisible: World.root ? World.root.visible : true, fond: scene.background,
+      brume: new THREE.Color(parseColor(a.fog, 0x05070b)).convertSRGBToLinear(), densite: a.fogDensity,
       exposition: renderer.toneMappingExposure, hemi: HEMI ? HEMI.visible : true, lune: MOON ? MOON.visible : false };
     if (World.root) World.root.visible = false;
     scene.background = new THREE.Color(B7S_AMB.fond).convertSRGBToLinear();
@@ -68487,6 +68520,27 @@ function b7SalleAmbiance(dans) {
 }
 
 /* ------------------------------------------------------------- Combat --- */
+/* Blocs de la logique dans le repère de la salle. La logique donne leurs positions dans le monde (origine comprise) ; le
+   constructeur du prototype pose une dalle détachée (arrache, levitation, vol) à cette position sous sa racine, placée à
+   l'origine de la salle : juste dans la démo (origine nulle), à 103 m de sa place, derrière les murs, dans le jeu (la dalle
+   volait invisible, ses effets seuls se voyaient : défaut relevé par Anthony le 2 novembre 2026). Copies : B7.e garde les
+   positions du monde pour les effets, les sons et l'interface. Une dalle détachée arrête les tirs, exactement comme dans la
+   démo (décision d'Anthony du 2 novembre 2026) ; seul le rayon de la caméra TPS l'ignore (b7SalleRayon, B7S.cameraTps) :
+   sinon la caméra serait tirée vers la tête quand une dalle passe derrière le joueur (coup de zoom : vertige d'Anthony). En
+   contrepartie, une dalle qui passe entre l'œil et la caméra TPS reste dessinée devant elle : la vue est masquée le temps de
+   son passage (≈ 0,1 s en vol), sans aucun mouvement de caméra. Au-delà de la démo (où seul le tir les teste), elles arrêtent
+   aussi les projectiles, les grenades, le couteau et l'onde du Glas (rayons du jeu partis de la salle). */
+const _b7sBlocs = [];
+function b7SalleBlocs(blocs) {
+  const S = B7S, O = S.O, L = _b7sBlocs;
+  L.length = 0; S.volantes.clear();
+  if (blocs) for (const b of blocs) {
+    const p = b && b.position;
+    L.push(p ? Object.assign({}, b, { position: { x: p.x - O.x, y: p.y - O.y, z: p.z - O.z } }) : b);
+    if (p && (b.etat === 'arrache' || b.etat === 'levitation' || b.etat === 'vol')) S.volantes.add(S.monde.dalle(b.id));
+  }
+  return L;
+}
 /* Chaque image (b7Update) : dalles, piliers et cuves selon la logique ; flammes, braises, poussière, grilles et cuves
    animées tant que le joueur est dans la salle. */
 function b7SalleMaj(dt) {
@@ -68494,7 +68548,7 @@ function b7SalleMaj(dt) {
   if (!S.actif) return;
   const e = B7.e;
   if (e) {
-    S.monde.appliquerBlocs(e.blocs, G.time);
+    S.monde.appliquerBlocs(b7SalleBlocs(e.blocs), G.time);
     if (e.piliers) S.monde.appliquerPiliers(e.piliers, G.time);
     if (e.tubes) S.monde.appliquerTubes(e.tubes, G.time);
   }
@@ -68518,7 +68572,7 @@ function b7SalleRemettre() {
   const S = B7S;
   if (!S.monde) return;
   const A = BOSS_B7_ARENE.salle;
-  S.monde.appliquerBlocs([], G.time);
+  S.monde.appliquerBlocs([], G.time); S.volantes.clear();
   S.monde.appliquerPiliers(A.piliers.map((p) => ({ id: p.id, etat: 'intact', coups: 0, t: 0 })), G.time);
   S.monde.appliquerTubes((A.tubes || []).map((t) => ({ id: t.id, etat: 'intact', t: 0 })), G.time);
 }
@@ -68555,7 +68609,11 @@ function b7SallePilier(d) {
      (fx.facteurLumiere : lampes de la salle ; lampes et hémisphère de Bunker 7) ; voile d'écran dessiné après l'arme
      (rendreEcran). Aucune secousse de caméra (vertige d'Anthony) : surSecousse n'est pas fourni.
    · Sons : branchés sur le combat (b7Sons) ; auditeur aux yeux du joueur.
-   · Interface (BossB7Hud) : dans le HUD du jeu (cachée avec lui) ; touche d'interaction F ; noms des deux armes merveilles.
+   · Interface (BossB7Hud) : dans le HUD du jeu (cachée avec lui) ; touche d'interaction F ; noms des deux armes merveilles ;
+     barres de vie du Septième et des mini-boss vidées vers la droite (remplissages retournés par un style ajouté,
+     b7h-css-jeu, qui met aussi en rouge les bonus de la victoire).
+   · Fin du combat (« termine », « echec ») : le Septième n'est plus dans Zombies.list (il ne prend plus de place de zombie)
+     et ses couches d'effets quittent la scène ; la musique et l'interface finissent leur fondu (b7VueMaj).
    · Interaction (achever le rituel près du cadavre) : F maintenue.
    ============================================================================ */
 const B7V = {
@@ -68604,6 +68662,16 @@ function b7VueCreer() {
     for (const g of [fxS, fxB]) g.traverse((o) => { if (o.isPointLight) o.decay = B7S_MARQUE; });
     V.hud = BossB7Hud.creer({ racine: HUD.el.hud, config: BOSS_B7_CONFIG, toucheInteraction: 'F', noms: { raygun: WEAPONS.raygun.name, blaster: WEAPONS.blaster.name } });
     V.hud.brancher(B7.combat);
+    // style ajouté autour de l'interface (demandes d'Anthony du 2 novembre 2026) : (1) barre de vie du Septième vidée vers la
+    // droite, dans le sens de ses segments (la phase 1, à gauche, se vide la première) ; le paquet ancre le remplissage de
+    // chaque segment à gauche : chaque segment est retourné (miroir, sans texte dedans), remplissage, traînée des dégâts et
+    // repères des mini-boss ensemble ; de même la barre de chaque mini-boss (son cadre intérieur, sans texte) ; (2) bonus de
+    // la victoire en rouge (classes posées par b7BonusRouge, section 21)
+    const st = document.createElement('style');
+    st.id = 'b7h-css-jeu';
+    st.textContent = '.b7h-seg,.b7h-mb .b span{transform:scaleX(-1)}'
+      + '#pu-active.b7-insta .pu.insta,#pu-active.b7-double .pu.double{color:var(--blood-hi);text-shadow:0 0 10px rgba(226,49,58,.55)}';
+    document.head.appendChild(st);
     V.ctxA.positionZombie = b7PositionZombie;
     return true;
   } catch (e) {
@@ -68666,7 +68734,9 @@ function b7VueMaj(dt, e) {
 function b7BossEntree(e) {
   const V = B7V, b = e && e.boss;
   let z = V.ent;
-  if (!b || !b.present) { if (z && !z.removed) removeZombie(z); V.ent = null; return; }
+  // combat fini (« termine », « echec ») : son cadavre reste présent pour la logique, mais il ne prend plus de place de
+  // zombie (23 en même temps au lieu de 24 pour le reste de la partie : défaut relevé le 2 novembre 2026)
+  if (!b || !b.present || !B7.actif) { if (z && !z.removed) removeZombie(z); V.ent = null; return; }
   if (!z || z.removed) {
     if (!ZR.free.length) { const c = Zombies.list.find((q) => !q.alive && !q.boss); if (c) removeZombie(c); else return; }
     const slot = ZR.free.pop();
@@ -68744,7 +68814,7 @@ function b7LumieresBunker(k) {
 function b7VueAvantRendu(dans) {
   const V = B7V;
   if (!V.modele) return;
-  const e = B7.e, combat = !!e && b7Carte() && G.state !== 'editor';
+  const e = B7.e, combat = !!e && B7.actif && b7Carte() && G.state !== 'editor';   // combat fini : ni Septième ni effets dans la scène
   const lieu = dans ? 'salle' : 'bunker';
   b7Attacher(V.modele.object, combat && e.boss.lieu === lieu);
   b7Attacher(V.fxSalle, combat && dans);
