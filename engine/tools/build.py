@@ -55,6 +55,10 @@ exec(open(os.path.join(HERE, 'hooks-gestes.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-glissade.py'), encoding='utf-8').read())
 # jeu 2.0.6 : HUD « portrait + points » (paquet hud-points)
 exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
+# jeu 2.0.7 : voix enregistrées de l'annonceur des bonus (paquet annonceur-voix-B)
+exec(open(os.path.join(HERE, 'hooks-annonceur.py'), encoding='utf-8').read())
+# jeu 2.0.7 : musiques des manches (paquet musiques-manches-arrivee)
+exec(open(os.path.join(HERE, 'hooks-manches.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
@@ -131,6 +135,46 @@ ins_before('<script>/* GLTFLoader de three.js r128',
            + hp['LICENCE-Teko-OFL.txt'] + '-->\n'
            + '<script>/* jeu 2.0.6 : engine/orig/hud-points/hud-points.js, inséré tel quel par engine/tools/build.py */\n'
            + hp['hud-points.js'] + '</script>\n')
+
+# jeu 2.0.7 : voix de l'annonceur des bonus (paquet annonceur-voix-B d'Anthony, orig/annonceur-voix-B/voix/). Le jeu étant
+# un seul fichier HTML, les neuf MP3 y sont insérés tels quels, en base 64, dans un script de données avant le script
+# du jeu (empreintes contrôlées), y compris les quatre voix des bonus à venir (atout-gratuit, liquidation,
+# machine-de-mort, points-bonus : décision d'Anthony du 2 novembre 2026). Branchement : src/S0-annonceur.js.
+import base64, json
+VOIX = [('atout-gratuit.mp3', '429f9a1036cff72b41728eb7b0188cc324c8b32a4ce8e1f98631eec66d839e7a'),
+        ('charpentier.mp3', '89e46fe393a443863b7fd7fdd54e9a15eacfebab3bd91b35e94e49d4eb0895e5'),
+        ('kaboum.mp3', '0becd24a4ebb7a921bf9c8716341ab254819f2af346e9068fe9ab1e3b8613986'),
+        ('liquidation.mp3', 'cd97258b00985d50dead53a0c692c13d9e59b6beda00d183d56333fccfb95327'),
+        ('machine-de-mort.mp3', 'fc0203529a7d77dadb7c1e610892bb65b25d4b7904ddf0782abd86e7e09645c1'),
+        ('mort-instantanee.mp3', '5af5c154e399c6847828af72c99348f0e8f76968592fa95f6d51b49e947fd44e'),
+        ('munitions-max.mp3', '2b515b2faa8909ebede3d1c5b364382e690140e8bc6da9791dd9d194cc775fc6'),
+        ('points-bonus.mp3', '550ffcf2ead001729a42ef0b3f5e8aa5a2bf15e0d0136aaf5ec4495eb0a192cd'),
+        ('points-doubles.mp3', '5a8bd861161c5df92a0519cd49f6115b723ced0aec77f8041c3a9990f7f1190a')]
+voix = {}
+for name, sha in VOIX:
+    raw = open(os.path.join(KH, 'orig', 'annonceur-voix-B', 'voix', name), 'rb').read()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        sys.exit(f"voix de l'annonceur inattendue (empreinte) : orig/annonceur-voix-B/voix/{name}")
+    voix[name[:-4]] = base64.b64encode(raw).decode('ascii')
+ins_before('<script>/* GLTFLoader de three.js r128',
+           "<script>/* jeu 2.0.7 : voix de l'annonceur des bonus, engine/orig/annonceur-voix-B/voix/, insérées telles quelles "
+           '(MP3 en base 64) par engine/tools/build.py */\nconst ANNONCEUR_VOIX = ' + json.dumps(voix, separators=(',', ':')) + ';</script>\n')
+
+# jeu 2.0.7 : musiques des manches (paquet musiques-manches-arrivee d'Anthony, orig/musiques-manches-arrivee/musique/ :
+# fin de manche A et B, arrivée au début de la partie), insérées de la même façon (MANCHE_MUSIQUES). Branchement :
+# src/S1-manches.js.
+MUSIQUES = [('arrivee.mp3', '8af42cf491ba6a629289c23c48ab8f2394b7b662bf151bc65b77c04faada801b'),
+            ('manche-a.mp3', '2c84bc52a5f7eab49afe009715aa9f5b9ba1e6aac4ba89458238d91413cba856'),
+            ('manche-b.mp3', '890104135084942988facc084062989178552aa7afb82afb6dfcdae1ded51f01')]
+musiques = {}
+for name, sha in MUSIQUES:
+    raw = open(os.path.join(KH, 'orig', 'musiques-manches-arrivee', 'musique', name), 'rb').read()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        sys.exit(f'musique de manche inattendue (empreinte) : orig/musiques-manches-arrivee/musique/{name}')
+    musiques[name[:-4]] = base64.b64encode(raw).decode('ascii')
+ins_before('<script>/* GLTFLoader de three.js r128',
+           "<script>/* jeu 2.0.7 : musiques des manches, engine/orig/musiques-manches-arrivee/musique/, insérées "
+           'telles quelles (MP3 en base 64) par engine/tools/build.py */\nconst MANCHE_MUSIQUES = ' + json.dumps(musiques, separators=(',', ':')) + ';</script>\n')
 
 open(out_path, 'w', encoding='utf-8').write(s)
 print(f'{out_path} : {len(s.encode("utf-8"))} octets, {s.count(chr(10))} lignes, module {len(parts)} fichiers')

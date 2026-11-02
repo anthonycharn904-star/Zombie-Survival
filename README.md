@@ -359,6 +359,40 @@ Demande d'Anthony du 20 octobre 2026 : le HUD « portrait + points » de son paq
 
 Où modifier : module `engine/src/H5-points.js` (section 20 du jeu) : réglages `PTS_HUD` (place `ecart`, nom), création `ptsHudInit`, total et visibilité `ptsHudFrame`, `ptsHudSync`, nouvelle partie `ptsHudFull`, refus `ptsHudRefuse`, digi pass `ptsHudInfini`, coop `ptsHudCoequipier`. Points d'accroche `engine/tools/hooks-points.py` : ancien affichage masqué (CSS), `HUD.init`, `HUD.full`, `HUD.pointsChanged`, `HUD.denied`, `unlockDigipass`, `update` et `render`. Fichiers d'Anthony : `engine/orig/hud-points/` (à remplacer en entier, puis mettre leurs empreintes dans `build.py`, liste `HUDPTS`) ; pour régénérer le portrait, voir son `INTEGRATION.md` (outils du paquet).
 
+## Annonceur des bonus (jeu 2.0.7)
+
+Demande d'Anthony du 2 novembre 2026 : remplacer, pour toutes les cartes, l'annonceur des bonus par les voix de son paquet « annonceur-voix-B » (faites avec Claude Artifacts). Avant, les bonus étaient annoncés par la synthèse vocale du navigateur.
+
+- **Le paquet** : `engine/orig/annonceur-voix-B/voix/`, neuf MP3 (48 kHz, stéréo, 160 kbit/s, de 3,2 à 4,0 s, environ −12 LUFS), gardés tels quels. Le jeu étant un seul fichier HTML, `build.py` les insère tels quels, en base 64, dans un script de données (`ANNONCEUR_VOIX` : 0,85 Mo de plus), après avoir contrôlé leurs empreintes.
+- **Bonus et voix** : Munitions max → `munitions-max.mp3` ; Mort instantanée → `mort-instantanee.mp3` ; Points doubles → `points-doubles.mp3` ; Bombe → `kaboum.mp3` ; Charpentier → `charpentier.mp3`.
+- **Bonus à venir** (décision d'Anthony : « les bonus en question sortiront ultérieurement ») : leurs voix sont déjà dans le jeu, sous les noms de bonus `freeperk` (`atout-gratuit.mp3`), `firesale` (`liquidation.mp3`), `deathmachine` (`machine-de-mort.mp3`) et `bonuspoints` (`points-bonus.mp3`). Un bonus créé dans `POWERUPS` sous l'un de ces noms aura sa voix sans autre changement ; d'ici là, elles ne sont pas décodées.
+- **« Points doubles »** : le bonus « Double points » prend le nom de sa voix, au bandeau et dans les bonus actifs (décision d'Anthony du 2 novembre 2026).
+- **Au ramassage** (`applyPowerup` : toutes les cartes et les parties de test des Mod Tools ; le boss de Bunker 7 donne ses bonus par la même fonction) : la voix enregistrée remplace la synthèse vocale. Même réglage (« Voix d'annonce des bonus ») ; une annonce coupe la précédente, comme avant. Règles, bandeau et effets des bonus inchangés.
+- **Son** : dans le graphe du jeu (volume général, compresseur), par le bus de la combinaison (`Sound.suitBus`), après le filtre de l'étouffement : la voix reste claire sur la Lune et à terre, comme la synthèse d'avant. Volume de la voix : `ANNONCE.gain` (1 : le fichier tel quel) ; `ANNONCE.bus = 'effets'` la mettrait avec les bruits du jeu.
+- **Décodage** : à l'apparition d'un bonus, une fois par contexte audio ; un bonus ramassé pendant le décodage est annoncé dès qu'il finit (1,5 s au plus, `ANNONCE.attente`).
+- **Repli** : un bonus sans voix enregistrée (ajouté par une carte, par exemple), une voix illisible ou un jeu sans son : la synthèse vocale d'avant (texte `POWERUPS[type].say`).
+- **Inchangé** : « Courant rétabli » reste dit par la synthèse vocale (pas de voix pour lui dans le paquet).
+- **Essai** : `launcher/e2e/sons.e2e.js`, avec les musiques des manches (32 vérifications en tout).
+
+Où modifier : module `engine/src/S0-annonceur.js` (section 27 du jeu) : réglages `ANNONCE` (volume `gain`, `bus`, `attente`, table des voix `voix`), décodage `annoncePrepare` (et `sonMp3`, commun aux musiques de manche), lecture `annonceJoue`, coupure `annonceCoupe`, annonce `annonceBonus`. Points d'accroche `engine/tools/hooks-annonceur.py` : `applyPowerup`, `spawnPowerup`, nom « Points doubles » (`POWERUPS`, bonus actifs). Voix d'Anthony : `engine/orig/annonceur-voix-B/voix/` (remplacer un fichier, puis mettre son empreinte dans `build.py`, liste `VOIX` ; la voix d'un nouveau bonus : une ligne dans `VOIX` et une dans `ANNONCE.voix`).
+
+## Musiques des manches (jeu 2.0.7)
+
+Demandes d'Anthony du 2 novembre 2026 : changer le bruitage du changement de manche par les musiques de son paquet « musiques-manches-arrivee » (faites avec Claude Artifacts) : « Le changement de manche alternera de son entre le A et le B de façon aléatoire dans le jeu » ; la musique d'arrivée au début de la partie ; le son du début des manches retiré ; un son au début de la manche qui suit une manche de chiens ; « Pour la manche des chiens, laisse tel quel pour le moment ».
+
+- **Le paquet** : `engine/orig/musiques-manches-arrivee/musique/` : `manche-a.mp3` et `manche-b.mp3` (8,7 s chacune, 48 kHz, stéréo, 192 kbit/s, −13,3 LUFS ; sommet vers 3,5 s, fin éteinte vers 8 s), `arrivee.mp3` (17,1 s ; sommet vers 13 à 15 s), gardés tels quels. `build.py` les insère tels quels, en base 64 (`MANCHE_MUSIQUES` : 1,1 Mo de plus).
+- **Fin d'une manche** (`Sound.roundEnd` : toutes les cartes et les parties de test des Mod Tools) : A ou B au hasard, une chance sur deux, à la place du carillon synthétisé. Elles tiennent dans la pause de 9 s entre deux manches.
+- **Début de la partie** (première manche d'une nouvelle partie, ou d'une partie reprise) : la musique d'arrivée, à la place du carillon. Si la manche finit avant elle, A ou B la coupe.
+- **Début des autres manches** : plus de son ; la musique de fin de la manche précédente fait la transition.
+- **Après une manche de chiens** : la manche suivante commence par A ou B, au hasard (plus généralement, toute manche dont la précédente n'a pas fini sur A ou B : `MANCHE.fin`).
+- **Inchangées** : les manches de chiens (début et fin).
+- **Son** : dans le bus de la musique (`Sound.musiqueBus`, réglage « Musique »), étouffée avec le reste sur la Lune, à terre et en fin de partie, comme le carillon ; volume `MANCHE.gain` (1 : le fichier tel quel).
+- **Décodage** : à chaque nouvelle partie et au début des manches, une fois par contexte audio ; l'arrivée part dès la fin du décodage s'il n'est pas fini (2 s au plus, `MANCHE.attente`) ; si A et B ne sont pas décodées à la fin d'une manche, le carillon d'avant.
+- **Arrêt** : par la musique de fin de partie, au retour au menu et à une nouvelle partie.
+- **Essai** : `launcher/e2e/sons.e2e.js` (avec l'annonceur).
+
+Où modifier : module `engine/src/S1-manches.js` (section 28 du jeu) : réglages `MANCHE` (volume `gain`, `musiques`, `arrivee`, `debutMax`, `attente`), décodage `manchePrepare`, lecture `mancheJoue`, fin de manche `mancheMusique`, nouvelle partie `mancheNouvellePartie`, début de manche `mancheDebut` (arrivée `mancheArrivee`, A ou B après une manche de chiens), arrêt `mancheCoupe`. Points d'accroche `engine/tools/hooks-manches.py` : bus de la musique (`Sound.musiqueBus`), `Sound.roundStart` (carillon retiré), `Sound.roundEnd`, `newGame`, `Sound.gameOver`, `quitToMenu`. Musiques d'Anthony : `engine/orig/musiques-manches-arrivee/musique/` (remplacer un fichier, puis mettre son empreinte dans `build.py`, liste `MUSIQUES`).
+
 ## Personnage : Anthony (jeu 2.0.6)
 
 Demande d'Anthony du 18 octobre 2026 : son personnage 3D « Anthony » (dossier `survivant/`, fait dans Claude Artifacts) devient le premier personnage jouable. Il doit avoir un corps complet, être visible en vue FPS comme en vue TPS, conduire la jeep et être prêt pour la coop. Ses choix du même jour :
@@ -781,6 +815,11 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **2 novembre 2026 — jeu 2.0.7 (en préparation)** : **voix enregistrées de l'annonceur des bonus** et **musiques de manche** (demandes d'Anthony ; voir « Annonceur des bonus » et « Musiques des manches »).
+  - Paquets `annonceur-voix-B` (neuf voix) et `musiques-manches-arrivee` (manche A, manche B, arrivée) d'Anthony, gardés tels quels et insérés en base 64 (1,97 Mo).
+  - Au ramassage d'un bonus, sur toutes les cartes : la voix enregistrée remplace la synthèse vocale ; même réglage, une annonce coupe l'autre ; voix claire sur la Lune et à terre ; quatre voix prêtes pour des bonus à venir ; « Double points » devient « Points doubles ».
+  - À la fin d'une manche : musique A ou B au hasard, à la place du carillon ; au début de la partie : musique d'arrivée ; plus de son au début des autres manches, sauf après une manche de chiens (A ou B) ; manches de chiens inchangées.
+  - Nouvel essai `sons` (32 vérifications) : 30 essais de bout en bout.
 - **20 octobre 2026 — jeu 2.0.6 (construction 1)** : **HUD « portrait + points »** (demande d'Anthony ; voir « HUD des points »).
   - Paquet `hud-points` d'Anthony inséré tel quel, avec la licence de sa police (Teko, SIL OFL 1.1).
   - En bas à gauche, au-dessus des manches : portrait d'Anthony, points en jaune, bulles « +X » et « −X », secousse au refus ; caché au menu, en pause et en fin de partie ; « ∞ » avec le digi pass ; coéquipiers prêts pour la coop.
