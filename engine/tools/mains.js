@@ -231,6 +231,11 @@ return { data };`,
   await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 400000, polling: 1000 });
   console.log(`menu en ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   await page.evaluate(() => { window.frame = function () {}; renderEnabled = false; });
+  // Chromium sans tête : la souris verrouillée (pointer lock, demandée par le jeu à chaque partie) y boucle sur des
+  // évènements de souris synthétiques (processus du navigateur à plus d'un cœur, mémoire qui gonfle de 40 Mo/s jusqu'à
+  // l'arrêt du système sur un long essai). Le banc la refuse : le jeu passe en souris libre, comme quand un navigateur
+  // refuse le verrou.
+  await page.evaluate(() => { Element.prototype.requestPointerLock = function () { return Promise.reject(new DOMException('banc sans tête : souris non verrouillée', 'NotSupportedError')); }; });
   await page.evaluate(HELPERS);
   const armes = val('--armes') ? val('--armes').split(',') : null;
   await page.evaluate((a) => { window.ARMES = a || Object.keys(WEAPONS); }, armes);

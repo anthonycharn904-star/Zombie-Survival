@@ -104,6 +104,9 @@ async function openGame() {
     });
     ok(bad.open && bad.shown && bad.digits === wrong && bad.color === 'rgb(255, 255, 255)' && bad.msg === 'Code erroné' && !bad.cheat && bad.cur === near.cur && bad.again,
       'Digi pass : code tapé au centre en blanc, mauvais code refusé, les chiffres ne changent pas d’arme', bad);
+    // jeu 2.0.7 : sur Bunker 7 avec le combat du boss, le digi pass reste en place jusqu'au code du boss (décision
+    // d'Anthony du 1er novembre 2026) ; ailleurs, il disparaît comme avant
+    const boss = await game.evaluate(() => typeof b7AccesBoss === 'function' && b7AccesBoss());
     await keys([...codes[0]].map((d) => `Digit${d}`));
     const good = await game.evaluate(() => {
       __zs.step(30, 0.05);
@@ -113,8 +116,11 @@ async function openGame() {
       __zs.step(2); r.prompt = document.getElementById('prompt').hidden ? null : document.getElementById('prompt-text').textContent;
       return r;
     });
-    ok(!good.open && good.gone && !good.shown && good.cheat && good.pts === '∞' && good.hpKept && good.spend && good.prompt !== 'Appuyez sur F pour utiliser le Digi pass',
-      'Digi pass : le bon code le retire de la carte, points infinis et immortel', good);
+    const dpReste = !good.gone && good.shown && good.prompt === 'Appuyez sur F pour utiliser le Digi pass';
+    const dpParti = good.gone && !good.shown && good.prompt !== 'Appuyez sur F pour utiliser le Digi pass';
+    ok(!good.open && good.cheat && good.pts === '∞' && good.hpKept && good.spend && (boss ? dpReste : dpParti),
+      boss ? 'Digi pass : le bon code donne points infinis et immortel ; il reste sur le mur jusqu’au code du boss (jeu 2.0.7)'
+        : 'Digi pass : le bon code le retire de la carte, points infinis et immortel', { ...good, boss });
     const live = await game.evaluate(() => ({ games: Life.data.games, kills: Life.data.kills, melee: Life.data.killsMelee, time: Life.data.time }));
     ok(live.games === 1 && live.kills === 1 && live.melee === 1 && live.time >= 2.9, 'compteurs pendant la partie', live);
     // fermeture de la fenêtre du jeu en pleine partie (sans pause)

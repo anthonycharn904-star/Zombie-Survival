@@ -1,0 +1,26 @@
+/*!
+ * boss-modele.js — Zombie Survival, Bunker 7 : modèle 3D animé du boss final (antagoniste surnaturel et monstrueux).
+ * Corps skinné (long manteau d'officier usé aux pans en lambeaux animés par une physique de ressorts, tunique,
+ * ceinturon, baudrier, culotte, bottes hautes, gants de cuir noir), tête cuite (BOSS_B7_TETE) ou tête de
+ * remplacement, ailes d'énergie (phase 2), Lames du Pacte (phase 5, création originale), voile d'immunité, aura,
+ * dissolution, et une bibliothèque de poses pour chaque action et étape du combat.
+ * Aucun symbole réel : aucun insigne, brassard, aigle, croix ni rune. Les sceaux brûlés dans le tissu et la broche
+ * sont des motifs occultes inventés (anneaux, heptagone, sept rayons, glyphes imaginaires).
+ *
+ * Utilisation (three.js r128 en script global, ou r150+ en module : THREE est toujours passé en paramètre) :
+ *   const modele = BossB7Modele.creer(THREE, { renderer, tete: globalThis.BOSS_B7_TETE || null, qualite: 'haute' });
+ *   scene.add(modele.object);          // origine aux pieds, regarde vers +Z
+ *   modele.update(dt, vue);             // vue = combat.etat().boss (+ vue.temps) : place, oriente et anime tout
+ *   modele.reagir(dirX, dirZ, force);   // sursaut à l'impact (direction de la balle, repère monde)
+ *   modele.flash(couleur, intensite);   // éclair d'émission bref
+ *   modele.points.mainG … pointeLameD;  // ancres (Object3D) pour les effets
+ *   modele.hitboxes();                  // [{ zone: 'tete'|'corps', type: 'sphere', centre, rayon }] en monde
+ *   modele.couleurLames('bleu');        // v2.2 : 'bleu' | 'rouge' | 'vert' (ou vue.couleurLames ; null = rouge)
+ *   modele.dispose();
+ * Contrat complet : boss/API.md §2, §5, §6, §16.6. Options supplémentaires : solY (hauteur du sol, nombre ou fonction
+ * (x, z)) pour les poses au sol, ombres (true), gouttes (true : gouttes de sang des lames gérées ici), couleursLineaires,
+ * couleurLames ('rouge'), allege (false : instance légère pour les illusions de la phase 5, voir src/modele/README.md).
+ *
+ * Fichier assemblé depuis boss/src/modele/parts/*.js (boss/src/modele/outils/assembler.py). Code original ; les
+ * outils de maillage (lofts, poids de peau, squelette) reprennent le modèle « survivant » de la même session.
+ */

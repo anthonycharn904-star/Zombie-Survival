@@ -55,6 +55,8 @@ exec(open(os.path.join(HERE, 'hooks-gestes.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-glissade.py'), encoding='utf-8').read())
 # jeu 2.0.6 : HUD « portrait + points » (paquet hud-points)
 exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
+# jeu 2.0.7 : le boss de Bunker 7, « Le Dernier Pacte » (paquet boss-bunker7 ; suivi : SUIVI-BOSS-B7.md)
+exec(open(os.path.join(HERE, 'hooks-boss-b7.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
@@ -131,6 +133,72 @@ ins_before('<script>/* GLTFLoader de three.js r128',
            + hp['LICENCE-Teko-OFL.txt'] + '-->\n'
            + '<script>/* jeu 2.0.6 : engine/orig/hud-points/hud-points.js, inséré tel quel par engine/tools/build.py */\n'
            + hp['hud-points.js'] + '</script>\n')
+
+# jeu 2.0.7 : le boss de Bunker 7, « Le Dernier Pacte » (paquet d'Anthony, gardé tel quel dans boss-bunker7/le-dernier-pacte/ :
+# la référence et le lieu de ses tests). Ses modules entrent tels quels, chacun dans son <script>, dans l'ordre de son
+# INTEGRATION.md (§2, étape 2), empreintes contrôlées ; seuls config.js et arene.js sont nos copies réglées (engine/boss-b7/,
+# décisions d'Anthony du 1er novembre 2026). Ses 133 sons (dossier sons/, une empreinte pour le manifeste et tous les MP3)
+# sont embarqués en base64 dans window.BOSS_B7_SONS (même forme que les sons embarqués du prototype) : tout le boss
+# fonctionne dès le chargement de la carte, sans réseau. Suivi : SUIVI-BOSS-B7.md.
+import base64, json
+BOSS = os.path.join(REPO, 'boss-bunker7', 'le-dernier-pacte')
+BOSS_SRC = [('src/logique.js', '1c2799ed01c54798a2378da624054a3bc480a486c85ddcdb2763fcf69dc0df9a'),
+            ('src/tete/boss-tete.js', '89ebdae8e6713f777c430f6e4847c07de6f1f82daf1716da56500209113993c6'),
+            ('src/boss-modele.js', 'c603617df950e27fc87dea4a50b79206dab6b4f32e199d934edf18824964b30d'),
+            ('src/fx.js', 'b509372c574049e0e5df87d3c79ddb42b612ec171b49cf0b1de8de365a679c90'),
+            ('src/audio.js', '31e6382e0645a90fed32d218cff19f192ecd684e1dacf5a7194257307b7e22aa'),
+            ('src/hud.js', '64eacf80664c7be77385b43579ffb32c53b99a866f02b3725e82a499f09b68d6')]
+# Salle secrète (étape 4) : le constructeur du prototype, repris tel quel comme le permet le brief (§4) ; dans l'ordre de
+# leurs dépendances : outils communs, navigation, zombies (le mini-boss endormi des cuves), monde (la salle).
+BOSS_PROTO = [('prototype/proto-commun.js', 'ba0be219c8bb045fbb8aaf2afced2e96dabdb100a52018c7e9b56fb35374053e'),
+              ('prototype/proto-nav.js', '30a9f5805b14876648411286bcde49e53c5660891ce980dc826420661b19c68a'),
+              ('prototype/proto-zombies.js', 'ff20f891ea88a0ca993e28ba30cb3c471335086bab580b784de6ea9a424695ea'),
+              ('prototype/proto-monde.js', 'ec889407fbc8f164f91f6924ad301c0e3e0467635b13628e844ca12bbfe25159')]
+BOSS_SONS_SHA = '9c725d222b8601db501cd6f29cc9e82f918c47e8deccff235b3c6e04c0e0553d'
+
+def boss_script(chemin, txt, origine, verbe='inséré tel quel'):
+    if '</script' in txt.lower() or '<!--' in txt:
+        sys.exit(f'{chemin} : balise de fin de script ou début de commentaire HTML')
+    return f'<script>/* jeu 2.0.7 : {origine}, {verbe} par engine/tools/build.py */\n{txt}</script>\n'
+
+# Licences et crédits du paquet (étape 9) : LICENCES.md, et la licence de la voix de l'annonce « Munitions max ! »
+# (Mimic 3, modèle M-AILABS), embarquée avec les sons : elle doit l'accompagner ; le jeu étant un seul fichier HTML, elles
+# y sont recopiées en commentaire avant les scripts du boss, comme la licence de la police du HUD des points.
+BOSS_LIC = [('LICENCES.md', '3588d4b03b334d1b51ad4886f5073e6b7a1083abe772134625b2959bdcbb5dff'),
+            ('LICENCE-voix-M-AILABS.txt', 'fdd78a909fb9384d869363522b967557bc9e28e5b65874921f24e48cbb82f38c')]
+boss = '<!-- jeu 2.0.7 : licences et crédits du paquet du boss de Bunker 7 (boss-bunker7/le-dernier-pacte/)'
+for name, sha in BOSS_LIC:
+    raw = open(os.path.join(BOSS, name), 'rb').read()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        sys.exit(f'fichier du boss inattendu (empreinte) : boss-bunker7/le-dernier-pacte/{name}')
+    txt = raw.decode('utf-8')
+    if '-->' in txt or '--!>' in txt:
+        sys.exit(f'boss-bunker7/le-dernier-pacte/{name} : fin de commentaire HTML dans le texte')
+    boss += f'\n\n==== {name} ====\n\n{txt}'
+boss += '\n-->\n'
+for name in ('config.js', 'arene.js'):
+    boss += boss_script(name, open(os.path.join(KH, 'boss-b7', name), encoding='utf-8').read(), f'engine/boss-b7/{name} (copie réglée)')
+for name, sha in BOSS_SRC + BOSS_PROTO:
+    raw = open(os.path.join(BOSS, name), 'rb').read()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        sys.exit(f'fichier du boss inattendu (empreinte) : boss-bunker7/le-dernier-pacte/{name}')
+    boss += boss_script(name, raw.decode('utf-8'), f'boss-bunker7/le-dernier-pacte/{name}')
+dossier = os.path.join(BOSS, 'sons')
+manifeste = json.load(open(os.path.join(dossier, 'manifest.json'), encoding='utf-8'))
+mp3 = sorted(f for f in os.listdir(dossier) if f.endswith('.mp3'))
+if sorted({v['fichier'] for v in manifeste.values()}) != mp3:
+    sys.exit('boss-bunker7/le-dernier-pacte/sons : les MP3 ne correspondent pas au manifeste')
+h = hashlib.sha256()
+for f in ['manifest.json'] + mp3:
+    h.update(f.encode())
+    h.update(hashlib.sha256(open(os.path.join(dossier, f), 'rb').read()).digest())
+if h.hexdigest() != BOSS_SONS_SHA:
+    sys.exit('sons du boss inattendus (empreinte du dossier boss-bunker7/le-dernier-pacte/sons)')
+donnees = {cle: base64.b64encode(open(os.path.join(dossier, v['fichier']), 'rb').read()).decode('ascii') for cle, v in manifeste.items()}
+boss += boss_script('sons', 'window.BOSS_B7_SONS = { manifeste: ' + json.dumps(manifeste, ensure_ascii=False, separators=(',', ':'))
+                    + ',\ndonnees: ' + json.dumps(donnees, separators=(',', ':')) + ' };\n',
+                    f'boss-bunker7/le-dernier-pacte/sons ({len(mp3)} MP3 et leur manifeste)', 'embarqués en base64')
+ins_before('<script>/* GLTFLoader de three.js r128', boss)
 
 open(out_path, 'w', encoding='utf-8').write(s)
 print(f'{out_path} : {len(s.encode("utf-8"))} octets, {s.count(chr(10))} lignes, module {len(parts)} fichiers')

@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aperçu du boss de Bunker 7</title>
+<style>
+  :root { --fond: #07080a; --panneau: rgba(14, 15, 18, 0.9); --texte: #d8d2c6; --faible: #8d877c; --accent: #c8452a; --ligne: #2a2a2e; }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte); font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  #vue { position: fixed; inset: 0; }
+  #panneau { position: fixed; top: 0; right: 0; bottom: 0; width: 300px; background: var(--panneau); border-left: 1px solid var(--ligne); overflow-y: auto; padding: 10px 12px 18px; box-sizing: border-box; }
+  #panneau.cache { display: none; }
+  h1 { font-size: 15px; margin: 2px 0 8px; color: #e9e2d4; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--faible); margin: 14px 0 6px; border-top: 1px solid var(--ligne); padding-top: 10px; }
+  label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  label span { flex: 0 0 92px; color: var(--faible); }
+  input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  select, button { background: #17181c; color: var(--texte); border: 1px solid #34353b; border-radius: 4px; padding: 4px 6px; font: inherit; }
+  select { flex: 1; min-width: 0; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  .ligne { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .val { flex: 0 0 46px; text-align: right; font-variant-numeric: tabular-nums; color: #bdb6a8; }
+  #infos { position: fixed; left: 10px; bottom: 8px; color: var(--faible); font-size: 12px; pointer-events: none; text-shadow: 0 1px 2px #000; white-space: pre-line; }
+  #bascule { position: fixed; top: 8px; right: 308px; z-index: 2; }
+  #panneau.cache + #bascule { right: 8px; }
+</style>
+</head>
+<body>
+<div id="vue"></div>
+<div id="panneau">
+  <h1>Boss de Bunker 7 — aperçu des animations</h1>
+  <div class="ligne"><button data-vue="face">Face</button><button data-vue="34">3/4</button><button data-vue="profil">Profil</button><button data-vue="dos">Dos</button><button data-vue="buste">Buste</button><button data-vue="tete">Tête</button><button data-vue="large">Large</button></div>
+  <h2>Action</h2>
+  <label><span>Scénario</span><select id="scenario"></select></label>
+  <label><span>Temps</span><input id="temps" type="range" min="0" max="1" step="0.001" value="0"><b class="val" id="tempsV">0</b></label>
+  <div class="ligne"><button id="lecture">Lecture</button><button id="figer">Figer</button><button id="tout">Tout enchaîner</button>
+    <label style="margin:0"><span style="flex:0 0 auto">Vitesse</span><select id="vitesse"><option>0.25</option><option>0.5</option><option selected>1</option></select></label></div>
+  <div id="etape" style="color:var(--faible)"></div>
+  <label><span>Lames</span><select id="lames"><option value="auto">selon la vue</option><option value="rouge">rouges</option><option value="bleu">bleues</option><option value="vert">vertes (illusion)</option></select></label>
+  <h2>Réactions</h2>
+  <div class="ligne"><button id="touche">Impact</button><button id="flash">Éclair</button><label style="margin:0"><input type="checkbox" id="invul"> invulnérable</label></div>
+  <label><span>Affaiblissement</span><input id="affaib" type="range" min="0" max="1" step="0.01" value="0"></label>
+  <h2>Rendu</h2>
+  <div id="stats" style="color:var(--faible);font-size:12px;white-space:pre-line"></div>
+</div>
+<button id="bascule">Panneau</button>
+<div id="infos"></div>
+<script type="module">
+/* Aperçu du modèle du boss : salle souterraine sombre, caméra orbitale, chaque action jouée comme la logique
+   l'enverrait (apercu-scenarios.js), figer une étape, tout enchaîner. Paramètres d'URL : ?three=r128|r186,
+   ?tete=aucune|b7 (défaut : aucune = tête de remplacement du modèle ; b7 = données BOSS_B7_TETE de boss/tete/out/boss-tete.js), ?qualite=haute|moyenne|basse,
+   ?w=&h= (taille fixe pour les captures), ?exp= (exposition), ?lames=rouge|bleu|vert (couleur imposée des lames),
+   ?allege=1 (instance allégée, comme une illusion).
+   Fonctions pour les captures : window.apercu.planche(spec), window.apercu.plancheMulti(spec), window.apercu.stats(). */
+const qs = new URLSearchParams(location.search);
+const VERSION = qs.get('three') === 'r128' ? 'r128' : 'r186';
+const charger = (src) => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error(src)); document.head.appendChild(s); });
+let THREE;
+if (VERSION === 'r128') { await charger('../../vendor/three-r128/three.min.js'); THREE = window.THREE; }
+else { THREE = await import('../../vendor/three-r186/three.module.js'); window.THREE = THREE; }
+await charger('../boss-modele.js?v=' + Date.now());
+await charger('apercu-scenarios.js?v=' + Date.now());
+let teteChoix = qs.get('tete') === 'b7' ? 'b7' : 'aucune';
+if (teteChoix === 'b7') {
+  try { await charger('../../tete/out/boss-tete.js?v=' + Date.now()); } catch (e) { teteChoix = 'aucune'; }
+}
+const DONNEES_TETE = teteChoix === 'aucune' ? null : (window.BOSS_B7_TETE || null);
+const SC = window.APERCU_SCENARIOS;
+const W0 = +qs.get('w') || window.innerWidth, H0 = +qs.get('h') || window.innerHeight;
+
+// ---------------------------------------------------------------- rendu
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(qs.get('w') ? 1 : Math.min(2, window.devicePixelRatio || 1));
+renderer.setSize(W0, H0);
+if ('outputColorSpace' in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace; else renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = +qs.get('exp') || 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = parseInt(THREE.REVISION, 10) >= 182 ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // PCFSoft retiré des versions récentes
+document.getElementById('vue').appendChild(renderer.domElement);
+const col = (h) => { const c = new THREE.Color(h); if (VERSION === 'r128') c.convertSRGBToLinear(); return c; };
+const scene = new THREE.Scene();
+scene.background = col(0x050506);
+scene.fog = new THREE.FogExp2(col(0x070708), 0.045);
+{
+  const sc = new THREE.Scene();
+  sc.add(new THREE.Mesh(new THREE.SphereGeometry(10, 24, 12), new THREE.MeshBasicMaterial({ color: col(0x0b0b0d), side: THREE.BackSide })));
+  const panel = (w, h, x, y, z, c, k) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col(c).multiplyScalar(k), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); sc.add(m); };
+  panel(3, 2, 4, 6, 4, 0xffc890, 2.2); panel(5, 3, -6, 3, -5, 0x7f9cff, 0.9); panel(6, 1, 0, -4, 5, 0xff3010, 0.25);
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(sc, 0.04).texture;
+  pm.dispose();
+}
+function texBeton(rep, base) {
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d'), img = x.createImageData(S, S), d = img.data;
+  const rnd = (a, b) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const vn = (u, v, f) => { u *= f; v *= f; const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, m = (k) => ((k % f) + f) % f;
+    const a = rnd(m(i), m(j)), b = rnd(m(i + 1), m(j)), cc = rnd(m(i), m(j + 1)), dd = rnd(m(i + 1), m(j + 1)); const su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv);
+    return a + (b - a) * su + (cc - a) * sv + (a - b - cc + dd) * su * sv; };
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const u = i / S, v = j / S, n = 0.45 * vn(u, v, 4) + 0.3 * vn(u, v, 16) + 0.25 * vn(u, v, 64);
+    const st = Math.max(0, vn(u, v, 6) - 0.62) * 1.6, k = (0.62 + 0.5 * n - st * 0.5) * (rnd(i, j) > 0.97 ? 0.85 : 1);
+    const p = (j * S + i) * 4; d[p] = base[0] * k; d[p + 1] = base[1] * k; d[p + 2] = base[2] * k; d[p + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep);
+  if ('colorSpace' in t) t.colorSpace = THREE.SRGBColorSpace; else t.encoding = THREE.sRGBEncoding;
+  t.anisotropy = 8; return t;
+}
+const sol = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ map: texBeton(16, [86, 82, 76]), roughness: 0.93 }));
+sol.rotation.x = -Math.PI / 2; sol.receiveShadow = true; scene.add(sol);
+// repères au sol : cible des sorts et position d'un « joueur » (cylindre)
+const repere = new THREE.Mesh(new THREE.RingGeometry(0.25, 0.32, 32), new THREE.MeshBasicMaterial({ color: col(0xff3a1a) }));
+repere.rotation.x = -Math.PI / 2; repere.position.y = 0.01; scene.add(repere);
+const joueur = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.75, 16), new THREE.MeshStandardMaterial({ color: col(0x40505c), roughness: 0.8 }));
+joueur.position.set(0, 0.875, 7); joueur.castShadow = true; scene.add(joueur);
+const pilMat = new THREE.MeshStandardMaterial({ map: texBeton(2, [78, 75, 70]), roughness: 0.92 });
+for (let i = 0; i < 4; i++) { const a = (i + 0.5) * Math.PI / 2; const p = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 8, 20), pilMat); p.position.set(Math.sin(a) * 9.5, 4, Math.cos(a) * 9.5); p.castShadow = p.receiveShadow = true; scene.add(p); }
+const cle = new THREE.SpotLight(col(0xffdcbc), 1, 22, 0.62, 0.55, 1.2);
+cle.position.set(2.6, 7.2, 4.6); cle.target.position.set(0, 1.8, 0); cle.castShadow = true;
+cle.shadow.mapSize.set(2048, 2048); cle.shadow.bias = -0.00025; cle.shadow.normalBias = 0.02; cle.shadow.camera.near = 1; cle.shadow.camera.far = 20;
+scene.add(cle, cle.target);
+const contre = new THREE.SpotLight(col(0x86a2ff), 1, 22, 0.7, 0.6, 1.2);
+contre.position.set(-3.5, 5.5, -4.5); contre.target.position.set(0, 1.8, 0); scene.add(contre, contre.target);
+const rouge1 = new THREE.PointLight(col(0xff2a12), 1, 8, 1.6); rouge1.position.set(1.6, 0.35, 1.2); scene.add(rouge1);
+const rouge2 = new THREE.PointLight(col(0xff2a12), 1, 8, 1.6); rouge2.position.set(-1.8, 0.35, -0.6); scene.add(rouge2);
+const hemi = new THREE.HemisphereLight(col(0x30343c), col(0x120d0b), 1); scene.add(hemi);
+const R186 = VERSION === 'r186';
+cle.intensity = R186 ? 60 : 1.5; contre.intensity = R186 ? 55 : 1.4; rouge1.intensity = rouge2.intensity = R186 ? 1.4 : 0.22; hemi.intensity = R186 ? 0.45 : 0.42;
+scene.environmentIntensity = 0.35;
+if (!R186) { cle.decay = 1; contre.decay = 1; rouge1.decay = rouge2.decay = 1; }
+
+// ---------------------------------------------------------------- caméra orbitale
+const camera = new THREE.PerspectiveCamera(36, W0 / H0, 0.03, 120);
+const orbite = { az: 0.6, el: 0.1, dist: 4.2, cible: new THREE.Vector3(0, 2.2, 0), suivre: true, hauteur: 1.0 };
+const VUES = {
+  face: { az: 0, el: 0.06, dist: 3.9, h: 1.0 }, '34': { az: 0.65, el: 0.08, dist: 3.9, h: 1.0 }, profil: { az: Math.PI / 2, el: 0.05, dist: 3.9, h: 1.0 },
+  dos: { az: Math.PI, el: 0.08, dist: 3.9, h: 1.0 }, buste: { az: 0.35, el: 0.04, dist: 1.6, h: 1.42 }, tete: { az: 0.3, el: 0.02, dist: 0.75, h: 1.62 },
+  large: { az: 0.6, el: 0.12, dist: 7.5, h: 1.6 }, contre: { az: 0.45, el: -0.18, dist: 3.4, h: 1.25 }
+};
+function vue(nom) { const v = VUES[nom] || VUES['34']; orbite.az = v.az; orbite.el = v.el; orbite.dist = v.dist; orbite.hauteur = v.h; }
+function placerCamera() {
+  const o = orbite;
+  if (o.suivre && modele) { const p = modele.object.position; o.cible.set(p.x, p.y + o.hauteur, p.z); }
+  camera.position.set(o.cible.x + o.dist * Math.sin(o.az) * Math.cos(o.el), o.cible.y + o.dist * Math.sin(o.el), o.cible.z + o.dist * Math.cos(o.az) * Math.cos(o.el));
+  camera.lookAt(o.cible);
+}
+{
+  let g = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => { g = { x: e.clientX, y: e.clientY, b: e.button }; renderer.domElement.setPointerCapture(e.pointerId); });
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!g) return;
+    const dx = e.clientX - g.x, dy = e.clientY - g.y; g.x = e.clientX; g.y = e.clientY;
+    if (g.b === 2 || e.shiftKey) orbite.hauteur = Math.max(-0.5, Math.min(4, orbite.hauteur + dy * 0.01));
+    else { orbite.az -= dx * 0.008; orbite.el = Math.max(-0.8, Math.min(1.4, orbite.el + dy * 0.006)); }
+  });
+  renderer.domElement.addEventListener('pointerup', () => { g = null; });
+  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+  renderer.domElement.addEventListener('wheel', (e) => { orbite.dist = Math.max(0.3, Math.min(25, orbite.dist * Math.exp(e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+}
+
+// ---------------------------------------------------------------- boss
+const ALLEGE = qs.get('allege') === '1';   // ?allege=1 : instance d'illusion (sans ombres, tissus allégés)
+const modele = BossB7Modele.creer(THREE, { renderer, tete: DONNEES_TETE, qualite: qs.get('qualite') || 'haute', ombres: !ALLEGE, solY: 0, allege: ALLEGE });
+scene.add(modele.object);
+window.modele = modele;
+await modele.pret;
+const ui = (id) => document.getElementById(id);
+const DT = 1 / 60;
+const LAMES_OK = { rouge: 1, bleu: 1, vert: 1 };
+const etat = { nom: 'apparition', t: 0, lecture: true, vitesse: 1, tout: false, fige: false, invul: false, affaib: 0, lames: LAMES_OK[qs.get('lames')] ? qs.get('lames') : 'auto' };
+const vueB = {};
+function vueCourante(nom, t) {
+  const v = SC.vueAu(nom, t, vueB);
+  if (etat.invul) v.vulnerable = false;
+  if (etat.affaib) v.affaiblissement = etat.affaib;
+  if (etat.lames !== 'auto') v.couleurLames = etat.lames;   // sinon : celle du scénario (null = rouge)
+  v.temps = t;
+  // regard : le « joueur » (ou la caméra en vue tête)
+  v.regard = v.regard || { x: 0, y: 0, z: 0 };
+  v.regard.x = joueur.position.x; v.regard.y = 1.6; v.regard.z = joueur.position.z;
+  if (v.action && v.action.cible) repere.position.set(v.action.cible.x, 0.01, v.action.cible.z);
+  return v;
+}
+// rejoue le scénario depuis 0 jusqu'à t (le modèle a un état : manteau, fondus, particules)
+function allerA(nom, t) {
+  modele.reinitialiser();
+  const n = Math.max(1, Math.round(t / DT));
+  modele.update(0, vueCourante(nom, 0));
+  for (let i = 1; i <= n; i++) modele.update(DT, vueCourante(nom, Math.min(t, i * DT)));
+  etat.nom = nom; etat.t = t;
+}
+// remplir l'interface
+for (const n of SC.noms) { const o = document.createElement('option'); o.value = n; o.textContent = n; ui('scenario').appendChild(o); }
+ui('scenario').addEventListener('change', () => { etat.nom = ui('scenario').value; etat.t = 0; etat.fige = false; allerA(etat.nom, 0); });
+ui('lecture').addEventListener('click', () => { etat.lecture = !etat.lecture; ui('lecture').textContent = etat.lecture ? 'Pause' : 'Lecture'; });
+ui('figer').addEventListener('click', () => { etat.fige = !etat.fige; ui('figer').textContent = etat.fige ? 'Libérer' : 'Figer'; });
+ui('tout').addEventListener('click', () => { etat.tout = !etat.tout; ui('tout').textContent = etat.tout ? 'Arrêter l’enchaînement' : 'Tout enchaîner'; });
+ui('vitesse').addEventListener('change', () => { etat.vitesse = +ui('vitesse').value; });
+ui('temps').addEventListener('input', () => { const T = SC.dureeTotale(etat.nom); allerA(etat.nom, +ui('temps').value * T); etat.lecture = false; ui('lecture').textContent = 'Lecture'; });
+ui('touche').addEventListener('click', () => { modele.reagir(0.2, -1, 0.9); });
+ui('flash').addEventListener('click', () => { modele.flash(0xff4020, 1.2); });
+ui('invul').addEventListener('change', () => { etat.invul = ui('invul').checked; });
+ui('affaib').addEventListener('input', () => { etat.affaib = +ui('affaib').value; });
+ui('lames').value = etat.lames;
+ui('lames').addEventListener('change', () => { etat.lames = ui('lames').value; });
+ui('bascule').addEventListener('click', () => ui('panneau').classList.toggle('cache'));
+document.querySelectorAll('[data-vue]').forEach((b) => b.addEventListener('click', () => vue(b.dataset.vue)));
+vue('34');
+allerA('apparition', 0);
+let dernier = performance.now(), msMoy = 16;
+function image(now) {
+  const dt = Math.min(0.1, (now - dernier) / 1000); dernier = now;
+  if (!window.__auto) {
+    if (etat.lecture && !etat.fige) {
+      etat.t += dt * etat.vitesse;
+      const T = SC.dureeTotale(etat.nom);
+      if (etat.t > T) {
+        if (etat.tout) { const i = (SC.noms.indexOf(etat.nom) + 1) % SC.noms.length; etat.nom = SC.noms[i]; ui('scenario').value = etat.nom; }
+        etat.t = 0; modele.reinitialiser();
+      }
+      modele.update(dt * etat.vitesse, vueCourante(etat.nom, etat.t));
+    } else modele.update(etat.fige ? dt : 0, vueCourante(etat.nom, etat.t));
+    ui('temps').value = etat.t / SC.dureeTotale(etat.nom); ui('tempsV').textContent = etat.t.toFixed(2);
+    const a = vueB.action; ui('etape').textContent = a ? a.id + ' · ' + a.etape + ' · ' + (a.progression * 100).toFixed(0) + ' %' : 'locomotion : ' + vueB.locomotion;
+    placerCamera();
+    const t0 = performance.now(); renderer.render(scene, camera); msMoy = msMoy * 0.95 + (performance.now() - t0) * 0.05;
+    ui('stats').textContent = statsTexte(msMoy);
+  }
+  requestAnimationFrame(image);
+}
+function statsTexte(ms) {
+  const s = modele.stats, r = renderer.info.render;
+  return 'three ' + THREE.REVISION + ' · tête ' + modele.teteType + ' (' + teteChoix + ')\n' + 'triangles modèle : ' + s.triangles + ' (corps ' + s.trianglesCorps + ', tête ' + s.trianglesTete + ', ailes ' + s.trianglesAiles + ', lames ' + s.trianglesLames + ')\n' +
+    'os : ' + s.os + ' · appels de dessin (modèle) : ' + s.appelsDessin + '\nscène : ' + r.calls + ' appels, ' + r.triangles + ' triangles · rendu ' + ms.toFixed(1) + ' ms';
+}
+requestAnimationFrame(image);
+
+// ---------------------------------------------------------------- captures automatiques
+function redim(w, h) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+function cadrer(v) {
+  const p = modele.object.position, o = typeof v === 'string' ? VUES[v] : v;
+  const az = o.az + (o.relatif === false ? 0 : 0);
+  let cx = p.x, cy = p.y + o.h, cz = p.z;
+  if (o.ancre && modele.points[o.ancre]) { const w = new THREE.Vector3(); modele.points[o.ancre].getWorldPosition(w); cx = w.x; cy = w.y; cz = w.z; }
+  if (o.cible) { cx = o.cible[0]; cy = o.cible[1]; cz = o.cible[2]; }
+  camera.fov = o.fov || 36; camera.updateProjectionMatrix();
+  camera.position.set(cx + o.dist * Math.sin(az) * Math.cos(o.el), cy + o.dist * Math.sin(o.el), cz + o.dist * Math.cos(az) * Math.cos(o.el));
+  camera.lookAt(cx, cy, cz);
+}
+// pénombre de la phase 5 (k ∈ [0, 1]) : lumières, environnement et brouillard ; renvoie la fonction qui restaure
+function penombre(k) {
+  if (!k) return () => {};
+  const sv = { cle: cle.intensity, contre: contre.intensity, r1: rouge1.intensity, r2: rouge2.intensity, hemi: hemi.intensity, env: scene.environmentIntensity, fog: scene.fog.density };
+  cle.intensity = sv.cle * (1 - 0.86 * k); contre.intensity = sv.contre * (1 - 0.8 * k); rouge1.intensity = sv.r1 * (1 - 0.6 * k); rouge2.intensity = sv.r2 * (1 - 0.6 * k);
+  hemi.intensity = sv.hemi * (1 - 0.7 * k); scene.environmentIntensity = sv.env * (1 - 0.75 * k); scene.fog.density = sv.fog * (1 + 0.6 * k);
+  return () => { cle.intensity = sv.cle; contre.intensity = sv.contre; rouge1.intensity = sv.r1; rouge2.intensity = sv.r2; hemi.intensity = sv.hemi; scene.environmentIntensity = sv.env; scene.fog.density = sv.fog; };
+}
+function legende(x, txt, cx, cy, w) {
+  x.fillStyle = 'rgba(0,0,0,0.6)'; x.fillRect(cx, cy, w, 20);
+  x.fillStyle = '#ddd'; x.font = '12px system-ui, sans-serif'; x.fillText(txt, cx + 6, cy + 14);
+}
+window.apercu = {
+  pret: true,
+  // accès pour les outils (mesures, planches à plusieurs instances)
+  scene: scene, renderer: renderer, camera: camera, donneesTete: DONNEES_TETE, lumieres: { cle: cle, contre: contre, rouge1: rouge1, rouge2: rouge2, hemi: hemi },
+  decor: { joueur: joueur, repere: repere, sol: sol },
+  stats: () => Object.assign({ three: THREE.REVISION, tete: modele.teteType, choixTete: teteChoix }, modele.stats, { appelsScene: renderer.info.render.calls, trianglesScene: renderer.info.render.triangles }),
+  // spec : { lignes: [{ nom, t, vue, legende, invul, affaib, lames }], cols, w, h, titre, sombre (pénombre 0..1) }
+  planche: (spec) => {
+    window.__auto = true;
+    const restaurer = penombre(spec.sombre || 0);
+    const w = spec.w || 300, h = spec.h || 420, cols = spec.cols || 5, L = spec.lignes, rows = Math.ceil(L.length / cols);
+    const top = spec.titre ? 30 : 0;
+    const c = document.createElement('canvas'); c.width = w * cols; c.height = h * rows + top;
+    const x = c.getContext('2d'); x.fillStyle = '#101114'; x.fillRect(0, 0, c.width, c.height);
+    if (spec.titre) { x.fillStyle = '#eee'; x.font = 'bold 16px system-ui, sans-serif'; x.fillText(spec.titre, 10, 21); }
+    redim(w, h);
+    let cache = null;
+    const lamesAvant = etat.lames;
+    L.forEach((o, i) => {
+      etat.invul = !!o.invul; etat.affaib = o.affaib || 0; etat.lames = o.lames || lamesAvant;
+      const cle = o.nom + '|' + o.t + '|' + etat.invul + '|' + etat.affaib + '|' + etat.lames;
+      if (cle !== cache) { allerA(o.nom, o.t); cache = cle; }
+      cadrer(o.vue || '34');
+      renderer.render(scene, camera);
+      const cx = (i % cols) * w, cy = top + Math.floor(i / cols) * h;
+      x.drawImage(renderer.domElement, cx, cy, w, h);
+      const a = vueB.action;
+      legende(x, o.legende || (o.nom + (a ? ' · ' + a.etape + ' ' + Math.round(a.progression * 100) + '%' : '') + ' · ' + (typeof o.vue === 'string' ? o.vue : 'vue')), cx, cy + h - 20, w);
+      x.strokeStyle = '#000'; x.strokeRect(cx + 0.5, cy + 0.5, w - 1, h - 1);
+    });
+    etat.invul = false; etat.affaib = 0; etat.lames = lamesAvant;
+    restaurer();
+    return c.toDataURL('image/png');
+  },
+  // Planche à plusieurs instances (illusions) : spec = { instances: [{ options, nom, t, lames, x, z, lacet }], vues: [{ pos, cible, fov,
+  // legende }], sombre: 0..1 (pénombre de la phase 5), cols, w, h, titre, cacherModele (true) }. Chaque instance rejoue son
+  // scénario depuis 0 à 60 i/s ; les instances sont détruites ensuite.
+  plancheMulti: async (spec) => {
+    window.__auto = true;
+    const w = spec.w || 400, h = spec.h || 300, V = spec.vues, cols = spec.cols || V.length, rows = Math.ceil(V.length / cols), top = spec.titre ? 30 : 0;
+    const Lum = window.apercu.lumieres, D = window.apercu.decor;
+    const sauve = { joueur: joueur.visible, repere: repere.visible, modele: modele.object.visible };
+    const restaurer = penombre(spec.sombre || 0);
+    joueur.visible = false; repere.visible = false;
+    if (spec.cacherModele !== false) modele.object.visible = false;
+    const ms = [];
+    for (const I of spec.instances) {
+      const m = BossB7Modele.creer(THREE, Object.assign({ renderer, tete: DONNEES_TETE, solY: 0 }, I.options || {}));
+      await m.pret;
+      scene.add(m.object); ms.push(m);
+    }
+    const vbs = spec.instances.map(() => ({}));
+    const vueI = (j, t) => {
+      const I = spec.instances[j], v = SC.vueAu(I.nom, t, vbs[j]);
+      v.temps = t; v.position.x = I.x || 0; v.position.z = I.z || 0; v.lacet = I.lacet || 0;
+      // couleur : celle de l'entrée (lames), sinon celle de l'instance (option couleurLames : clé laissée absente de la vue)
+      v.couleurLames = I.lames !== undefined ? I.lames : undefined;
+      v.regard = v.regard || { x: 0, y: 0, z: 0 }; v.regard.x = spec.regard ? spec.regard[0] : 0; v.regard.y = spec.regard ? spec.regard[1] : 1.6; v.regard.z = spec.regard ? spec.regard[2] : 8;
+      return v;
+    };
+    let Tmax = 0; for (const I of spec.instances) Tmax = Math.max(Tmax, I.t);
+    ms.forEach((m, j) => { m.reinitialiser(); m.update(0, vueI(j, 0)); });
+    const n = Math.max(1, Math.round(Tmax / DT));
+    for (let i = 1; i <= n; i++) ms.forEach((m, j) => { const tj = spec.instances[j].t; if (i * DT <= tj + 1e-9) m.update(DT, vueI(j, Math.min(tj, i * DT))); });
+    const c = document.createElement('canvas'); c.width = w * cols; c.height = h * rows + top;
+    const x = c.getContext('2d'); x.fillStyle = '#101114'; x.fillRect(0, 0, c.width, c.height);
+    if (spec.titre) { x.fillStyle = '#eee'; x.font = 'bold 16px system-ui, sans-serif'; x.fillText(spec.titre, 10, 21); }
+    redim(w, h);
+    V.forEach((o, i) => {
+      camera.fov = o.fov || 36; camera.aspect = w / h; camera.updateProjectionMatrix();
+      camera.position.set(o.pos[0], o.pos[1], o.pos[2]); camera.lookAt(o.cible[0], o.cible[1], o.cible[2]);
+      renderer.render(scene, camera);
+      const cx = (i % cols) * w, cy = top + Math.floor(i / cols) * h;
+      x.drawImage(renderer.domElement, cx, cy, w, h);
+      if (o.legende) legende(x, o.legende, cx, cy + h - 20, w);
+      x.strokeStyle = '#000'; x.strokeRect(cx + 0.5, cy + 0.5, w - 1, h - 1);
+    });
+    const info = ms.map((m) => ({ couleur: m.couleurLames(), allege: m.allege, triangles: m.stats.triangles }));
+    ms.forEach((m) => { scene.remove(m.object); m.dispose(); });
+    restaurer(); joueur.visible = sauve.joueur; repere.visible = sauve.repere; modele.object.visible = sauve.modele;
+    camera.fov = 36; camera.updateProjectionMatrix();
+    window.__multiInfo = info;
+    return c.toDataURL('image/png');
+  },
+  // mesure du temps de mise à jour du modèle (ms par image, sans rendu)
+  mesurer: (nom, n) => {
+    allerA(nom || 'loco:traque', 0.5);
+    const t0 = performance.now();
+    for (let i = 0; i < (n || 300); i++) modele.update(DT, vueCourante(nom || 'loco:traque', 0.5 + i * DT));
+    return (performance.now() - t0) / (n || 300);
+  }
+};
+</script>
+</body>
+</html>

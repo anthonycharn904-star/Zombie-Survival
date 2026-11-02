@@ -1,0 +1,528 @@
+# Suivi — boss « Le Dernier Pacte » dans Bunker 7 (jeu 2.0.7)
+
+Fichier de reprise du chantier du boss, tenu à jour à chaque étape. Le paquet d'Anthony est dans `boss-bunker7/le-dernier-pacte/` (référence, jamais modifié) ; son brief : `INTEGRATION.md`, `API.md`, `CONCEPTION.md`. Audit de la carte : `docs/audit-bunker7.md`.
+
+**Le code d'accès du boss ne s'écrit nulle part en clair** (dépôt, documents, essais, messages, conversation) : dans le code, son empreinte seulement (décision d'Anthony du 1er novembre 2026 ; il sera découvert par une quête dans une future version).
+
+## Étape en cours
+
+**Chantier commité, en attente des essais** — choix de l'étape 9 validés par Anthony dans la nuit du 1er au 2 novembre 2026 (voir « Décisions d'Anthony ») ; faits le 2 novembre : sortie de terre lisible en phase 5, licences dans le jeu, documents (cadence des armes, rapport sur la souris verrouillée pour Claude Code 5, essais à faire sous Windows), relecture indépendante et ses corrections, contrôle du paquet, documentation. Commit sur `chantier/bunker7` le 2 novembre 2026, avec son accord (« commit OK ») : le paquet sans ses traces de téléchargement Windows ni `prototype/sons-embarques.js` (option recommandée) ; le numéro reste 2.0.6 (le boss sort avec la 2.0.7, numéro posé à l'intégration). Restent : les essais de bout en bout par la méthode E2 et les essais sous Windows. Aucune fusion : l'intégration finale sera faite par Claude Code 5, sur l'ordre d'Anthony.
+
+## Fait
+
+**Étape 0** (préparer) : chantier `chantier/bunker7` (`~/dev/zs-bunker7`) ; paquet gardé tel quel dans `boss-bunker7/` (empreintes SHA-256 de ses 606 fichiers relevées le 1er novembre 2026, contrôlées après chaque étape : intact) ; ce fichier ; section 11 de `CLAUDE.md` (accord d'Anthony du 1er novembre 2026).
+
+**Étape 1** (lire et décrire) : `INTEGRATION.md`, `API.md`, `CONCEPTION.md`, `config.js`, `arene.js`, `prototype/proto-adaptateur.js` lus en entier ; code du jeu étudié ; fiche, calcul, décisions et plan présentés à Anthony.
+
+**Étape 2** (copier et calibrer) :
+- `engine/boss-b7/config.js` : copie réglée du `config.js` du paquet. Seules différences : `DPS_REFERENCE` = 1 393 (la Thompson au palier I) ; récompenses : `raygun` et `blaster` au palier III, 5 bonus (vente flash, points bonus, atout gratuit et machine de mort retirés : absents du jeu). Les identifiants des bonus restent ceux du paquet (l'interface et l'annonceur du boss les connaissent) : l'adaptateur les traduira (`munitions-max` → `ammo`, `mort-instantanee` → `insta`, `points-doubles` → `double`, `bombe-nucleaire` → `nuke`, `charpentier` → `carpenter`).
+- `engine/boss-b7/arene.js` : copie identique pour l'instant (la salle et les points de Bunker 7 se règlent aux étapes 4 et 8).
+- `engine/tools/build.py` : bloc du boss. Les 6 modules du paquet entrent tels quels, chacun dans son `<script>`, dans l'ordre du brief (`config.js`, `arene.js`, `logique.js`, `tete/boss-tete.js`, `boss-modele.js`, `fx.js`, `audio.js`, `hud.js`), empreintes contrôlées ; les 133 sons et leur manifeste sont embarqués en base64 (`window.BOSS_B7_SONS = { manifeste, donnees }`, la forme des sons embarqués du prototype), une empreinte pour tout le dossier `sons/`.
+- `engine/tools/hooks-boss-b7.py` : numéro 2.0.7, construction 1 (interface des Mod Tools : 9, inchangée).
+- Essais de bout en bout : la ligne qui vérifie le numéro du jeu passe de 2.0.6 à 2.0.7 dans `grenade`, `khamsin`, `khepesh`, `knife`, `modtools-biblio`, `ombre`, `weapons`, `zombie-anims` (rien d'autre).
+- Numéro remis à 2.0.6 le 2 novembre 2026, ainsi que dans ces 8 essais (décision d'Anthony : le boss sort avec la 2.0.7, la session d'intégration pose les numéros).
+- Jeu construit : 24 006 758 octets, 71 184 lignes, SHA-256 `273c4b57…3ba6`. En dehors des 9 blocs du boss (16,5 Mo) et du numéro, il est identique, octet pour octet, au jeu 2.0.6.
+
+Contrôles de l'étape 2 :
+
+| Contrôle | Résultat |
+|---|---|
+| `dupcheck.py` | aucun doublon |
+| Jeu dans Chromium sans tête (`tzeval.js`) | menu atteint, jeu 2.0.7 construction 1, interface 9 ; les 9 objets du boss définis ; aucune erreur dans la console |
+| `BOSS_B7_CONFIG.valider()` | `[]` |
+| Sons | 133 sur 133 décodés (10,0 Mo de MP3, 8 s en rendu logiciel sur une machine chargée) |
+| Partie de Bunker 7 | lancée, 10 s simulées : manche 1, zombies, joueur à 100 PV, aucune erreur |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 (critère 1 du §9) |
+| Tests unitaires du launcher | 31 sur 31 |
+
+PV qui en découlent (`DPS_REFERENCE` = 1 393) : phase 1 37 611 ; phase 2 91 938 ; phase 3 41 790 ; faiblesse 16 716 ; jauge de la phase 5 25 074 ; téléportation sur dégâts 2 507 en 3 s ; zombies du combat 597 (ceux de la manche 11 en ont 605) ; chiens 279 ; Le Survolté 19 502 ; L'Irradié 29 253 ; Le Démembré 22 706 ; petits Démembrés 996.
+
+**Étape 3** (adaptateur `jeu`) :
+- `engine/src/H6-boss-b7.js` (section 21 du jeu) : l'adaptateur et la création du combat. Toutes les fonctions du §3 du brief, obligatoires et facultatives, sauf `pointsBunker` (les points de Bunker 7 viendront de `arene.bunker7`, étape 8). Le combat et l'adaptateur sont créés une fois, à la première partie sur Bunker 7, et remis à zéro à chaque partie ; les 133 sons sont décodés à ce moment-là sur le contexte audio du jeu (0,6 s dans le Chromium sans tête), puis libérés si une autre carte est chargée.
+- `engine/tools/hooks-boss-b7.py` : 11 points d'accroche, tous sans effet hors du combat : touches (`key`, `pressed`), souris et tir (`b7Entrees`, au début de `update`), invulnérabilité (`playerDamage`), manches suspendues (`updateRounds`), zombie du combat tué (`onZombieKilled`), bonus au hasard coupés (`maybeDropPowerup`), traînard du combat retiré (`recycleZombie`), zombie saisi ou extrait (`updateZombie`), nouvelle partie (`newGame`), combat à chaque image (`update`, après les manches), autre carte chargée (`loadMap`).
+- `engine/boss-b7/config.js` : `securite.graceEchec` = 5 s (au lieu de 1 s par défaut dans la logique) : dans le jeu, « à terre » n'existe qu'avec Quick Revive, qui relève le joueur seul en 4,5 s ; sans cela, le combat aurait été perdu pendant que le joueur se relève.
+- Fonctions branchées (adaptateur → jeu) : `joueurs` (le joueur « j1 », lacet = yaw + π, lieu tenu par les téléportations) ; `infligerDegats` (fraction des PV max par `playerDamage`, sans secousse ni à-coup de la vue) ; `blessureCritique` ; `teleporter` (`placePlayer` ; refusée hors de la grille) ; `controle`, `invulnerable` ; `faireApparaitreZombie` (zombie du jeu sorti de terre, PV de la config, course 4,1 m/s) ; `zombies` ; `effetZombie` (saisie, extraction, relâche) ; `retirerZombie` (sans points ; zombie de manche recréé plus tard) ; `regarder` ; `tirerJoueur` ; `chemin` (A* sur la grille) ; `positionValide` ; `visible` (`sightClear`) ; `apparitionsNormales` (Bunker 7, phase 5) ; `suspendreManches` ; `listeAtouts` (les 5 atouts de Bunker 7) ; `donnerArme` (toujours non : voir D2) ; `donnerAtout` ; `activerBonus`, `faireApparaitreBonus` (vrais bonus du jeu) ; `deposerRecompense` (armes merveilles au sol) ; `lireDrapeau`, `ecrireDrapeau` (partie en cours) ; `journal`.
+- Pas encore branchés (étapes suivantes) : chiens, mini-boss et petits Démembrés (`faireApparaitreZombie` les refuse pour l'instant ; la logique lève alors la protection, le combat ne se bloque pas), leurs rages et capacités, étourdissement, vision brouillée et projection (étape 6) ; modèle, effets, sons branchés sur le combat, interface, tirs sur le Septième, lumières (étape 5) ; salle (étape 4) ; points de Bunker 7, digi pass (étape 8) ; panneau de test (étape 7).
+
+Choix d'intégration de l'étape 3, soumis à Anthony :
+1. Les coups du Septième (et plus tard des mini-boss) ne secouent pas la vue. Les zombies du jeu gardent leur secousse habituelle quand ils frappent, comme avant.
+2. Le regard est tourné vers le Septième seulement pendant les scènes (introduction, capture des âmes, défaite), en douceur sur toute leur durée (plusieurs secondes) ; jamais pendant un crochet.
+3. Échec du combat : après 5 s à terre (voir `graceEchec`). Si la partie continue (filet), le joueur est ramené dans Bunker 7, les manches reprennent.
+4. Zombies du combat : ils sortent de terre au point demandé par le combat (le jeu n'a pas d'autre apparition au sol), PV 597, à la course la plus rapide du jeu ; leur mort donne les points habituels ; ils ne comptent pas dans la manche.
+5. Zombies de la manche présents au déclenchement : retirés sans points pendant le fondu au noir, puis recréés aux fenêtres quand les manches reprennent (comme les traînards du jeu).
+6. Armes merveilles (D2) : deux objets qui flottent et tournent devant l'autel, comme les bonus, sans durée ; une arme laissée dans la salle suit le joueur dans Bunker 7 à la fin du combat. Ramassées : l'emplacement 1, puis le 2 ; une arme déjà tenue est remplacée à sa place par sa version au palier III.
+7. Atouts de la récompense : donnés l'un après l'autre, toutes les 0,7 s, pour que les bannières et les jingles ne se chevauchent pas.
+8. Sons du combat : dans le bus des effets du jeu (volume général, étouffement à terre) ; la musique du combat suit le réglage « Musique » du jeu (multiplié par le gain du paquet, 1,4).
+
+Contrôles de l'étape 3 :
+
+| Contrôle | Résultat |
+|---|---|
+| `dupcheck.py` | aucun doublon |
+| Essai A (`tzeval.js`) : chaque fonction de l'adaptateur dans une partie de Bunker 7 | 36 vérifications sur 36 |
+| Essai B : la logique branchée (salle provisoire posée dans la salle du centre) : démarrage, fondu (3 zombies de la manche retirés sans points), téléportation, regard vers la tête du Septième (écart < 0,001 rad), commandes coupées puis rendues, 25 s de phase 1 (2 traits à 12 %, aucune secousse, 9 zombies du combat à 597 PV au sprint, 400 points, aucun bonus au hasard, manche gelée), remise à zéro, manches reprises ; à terre 4 s (Quick Revive) : le combat continue ; à terre sans fin : échec à 5 s, joueur ramené au départ de Bunker 7, manches reprises | 9 vérifications sur 9 (au premier passage, les deux dernières avaient échoué à cause de l'essai lui-même : le joueur, sans protection pendant la reprise des manches, était mort ; essai corrigé) |
+| Blocs des essais de bout en bout dans la page (`e2e-page.js`) : `rank`, `perk-drink`, `glas`, `elixirs`, `dogs`, `grenade`, `knife`, `weapons`, `zombie-anims`, `glissade`, `hud-points`, `personnage` | 460 vérifications sur 460 ; un bloc en erreur, `zombie-anims` b04 (il lit l'écran « Modèles », que seul le clic de l'essai complet ouvre : l'échec connu de ce mode, quel que soit le jeu) |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact (606 empreintes) |
+| Jeu construit | 24 035 244 octets, 71 707 lignes, SHA-256 `343fe1df…a6b6` |
+
+**Étape 4** (salle secrète) :
+- Construction : le constructeur de la salle du prototype (`prototype/proto-monde.js`, avec `proto-commun.js`, `proto-nav.js` et `proto-zombies.js` pour le mini-boss endormi des cuves) entre tel quel dans le jeu, inséré par `build.py` (empreintes contrôlées), comme le permet le §4 du brief (« Tu peux reprendre ce constructeur »). La salle a donc exactement la géométrie, les matières et les animations de la démo : octogone, voûte et oculus, 4 piliers et leur effondrement, 24 dalles, 3 cuves et leurs dormeurs, 8 brèches et leurs grilles, autel, lustre, braseros, tables, cage, poussière, puits de lumière. Créée une fois, au premier chargement de Bunker 7 en jeu (1,6 s dans le Chromium sans tête), jamais dans les Mod Tools ; la maquette de Bunker 7 que le prototype construit avec elle n'est jamais dessinée.
+- Place (D12) : `engine/boss-b7/arene.js`, `salle.origine` = (26 ; 0 ; 100) : au niveau du sol, à 57 m au sud du mur sud de Bunker 7, hors de ses abords (34 m autour de la grille), dans sa brume (à 57 m, il en reste 0,03 %). De plus, la salle n'est dessinée que quand le joueur y est : rien n'en est visible depuis la carte.
+- `engine/src/H7-boss-salle.js` (section 22 du jeu) :
+  - grille : à chaque construction du monde de Bunker 7 en jeu (fin de `buildWorld`), 87 lignes de cases sont ajoutées sous la carte (52 × 118 au lieu de 52 × 31 ; les cases de la carte gardent leurs numéros ; la carte, ses abords et son plan ne changent pas) : 756 cases de sol (l'octogone jouable), 124 de mur autour, 17 d'obstacles (piliers, cuves, autel, tables, caisses, cage). Le moteur y marche sans autre changement : sol, déplacements, champ de flux des zombies, apparitions, chemins, débris ;
+  - collisions exactes : après la grille, les corps (joueur, zombies, cadavres) sont repoussés par les collisions du prototype (murs de l'octogone à 14,3 m du centre, piliers, puis leur moignon, cuves, autel, meubles) ; tirs, grenades et lignes de vue (explosions, couteau, `visible`) partis de la salle touchent son décor exact ;
+  - vue et ambiance : la salle n'est dans la scène que quand le joueur y est (hors partie : la caméra), Bunker 7 n'est pas dessiné pendant ce temps ; hors de la salle, ses lampes ne comptent pas et rien d'elle n'est recalculé. Dans la salle, l'ambiance de la démo (brume 0,024, fond, exposition 1,0, son hémisphère, sans lune), celle de Bunker 7 rendue à la sortie. À tout changement de carte (mondes ouverts compris), la salle quitte le monde ;
+  - lumières : la démo éclaire en unités physiques, le jeu en unités anciennes. Les 14 lampes de la salle sont converties (÷ π, intensité réglée au quart de leur portée) et ses matières calculent la chute de lumière physique de la démo : la salle est éclairée comme dans la démo ;
+  - combat : dalles, piliers et cuves suivent l'état de la logique à chaque image ; la grille d'une brèche se soulève quand un zombie en sort ; les fissures d'un pilier touché sont tournées vers le point d'impact.
+- `engine/src/H6-boss-b7.js` : position valide exacte dans la salle (hors des murs et des obstacles) ; grille de brèche soulevée à l'apparition ; évènement « pilier » branché ; salle remise à neuf à chaque nouvelle partie ; salle mise à jour à chaque image ; salle retirée du monde quand une autre carte est chargée.
+- `engine/tools/hooks-boss-b7.py` : 4 points d'accroche de plus, sans effet hors de la salle : fin de `buildWorld` (salle ajoutée à la grille), fin de `settleBody` (collisions exactes), début de `raycast` (décor exact), `render` (vue et ambiance).
+- `engine/tools/build.py` : les 4 fichiers du prototype ajoutés au bloc du boss (avec leurs empreintes).
+
+Choix d'intégration de l'étape 4, soumis à Anthony :
+1. La salle est celle du prototype, son constructeur repris sans aucune modification, plutôt que refaite avec les ressources du jeu : fidélité complète à la démo, et une nouvelle version du paquet se reprend telle quelle.
+2. Place : au sud de la carte, au niveau du sol, loin des fenêtres et des abords, dans la brume ; en plus, jamais dessinée depuis Bunker 7.
+3. Bunker 7 n'est pas dessiné pendant que le joueur est dans la salle : rien de la carte ne peut apparaître dans la salle, et l'image coûte moins cher (207 appels de dessin au lieu de 354).
+4. Lumières : conversion des unités et chute de lumière physique dans les matières de la salle, pour l'éclairage exact de la démo ; les corps qui y passent (zombies, joueur, plus tard le Septième) reçoivent la même lumière au quart de la portée de chaque lampe, un peu plus égale ailleurs.
+5. Ambiance de la démo dans la salle : brume plus légère (0,024 au lieu de 0,05), exposition 1,0 (1,18 dans Bunker 7), son hémisphère.
+6. Première entrée dans la salle de la session : les matières du jeu sont compilées pour ses lumières (une fraction de seconde sur une vraie carte graphique a priori ; 24 s en rendu logiciel). Prévu à l'étape 8 : le faire pendant le fondu au noir du déclenchement.
+
+Contrôles de l'étape 4 :
+
+| Contrôle | Résultat |
+|---|---|
+| `dupcheck.py` | aucun doublon |
+| Essai A (`tzeval.js`) : salle créée et ajoutée à la grille (52 × 118), cases de Bunker 7 identiques à la carte, téléportation, vue et ambiance (entrée et sortie), joueur arrêté à 14,3 − 0,3 m contre un mur droit et un mur en biais, à 1,12 + 0,3 m d'un pilier, tirs exacts (façade des dalles à 14,4 m, sol, fût d'un pilier), lignes de vue (pilier qui cache) | 12 vérifications sur 12 ; un tir coûte 0,19 ms (0,13 ms pour un tir court) |
+| Essai B : le combat réel dans la vraie salle : arrivée au point du brief ; 30 s de phase 1 (21 zombies sortis des sorts près du joueur, aucun bloqué) ; 30 s d'absence du Septième, joueur au centre (14 zombies nés aux brèches, grilles soulevées, tous en route ou arrivés, 4,5 s au plus, en contournant les piliers) ; aucun zombie hors de l'octogone ni dans un obstacle (distance minimale : leur rayon, 0,28 m) ; pilier détruit (effondrement, moignon de 0,98 m, vue dégagée au-dessus, pas au ras du sol), puis remis à neuf | 6 vérifications sur 6 (au premier passage, deux échecs venaient de l'essai : zombies tués par l'essai comptés comme bloqués ; grilles non animées parce que l'essai ne dessinait pas d'image, corrigé dans le module : la salle s'anime désormais sans dépendre du rendu) |
+| Images démo / jeu : 6 vues identiques dans la démo d'Anthony et dans le jeu | écart moyen de 1,0 à 1,7 sur 255 par vue, même luminosité (le Septième, debout dans la démo, arrive à l'étape 5) |
+| Images en partie : vue du joueur (arme, bras d'Anthony), zombies, pilier effondré, cuve fissurée, cuve brisée, dalle arrachée ; Bunker 7 avant l'entrée et après la sortie | conformes ; Bunker 7 identique avant et après (seule l'arme a bougé) |
+| Coût (rendu logiciel) | Bunker 7 : 354 appels, 377 000 triangles, 0,97 ms de calcul par image ; salle : 207 appels, 242 000 triangles, 1,46 ms ; salle avec 10 zombies : 207 appels, 359 000 triangles, 1,99 ms |
+| Essai D : chemins de chargement : éditeur des Mod Tools (grille de la carte seule, pas de salle) ; partie de test des Mod Tools (salle présente) ; retour à l'éditeur (salle jamais dessinée, ambiance de Bunker 7) ; Khamsin (salle retirée du monde) ; retour sur Bunker 7 (salle remise dans la grille sans être reconstruite) | 5 vérifications sur 5 (au premier passage, un vrai défaut : sur Khamsin, chargé sans construire de grille, la salle restait active ; corrigé : retirée à tout changement de carte, jamais active sur un monde ouvert) |
+| Blocs des essais de bout en bout dans la page (`e2e-page.js`), les mêmes 12 essais qu'à l'étape 3 | 459 vérifications sur 460 au premier passage : `elixirs` b02 compte les lampes de toute la scène (16 attendues sur Bunker 7) et en trouvait 28, la salle cachée restant attachée à la scène avec ses 12 lampes. Corrigé : la salle n'est dans la scène que quand le joueur y est ; `elixirs` relancé : 55 sur 55. Le bloc `zombie-anims` b04 reste l'échec connu de ce mode |
+| Essais A, B et D relancés sur la construction finale | 12 sur 12, 6 sur 6, 5 sur 5 |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact (606 empreintes) |
+| Construction | identique à elle-même (deux constructions comparées octet pour octet) ; `dupcheck.py` : aucun doublon |
+| Jeu construit | 24 671 540 octets, 79 840 lignes, SHA-256 `f81cb989…9a68` |
+
+Les images en partie ont été faites avant le dernier changement (salle attachée à la scène à l'entrée au lieu d'être cachée) ; l'essai A, relancé ensuite, contrôle l'entrée et la sortie. Les images de l'étape 5 (salle, Septième), faites sur la construction finale, servent de confirmation.
+
+**Étape 5** (rendu et tirs) :
+- Lumières de la salle (reprise de l'étape 4, plus simple et plus fidèle) : les 14 lampes de la salle portent une marque dans `PointLight.decay` (7, comme la bande d'étage que le jeu code déjà dans `decay` avec `lightBandDecay`) et leur intensité est divisée par π ; une retouche du calcul de lumière de three.js (`ShaderChunk.bsdfs`, une fois au chargement, comme `patchLightBands`) donne aux lampes marquées la chute de lumière physique de la démo, pour toutes les matières : salle, zombies, joueur, Septième. Les autres lampes du jeu gardent leur chute habituelle. La retouche par matière de l'étape 4 est retirée.
+- `engine/src/H8-boss-rendu.js` (section 23 du jeu) :
+  - modèle du Septième (`BossB7Modele`, tel quel ; tête cuite `BOSS_B7_TETE` ; 56 000 triangles) : créé une fois avec le combat ; placé, orienté et animé à chaque image par la logique ; dans la scène seulement quand le joueur est dans son lieu ; gouttes de sang dessinées par les effets (`gouttes: false`, comme le brief) ;
+  - tirs (§11.2) : tant qu'il est présent, le Septième a une entrée dans la liste des zombies, comme le Gardien de Khamsin (`b7boss`, sa place de rendu cachée) : toutes les armes du jeu le trouvent sans liste à tenir. Rayons contre ses 12 sphères de touche (`modele.hitboxes` : 1 pour la tête, 11 pour le corps) s'il est présent, visible et dans le lieu du joueur ; dégâts par `combat.toucherBoss` : ceux d'un zombie touché au corps (sans le ×2 de tête du jeu : la logique applique son ×1,5), type « balle », « explosif » (projectiles, explosions, grenades) ou « melee » (couteau) ; Onde de choc 1 393 par souffle, 2 786 améliorée (D5) ; Bombe, onde du Glas : sans effet ; aucun point par touche (D7) ; marqueur de touche du jeu seulement si le coup porte (sinon le bouclier des effets) ; sang et impacts dessinés par les effets ;
+  - effets (`BossB7Fx`, tels quels) : une couche par lieu, dans la scène seulement quand le joueur y est pendant le combat (leurs 3 lampes ne comptent qu'alors) ; l'obscurité (capture des âmes, phase 5) assombrit la brume du lieu du joueur et ses lampes (salle ; lampes et hémisphère de Bunker 7) ; voile d'écran dessiné après l'arme ; aucune secousse de caméra (vertige) ;
+  - sons : branchés sur le combat (`audio.brancher`, `audio.mettreAJour`, auditeur aux yeux du joueur) ;
+  - interface (`BossB7Hud`, telle quelle) : dans le HUD du jeu (cachée avec lui) ; touche d'interaction F ; noms des armes merveilles du jeu ;
+  - interaction : achever le rituel près du cadavre en tenant F.
+- `engine/tools/hooks-boss-b7.py` : 7 points d'accroche de plus : `updateZombie`, `rayHitZombie`, `damageZombie` (devant ceux du Gardien), impact et marqueur de touche dans `hitscan`, lampes après `updateLights`, voile d'écran à la fin de `render`.
+- `engine/src/H6-boss-b7.js` : un instantané de la logique par image (`B7.e`), partagé par la salle et le rendu ; modèle, effets et interface créés avec le combat ; sons branchés sur le combat.
+
+Choix d'intégration de l'étape 5, soumis à Anthony :
+1. Le Septième est une entrée de la liste des zombies, comme le Gardien de Khamsin : toutes les armes du jeu le trouvent sans code propre à chacune (balles, projectiles, explosions, grenades, couteau, Onde de choc).
+2. Dégâts sur le Septième : ceux d'un zombie touché au corps ; à la tête, le ×1,5 de la logique (pas le ×2 du jeu) ; Onde de choc 1 393 par souffle, 2 786 améliorée (D5) ; Bombe et onde du Glas sans effet ; Mort instantanée sans effet (dégâts normaux) ; aucun point par touche (D7) ; marqueur de touche du jeu seulement si le coup porte (protégé, il montre le bouclier des effets).
+3. Lumières : la retouche du calcul de lumière de three.js change un système commun du moteur ; elle n'agit que sur les lampes marquées (celles de la salle), toutes les autres gardent leur calcul. Elle donne l'éclairage exact de la démo à tout ce qui entre dans la salle.
+4. Effets du boss dans la scène seulement pendant le combat, dans le lieu du joueur ; hors combat, rien du boss n'est dessiné.
+5. Obscurité (capture des âmes, phase 5) telle que les effets du paquet la dessinent : brume plus dense, lampes à 75 %, voile sur les bords de l'écran ; les murs proches restent visibles. À juger en jeu (renforçable).
+6. Interface du combat dans le HUD du jeu (cachée avec lui) ; touche d'interaction : F, celle du jeu.
+7. Aucune secousse de caméra (vertige) : les effets n'en reçoivent pas le moyen.
+8. Réaction du modèle aux touches (`modele.reagir`) non branchée, comme dans le prototype : les touches se voient au sang et aux impacts des effets.
+
+Contrôles de l'étape 5 :
+
+| Contrôle | Résultat |
+|---|---|
+| Essai A (sans image) : création (modèle, effets, interface dans le HUD du jeu) ; le Septième dans la liste des zombies, à sa place ; balle au corps (M1911 : 40 transmis, coup porté, aucun point) ; balle à la tête (zone « tete », 60 = 40 × 1,5 de la logique) ; explosion à 1 m ; Onde de choc 1 393 / 2 786 ; Bombe et Glas sans effet, couteau « melee » ; Septième protégé : bouclier, pas de marqueur ; absent : hors de la liste ; 20 s de phase 1 avec tous les modules ; nouvelle partie : tout remis à zéro | 8 vérifications sur 8 |
+| Essai B (sans image) : phase 5 dans Bunker 7 : brume 0,05 → 0,146, lampes et hémisphère × 0,75 (facteur des effets), couche d'effets de Bunker 7 et Septième dans la scène ; remise à zéro : brume, lampes et hémisphère rendus ; dans la salle : ambiance de la démo | 4 vérifications sur 4 (au premier passage : l'essai laissait le joueur dans la salle, les points de Bunker 7 n'étant remplis qu'à l'étape 8, et ne simulait pas le rendu ; et un vrai défaut, corrigé : une remise à zéro pendant l'obscurité laissait les lampes de Bunker 7 assombries) |
+| Coût de calcul (sans rendu, machine saturée par une autre session : chiffres pessimistes) | manche normale de Bunker 7 : 2,3 ms par image ; combat (phase 1, 6 zombies, effets, sons, interface) : 4,9 ms ; dont modèle 0,41, effets 0,10, interface 0,11 |
+| Salle, démo / jeu, avec le nouvel éclairage (6 vues) | écart moyen de 0,6 à 1,9 sur 255, même luminosité (seul écart visible : le scintillement aléatoire des braseros) |
+| Images en partie, 960 × 540 et 1920 × 1080 : le Septième dans la salle (de loin, de près), répit (voile d'invulnérabilité, compte à rebours), rituel (anneau de capture, cercle au sol), phase 5 dans Bunker 7 (jauge « Rompre le pacte », obscurité) | conformes ; l'interface du combat ne chevauche pas celle du jeu aux deux tailles (barre en haut au centre, objectif en haut à gauche, anneau à droite, messages en bas au centre ; points et munitions du jeu dégagés). Phase 5 : voile mesuré (bord gauche 278 → 23, centre 400 → 380), brume 0,146, lampes × 0,75 ; les murs proches restent visibles, comme le veulent les effets (intensité à juger en jeu) |
+| Blocs des essais de bout en bout dans la page (`e2e-page.js`), les mêmes 12 essais qu'aux étapes 3 et 4 | 460 vérifications sur 460 ; le bloc `zombie-anims` b04 reste l'échec connu de ce mode (même erreur qu'à l'étape 4). Lancés le 1er novembre à 17 h 58 avec la priorité la plus basse, la machine restant chargée par une autre session (charge 20 sur 16 cœurs) : 13 min 30 s |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact (606 empreintes) |
+| Construction | identique à elle-même ; `dupcheck.py` : aucun doublon ; 24 686 069 octets, 80 050 lignes, SHA-256 `875769b3…a17c` |
+
+**Étape 6** (ennemis et mécaniques du combat) :
+- `engine/src/H9-boss-ennemis.js` (section 24 du jeu) :
+  - chiens de la meute : le chien du jeu, Le Molosse (le brief : « celui du jeu s'il existe »), avec le profil du combat : 279 PV, 7,4 m/s, morsure de 5 % des PV max toutes les 0,9 s à 1,4 m (bond compris). Il sort de la faille dessinée par les effets du boss, sans l'éclair ni la secousse des manches de chiens ; il chasse dans la salle comme dans Bunker 7 (grille du jeu) ; tué, il éclate comme d'habitude, sans souffle ni secousse ; points habituels. Le jeu ne le déplace jamais (la logique remplace un chien bloqué) ;
+  - mini-boss (Le Survolté, L'Irradié, Le Démembré géant) et petits Démembrés : le module des zombies du prototype (`ProtoB7Zombies`, déjà inséré tel quel à l'étape 4 pour les dormeurs des cuves), qui porte leurs modèles, animations, IA et capacités (décharges et arcs, aura, boules et zones radioactives, flaque, fléau, rages, bras arraché, charge). Il vit dans la salle, sur la grille de navigation, les collisions et les lignes de vue du monde de la salle, par une façade qui le place dans le repère du jeu : le prototype pose sa salle à l'origine du monde, le jeu en (26 ; 0 ; 100) (cuves en coordonnées du monde ; lampe de cuve prêtée par une doublure, recopiée dans la salle en unités du jeu, obscurité comprise). Ses zombies et ses chiens ne servent pas (ceux du jeu) ;
+  - tirs : chaque entité du module a une entrée dans la liste des zombies, comme le Septième (toutes les armes du jeu la trouvent) ; zones de tir du module (tête, torse, jambes, bras pendu du géant) ; dégâts par le module (tête × 2 ; rien pendant la sortie de cuve, la sortie du sol et les rages : étincelles, pas de marqueur de touche). Mini-boss : jamais tués d'un coup (Onde de choc 1 393, 2 786 améliorée, D5 ; Bombe, onde du Glas, Mort instantanée sans effet), 500 points à l'élimination, aucun par touche. Petits Démembrés : règles et points d'un zombie du jeu ;
+  - joueur (comme `prototype/proto-joueur.js`) : vision brouillée (décharge du Survolté) ; étourdissement (ni déplacement, ni saut, ni sprint, ni accroupi, ni rechargement, ni couteau, ni grenade, ni tir ; la vue reste libre et ne tremble pas : voile électrique de 0,4 s et son du combat ; « Étourdi » dans l'interface du combat) ; projection par la charge du Démembré (12 m/s qui faiblit jusqu'à 40 % en 0,5 s, commandes coupées, collisions comprises, sans saut ni secousse ; contre un mur de l'octogone : 10 % des PV max en plus et son). Couches de l'écran du prototype, sous le HUD du jeu ;
+  - irradiation (rage de L'Irradié) des zombies et chiens du jeu : peau et yeux teintés de vert, lueur verte au torse, aura de 4 % des PV max par seconde à 1,5 m (tics de 0,25 s, comme le module) ; la lueur au sol est dessinée par les effets du boss ; tout redevient normal à la mort de L'Irradié.
+- `engine/src/H6-boss-b7.js` : `faireApparaitreZombie` (chiens, mini-boss, petits Démembrés), `zombies` (chiens de type « chien », entités du module avec type, nom et PV), `effetZombie` (rages et irradiation par le module ; irradiation des zombies et chiens du jeu ; ni saisie ni extraction pour les chiens), `retirerZombie` et position des entités du module ; tir coupé quand le joueur est étourdi ou projeté ; module créé avec le combat, remis à zéro à chaque partie, mis à jour à chaque image.
+- `engine/src/H7-boss-salle.js` : le joueur projeté qui heurte un mur de l'octogone le signale au module.
+- `engine/src/H8-boss-rendu.js` : effets créés avec `mareBras: false` (le bras posé du module a sa mare, comme dans le prototype) ; « Étourdi » transmis à l'interface ; objets du module dans la scène seulement quand le joueur est dans la salle.
+- `engine/tools/hooks-boss-b7.py` : touches (`b7Touche`), entités du module dans `updateZombie`, `rayHitZombie`, `damageZombie`, l'impact et le marqueur de `hitscan` (points d'accroche des étapes 3 et 5 élargis) ; 8 de plus : projection dans `updatePlayer` ; chien du boss dans `spawnDog` (2), `dogBite` (2), `dogBound`, `dogChase` et `dogExplode`. Tous sans effet hors du combat.
+- Lampes des effets du boss (reprise de l'étape 5) : la démo éclaire en unités physiques (`physicallyCorrectLights`) ; dans le jeu, les effets passent en anciennes unités (intensité ÷ π) mais gardaient l'ancienne chute de lumière : à 3–5 m, leurs 3 lampes éclairaient 4 à 7 fois trop (salle blanchie pendant la surcharge du Survolté). Elles portent désormais la marque des lampes de la salle (`B7S_MARQUE`) : chute physique, comme dans la démo.
+
+Choix d'intégration de l'étape 6, soumis à Anthony :
+1. Chiens : Le Molosse du jeu (le brief le demande), avec le profil du combat ; il garde son bond et son éclatement à la mort, mais sans l'éclair d'apparition (la faille des effets le remplace), sans le souffle de 30 PV à sa mort et sans secousse (vertige) ; points habituels du jeu (50, 100 à la tête, 130 au couteau) plutôt que les 100 du prototype.
+2. Mini-boss et petits Démembrés : le module du prototype tel quel (fidèle à la démo ; une nouvelle version du paquet se reprend telle quelle), comme la salle à l'étape 4.
+3. Points : 500 par mini-boss (prototype), aucun par touche (comme le Septième) ; petits Démembrés : barème d'un zombie du jeu (10 par touche, 50 à la mort, 100 à la tête, 130 au couteau) plutôt que 100 à la mort.
+4. Étourdissement : la vue ne tremble pas (vertige) : voile électrique bref et son ; restent le regard, la visée, l'interaction et le changement d'arme.
+5. Projection : sans le petit saut ni la secousse du prototype (vertige) : le joueur glisse, poussé à plat.
+6. Zombies et chiens irradiés : peau et yeux teintés de vert et lueur au torse (le jeu dessine ses zombies par lots et n'a pas la lueur par matière du prototype).
+7. Vision brouillée et voile sous le HUD du jeu (barres, points et munitions restent nets), comme dans le prototype.
+8. Lampes des effets du boss : chute de lumière physique de la démo (voir plus haut), dans la salle comme dans Bunker 7.
+
+Contrôles de l'étape 6 :
+
+| Contrôle | Résultat |
+|---|---|
+| Essai A (`tzeval.js`, sans image) : un combat de la phase 2 à la phase 5, joueur à 1 000 000 PV (les fractions se lisent sur les PV) : module créé, 3 couches d'écran ; meute (2 Molosses, 279 PV, 7,4 m/s, listés « chien », 12 morsures à 5 % en 5 s ; un chien tué : 50 points, la logique le voit mort) ; Le Survolté (sorti de sa cuve, lampe de la cuve qui le suit à 3 cm près en unités du jeu, entrée de tir, listé avec ses PV ; balle au corps 40, à la tête 80, aucun point ; décharges : 15 %, vision brouillée et étourdissement, touche Z refusée et flèche permise pendant l'étourdissement ; rage : invulnérable, tir sans effet ni marqueur ; murs électrifiés : 3 % par tic de 0,25 s à 1,6 m du mur ; mort : 500 points, Munitions max, protection levée) ; L'Irradié (aura : 25 tics, 2 boules, 2 zones ; lampe du Survolté rendue ; rage : 7 zombies et chiens du jeu irradiés, lueurs, aura à 1 % par tic collé à l'un d'eux ; mort : plus aucun irradié, zones éteintes) ; Le Démembré (géant × 2,16 ; rage : bras posé, 3 petits avec leur entrée ; un petit : 10 points par touche, 50 à la mort ; charge : coup à 35 %, projection, mur heurté à 10 % ; mort : petits effondrés, bras flétri, plus aucune entrée) ; phase 5 : chiens dans Bunker 7, aucun dans la salle ; nouvelle partie : tout remis à zéro | 17 vérifications sur 17. Au premier passage, 7 échecs venaient de l'essai : PV remontés à 200 000 seulement avant chaque image, la charge (35 %) tuait le joueur et la partie s'arrêtait (tout semblait figé : charge, mort du Démembré, chiens de la phase 5) ; points comptés autour des zombies tués par l'essai ; lampe qui s'éteint avec le corps du mini-boss avant d'être rendue ; Munitions max ramassé aussitôt par le joueur, tout proche |
+| Diagnostics ciblés : projection (4,5 m en 0,5 s ; contre le mur ouest : arrêt et choc) ; meute de la phase 5 : 2 chiens en 6,5 s quand le joueur reste valide | conformes |
+| Images en partie, 960 × 540 et 1920 × 1080 : Molosses, Survolté et ses arcs, surcharge (rayon depuis le Septième), murs électrifiés, vision brouillée et voile, L'Irradié et son aura, contamination, Démembré géant, bras posé et petit Démembré qui sort du sol | conformes. En 1920 × 1080, rien ne se chevauche ; en 960 × 540, le titre d'une rage (à 30 % de la hauteur) passe sur l'objectif en haut à gauche, et un message du bas touche « Étourdi » (mise en page de l'interface du paquet ; fenêtre de moins de 600 px de haut). Surcharge refaite après la correction des lampes des effets : la salle n'est plus blanchie |
+| Coût de calcul (sans rendu, machine chargée par d'autres sessions) | phase 2 : 3,7 ms par image ; avec Le Survolté : 3,0 ms ; avec Le Démembré et 6 petits : 2,8 ms ; dont le module des zombies du prototype : 0,09 et 0,18 ms. Mémoire JavaScript : 225 Mo |
+| Blocs des essais de bout en bout dans la page (`e2e-page.js`), les mêmes 12 essais (dont `dogs`, après les branchements dans le code des chiens) | 459 sur 460 au premier passage (machine à une charge de 25 à 29, essais en priorité basse) : le contrôle de durée de `weapons` (ajustement des mains en moins de 150 ms : 302 ms), qui varie d'une suite à l'autre (`CLAUDE.md`, §5) ; `weapons` relancé seul : 33 sur 33. Donc 460 sur 460 ; le bloc `zombie-anims` b04 reste l'échec connu de ce mode |
+| Essai A relancé sur la construction finale | 17 sur 17 |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact (606 empreintes) |
+| Construction | identique à elle-même ; `dupcheck.py` : aucun doublon ; 24 716 463 octets, 80 535 lignes, SHA-256 `db810bb1…159b` |
+
+**Étape 7** (panneau de test développeur, §14 du brief) :
+- `engine/src/HA-boss-panneau.js` (section 25 du jeu) : le panneau P du prototype, adapté au jeu :
+  - aller à chacun des 18 états du combat (le combat démarre s'il ne l'est pas ; « introduction » repart du départ de Bunker 7) ;
+  - combat : +10 âmes, segment à 1 PV, 10 tirs sur le Septième (les 10 balles de 120 du prototype, à l'échelle de `DPS_REFERENCE` : 478 chacune) ; joueur invincible (`G.god`) ;
+  - mini-boss : seuil suivant (75 %, 50 %, 25 %), mini-boss à 49 % (sa rage), mini-boss tué (par l'entrée de tir du jeu : 500 points) ;
+  - phase 3 sous 50 % (salves), palier suivant de la phase 5 ;
+  - vitesse du temps : × 0,5, × 1, × 2, × 4 (× 2 et × 4 : plusieurs pas normaux par image, jamais un grand pas) ; revient à × 1 à chaque nouvelle partie et à la fin du test ;
+  - volumes de la musique et des effets du combat ; drapeau « combat terminé » remis à zéro ;
+  - état du combat en direct (4 fois par seconde, pause comprise) : état et durée, phase, lieux, action du Septième, âmes, ailes, lames, palier, barre, capture, jauge, mini-boss et leurs PV, zombies, chiens, entités du module, PV du joueur, drapeau.
+- Accès : seulement dans une partie de test des Mod Tools (`G.editorSession` ; le launcher n'installe les Mod Tools que chez l'auteur), sur Bunker 7 avec le combat. **F8** l'ouvre et le ferme (P et Échap restent la pause du jeu). Ouvert, la souris est libérée sans mettre le jeu en pause et la vue ne tourne pas ; la souris sur le panneau ne va pas au jeu (ni tir, ni regard, ni molette). Il se ferme seul à la fin du test.
+- Phase 5, défaite, fin : tant que les points de Bunker 7 (`arene.bunker7`) sont vides (étape 8), le panneau pose le joueur au départ de Bunker 7 (`b7AuDepart`, aussi utilisé par l'échec sans fin de partie).
+- `engine/tools/hooks-boss-b7.py` : 1 point d'accroche de plus, dans la boucle du jeu (`frame`) : `b7Pas(dt)` au lieu de `update(dt)` (un seul pas, comme avant, à × 1).
+- `engine/src/H6-boss-b7.js` : `b7AuDepart` ; panneau ouvert et souris libre : la vue ne tourne pas ; vitesse remise à × 1 à chaque nouvelle partie.
+
+Choix d'intégration de l'étape 7, soumis à Anthony :
+1. Mode développeur = partie de test des Mod Tools (le brief : « ou par un réglage du Mod Tools ») : aucun joueur ne peut l'ouvrir ; pour s'en servir, ouvrir Bunker 7 dans les Mod Tools et cliquer sur Test.
+2. Touche F8 (P, la touche du prototype, est la pause du jeu).
+3. Panneau ouvert : le jeu continue (comme le prototype) ; la vue ne tourne pas tant que la souris est libre ; un clic dans le jeu reprend la souris.
+4. Sans les coéquipiers simulés du prototype (le jeu n'a pas de coop).
+
+Contrôles de l'étape 7 :
+
+| Contrôle | Résultat |
+|---|---|
+| Essai A (`tzeval.js`) : partie normale, F8 sans effet ; partie de test des Mod Tools : F8 ouvre (31 boutons, souris libre, pas de pause, aide « souris libre » cachée) ; clic et mouvement de la souris sur le panneau : ni tir ni regard ; souris libre sur le jeu : la vue ne tourne pas ; phase 1 (dans la salle), 10 tirs (barre 37 611 → 32 596), phase 2, +10 âmes ; seuil suivant (Le Survolté sort, Septième protégé), rage (surcharge), mort (500 points) ; salves (phase 3 à 49 %), palier suivant (phase 5, palier 1, joueur au départ de Bunker 7) ; invincible, drapeau remis à zéro, vitesses × 0,5 / 1 / 2 / 4 (0,1 / 0,2 / 0,4 / 0,8 s de jeu pour 12 images de 1/60 s) ; état affiché ; F8 ferme (souris reprise) ; fin du test : fermé seul, vitesse × 1 ; nouvelle partie : × 1 | 7 vérifications sur 7 |
+| Images 960 × 540 et 1920 × 1080 : panneau ouvert pendant la phase 2 | lisible ; en 960 × 540, il couvre le tiers droit de l'écran (le bas défile) ; en 1080 p, il ne cache que le compteur de munitions |
+| Suite des essais des étapes 3 à 7 sur la construction finale | `etape3-a` 36 sur 36 (la ligne de son journal est voulue : téléportation hors de la grille refusée), `e4-a` 12 sur 12, `e4-d` 5 sur 5, `e5-a` 8 sur 8, `e5-b` 4 sur 4, `e6-a` 17 sur 17, `e7-a` 7 sur 7. `etape3-b` et `e4-b` d'abord en échec, à cause de l'essai lui-même : `etape3-b` posait encore la salle provisoire de l'étape 3 et comptait l'entrée du Septième (étape 5) comme un zombie ; `e4-b` suivait aussi les chiens (étape 6), qui sortent de failles et non des brèches. Essais mis à jour (pas le jeu) : 9 sur 9 et 6 sur 6 |
+| Blocs des essais de bout en bout dans la page (`e2e-page.js`), les mêmes 12 essais | 460 sur 460 ; le bloc `zombie-anims` b04 reste l'échec connu de ce mode |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact (606 empreintes) |
+| Construction | identique à elle-même ; `dupcheck.py` : aucun doublon ; 24 728 857 octets, 80 727 lignes, SHA-256 `b34a2813…2358` |
+
+**Étape 8** (déclenchement et fin du combat, §7 du brief) :
+- `engine/src/HB-boss-acces.js` (section 26 du jeu) :
+  - digi pass de Bunker 7 : il accepte le code du boss en plus de son code secret ; le jeu ne garde que l'empreinte du code du boss (`B7_CODE_EMPREINTE` : FNV-1a 32 bits salée « zs-boss-b7: », le calcul du digi pass avec un autre sel). Le code du boss sert une fois par partie (ensuite « Code erroné ») et lance le combat (fondu, salle secrète). Le digi pass reste en place quel que soit le code tapé ; il disparaît quand les deux codes ont été tapés dans la partie, dans un ordre ou dans l'autre (son code secret ne le fait plus disparaître à lui seul). Ailleurs (autre carte, boss absent, empreinte pas encore posée) : le digi pass d'avant ;
+  - phase 5 : toutes les portes de Bunker 7 s'ouvrent, gratuitement, sans compter dans les statistiques du joueur (portes ouvertes) ;
+  - première entrée dans la salle pendant le combat (écran noir de l'introduction) : les matières de la salle, du Septième, de ses effets, d'un exemplaire de chaque mini-boss et du petit Démembré sont compilées d'un coup (`b7Precompiler`, une fois par session ; les exemplaires sont retirés aussitôt, la logique ne les voit pas). Le problème ouvert de l'étape 4 (choix 6) est réglé.
+- `engine/boss-b7/arene.js` : points de Bunker 7 (au centre de cases libres, loin des caisses, des machines, des boîtes et du Glas) : réveil de la phase 5 (4 points, Salle d'arrivée, regard au nord comme le départ), apparitions du Septième (8 points, dans les 4 pièces), retour après la victoire (4 points, Salle d'arrivée), failles des chiens de la phase 5 (8 points, dans les 4 pièces).
+- `engine/tools/empreinte-code-boss.js` : outil pour Anthony : il tape le code du boss sans qu'il s'affiche, l'outil n'écrit que son empreinte.
+- `engine/tools/hooks-boss-b7.py` : 3 points d'accroche de plus : clavier du digi pass (code vérifié ; code accepté) ; `unlockDigipass` (sur Bunker 7, le digi pass reste jusqu'au code du boss).
+- `engine/src/H6-boss-b7.js` : portes de la phase 5 branchées sur l'évènement « etat » ; codes remis à zéro à chaque partie. `engine/src/H7-boss-salle.js` : compilation à la première entrée.
+- `launcher/e2e/game-menu.e2e.js` : après le bon code secret, le digi pass reste sur le mur quand le code du boss sert (sinon il disparaît, comme avant). Ce contrôle ne tourne qu'avec la méthode E2.
+- Empreinte du code du boss posée : `0xf82e5eae`, obtenue par Anthony avec l'outil le 1er novembre 2026 (le code ne s'est affiché nulle part). Contrôle sans afficher de code : un seul code à 4 chiffres la donne, et ce n'est pas le code secret du digi pass. Limite, comme pour le digi pass : l'empreinte d'un code à 4 chiffres se retrouve en essayant les 10 000 codes ; elle cache le code à la lecture du jeu, pas à qui le fouille.
+
+Choix d'intégration de l'étape 8, soumis à Anthony :
+1. Code du boss : 4 chiffres (le clavier n'en prend pas plus), même calcul d'empreinte que le digi pass, avec un autre sel.
+2. Code du boss tapé quand le combat ne peut pas partir (déjà lancé dans la partie, carte sans boss) : « Code erroné », comme un mauvais code.
+3. Les deux codes dans l'ordre qu'on veut ; le second fait disparaître le digi pass.
+4. Portes ouvertes par la phase 5 : hors des statistiques du joueur (« portes ouvertes »).
+5. Points de Bunker 7 : réveil et retour dans la Salle d'arrivée ; le Septième et les chiens dans les 4 pièces.
+6. Matières compilées à la première entrée dans la salle, pendant l'écran noir, une fois par session.
+
+Contrôles de l'étape 8 :
+
+| Contrôle | Résultat |
+|---|---|
+| Essai A (`tzeval.js`, code fictif d'essai) : les 24 points de Bunker 7 valides et atteignables depuis le réveil, portes ouvertes ; sans empreinte, le code du boss ne sert pas ; faux code tapé au clavier : « Code erroné » ; code secret (simulé : le vrai n'est jamais tapé) : points infinis, immortel, le digi pass reste ; code du boss tapé au clavier : « Code accepté », le combat démarre, le digi pass disparaît, le code ne sert plus ; matières : à la première image dans la salle (écran noir), 118 programmes compilés d'un coup (20 s en rendu logiciel), puis aucun nouveau à la première image du Survolté ; phase 5 : réveil au premier point, plus aucune porte fermée, statistiques des portes inchangées, les 2 chiens dans Bunker 7 ; fin : conclusion, récompenses, message, termine en 21 s, joueur au point de retour, manches reprises (6 zombies 20 s plus tard), drapeau posé, les 2 armes merveilles dans Bunker 7, 5 atouts ; nouvelle partie : codes et digi pass rendus ; code du boss d'abord, puis code secret : le digi pass disparaît | 6 vérifications sur 6 |
+| Essai B (`tzeval.js`, vrai code) : comme l'essai du digi pass (`game-menu`), l'essai retrouve le code par les 10 000 essais et le tape au clavier, sans jamais l'écrire, l'afficher ni le renvoyer : empreinte posée, un seul code, accès au boss ; un autre code : « Code erroné » ; code secret (simulé) : le digi pass reste ; vrai code : « Code accepté », introduction, le digi pass disparaît | 3 vérifications sur 3 |
+| Images 1920 × 1080 (code fictif) : clavier « Code accepté » ; retour dans Bunker 7 après la victoire | conformes : les deux armes merveilles (palier III) flottent dans la Salle d'arrivée ; 5 atouts ; bonus de la récompense (Mort instantanée, Double points) |
+| Suite des essais des étapes 3 à 8 | toutes réussies ; `e7-a` d'abord en échec (il attendait le joueur au départ de Bunker 7, faute de points avant l'étape 8 : il est désormais au point de réveil, à 1 m), mis à jour : 7 sur 7 |
+| Blocs des essais de bout en bout dans la page (`e2e-page.js`), les mêmes 12 essais | 460 sur 460 (construction d'avant l'empreinte) ; `hud-points`, le seul qui se sert du digi pass, relancé sur la construction finale : 18 sur 18 ; le bloc `zombie-anims` b04 reste l'échec connu de ce mode |
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact (606 empreintes) |
+| Construction | identique à elle-même ; `dupcheck.py` : aucun doublon ; 24 736 970 octets, 80 845 lignes, SHA-256 `9e5b2add…1bce` |
+
+**Étape 9** (validation, §9 du brief) :
+- Essai de bout en bout `launcher/e2e/boss-b7.e2e.js` récrit après une relecture indépendante, critère par critère (quatre relecteurs, en lecture seule, sans jamais toucher au code du boss) : les contrôles qui ne prouvaient pas leur libellé sont corrigés (condition toujours vraie, `||` au lieu de `&&`, valeur relue dans la config au lieu d'être mesurée) ; les mesures se font dans le jeu (cadence réelle de la Thompson, PV perdus par le joueur, vraies balles, Bombe ramassée, lâcher de bonus forcé, rendu réel du modèle) ; un mini-boss absent n'arrête plus toute la suite. 8 blocs, 85 vérifications dans la page, plus 2 côté Node dans la méthode E2 (la logique du jeu livré est celle du paquet, octet pour octet ; ses 94 tests).
+- Défauts trouvés et corrigés dans l'intégration (le paquet n'est pas en cause) :
+  1. Fin de partie pendant le combat : la musique du combat continuait sous l'écran « Partie terminée », puis au menu, jusqu'à la partie suivante. Désormais, les sons du combat s'éteignent en fondu (`b7FinDePartie`, point d'accroche dans `gameOver`).
+  2. Quitter au menu en plein combat : le voile d'écran des effets restait dessiné sur le menu ; en phase 5, aussi le Septième, ses effets et l'obscurité (lumière de Bunker 7 à 75 %). Désormais, le combat est remis à zéro comme à une nouvelle partie (`b7RetourMenu`, point d'accroche dans `quitToMenu`, Mod Tools compris).
+  3. Critère 13 non tenu en phase 5 : les zombies du combat entraient « comme une manche », aussi par les fenêtres (planches arrachées d'abord). Désormais, l'adaptateur ne fournit plus d'« apparitions normales » (fonction facultative du brief) : la logique du paquet les fait sortir de terre aux 8 points des pièces de Bunker 7 (`arene.bunker7.apparitionsZombies`), à 8 m au moins du joueur, et ils foncent aussitôt sur lui.
+- Fichiers : `engine/src/HB-boss-acces.js` (`b7FinDePartie`, `b7RetourMenu`) ; `engine/tools/hooks-boss-b7.py` (2 points d'accroche de plus : `gameOver`, `quitToMenu`) ; `engine/src/H6-boss-b7.js` (apparitions « comme une manche » retirées : `b7ApparitionsNormales`, `b7MajApparitions`) ; `engine/boss-b7/arene.js` (commentaire des points des zombies) ; README (section du boss, « Historique ») ; `engine/README.md` (outils d'essai).
+- Outils d'essai (`engine/tools/mains.js`, `tzeval.js`) : le Chromium sans tête accorde la souris verrouillée que le jeu demande à chaque partie, puis boucle sur des évènements « souris déplacée » (environ 160 000 par seconde, relevés dans une trace) : son processus principal occupe plus d'un cœur et la mémoire gonfle d'environ 40 Mo par seconde. L'essai du boss, long, la saturait : le 1er novembre, son navigateur a été tué par le système à 21 h 35 (environ 18 Go ; c'est l'incident mémoire noté ce soir-là, l'heure du journal du noyau de WSL retardant d'environ 55 min), et très probablement déjà à 20 h 42, pendant la passe d'avant la reprise de session. Avec le refus du verrou, une instance du jeu tient en 3 Go environ (page 1,2 à 1,7 Go, rendu 1 Go, navigateur 90 Mo), contre 7 à 18 Go relevés ce soir-là pour les instances du jeu de plusieurs sessions. Les outils refusent désormais le verrou (le jeu passe en souris libre, comme quand un navigateur le refuse) : les 8 blocs passent en 1 min 30 s, mémoire stable. Les essais plus courts des étapes précédentes en souffraient aussi, sans aller jusqu'à la saturation. Ni le jeu des joueurs ni la méthode E2 (Electron) ne sont concernés : le verrou y est natif.
+
+Choix et questions de l'étape 9, soumis à Anthony :
+1. Phase 5 : les zombies du combat sortent de terre dans les pièces de Bunker 7 (critère 13), au lieu d'entrer aussi par les fenêtres. Réversible.
+2. « Munitions max » (critères 16 et 41) : le bonus du jeu remplit les réserves et les grenades, pas les chargeurs ; le brief dit « chargeurs et réserves ». Rien n'est changé : garder la règle du jeu, ou remplir aussi les chargeurs (pour le boss seul, ou partout).
+3. Calibrage (critère 45) : un tir part au plus une fois par image ; à 60 images par seconde (comme à 120 ou 144), la Thompson au palier I tire 12 balles par seconde, 12,67 sur sa fiche : la phase 1 demande 28,5 s de tir au lieu de 27 (+5 %). Garder `DPS_REFERENCE` = 1 393 (formule du brief, décision D1), ou passer à 1 320 (27 s mesurées dans le jeu).
+
+Les 48 critères du §9 (« b1 » à « b8 » : blocs de l'essai `boss-b7` ; « logique » : les 94 tests du paquet, sur la logique insérée telle quelle) :
+
+| # | Critère | Vérifié | Résultat |
+|---|---|---|---|
+| 1 | Logique intacte | logique du jeu livré comparée au paquet ; `node tests/test-logique.js` | identique ; 94 sur 94 |
+| 2 | Déclenchement unique | b1 : mauvais code refusé, code du boss tapé au clavier, combat ; retapé dans la partie : « Code erroné » ; b6 : après la victoire, le code et un nouveau combat sont refusés (drapeau) | conforme ; pas de quête (décision d'Anthony : le code du boss au digi pass) |
+| 3 | Téléportation et salle secrète | b1 : salle hors de la scène depuis Bunker 7, aucun chemin à pied, arrivée au point du brief après le fondu, Bunker 7 caché ; b5, b6 : de retour dans Bunker 7, salle hors de la scène ; étape 4 : place, brume | conforme (solo) |
+| 4 | Phase 1 | b2 : sorts au sol, zombies invoqués tous sortis de terre ; étape 5 : sang et impacts des effets à chaque tir qui porte ; images des étapes 5 et 6 | conforme ; esquive : règle de la logique, à juger en jeu |
+| 5 | Répit et absence | b3 | 15,00 s et 30,00 s |
+| 6 | Phase 2 | b4 : 9 âmes sans ailes ; 10 : ailes, piqué annoncé (visée, verrouillage), esquivé d'un pas de côté, ailes perdues après l'impact ; 2e piqué sur un joueur immobile : touché | conforme |
+| 7 | Phase 3 | b3 : 5 blocs reçus avec Mastodonte (250 PV), chacun ≥ 25 % des PV max, sans réduction ; murs reformés ; étape 4 : collisions | conforme |
+| 8 | Phase 4 | b3 : capture en 29,98 s ; règle du cercle : interface du paquet (images de l'étape 5) | conforme ; coop sans objet |
+| 9 | Phase 5 | b5 : traque de 30 m en 20 s jusqu'au joueur, dans une autre pièce, aucune position dans un mur ; coup spécial : 1,00 % exactement ; jauge : images de l'étape 5 | conforme |
+| 10 | Fin | b6 : rituel achevé (F maintenue), message, récompenses, retour au point de Bunker 7, manches reprises, drapeau | conforme |
+| 11 | Robustesse | b7 : clics pendant l'introduction sans effet, la scène va à son terme ; mort à chaque phase : fin de partie, musique coupée ; Quick Revive : le combat continue ; quitter au menu en phase 5 : rien ne reste ; fenêtre en arrière-plan : pause, combat figé puis repris | conforme après les corrections 1 et 2 ; départ d'un joueur : sans objet (solo) |
+| 12 | Performances | b8 : modèle de 55 985 triangles et 36 appels de dessin (dessiné en phase 1, sans ailes ni lames : 45 359 et 24) ; rituel, 22 zombies au sprint : 1,9 ms de calcul par image (4,0 au pire) | conforme ici ; les 60 images par seconde restent à mesurer sur le PC d'Anthony (jamais essayé sur une vraie carte graphique) |
+| 13 | v1.1 zombies | b2 (phase 1), b5 (phase 5) : course la plus rapide du jeu, tous sur le joueur | conforme après la correction 3 |
+| 14 | v1.1 piliers | b3 : détruit au 3e bloc, vue dégagée au-dessus, place libre autour ; étape 4 : moignon, aucun zombie bloqué ; 4e bloc qui passe : logique | conforme |
+| 15 | v1.1 phase 3 | b3 : apparitions reprises à 5 s, premier zombie sorti à 7 s (intervalle de 2 s du paquet), tous sur le joueur | conforme |
+| 16 | v1.1 bonus | b6 : fin de la phase 1, « Munitions max » du jeu au sol, ramassé : réserves et grenades pleines, annoncé ; fin des autres phases : logique | chargeurs non remplis (question 2) |
+| 17 | v1.1 phase 4 | b3 | 22 zombies au plus en solo |
+| 18 | v1.1 phase 5 | b5 : téléportation sur dégâts ailleurs dans Bunker 7, entre 12 et 32 m du tireur (31,0 m) ; cercles : effets du paquet ; criblé pendant l'élan : logique | conforme |
+| 19 | v1.2 phase 1 | b2 : sous 50 %, les sorts tombent par paires sous le joueur, à 1,0–1,3 s d'écart ; pilier : logique | conforme |
+| 20 | v1.2 chiens | b2 : 2 chiens sortis de failles ; b3 : ils restent (répit, absence, phase 3, rituel, faiblesse) ; étape 6 : morsures, phase 5 dans Bunker 7 ; retour en 10–15 s, cendres : logique | conforme |
+| 21 | v1.3 cuves | b4 : 3 cuves intactes au début de la phase 2 ; étape 4 : collisions, dormeurs visibles | conforme |
+| 22 | v1.3 1er seuil | b4 : un coup de 1e9 s'arrête à 75,0 %, Septième protégé ; cuve siphonnée, fissurée, éclatée ; Le Survolté en sort | conforme |
+| 23 | v1.3 protection | b4 : tir refusé pendant qu'il vit, le Septième continue d'attaquer ; à sa mort, dégâts depuis le seuil | conforme |
+| 24 | v1.3 2e seuil | b4 : L'Irradié ; la phase 2 se termine normalement après les 3 mini-boss | conforme |
+| 25 | v1.3 capacités | b4 : décharges à 15 %, vision brouillée 1,00 s ; flaque toxique de 5 s à la mort de L'Irradié ; aura de 6 m (v1.4) | conforme ; pause de 2 s après une décharge : module du prototype |
+| 26 | v1.3 interface et sons | b4 : barre à son nom et à sa couleur, « Abattu », retirée 3,00 s après sa mort ; sons branchés (étape 5) | conforme ; sons jamais écoutés (Anthony) |
+| 27 | v1.4 3e cuve | b4 : Le Démembré, barre dorée, fléau à 30 % | conforme |
+| 28 | v1.4 Irradié | b4 : 4,4 m/s, aura de 6 m, boules, zones, éteintes à sa mort | conforme ; zone mortelle en ≈ 5 s : module |
+| 29 | v1.4 Survolté | b4 : 5,4 m/s, décharges à 8 m, étourdi 1,00 s (ni déplacement ni saut) | conforme |
+| 30 | v1.4 phase 3 | b3 : salve de 4 blocs lancés en 0,37 s | conforme ; message : interface du paquet |
+| 31 | v1.4 faiblesse | b3 | 4 zombies apparus pendant qu'il est à terre |
+| 32 | v1.4 lames | b5 : lames bleues, un coup = 50 % des PV max (perte mesurée) ; rouges : le coup laisse 1,00 % | conforme |
+| 33 | v1.4 illusions | — | caduc (v1.5) |
+| 34 | v1.4 crochets | b5 : crochet lancé, joueur accroché et ramené sans commandes, il frappe, commandes rendues | conforme ; recharge de 15 s, pas de côté : logique |
+| 35 | v1.5 Survolté | b4 : à la moitié de ses PV, immobile, « Invulnérable » (un tir ne lui ôte rien), murs électrifiés 2,50 s plus tard | conforme ; rayon, bandeau et sons : effets et interface du paquet (images de l'étape 6) |
+| 36 | v1.5 murs | b4 : 6 tics de 3 % en 1,5 s près du mur (12 %/s), rien au centre, éteints 1,00 s après sa mort | conforme ; coéquipiers IA sans objet |
+| 37 | v1.5 Irradié | b4 : à l'image où l'infection commence, les zombies et chiens de la salle sont tous irradiés (4, dont 2 zombies) ; un zombie apparu ensuite aussi ; normaux à sa mort | conforme |
+| 38 | v1.5 Démembré géant | b4 : échelle 2,16 (cuve agrandie), fléau qui frappe à 5 m (portée 6 m) | conforme |
+| 39 | v1.5 bras | b4 : bras arraché, lancé, posé ; 6 petits au plus ; à sa mort, effondrés, bras flétri | conforme |
+| 40 | v1.5 charge | b4 : 35 % et projeté ; contre le mur, 10 % de plus ; lui contre un mur : étourdi | conforme |
+| 41 | v1.5 Munitions max | b4 : un au sol à la mort de chacun des 3 mini-boss | conforme ; chargeurs : question 2 |
+| 42 | v1.5 plus d'illusions | b5 : palier 2 de la jauge, aucune illusion | conforme (la logique 1.5 n'en a plus) |
+| 43 | v1.5 intangibilité | b5 : invisible, une vraie balle tirée sur lui passe au travers, 2 murs traversés, il resurgit | conforme |
+| 44 | Armes du jeu | b2 : balle au corps et à la tête (× 1,5 exactement), explosion et couteau une fois chacun ; étape 5 : bouclier quand il est protégé, Onde de choc ; b5 : invisible, les balles le traversent | conforme |
+| 45 | Calibrage | b2 : 1 393 dégâts/s sur la fiche (27,0 s) ; tirée 5 s dans le jeu : 12,00 balles/s, 1 320 dégâts/s, 28,5 s | 28,5 s (question 3) |
+| 46 | Morts d'un coup | b2 : Bombe (aussi ramassée), onde du Glas et Mort instantanée sans effet, Onde de choc 1 393 ; b4 : Bombe ramassée sur Le Survolté, aucun dégât ; étape 6 : mini-boss | conforme |
+| 47 | Bonus du combat | b6 : aucun bonus au hasard (même un lâcher forcé est refusé ; hors combat, il passe) ; « Munitions max » : critères 16 et 41 | conforme |
+| 48 | Récompenses | b6 : les 2 armes merveilles au palier III au sol, ramassées ; les 5 atouts ; les 5 bonus du jeu ; une seule fois | conforme ; « sur l'autel si l'inventaire est plein » : D2 (au sol) |
+
+Contrôles de l'étape 9 :
+
+| Contrôle | Résultat |
+|---|---|
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 |
+| Logique, effets, sons, interface et modèle du jeu livré | identiques aux fichiers du paquet, octet pour octet |
+| Essai `boss-b7` dans la page (`e2e-page.js`) | 85 sur 85, sept passes de suite (2 min environ chacune, chargement compris). Les passes d'avant ont fait corriger l'essai, pas le jeu : flaque cherchée trop tôt (elle naît 0,9 s après la mort de L'Irradié), zombie absorbé par le Septième avant l'infection, joueur posé à 1 m d'un point d'apparition du Septième (pas de traque à faire), crochet qui demande un joueur à 4–22 m en vue |
+| Blocs des essais de bout en bout dans la page, les mêmes 12 essais qu'aux étapes 3 à 8 | 460 sur 460, en 7 min au lieu de 13 min 30 s (souris verrouillée refusée) ; le bloc `zombie-anims` b04 reste l'échec connu de ce mode |
+| Fin de partie et retour au menu (essai dédié, avant et après la correction) | avant : musique jouée à la fin de partie et au menu, voile, Septième et effets au menu ; après : rien |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact : 606 fichiers, aucun modifié depuis son extraction (date de changement de chaque fichier, 1er novembre à 0 h 09) ; ses fichiers insérés dans le jeu sont contrôlés par `build.py` |
+| Construction | identique à elle-même ; `dupcheck.py` : aucun doublon ; 24 737 400 octets, 80 837 lignes, SHA-256 `b77c0e63…e7e6` |
+
+**Après l'étape 9** (décisions d'Anthony de la nuit du 1er au 2 novembre 2026) :
+- Phase 5 : les zombies du combat sortent de terre dans les pièces de Bunker 7, à 8 m au moins du joueur (gardé) ; Anthony veut une apparition crédible et lisible. Elle l'est déjà : à chaque sortie demandée par la logique, celle-ci émet l'évènement « invocation », et les effets et les sons du paquet y jouent l'émergence (fissures et lueur rougeoyantes au sol, poussière, éclats, braises, bref éclair, son `zombie_emergence`), en plus de la montée du jeu (1,3 s) et de sa gerbe de terre. Erreur de ma part, corrigée après la relecture indépendante : mes premières images « avant », faites la logique figée (donc sans « invocation »), ne la montraient pas, et j'avais ajouté une seconde émergence (`b7EmergenceBunker`) qui la doublait (deux fissures, deux éclairs, deux sons) ; ajout retiré. La distance de 8 m tient désormais aussi quand le joueur est à terre : l'adaptateur fournit `pointsBunker('zombies')` (fonction facultative de l'API), les points à 8 m au moins de lui, debout ou à terre ; la logique ne comptait que les joueurs debout. Les failles des chiens de la phase 5 prennent les mêmes points.
+- « Munitions max » : la règle du jeu est gardée pour toutes les cartes (réserves et grenades, pas les chargeurs).
+- Calibrage : `DPS_REFERENCE` = 1 393 gardé provisoirement, à vérifier en jeu. Dépendance de la cadence des armes au nombre d'images par seconde mesurée pour les 16 armes, à 30, 60, 120, 144 et 240 images/s : `docs/cadence-armes.md` (cause, tableau, conséquences, correction possible non faite).
+- Souris verrouillée : cause, modifications et mesures documentées ; rapport technique pour Claude Code 5, qui examinera les outils d'essai des autres sessions : `docs/rapport-souris-verrouillee.md`. Les worktrees des autres sessions ne sont pas touchés.
+- Essais à faire sous Windows (fluidité, sons, animations, progression du combat, zombies, choix à rejuger) : `docs/essais-windows-boss-b7.md`.
+- Licences : la licence de la voix de l'annonce « Munitions max ! » (Mimic 3, modèle M-AILABS) doit accompagner le son, embarqué dans le jeu. `build.py` recopie désormais `LICENCES.md` et `LICENCE-voix-M-AILABS.txt` du paquet en commentaire avant les scripts du boss (empreintes contrôlées), comme la licence de la police du HUD des points.
+
+Relecture indépendante (2 novembre, trois relecteurs en lecture seule : code du jeu, construction et essais, compatibilité future ; 24 constats), suites données :
+- Défauts corrigés :
+  1. Interface du boss figée après une remise à zéro (marque de touche, « Immunisé », « Étourdi », récompenses, message) : `b7VueRemettre` fait désormais échoir ses minuteries et remet « Étourdi » à zéro.
+  2. Sons du combat relancés dans l'image même d'une mort reçue pendant `update` (boucles sous l'écran de fin) : `b7Update` ne fait plus rien hors partie en cours.
+  3. Émergence jouée deux fois en phase 5 : ajout retiré (voir plus haut).
+  4. Code du boss accepté sur un Bunker 7 modifié dont la grille refuse la salle (combat sans salle, partie bloquée) : le combat n'est plus créé sans salle, le code et le panneau la demandent.
+- Améliorations : distance de 8 m tenue même à terre (plus haut) ; lampes de Bunker 7 gardées dans l'obscurité derrière l'écran de fin (point d'accroche dans `frame`) ; invincibilité du panneau de test retirée à la fin du test et à chaque nouvelle partie (`b7PanneauRemettre`) ; garde-fou des tableaux par case de `allocGrid` (un tableau inconnu d'une version future : salle refusée, en le nommant) ; `*:Zone.Identifier` dans `.gitignore`.
+- Essai `boss-b7` : sorties de terre comptées par les évènements « invocation » ; points de sortie à 8 m même à terre ; 24 points de Bunker 7 valides et atteignables ; mort pendant une image du jeu (sons coupés) ; interface du boss après remise à zéro ; Bunker 7 sans salle ; sons décodés (bloc 8) ; changement de carte en plein combat (bloc 9 : Khamsin, puis retour).
+- Notes : rapport sur la souris verrouillée corrigé (la méthode E2 n'a pas été mesurée) ; `CLAUDE.md` (tailles du jeu, ligne de 13,4 Mo) ; « Intégration future » complétée (ordre des points d'accroche, numéro de version, poids, interface, hypothèses figées).
+
+Contrôle du paquet avant le dépôt public :
+
+| Point | Résultat |
+|---|---|
+| Contenu | 303 fichiers (38,1 Mo) : `src/` 3,1 Mo (logique, modèle, tête cuite 2 Mo, effets, sons, interface) ; `sons/` 10,1 Mo (133 MP3 et leur manifeste) ; `prototype/` 14,8 Mo, dont `sons-embarques.js` 13,4 Mo ; `captures/` 8,5 Mo (63 JPEG du prototype) ; `sources/` 0,9 Mo (recettes des sons, du modèle et de la tête) ; `tests/` 0,5 Mo ; documents 0,2 Mo |
+| Provenance (`LICENCES.md`) | code, modèle, tête, textures, sons et musiques écrits ou générés par calcul pour Zombie Survival (Claude), avec leurs recettes dans `sources/` ; annonce « Munitions max ! » : synthèse Mimic 3, modèle M-AILABS (licence à garder avec le jeu : fait, voir plus haut) ; three.js r128 (MIT, prototype seulement) ; police Teko (OFL, chargée depuis Google Fonts par le prototype seul) |
+| Fichiers temporaires, doublons exacts | aucun |
+| Doublon de contenu | `prototype/sons-embarques.js` : les 133 sons en base64, « pour ouvrir le prototype en double-clic (file://). Inutile sur un serveur » (son en-tête) |
+| Traces | 303 fichiers `…:Zone.Identifier` (zone de téléchargement Windows, sans adresse) et 3 dossiers `.claude/` vides : hors du paquet, à ne pas indexer |
+| Données personnelles, secrets | aucune adresse électronique, aucun jeton, aucune clé, aucun mot de passe ; un chemin `/home/claude/…` (machine de l'auteur du paquet) dans `sources/modele/outils/capturer.js` |
+| Codes | ni le code du digi pass ni celui du boss écrits ; dans les 13 Mo de base64 de `sons-embarques.js`, une suite de 4 chiffres égale par hasard au code du boss (4 694 suites isolées y couvrent 37 % des 10 000 codes possibles ; le jeu, déjà public, en compte 13 561, qui couvrent 56 % des codes, dont par hasard les suites des deux codes) : rien n'y désigne un code |
+| Garde Git | avertissement de taille attendu pour le jeu (24,7 Mo) et pour `sons-embarques.js` (13,4 Mo) ; aucun fichier près de la limite de GitHub (100 Mo) |
+| Ce que `build.py` et les essais lisent | `build.py` : 6 fichiers de `src/` (logique, tête, modèle, effets, sons, interface), 4 fichiers de `prototype/`, `sons/`, `LICENCES.md`, `LICENCE-voix-M-AILABS.txt` ; essais (critère 1) : `tests/test-logique.js`, `tests/logique/simulateur.js` et `mesures.js`, qui chargent `src/logique.js`, `src/config.js` et `src/arene.js` du paquet (sa propre config, pas nos copies) |
+
+Recommandation (retenue par Anthony le 2 novembre) : indexer le paquet sans les traces, sans les dossiers `.claude/` et sans `prototype/sons-embarques.js` (302 fichiers, 24,7 Mo) : construction, essais, prototype servi par un serveur, documents, captures, recettes et licences restent. Plus léger : retirer aussi `captures/` (239 fichiers, 16,2 Mo ; les README du paquet y renvoient). Dans les deux cas, le paquet complet reste dans le ZIP d'Anthony et ses sauvegardes. Le dépôt étant public, tout le combat s'y lit (documents, captures) ; le code d'accès, lui, reste caché.
+
+Contrôles finaux (2 novembre 2026, construction finale, après la relecture ; essais lourds par `zs-lourd`) :
+
+| Contrôle | Résultat |
+|---|---|
+| Logique du boss (`node tests/test-logique.js`, dans le paquet) | 94 sur 94 ; la logique du jeu livré est celle du paquet, octet pour octet |
+| Essai `boss-b7` dans la page (`e2e-page.js`) | 93 sur 93, 9 blocs, construction en 2.0.6 (avec les 12 essais ci-dessous, un seul travail `zs-lourd` de 9 min 8 s, pic de mémoire 2,6 Go) : 7 sorties de terre en phase 5, chacune avec son « invocation », à 13 m au moins du joueur ; points de sortie à 8 m même à terre ; 24 points de Bunker 7 valides et atteignables ; sons coupés après une mort dans l'image ; interface du boss propre après une remise à zéro ; Bunker 7 sans salle refusé ; 133 sons décodés ; changement de carte (Khamsin) sans reste |
+| Les 12 essais habituels dans la page | 460 sur 460, construction en 2.0.6 ; le bloc `zombie-anims` b04 reste l'échec connu de ce mode ; son contrôle des cadavres (b02) est intermittent (1 échec sur 5 passes, sans rapport avec le boss) |
+| Images de la phase 5, logique en marche (Septième caché pour la prise) | à 9,2 m dans l'obscurité installée : fissures et braises rougeoyantes au point de sortie dès 0,1 s, zombie dressé au-dessus à 0,8 s |
+| Tests unitaires du launcher | 31 sur 31 |
+| Paquet `boss-bunker7/` | intact : 606 fichiers, aucun modifié depuis son extraction |
+| Construction | identique à elle-même ; `dupcheck.py` : aucun doublon ; ses 23 scripts compilent ; 24 743 413 octets, 80 901 lignes, numéro 2.0.6 (construction 1), SHA-256 `69be662f…03d0` |
+| Règles de la garde Git (copiées, sur les fichiers du commit) | aucun blocage prévisible ; un avertissement de taille attendu, pour le jeu (24,7 Mo ; `sons-embarques.js` n'est pas indexé) |
+
+## Reste
+
+- Ni fusion, ni envoi, ni publication sans l'accord d'Anthony. Pour un prochain commit sur la branche : fichiers nommés seulement ; `.gitignore` écarte les 303 traces `…:Zone.Identifier` et `sons-embarques.js` ; les 3 dossiers `.claude/` du paquet ne contiennent qu'un dossier vide (Git ne les voit pas).
+- Essais de bout en bout par Anthony (méthode E2) : 30 essais (`boss-b7` ajouté : 93 vérifications dans la page, plus 2 côté Node pour le critère 1 ; `game-menu` adapté à l'étape 8, même nombre de vérifications) ; références de son script E2 à mettre à jour (`boss-b7` 95 ; suite attendue : 1 113 si les autres essais gardent leur compte) ; la façon de les lancer sur `~/dev/zs-bunker7/launcher` reste à décider avec lui.
+- Essais sous Windows : `docs/essais-windows-boss-b7.md` (sons jamais écoutés, images par seconde jamais mesurées sur une vraie carte graphique, calibrage, apparitions de la phase 5).
+- Claude Code 5 : examen des outils d'essai des autres sessions (`docs/rapport-souris-verrouillee.md`) ; intégration finale sur l'ordre d'Anthony (voir « Intégration future »).
+
+## Décisions d'Anthony
+
+| Date | Décision |
+|---|---|
+| 31 oct. 2026 | Le boss et les étapes pour y accéder sortent au jeu 2.0.7. |
+| 1er nov. 2026 | Pas encore de quête : on accède au combat en tapant le code du boss dans le digi pass de Bunker 7 ; le joueur est téléporté dans la salle du boss, puis le combat suit le brief. |
+| 1er nov. 2026 | Le code du boss fonctionne **une fois par partie** ; ensuite il ne marche plus (« Code erroné »). |
+| 1er nov. 2026 | Le digi pass reste en place, quel que soit le code tapé ; il disparaît quand **les deux codes** (son code secret et celui du boss) ont été tapés dans la partie. Son code secret ne fait donc plus disparaître le digi pass à lui seul. |
+| 1er nov. 2026 | Le code du boss ne s'écrit nulle part en clair (voir en tête). |
+| 1er nov. 2026 | D1 : la Thompson au palier I du Glas (« C'était l'arme de référence sur Claude Artefact ») : `DPS_REFERENCE` = 1 393. |
+| 1er nov. 2026 | D2 : les deux armes merveilles (Désintégrateur, Onde de choc) au palier III. Elles apparaissent **comme des bonus au sol dans la salle** (comme « Munitions max ») ; ramassées, elles remplacent progressivement l'emplacement 1, puis l'emplacement 2 du joueur (pourra changer plus tard). |
+| 1er nov. 2026 | D3 à D12 : valeurs par défaut du §13 (bonus au hasard coupés pendant le combat ; machines utilisables en phase 5 ; armes qui tuent d'un coup : 1 393 par touche, 2 786 améliorées, ni « mort instantanée » ni Bombe sur le boss et les mini-boss ; PV des zombies du combat : ceux du réglage ; aucun point par touche sur le Septième ; difficulté livrée ; D9, D10, D11 sans objet). |
+| 1er nov. 2026 | D12 : la salle est une partie cachée de la grille de Bunker 7, au niveau du sol, loin des fenêtres, dans la brume : elle ne doit pas être vraiment visible depuis la carte principale. |
+| 1er nov. 2026 | Vertige (choix laissé à Claude) : aucune secousse de caméra ; étourdissement montré par un voile et un son, sans faire trembler la vue ; crochets qui tirent le joueur sans tourner sa caméra de force. |
+| 1er nov. 2026 | Sons embarqués dans le fichier du jeu ; **tout le boss doit fonctionner dès que le joueur charge la carte, sans exception** (sans réseau, sons préchargés). |
+| 1er nov. 2026 | Phase 5 : toutes les portes de Bunker 7 s'ouvrent (gratuitement) au début de la phase. |
+| 1er nov. 2026 | Accord pour une courte section dans `CLAUDE.md`. |
+| 1er nov. 2026 | Règles du brief : ne modifier aucun fichier de `boss-bunker7/` (bug prouvé : le signaler à Anthony) ; dans la copie du jeu, ne changer que `config.js` et `arene.js` ; ne supprimer ni réécrire aucun système du jeu. |
+| 1er nov. 2026 | Choix d'intégration de l'étape 3 acceptés : « OK étape 4 » (11 h 16), en réponse au rapport de l'étape 3 et à ses 7 choix « à valider (dis-moi si l'un ne te va pas) », sans objection. |
+| 1er nov. 2026 | Choix d'intégration de l'étape 4 acceptés : « OK étape 5 » (12 h 16), en réponse au rapport de l'étape 4 et à ses 6 choix à valider, sans objection. |
+| 1er nov. 2026 | Tous les choix d'intégration des étapes 5, 6 et 7 validés (« Valide tout les choix, je les acceptes ») ; accord pour l'étape 8. |
+| 1er nov. 2026 | Empreinte du code du boss donnée par Anthony avec l'outil (`0xf82e5eae`) ; le code n'est apparu nulle part. |
+| 1er nov. 2026 | Choix d'intégration de l'étape 8 validés (« Valide les choix, OK étape 9 ») ; accord pour l'étape 9. |
+| nuit du 1er au 2 nov. 2026 | Phase 5 : garder les zombies qui surgissent du sol, à 8 m au moins du joueur ; leur apparition doit être visuellement crédible et lisible. |
+| nuit du 1er au 2 nov. 2026 | « Munitions max » : garder pour le moment le comportement du jeu (cohérence entre toutes les cartes). |
+| nuit du 1er au 2 nov. 2026 | Calibrage : garder provisoirement 1 393 ; l'équilibrage sera vérifié en jeu avant de changer cette valeur ; signaler toute dépendance de la cadence des armes au nombre d'images par seconde. |
+| nuit du 1er au 2 nov. 2026 | Souris verrouillée : documenter la cause, les modifications et les mesures ; rapport technique pour Claude Code 5 (développement, moteur du jeu), qui examinera les outils d'essai des autres sessions ; ne pas modifier les worktrees des autres sessions. |
+| nuit du 1er au 2 nov. 2026 | Finalisation : mettre à jour la documentation (`CLAUDE.md`, ce fichier) en respectant les protections ; préparer un commit sur `chantier/bunker7` seulement, sans fusion ni publication ; vérifier le paquet (contenu, provenance, fichiers temporaires ou lourds) avant de l'intégrer au dépôt public ; garder une liste des essais à faire sous Windows. |
+| nuit du 1er au 2 nov. 2026 | Intégration future : le travail doit rester compatible avec les futures versions ; Claude Code 5 fera l'intégration finale sur son ordre ; aucune fusion avec les autres branches sans son accord. |
+| 2 nov. 2026 | Numéro : « Le bossfight arrivera pour la version 2.0.7. Concernant les essais, fais-la sur la 2.0.6 si besoin est » : la branche garde 2.0.6 (numéros posés à l'intégration). Paquet : la recommandation (sans les traces ni `sons-embarques.js`) ; « commit OK » sur `chantier/bunker7`. |
+| 2 nov. 2026 | Consigne commune, transmise par la session 5 (00 h 35) : toute tâche lourde (jeu dans Chromium ou Electron, rendu, cuisson) passe par `~/outils/bin/zs-lourd` (classe `jeu` : un seul jeu à la fois pour les six sessions, budget déclaré par `--memoire`) ; refuser la souris verrouillée dans tout outil qui lance le jeu sans tête. Pour ce chantier : `zs-lourd --classe jeu --memoire 4000` (une instance du jeu tient en ≈ 3 Go). |
+
+## Problèmes ouverts
+
+- Le brief suppose 4 personnages (Anthony, Chinedu, Takeshi, Rajesh), une lampe torche, des pièges et 9 bonus : le jeu n'a qu'Anthony (couteau), ni lampe ni piège, et 5 bonus.
+- Mesures d'équilibrage du paquet : zombies à ≈ 6 m/s, coups à 20 % des PV, chargeurs de 30 balles ; dans le jeu : 4,1 m/s au plus, coups à 30 % (12 % avec Mastodonte). À juger en jeu (D8).
+- Le M1911 Ardente (éclats de 1 100 dégâts par balle, 7 tirs par seconde) frappera le Septième bien plus fort que l'arme de référence : à mesurer en jeu.
+- Cadence des armes : un tir part au plus une fois par image, ce qui fait dépendre les dégâts par seconde du nombre d'images (jusqu'à −25 % à 30 images/s, de −1 à −22 % pour les armes automatiques à 60) ; la Thompson au palier I finit la phase 1 en 28,5 s de 60 à 144 images/s, 34,2 s à 30. Correction possible décrite dans `docs/cadence-armes.md`, non faite (mécanique du jeu, décision d'Anthony).
+- Mémoire : les 133 sons décodés occupent ≈ 173 Mo pendant toute la partie sur Bunker 7 (préchargés au chargement de la carte, décision d'Anthony). Taille du jeu : 24,7 Mo (7,5 Mo en 2.0.6), dont 0,6 Mo pour les 4 fichiers du prototype qui construisent la salle.
+- Fusion avec le chantier des animations (`chantier/anim-2.0.7`) : risque de double changement du numéro écarté le 2 novembre (cette branche garde 2.0.6 ; les numéros sont posés à l'intégration).
+- Essais de bout en bout de ce chantier : la méthode E2 de `CLAUDE.md` les prépare dans `~/dev/zs-verif` ; la façon de les lancer sur `~/dev/zs-bunker7/launcher` reste à décider avec Anthony.
+- Bunker 7 modifié dans les Mod Tools : la salle prend les lignes 82 à 117 et les colonnes 8 à 43 de la grille ; une carte qui descend sous la ligne 81 ou fait moins de 44 colonnes la refuse (message dans le journal du boss, pas de boss sur cette carte). À régler si Anthony agrandit Bunker 7 vers le sud.
+- Première entrée dans la salle de la session : compilation des matières pour ses lumières (voir le choix 6 de l'étape 4) : réglé à l'étape 8 (`b7Precompiler`, pendant l'écran noir de l'introduction ; l'essai ne voit aucune matière nouvelle à la première image du premier mini-boss).
+- Le constructeur du prototype bâtit aussi sa maquette de Bunker 7 (12 800 triangles) : jamais dessinée, elle reste en mémoire (le fichier du prototype n'est pas modifié). De même, le module des zombies du prototype prépare un zombie et un chien qui ne servent pas (ceux du jeu les remplacent), en plus de ses 6 mini-boss et 14 petits Démembrés.
+- Essai de bout en bout `game-menu` (méthode E2) : son contrôle du digi pass a été adapté à l'étape 8 (il reste sur le mur après le code secret, sur Bunker 7) ; il ne peut tourner que dans la suite E2 d'Anthony.
+- Phase 5 : les failles des chiens échouaient souvent sans points de Bunker 7 ; réglé à l'étape 8 (points remplis, portes ouvertes) : les 2 chiens dans Bunker 7 à chaque essai.
+- Outils d'essai des autres chantiers : leurs copies de `engine/tools/mains.js` et `tzeval.js` ont encore le défaut de la souris verrouillée (navigateur saturé sur un long essai) tant que ce chantier n'est pas fusionné.
+- Essai `boss-b7` dans la méthode E2 : écrit pour Electron, mais seulement joué dans la page (sans Electron) ; le premier passage E2 dira s'il faut l'ajuster (fenêtre réelle, boucle du jeu entre les blocs).
+- Interface du combat dans une fenêtre de moins de 600 px de haut : le titre d'une rage passe sur l'objectif, un message touche « Étourdi » (mise en page du paquet ; rien en 1080 p). À corriger si Anthony joue dans une petite fenêtre.
+
+## Intégration future (Claude Code 5)
+
+Pour l'intégration finale, sur l'ordre d'Anthony seulement (aucune fusion avant) :
+
+- **Branche** : `chantier/bunker7` (worktree `~/dev/zs-bunker7`), partie de `3667acd` (jeu 2.0.6, construction 1). Le numéro ne change pas dans la branche : `GAME_VERSION` 2.0.6, `GAME_BUILD` 1, `EDITOR_API` 9 (décision d'Anthony du 31 octobre, confirmée le 2 novembre : le boss sort avec la 2.0.7, la session d'intégration pose les numéros, dans le point d'accroche qu'elle prévoit, `hooks-version.py`, absent de cette branche). Les essais de la branche attendent 2.0.6.
+- **Fichiers propres au boss** (nouveaux) :
+  - `engine/src/H6-boss-b7.js` à `HB-boss-acces.js` (sections 21 à 26, insérées par ordre alphabétique après `H5-points.js`) ;
+  - `engine/boss-b7/config.js` et `arene.js` (copies réglées) ;
+  - `engine/tools/hooks-boss-b7.py` (exécuté le dernier, après `hooks-points.py` ; il reprend des textes de `hooks.py`, `hooks-khepesh.py` et `hooks-personnage.py`) et `engine/tools/empreinte-code-boss.js` ;
+  - `launcher/e2e/boss-b7.e2e.js` ;
+  - le paquet `boss-bunker7/le-dernier-pacte/` (302 fichiers : sans les traces `…:Zone.Identifier`, les dossiers `.claude/` ni `prototype/sons-embarques.js`, choix d'Anthony du 2 novembre) ;
+  - ce fichier, `docs/audit-bunker7.md`, `docs/cadence-armes.md`, `docs/rapport-souris-verrouillee.md` et `docs/essais-windows-boss-b7.md`.
+- **Fichiers communs modifiés** (conflits possibles) :
+  - `engine/tools/build.py` : bloc du boss (empreintes des fichiers du paquet, sons en base64, licences), inséré avant le GLTFLoader ; appel de `hooks-boss-b7.py` ;
+  - `engine/tools/mains.js` et `tzeval.js` : refus de la souris verrouillée ;
+  - `launcher/package.json` : `test:e2e` passe à 30 essais (`boss-b7`) ;
+  - `launcher/e2e/game-menu.e2e.js` : le digi pass reste sur Bunker 7 après le code secret ;
+  - `.gitignore` : traces de téléchargement Windows (`*:Zone.Identifier`) et `prototype/sons-embarques.js` du paquet ;
+  - `README.md` (contenu du dépôt ; « Armes et rechargements » : fin de la puce « Limites », la cadence, sur une seule longue ligne, conflit probable avec `chantier/anim-2.0.7` ; digi pass ; section du boss ; historique), `engine/README.md` (construction, modules, outils), `CLAUDE.md` ;
+  - `game/zombie-survival.html` : reconstruit. Ne pas le fusionner à la main : le reconstruire une fois les sources fusionnées.
+- **Points d'accroche dans le code commun** (37, `hooks-boss-b7.py`). Chacun remplace un texte exact du jeu ; une autre branche qui change ces lignes fait échouer la construction, en citant le texte en cause. Ils touchent :
+  - commandes et joueur : `key` et `pressed`, `playerDamage`, `updatePlayer` (projection), `frame` (vitesse du panneau) ;
+  - manches, zombies et bonus : `updateRounds`, `onZombieKilled`, `maybeDropPowerup`, `recycleZombie`, `updateZombie` (deux points) ;
+  - chiens : `spawnDog` (deux), `dogBite` (deux), `dogBound`, `dogChase`, `dogExplode` ;
+  - partie et carte : `newGame`, `update` (entrées, combat, lampes), `loadMap`, `buildWorld`, `settleBody`, `raycast`, `render` (salle, voile d'écran), `frame` (lampes derrière l'écran de fin) ;
+  - tirs : `rayHitZombie`, `damageZombie`, `hitscan` (impact, marqueur) ;
+  - digi pass : son clavier (deux points), `unlockDigipass` ;
+  - fins : `gameOver`, `quitToMenu`. Le numéro (`GAME_VERSION`) n'en fait plus partie : la session d'intégration le pose.
+  Le chantier des Marécages a déjà raccourci une ancre (`damageZombie`) pour rester compatible avec celles-ci. Ordre et fragilités (relecture du 2 novembre) : plusieurs ancres reprennent des textes posés par `hooks.py` (dont les lignes du Gardien de Khamsin, ancres aussi des Marécages : ne pas les retirer ni les rendre génériques sans reprendre les deux), `hooks-khepesh.py` et `hooks-personnage.py` (relevé le 2 novembre : 11 ancres sur 37, les autres sont du jeu 1.9.0) ; plus de la moitié des points réécrivent ou coupent leur texte d'origine. `hooks-carte.py` (chantier des Cartes) n'a aucune ancre commune avec eux. Quand c'est possible, raccourcir une ancre aux seules instructions utiles.
+- **Paquet et versions futures** : `build.py` lit dans le paquet `src/` (6 fichiers), 4 fichiers de `prototype/`, `sons/`, `LICENCES.md` et `LICENCE-voix-M-AILABS.txt`, empreintes contrôlées. Une nouvelle version du paquet d'Anthony se reprend telle quelle pour `src/` (contrats de son `API.md`) : mettre à jour les empreintes, relancer les 94 tests de sa logique et l'essai `boss-b7`. Attention : la salle (`prototype/proto-monde.js`) et les mini-boss (`proto-zombies.js`) sont branchés sur des membres internes du prototype que `API.md` ne décrit pas (façades de H7 et H9) : une nouvelle version de ces fichiers peut demander de reprendre ces façades. Nos copies `config.js` et `arene.js` sont à comparer avec celles de la nouvelle version ; les 94 tests du paquet emploient sa propre config, pas nos copies.
+- **Carte** : la salle secrète occupe les lignes 82 à 117 et les colonnes 8 à 43 de la grille de Bunker 7 (ajoutées à la construction du monde). Elle est refusée (message dans le journal du boss ; ni combat, ni code du boss, ni panneau) si la grille a plus d'un niveau, des bandes d'air, un sol hors du niveau 0, plus de 82 lignes ou moins de 44 colonnes, ou si `allocGrid` crée un tableau par case que `b7SalleGrille` n'agrandit pas (version future du jeu : l'ajouter à la liste de H7). Les 24 points de `arene.bunker7` suivent la disposition actuelle de Bunker 7 : à revérifier si elle change (l'essai `boss-b7`, bloc 5, les contrôle).
+- **Entrées du Septième et des mini-boss dans `Zombies.list`** (H8, H9) : objets écrits à la main sur la forme d'un zombie ; si cette forme change (nouveau champ lu par d'autres systèmes), les reprendre.
+- **Interface du combat** (`BossB7Hud`, telle quelle) : elle entre dans `#hud` par `HUD.el.hud`, avec sa propre mise en page (positions fixes, unités vw et vh, police Teko, z-index 40). À examiner avec la session Interface (sa décision 7) avant tout changement de mise en page du HUD : on peut l'envelopper, pas retoucher le paquet.
+- **Hypothèses figées** : un seul joueur (« j1 ») ; 5 bonus (`B7_BONUS`) ; liste des touches coupées (`B7_TOUCHES_FIGEES`) ; D5 pour la seule Onde de choc ; noms des deux armes merveilles dans l'interface ; `DPS_REFERENCE` écrit dans `config.js`. À revoir quand le jeu gagnera du contenu (coop, bonus, armes).
+- **Poids et mémoire** : le jeu passe de 7,49 Mo (2.0.6) à 24,74 Mo (+17,25 Mo, dont 13,4 Mo de sons en base64 sur une seule ligne) ; avec les jeux construits des Cartes (16,1 Mo, +8,6) et des Marécages (8,5 Mo, +1,0), et les animations (≈ +2,65 Mo), la 2.0.7 réunie irait vers 37 Mo. En quittant Bunker 7, seuls les sons décodés (≈ 173 Mo) sont libérés ; la salle, le modèle, les effets et `BOSS_B7_SONS` restent en mémoire pour la session.
+- **Compatibilité vérifiée le 2 novembre** (relecture en lecture seule) : Marécages (leur étape, après `build.py`, trouve chacune de ses 100 retouches une seule fois dans le jeu du boss ; leur contrôle de version accepte 2.0.6 et 2.0.7) ; Cartes (aucune ancre commune ; dans `build.py`, deux conflits de texte, la ligne `exec` après `hooks-points.py` et le bloc ajouté avant `open(out_path)` ; `tzeval.js` se fusionne seul ; `package.json` : conflit sur la seule ligne `test:e2e`, 30 essais ici, 44 chez les Cartes). À refaire en lecture seule avec `essais/sur-autres.py` des Marécages.
+- **Essais du chantier** : les essais des étapes 3 à 8 (`tzeval.js`, 113 vérifications) n'ont pas été gardés (bloc-notes de la session) ; leurs contrôles essentiels sont repris dans `boss-b7` (points de Bunker 7, changement de carte, fin de partie, menu).
+- **Essais après l'intégration** :
+  - construction et `dupcheck.py` ;
+  - `node tests/test-logique.js` dans le paquet (94) ;
+  - essai `boss-b7` dans la page (`e2e-page.js`, 93 vérifications en 9 blocs), puis par la méthode E2 (95 : ces 93 et les 2 du critère 1, côté Node) ;
+  - les 12 essais habituels dans la page ;
+  - tests unitaires (31) ;
+  - les essais sous Windows (`docs/essais-windows-boss-b7.md`).
+- **Code du boss** : jamais en clair ; le jeu n'en garde que l'empreinte (`B7_CODE_EMPREINTE`), et les essais le retrouvent dans la page sans l'écrire.
+
+## Fiche du jeu (§12, jeu 2.0.6, commit `3667acd`)
+
+Numéros de ligne de `game/zombie-survival.html` au jeu 2.0.6 (commit `3667acd`). Dans le jeu construit de la branche (2 novembre 2026), ajouter 23 871 jusqu'au premier point d'accroche (les scripts du boss, ceux du prototype et les licences sont insérés avant le script du jeu), quelques lignes de plus ensuite (`startGame` : + 23 883), et 25 750 à partir du « Catalogue des cartes » (après les modules, sections 21 à 26 comprises). Chercher plutôt par le nom, avec `grep -n` (en coupant les lignes : `| cut -c1-200`, sinon la ligne des sons du boss, 13 Mo, sort entière).
+
+| # | Sujet | Dans le jeu |
+|---|---|---|
+| 1 | Three.js | r128. Une scène de monde (`scene`) + une scène de l'arme (`vmScene`, `vmCamera`) ; caméra `camera` (`persoCamera()` en vue TPS) ; `render()` : monde, puis profondeur effacée, arme, couteau (`Couteau.rendreVue`) ; boucle `frame(now)` → `update(dt)` (dt plafonné à 0,05 s). |
+| 2 | Joueur | `player` : 100 PV (`RULES.playerHp`), 250 avec Mastodonte ; `playerDamage(montant)` (sans effet si `G.god` ou `G.cheat`) ; régénération +70 PV/s après 2,4 s sans coup ; à terre : `goDown` (Quick Revive : relevé seul 3 fois, atouts perdus ; sinon fin de partie `gameOver`) ; téléportation `placePlayer(x, z, lv)` ; invulnérabilité : `G.god` (outil d'essai) ; tremblement `FX.shake` à chaque coup reçu. |
+| 3 | Armes | 16 armes (`WEAPONS`) : départ M1911 ; 8 au mur sur Bunker 7 ; boîte ; 2 armes merveilles (`wonder: true`) : Désintégrateur (`raygun`), Onde de choc (`blaster`, `blastCone` : dégâts 1e9). Tête : multiplicateur du type de zombie (×2 Fantassin). Pénétration `pen`, plombs `pellets` et `falloff` (fusils à pompe), projectiles explosifs (Panzerschreck, Désintégrateur), éclats explosifs (M1911 Ardente). Pack-a-Punch = Le Glas : 3 paliers (`GLAS.tiers`, `tierStats`) : dégâts ×2, ×2,5, ×3 ; chargeur ×1,5 ; cadence de `WEAPONS[].up`. Corps-à-corps : couteau « Fossoyeur » sur Bunker 7 (`startKnife`, `knifeReach`). 2 emplacements d'armes (`Arms.slots`) ; `giveWeapon(id, palier)`. |
+| 4 | Tirs | Rayons (`hitscan`, `rayHitZombie`) ; projectiles (`updateProjectiles`) ; explosions (`explode`) ; souffle de l'Onde de choc (`blastCone`) ; couteau (`knifeReach`). Cible ajoutée : le précédent du Gardien de Khamsin (entrée de `Zombies.list` marquée `boss`, ses propres rayons et dégâts ; branchements dans `engine/tools/hooks.py`). |
+| 5 | Zombies | `spawnZombie(sp, hp)` (fenêtres, ou sortie de terre avec `sp.riser`) ; PV `zombieHpForRound` (100, +50 jusqu'à la manche 9, puis ×1,1) ; IA `updateZombie` ; navigation : champ de flux de la grille (`computeFlow`, `flowDir`) ; zones de tir tête, buste, bras, jambes ; dégâts `damageZombie` (`info.kind`), mort `killZombie` ; vitesses : marche, trot, course (`SPEEDS`, 3,5 à 4,1 m/s au plus) ; coup : 30 PV. Chiens : Le Molosse (manches de chiens, `DOGS`, `updateDog`). |
+| 6 | Bonus | 5 (`POWERUPS`) : `ammo` (Munitions max), `insta` (Mort instantanée, 30 s), `double` (Double points, 30 s), `nuke` (Bombe), `carpenter` (Charpentier). Lâchers `maybeDropPowerup` ; objet au sol `spawnPowerup` (26 s, ramassé à 1,25 m) ; effet `applyPowerup` ; annonceur `Sound.say` (voix de synthèse du navigateur). Absents : vente flash, points bonus, atout gratuit, machine de mort. |
+| 7 | Atouts | 5 (`PERKS`) : `cuirasse`, `mainleste`, `detente`, `souffle`, `endurance` ; aucune limite (`MAX_PERKS = Infinity`) ; une machine par atout ; `grantPerk` ; perdus en tombant (`revivePlayer`). |
+| 8 | Équipements | Grenades (2 au départ, 4 au plus, `throwGrenade`). Ni leurre, ni mine, ni bouclier. Bunker 7 n'a pas de piège. |
+| 9 | Économie | Points (`addPoints`, `trySpend`) : 500 au départ, touche 10, élimination 50, tête 100, couteau 130 ; boîte 950 ; armes au mur (`wallbuyPrice`) ; Le Glas 5 000, puis 10 000, puis 20 000 ; munitions d'une arme reforgée 4 500. |
+| 10 | Manches | `startRound`, `endRound`, `updateRounds`, `zombiesForRound` ; aucune suspension possible aujourd'hui. |
+| 11 | Bunker 7 | Pas de quête ; le digi pass (`updateKeypad`, `unlockDigipass`, `hideDigipass`) servira de déclencheur ; positions : voir `docs/audit-bunker7.md` ; navigation sur la grille ; 6 lampes (`buildLights`, `setPoweredLights`) ; salle secrète : absente (à construire) ; armes merveilles : `raygun`, `blaster`. |
+| 12 | Sauvegarde | Aucune sauvegarde de partie pour les joueurs : `serializeGame`/`restoreSave` ne servent qu'à l'instantané de rechargement de l'ancien environnement claude.ai. Stockage local `store` (clés `zs.*` : réglages, records, statistiques). Drapeaux : absents. |
+| 13 | Audio | `Sound` : tout synthétisé, un `AudioContext`, bus des effets (`Sound.bus()`) et de la musique ; réglages `settings.master` et `settings.music` ; pas de musique continue (seulement des jingles de manche) ; annonceur `Sound.say`. |
+| 14 | Interface | `#hud` : bas gauche `#bl` (manche, HUD des points, atouts), bas droite `#br` (arme, munitions), centre `#prompt` (invites), haut `#banner` (bandeaux, à 15 % du haut), `#crosshair`, minuteurs des bonus. |
+| 15 | Coop | Aucune : solo. Ni réseau ni coéquipier IA (l'état du corps d'Anthony est seulement prêt pour une future coop). |
+| 16 | Mod Tools | Ils éditent les cartes (fichiers JSON : grille, éléments) et parlent au jeu par `window.ZS`. `config.js` et `arene.js` du boss sont du code : les Mod Tools ne les éditent pas. |
+| 17 | Performances | Jamais mesurées sur le PC d'Anthony (ici, seulement le rendu logiciel). Repères : abords de Bunker 7 ≈ 370 000 triangles (la moitié à l'écran), personnage ≈ 126 000 ; modèle du Septième ≈ 56 000 triangles, ≤ 39 appels de dessin. |
+
+## Calcul de `DPS_REFERENCE` (§11.1, décision D1)
+
+Formule : dégâts d'une balle au corps, au palier du Glas choisi, × balles par seconde ; sans rechargement, sans tête, sans atout.
+
+Thompson (`WEAPONS.thompson`, lignes 6422 à 6425 du jeu 2.0.6, commit `3667acd`) au palier I « Tocsin » (`GLAS.tiers[1]`, ligne 6570 ; `tierStats`, ligne 6644) : dégâts 55 × 2 = 110 par balle ; cadence de « Thompson Chicago Rouge » (`up.rpm`) : 760 coups par minute = 12,67 balles par seconde. **110 × 760 / 60 = 1 393,3 → `DPS_REFERENCE` = 1 393.**
+
+Armes merveilles contre le Septième et les mini-boss (D5 : 1 393 par touche, 2 786 améliorées) : Désintégrateur ≈ 5 300 dégâts par seconde (≈ 13 000 au palier III) ; Onde de choc ≈ 1 600 (≈ 3 250 améliorée).
+
+## Plan
+
+Étapes du §2 du brief ; rapport et accord d'Anthony à la fin de chacune.
+
+3. Adaptateur `jeu` : un module de l'atelier (`engine/src/`), branché par `engine/tools/hooks-boss-b7.py` ; modules du boss créés une fois, au chargement de Bunker 7 ; sons préchargés à ce moment.
+4. Salle secrète : partie cachée de la grille de Bunker 7, loin des fenêtres ; géométrie (d'après `ProtoB7Monde` du prototype), collisions, navigation des zombies, cuves, dalles, piliers, lumières ; images.
+5. Rendu et tirs : modèle, le Septième dans la liste des zombies comme le Gardien (tirs, explosions, couteau, grenades), effets, sons, interface, boucle.
+6. Ennemis et mécaniques : zombies du combat, Molosses avec le profil du boss, trois mini-boss et petits Démembrés (portés depuis `prototype/proto-zombies.js`), mécaniques du joueur (sans secousse).
+7. Panneau de test développeur.
+8. Déclenchement par le digi pass (code du boss une fois par partie, digi pass qui reste, portes ouvertes en phase 5) et fin du combat (armes merveilles en bonus au sol, retour, manches qui reprennent).
+9. Validation : les 48 critères du §9, tests de la logique dans le paquet, essai de bout en bout lancé par Anthony.
+
+Systèmes communs du jeu qui recevront des branchements (sans réécriture) : manches (pause), lâchers de bonus, dégâts et mort des zombies, Mort instantanée et Bombe, dégâts et commandes du joueur, rendu (effets d'écran après l'arme), lumières (obscurité de la phase 5), digi pass, son (musique du combat).
