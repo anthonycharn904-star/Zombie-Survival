@@ -132,5 +132,9 @@ ins_before('<script>/* GLTFLoader de three.js r128',
            + '<script>/* jeu 2.0.6 : engine/orig/hud-points/hud-points.js, inséré tel quel par engine/tools/build.py */\n'
            + hp['hud-points.js'] + '</script>\n')
 
+# Marécages Maudits : retouches, sources et modules du kit 2.0.7 « Stryges » (engine/marecages/LISEZ-MOI.md) ;
+# s'arrête avec un message clair si une retouche ne tient plus. En dernier : après les blocs des autres chantiers.
+exec(open(os.path.join(KH, 'marecages', 'etape.py'), encoding='utf-8').read())
+
 open(out_path, 'w', encoding='utf-8').write(s)
 print(f'{out_path} : {len(s.encode("utf-8"))} octets, {s.count(chr(10))} lignes, module {len(parts)} fichiers')
