@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zombie Survival · Launcher · C · Nouvelle génération (maquette)</title>
+<!-- ressources -->
+<link rel="stylesheet" href="../commun/maquette.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="zsm-bureau">
+<main class="zsm-fenetre c" id="zsm-fenetre">
+  <div class="c-fond" aria-hidden="true">
+    <div class="c-duo c-fond-photo"><img data-img="bunker" alt=""></div>
+    <canvas class="c-veines" id="c-veines"></canvas>
+    <div class="c-fond-voile"></div>
+    <div class="c-grain"></div>
+  </div>
+
+  <header class="c-barre">
+    <div class="c-marque"><img data-img="icone" alt="" width="18" height="18"><b>Zombie Survival</b></div>
+    <div class="c-badge" data-zsm-badge></div>
+    <div class="c-versions"><span>Jeu <b id="c-v-jeu">2.0.6</b></span><span>Launcher <b id="c-v-launcher">1.3.3</b></span></div>
+    <div class="c-fen">
+      <button class="c-fen-btn" type="button" aria-label="Réduire" data-sim="Réduire la fenêtre"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button class="c-fen-btn c-fermer" type="button" aria-label="Fermer" data-sim="Fermer le launcher"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+    </div>
+  </header>
+  <div class="c-alerte" id="c-alerte" hidden><span>Nouveau launcher <b id="c-alerte-v"></b> disponible · simulé</span><button type="button" id="c-alerte-btn">Installer et redémarrer →</button></div>
+
+  <nav class="c-nav" aria-label="Sections du launcher">
+    <button type="button" data-section="accueil"><i>01</i><b>Jouer</b></button>
+    <button type="button" data-section="actus"><i>02</i><b>Actualités</b></button>
+    <button type="button" data-section="maj"><i>03</i><b>Mises à jour</b><em id="c-nav-maj" hidden>!</em></button>
+    <button type="button" data-section="installation"><i>04</i><b>Installation</b></button>
+    <button type="button" data-section="modtools" id="c-nav-modtools"><i>05</i><b>Mod Tools</b><em class="c-auteur">auteur</em></button>
+    <button type="button" data-section="reglages"><i>06</i><b>Réglages</b></button>
+    <p class="c-nav-pied" id="c-nav-pied"></p>
+  </nav>
+
+  <div class="c-main">
+    <div class="c-volet" id="c-volet" aria-hidden="true"></div>
+
+    <!-- 01 · Jouer -->
+    <section class="c-page c-accueil" data-page="accueil" aria-label="Accueil">
+      <div class="c-gauche">
+        <p class="c-sur" id="c-sur"></p>
+        <h1 class="c-titre"><span class="c-contour">Zombie</span><span class="c-plein">Survival</span></h1>
+        <div class="c-zones" id="c-zones"></div>
+        <button type="button" class="c-ticker" data-aller="actus"><b>Transmission</b><span id="c-ticker"></span><em>Exemple</em><i>→</i></button>
+      </div>
+      <div class="c-droite">
+        <button type="button" class="c-cadran" id="c-jouer">
+          <svg viewBox="0 0 300 300" aria-hidden="true">
+            <circle class="c-cad-halo" cx="150" cy="150" r="140"/>
+            <g id="c-cad-segments"></g>
+            <circle class="c-cad-tourne" cx="150" cy="150" r="114"/>
+            <circle class="c-cad-coeur" cx="150" cy="150" r="104"/>
+          </svg>
+          <span class="c-cad-texte"><b id="c-jouer-lib">Jouer</b><small id="c-jouer-sous">Jeu 2.0.6</small></span>
+        </button>
+        <div class="c-statut" id="c-statut" data-ton="neutre">
+          <b id="c-st-titre"></b>
+          <p id="c-st-detail"></p>
+          <svg class="c-batons" id="c-batons" viewBox="0 0 270 44" aria-hidden="true"></svg>
+          <div class="c-liens" id="c-liens"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 · Actualités -->
+    <section class="c-page c-actus" data-page="actus" aria-label="Actualités" hidden>
+      <header class="c-entete"><i>02</i><h2>Actualités</h2><p>Communiqués publiés avec les mises à jour · contenus d'exemple</p></header>
+      <div class="c-actus-corps">
+        <article class="c-une" id="c-une"></article>
+        <ol class="c-breves" id="c-breves"></ol>
+      </div>
+    </section>
+
+    <!-- 03 · Mises à jour -->
+    <section class="c-page c-maj" data-page="maj" aria-label="Mises à jour" hidden>
+      <header class="c-entete"><i>03</i><h2>Mises à jour</h2><p id="c-maj-etat"></p></header>
+      <div class="c-frise-cadre"><ol class="c-frise" id="c-frise"></ol></div>
+      <div class="c-version" id="c-version"></div>
+    </section>
+
+    <!-- 04 · Installation -->
+    <section class="c-page c-inst" data-page="installation" aria-label="Installation" hidden>
+      <header class="c-entete"><i>04</i><h2>Installation</h2><p>Fiche technique du jeu installé sur ce PC</p></header>
+      <div class="c-fiche" id="c-fiche"></div>
+      <div class="c-inst-bas">
+        <div class="c-chemin"><small>Emplacement</small><b id="c-chemin"></b></div>
+        <div class="c-sceau"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><div><small>Signature vérifiée</small><b id="c-cle"></b></div></div>
+      </div>
+      <div class="c-actions">
+        <button type="button" class="c-btn" data-act="ouvrirDossier">Ouvrir le dossier</button>
+        <button type="button" class="c-btn" data-act="verifier">Vérifier maintenant</button>
+        <button type="button" class="c-btn" data-act="reparer">Réparer</button>
+        <button type="button" class="c-btn" data-act="revenir">Revenir à la <span id="c-precedente">2.0.4</span></button>
+        <button type="button" class="c-btn c-btn-discret" data-act="ouvrirJournal">Journal</button>
+      </div>
+    </section>
+
+    <!-- 05 · Mod Tools -->
+    <section class="c-page c-mod" data-page="modtools" aria-label="Mod Tools" hidden>
+      <div class="c-plan" aria-hidden="true">
+        <svg viewBox="0 0 520 360"><g fill="none" stroke="currentColor">
+          <path stroke-width="2.4" d="M40 50h170v80h70V50h170v260H330v-70h-90v70H40z"/>
+          <path stroke-width="1.4" d="M210 130v90M280 130v90M120 50v260M380 50v260M40 180h80M380 180h70"/>
+          <circle cx="245" cy="175" r="22" stroke-dasharray="5 5" stroke-width="1.4"/>
+          <path stroke-width="1.4" d="M80 90l14 14M94 90l-14 14M405 260l14 14M419 260l-14 14"/></g>
+          <g fill="currentColor" font-family="'ZS Teko', sans-serif" font-size="16" letter-spacing="2"><text x="44" y="342">BUNKER 7 · NIVEAU 0 · 1:200</text><text x="392" y="342">MOD TOOLS</text></g></svg>
+      </div>
+      <div class="c-mod-texte">
+        <header class="c-entete"><i>05</i><h2>Mod Tools</h2></header>
+        <p class="c-mod-desc">L'éditeur de cartes de Zombie Survival : plan et vue 3D, étages, bibliothèques de textures et de modèles, partie de test.</p>
+        <ul class="c-mod-infos"><li><b>Auteur</b>clé de publication présente</li><li><b>9</b>interface des Mod Tools</li><li><b>2.0.6</b>moteur du jeu</li></ul>
+        <div class="c-mod-boutons"><button type="button" class="c-gros" data-act="ouvrirModTools">Ouvrir les Mod Tools <i>→</i></button><button type="button" class="c-btn c-btn-discret" data-act="ouvrirPublication">Outil de publication</button></div>
+      </div>
+      <div class="c-verrou" id="c-verrou" hidden><b>Réservé à l'auteur</b><span>Sa clé de publication n'est pas sur ce PC : les Mod Tools restent fermés.</span></div>
+    </section>
+
+    <!-- 06 · Réglages -->
+    <section class="c-page c-regl" data-page="reglages" aria-label="Paramètres" hidden>
+      <header class="c-entete"><i>06</i><h2>Réglages</h2><p>Simulés : rien n'est enregistré</p></header>
+      <div class="c-regl-liste">
+        <label class="c-inter"><input type="checkbox" data-reglage="fullscreen"><span>Plein écran<small>F11 ou Alt+Entrée pour basculer en partie</small></span><i aria-hidden="true"><em>Oui</em><em>Non</em></i></label>
+        <label class="c-inter"><input type="checkbox" data-reglage="keepLauncherOpen"><span>Garder le launcher ouvert<small>Sinon, il se réduit pendant la partie</small></span><i aria-hidden="true"><em>Oui</em><em>Non</em></i></label>
+        <label class="c-inter"><input type="checkbox" data-reglage="autoCheck"><span>Rechercher les mises à jour<small>Au démarrage et au retour d'une partie</small></span><i aria-hidden="true"><em>Oui</em><em>Non</em></i></label>
+        <label class="c-inter"><input type="checkbox" data-reglage="autoInstall"><span>Installer automatiquement<small>Jeu et launcher</small></span><i aria-hidden="true"><em>Oui</em><em>Non</em></i></label>
+      </div>
+      <div class="c-source"><small>Source des mises à jour</small><b id="c-source"></b><span>Clé de confiance <b id="c-cle-2"></b> · chaque version est signée par l'auteur.</span></div>
+    </section>
+  </div>
+
+  <div class="c-toasts" data-zsm-toasts></div>
+  <div class="c-boot" id="c-boot" aria-hidden="true">
+    <svg viewBox="0 0 120 60"><g fill="none" stroke="#d4161f" stroke-width="5" stroke-linecap="round">
+      <path d="M14 8l-2 44"/><path d="M34 8l1 44"/><path d="M54 8l-1 44"/><path d="M74 8l2 44"/><path d="M4 40L88 16"/></g></svg>
+    <b>Ouverture du bunker</b>
+  </div>
+  <div class="c-partie" id="c-partie" hidden>
+    <b>En jeu</b>
+    <span>Simulation : aucun jeu n'est lancé. Le vrai launcher attend la fin de la partie.</span>
+    <button type="button" class="c-gros" data-act="terminerPartie">Terminer la partie (simulation)</button>
+  </div>
+</main>
+</div>
+<script src="../commun/donnees.js"></script>
+<script src="../commun/maquette.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

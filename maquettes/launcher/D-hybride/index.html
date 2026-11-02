@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zombie Survival · Launcher · D · Hybride A+B (maquette)</title>
+<!-- ressources -->
+<link rel="stylesheet" href="../commun/maquette.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="zsm-bureau">
+<main class="zsm-fenetre d" id="zsm-fenetre">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></symbol>
+    <symbol id="i-actus" viewBox="0 0 24 24"><path d="M4 5h11v14H6a2 2 0 0 1-2-2z"/><path d="M15 9h4v8a2 2 0 0 1-2 2h-2"/><path d="M7.5 9h4M7.5 12.5h4M7.5 16h2.5"/></symbol>
+    <symbol id="i-maj" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 20v-4h-4"/></symbol>
+    <symbol id="i-installation" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-modtools" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-cloche" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-dossier" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-cible" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></symbol>
+  </svg>
+
+  <aside class="d-cote">
+    <div class="d-logo"><img data-img="icone" alt="" width="36" height="36"><div><b>Zombie Survival</b><span>Poste de commandement</span></div></div>
+    <nav class="d-nav" aria-label="Sections du launcher">
+      <button type="button" data-section="accueil"><svg><use href="#i-accueil"/></svg><span>Accueil</span></button>
+      <button type="button" data-section="actus"><svg><use href="#i-actus"/></svg><span>Actualités</span></button>
+      <button type="button" data-section="maj"><svg><use href="#i-maj"/></svg><span>Mises à jour</span><em class="d-point" id="d-point-maj" hidden></em></button>
+      <button type="button" data-section="installation"><svg><use href="#i-installation"/></svg><span>Installation</span></button>
+      <button type="button" data-section="modtools" id="d-nav-modtools"><svg><use href="#i-modtools"/></svg><span>Mod Tools</span><em class="d-auteur">Auteur</em></button>
+      <button type="button" data-section="reglages"><svg><use href="#i-reglages"/></svg><span>Paramètres</span></button>
+    </nav>
+    <div class="d-cote-pied">
+      <p class="d-etat" id="d-etat" data-ton="neutre"><i aria-hidden="true"></i><b id="d-etat-titre">—</b><span id="d-etat-detail"></span></p>
+      <div class="d-plaques">
+        <div class="d-plaque"><small>Jeu</small><b id="d-v-jeu">2.0.6</b><span id="d-v-jeu-sous">construction 1</span></div>
+        <div class="d-plaque"><small>Launcher</small><b id="d-v-launcher">1.3.3</b><span>Windows</span></div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="d-principal">
+    <header class="d-haut">
+      <p class="d-fil"><span>Bunker 7 ·</span> <b id="d-fil">Accueil</b></p>
+      <div class="d-badge" data-zsm-badge></div>
+      <p class="d-heure"><b id="d-heure">--:--</b><small>Bruxelles</small></p>
+      <button type="button" class="d-icone-btn" id="d-cloche" aria-label="Notifications" title="Notifications"><svg><use href="#i-cloche"/></svg><em id="d-cloche-n" hidden>1</em></button>
+      <div class="d-fen">
+        <button class="d-fen-btn" type="button" id="d-reduire" aria-label="Réduire" title="Réduire (simulé)"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+        <button class="d-fen-btn" type="button" id="d-agrandir" aria-label="Agrandir" title="Agrandir"><svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7"/></svg></button>
+        <button class="d-fen-btn d-fermer" type="button" aria-label="Fermer" title="Fermer (simulé)" data-sim="Fermer le launcher"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+      </div>
+    </header>
+    <div class="d-bandeau" id="d-bandeau" hidden><span><b>Nouveau launcher <span id="d-bandeau-v"></span></b> disponible (simulé) · installation en quelques secondes, puis redémarrage</span><button type="button" id="d-bandeau-btn">Installer et redémarrer</button></div>
+
+    <div class="d-contenu" id="d-contenu">
+      <!-- Accueil -->
+      <section class="d-page d-accueil" data-page="accueil" aria-label="Accueil">
+        <div class="d-hero" id="d-hero" data-fond="marais">
+          <img class="d-hero-photo" data-img="bunker" alt="">
+          <img class="d-scene-source" id="d-scene-img" data-img="marais" alt="" hidden>
+          <canvas class="d-hero-scene" id="d-scene" aria-hidden="true"></canvas>
+          <div class="d-lampe" id="d-lampe" aria-hidden="true"></div>
+          <canvas class="d-poussiere" id="d-poussiere" aria-hidden="true"></canvas>
+          <div class="d-hero-voile" aria-hidden="true"></div>
+          <div class="d-hero-texte">
+            <p class="d-sur" id="d-sur">Transmission interceptée · Marécages maudits · en développement</p>
+            <h1 class="d-titre">Zombie<span>Survival</span></h1>
+            <p class="d-mission"><b id="d-mission-v">Jeu 2.0.6</b><span>Khamsin se resserre, Anthony entre en scène</span></p>
+            <p class="d-hero-desc">Prise des armes refaite, jeep d'archéologie, plateau des pyramides sous tempête permanente, personnage jouable, glissade et nouveau HUD des points.</p>
+            <div class="d-cta">
+              <button type="button" class="d-jouer" id="d-jouer"><i class="d-jouer-rempli" id="d-jouer-rempli"></i><span><b id="d-jouer-lib">Jouer</b><small id="d-jouer-sous">Déploiement · jeu 2.0.6</small></span></button>
+              <button type="button" class="d-btn d-btn-verre" data-aller="maj">Notes de version</button>
+            </div>
+            <p class="d-statut" id="d-statut" data-ton="neutre"><i aria-hidden="true"></i><b id="d-st-titre"></b><span id="d-st-detail"></span><span class="d-st-liens" id="d-st-liens"></span></p>
+          </div>
+          <div class="d-hero-grain" aria-hidden="true"></div>
+          <p class="d-legende" id="d-legende">Marécages maudits · la Mère-Vase se jette sur un Noyé · capture du kit 2.0.7 (retournée) · pluie et orage d'après le kit</p>
+        </div>
+        <div class="d-rangee">
+          <div class="d-bloc">
+            <div class="d-bloc-tete"><h2><span>Transmissions</span> Actualités</h2><button type="button" class="d-lien" data-aller="actus">Tout voir</button></div>
+            <div class="d-mini-actus" id="d-mini-actus"></div>
+          </div>
+          <div class="d-bloc">
+            <div class="d-bloc-tete"><h2><span>Théâtres</span> Cartes</h2></div>
+            <ul class="d-zones" id="d-zones"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Actualités -->
+      <section class="d-page" data-page="actus" aria-label="Actualités" hidden>
+        <header class="d-page-tete"><div><p>II · Transmissions</p><h1>Actualités</h1><span>Communiqués publiés avec les mises à jour · contenus d'exemple</span></div><div class="d-filtres" id="d-filtres"></div></header>
+        <div class="d-grille-actus" id="d-grille-actus"></div>
+      </section>
+
+      <!-- Mises à jour -->
+      <section class="d-page" data-page="maj" aria-label="Mises à jour" hidden>
+        <header class="d-page-tete"><div><p>III · Rapports</p><h1>Mises à jour</h1><span>Notes de version et historique de toutes les versions publiées</span></div></header>
+        <div class="d-maj-corps">
+          <div class="d-maj-gauche">
+            <div class="d-carte d-v-carte"><small>Version installée</small><b id="d-v-installee">2.0.6</b><span id="d-v-installee-sous"></span><em class="d-tampon" id="d-v-tampon">À jour</em>
+              <button type="button" class="d-btn" data-act="verifier">Vérifier maintenant</button></div>
+            <div class="d-carte d-v-carte d-v-dispo" id="d-v-dispo" hidden><small>Disponible</small><b id="d-v-distante"></b><span id="d-v-distante-sous"></span>
+              <button type="button" class="d-btn d-btn-laiton" data-act="mettreAJour">Mettre à jour</button></div>
+          </div>
+          <ol class="d-chrono" id="d-chrono"></ol>
+        </div>
+      </section>
+
+      <!-- Installation -->
+      <section class="d-page" data-page="installation" aria-label="Installation" hidden>
+        <header class="d-page-tete"><div><p>IV · Intendance</p><h1>Installation</h1><span>Le jeu installé sur ce PC</span></div></header>
+        <div class="d-chiffres" id="d-chiffres"></div>
+        <div class="d-inst-grille">
+          <div class="d-carte"><h3><svg><use href="#i-dossier"/></svg>Emplacement</h3><p class="d-chemin" id="d-chemin"></p>
+            <div class="d-boutons"><button type="button" class="d-btn" data-act="ouvrirDossier">Ouvrir le dossier</button><button type="button" class="d-btn d-btn-discret" data-act="ouvrirJournal">Journal</button></div></div>
+          <div class="d-carte d-carte-sceau"><h3><svg><use href="#i-bouclier"/></svg>Intégrité et signature</h3>
+            <p class="d-texte-clair">Chaque version est signée par l'auteur ; le launcher refuse tout fichier dont la signature ne correspond pas.</p>
+            <div class="d-boutons"><button type="button" class="d-btn" data-act="verifier">Vérifier maintenant</button><button type="button" class="d-btn d-btn-discret" data-act="reparer">Réparer le jeu</button></div>
+            <div class="d-sceau" aria-hidden="true"><b>Sceau vérifié</b><span id="d-sceau-cle"></span></div></div>
+          <div class="d-carte"><h3><svg><use href="#i-maj"/></svg>Versions</h3><p id="d-versions-ligne"></p>
+            <div class="d-boutons"><button type="button" class="d-btn" data-act="revenir">Revenir à la <span id="d-precedente">2.0.4</span></button></div></div>
+        </div>
+      </section>
+
+      <!-- Mod Tools -->
+      <section class="d-page" data-page="modtools" aria-label="Mod Tools" hidden>
+        <div class="d-mod-hero">
+          <div class="d-mod-apercu" aria-hidden="true">
+            <svg viewBox="0 0 420 250"><rect width="420" height="250" rx="6" fill="#0f1112"/><rect width="420" height="22" rx="6" fill="#1a1d1f"/>
+              <g fill="#3a3f42"><circle cx="12" cy="11" r="3"/><circle cx="22" cy="11" r="3"/><circle cx="32" cy="11" r="3"/></g>
+              <rect y="22" width="28" height="228" fill="#16191b"/><g fill="#2a2e31"><rect x="7" y="32" width="14" height="14" rx="2"/><rect x="7" y="76" width="14" height="14" rx="2"/><rect x="7" y="98" width="14" height="14" rx="2"/></g><rect x="7" y="54" width="14" height="14" rx="2" fill="#b8141d"/>
+              <rect x="330" y="22" width="90" height="228" fill="#16191b"/><g fill="#262a2d"><rect x="338" y="34" width="74" height="8" rx="2"/><rect x="338" y="50" width="56" height="8" rx="2"/><rect x="338" y="74" width="74" height="40" rx="3"/><rect x="338" y="124" width="74" height="8" rx="2"/><rect x="338" y="140" width="62" height="8" rx="2"/></g>
+              <g stroke="rgba(226,49,58,.14)" stroke-width="1"><path d="M40 40h280M40 70h280M40 100h280M40 130h280M40 160h280M40 190h280M40 220h280M60 30v210M100 30v210M140 30v210M180 30v210M220 30v210M260 30v210M300 30v210"/></g>
+              <g fill="none" stroke="#e2313a" stroke-width="2.2"><path d="M70 60h90v40h40V60h90v130h-70v-40h-60v40H70z"/><path d="M160 100v50M200 100v50"/></g>
+              <circle cx="180" cy="125" r="9" fill="none" stroke="#e8dfc8" stroke-dasharray="3 3"/><g fill="#e8dfc8"><circle cx="92" cy="82" r="3"/><circle cx="270" cy="170" r="3"/></g>
+              <text x="40" y="242" font-size="9" fill="#e2313a" letter-spacing="1.5">PLAN DE BUNKER 7 · NIVEAU 0 · 1:200</text></svg>
+          </div>
+          <div class="d-mod-texte">
+            <p class="d-sur">V · Atelier du génie</p>
+            <h1>Mod Tools</h1>
+            <p>L'éditeur de cartes de Zombie Survival : plan et vue 3D, étages, bibliothèques de textures et de modèles, partie de test.</p>
+            <dl class="d-mod-infos"><dt>Accès</dt><dd>réservé à l'auteur · clé présente sur ce PC</dd><dt>Interface</dt><dd>9 · moteur du jeu 2.0.6</dd><dt>Fenêtre</dt><dd>1 600 × 940, agrandie</dd></dl>
+            <div class="d-cta"><button type="button" class="d-btn d-btn-rouge d-btn-grand" data-act="ouvrirModTools">Ouvrir les Mod Tools</button><button type="button" class="d-btn d-btn-verre" data-act="ouvrirPublication">Outil de publication</button></div>
+          </div>
+          <div class="d-verrou" id="d-verrou" hidden><svg><use href="#i-cadenas"/></svg><b>Accès réservé</b><span>Les Mod Tools sont réservés à l'auteur du jeu : sa clé de publication n'est pas sur ce PC.</span></div>
+        </div>
+        <div class="d-mod-cartes">
+          <div class="d-carte"><h3>Cartes intégrées</h3><p>Bunker 7 · Khamsin · Ombre éternelle, et les cartes faites à partir d'elles.</p></div>
+          <div class="d-carte"><h3>Bibliothèques</h3><p>Textures <code>gx_</code> et modèles <code>gm_</code> ; une carte qui les utilise demande le jeu 2.0.4 ou plus récent.</p></div>
+          <div class="d-carte"><h3>Partie de test</h3><p>Le bouton Test lance la carte dans le moteur du jeu livré avec le launcher.</p></div>
+        </div>
+      </section>
+
+      <!-- Paramètres -->
+      <section class="d-page" data-page="reglages" aria-label="Paramètres" hidden>
+        <header class="d-page-tete"><div><p>VI · Réglages</p><h1>Paramètres</h1><span>Simulés : rien n'est enregistré</span></div></header>
+        <div class="d-regl-grille">
+          <div class="d-carte"><h3>Partie</h3>
+            <label class="d-inter"><span>Lancer le jeu en plein écran<small>F11 ou Alt+Entrée pour basculer en partie</small></span><input type="checkbox" data-reglage="fullscreen"><i aria-hidden="true"></i></label>
+            <label class="d-inter"><span>Garder le launcher ouvert pendant la partie<small>Sinon, il se réduit et revient à la fin</small></span><input type="checkbox" data-reglage="keepLauncherOpen"><i aria-hidden="true"></i></label></div>
+          <div class="d-carte"><h3>Mises à jour</h3>
+            <label class="d-inter"><span>Rechercher au démarrage et au retour d'une partie</span><input type="checkbox" data-reglage="autoCheck"><i aria-hidden="true"></i></label>
+            <label class="d-inter"><span>Installer automatiquement<small>Jeu et launcher</small></span><input type="checkbox" data-reglage="autoInstall"><i aria-hidden="true"></i></label></div>
+          <div class="d-carte d-large"><h3>Accueil</h3>
+            <label class="d-inter"><span>Fond d'écran animé<small>Coupé : une image fixe. En pause quand la fenêtre est masquée ou réduite, hors de l'accueil et pendant une partie.</small></span><input type="checkbox" data-reglage="fondAnime"><i aria-hidden="true"></i></label>
+            <label class="d-inter"><span>Éclairs de l'orage<small>Discrets ; on peut les couper (vertige, sensibilité aux éclats)</small></span><input type="checkbox" data-reglage="fondEclairs"><i aria-hidden="true"></i></label>
+            <label class="d-inter"><span>Sons de l'ambiance (pluie, tonnerre)<small>Coupés au démarrage. Les sons calculés du kit 2.0.7, mêlés comme dans le jeu ; seulement quand le fond est visible</small></span><input type="checkbox" data-reglage="fondSons"><i aria-hidden="true"></i></label>
+            <label class="d-choix d-volume"><span>Volume de l'ambiance<small>Pluie et tonnerre ensemble (80 % : le volume du jeu par défaut) ; montée progressive à chaque reprise</small></span><input type="range" id="d-volume" min="0" max="100" step="5" value="80"><b id="d-volume-val">80 %</b></label>
+            <label class="d-choix"><span>Fond de l'accueil<small>Proposition de la maquette</small></span><select id="d-fond"><option value="marais">Marécages maudits (en développement)</option><option value="bunker">Bunker 7</option></select></label></div>
+          <div class="d-carte d-large"><h3>Source des mises à jour</h3><p class="d-chemin" id="d-source"></p>
+            <p class="d-petit">Clé de confiance <b id="d-cle"></b> · chaque version est signée par l'auteur ; un fichier dont la signature ne correspond pas est refusé.</p></div>
+          <div class="d-carte d-large"><h3>Dépannage</h3><div class="d-boutons">
+            <button type="button" class="d-btn" data-act="reparer">Réparer le jeu</button><button type="button" class="d-btn" data-act="revenir">Revenir à la version précédente</button>
+            <button type="button" class="d-btn d-btn-discret" data-act="ouvrirDossier">Dossier du jeu</button><button type="button" class="d-btn d-btn-discret" data-act="ouvrirJournal">Journal</button></div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="d-dl" id="d-dl" hidden>
+      <div class="d-dl-titre"><b id="d-dl-titre"></b><span id="d-dl-detail"></span></div>
+      <div class="d-bande" id="d-bande" aria-hidden="true"></div>
+      <svg class="d-dl-courbe" id="d-dl-courbe" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"><polyline id="d-dl-poly" points=""/></svg>
+      <b class="d-dl-pct" id="d-dl-pct"></b>
+      <button type="button" class="d-btn d-btn-discret" id="d-dl-annuler">Annuler</button>
+    </div>
+  </section>
+
+  <aside class="d-lecture" id="d-lecture" hidden aria-label="Lecture d'une actualité">
+    <button type="button" class="d-lecture-fermer" id="d-lecture-fermer" aria-label="Fermer">×</button>
+    <div class="d-feuille" id="d-lecture-corps"></div>
+  </aside>
+  <div class="d-toasts" data-zsm-toasts></div>
+  <div class="d-reduite" id="d-reduite" hidden><b>Fenêtre réduite</b><span>Simulation : dans le vrai launcher, la fenêtre disparaît dans la barre des tâches et le fond animé s'arrête.</span><button type="button" class="d-btn d-btn-rouge" id="d-retablir">Rétablir la fenêtre</button></div>
+  <div class="d-ouverture" id="d-ouverture" aria-hidden="true">
+    <img data-img="icone" alt="" width="64" height="64">
+    <b>Zombie Survival</b>
+    <p class="d-ouv-l1">› Mise sous tension du poste…</p>
+    <p class="d-ouv-l2">› Liaison avec le serveur de mises à jour…</p>
+    <p class="d-ouv-l3">› Sceau de confiance <span id="d-ouv-cle"></span></p>
+  </div>
+  <div class="d-veille" id="d-veille" hidden>
+    <svg aria-hidden="true"><use href="#i-cible"/></svg>
+    <b>Partie en cours</b>
+    <span>Le poste se met en veille pendant le déploiement (simulation : aucun jeu n'est lancé).</span>
+    <button type="button" class="d-btn d-btn-rouge" data-act="terminerPartie">Terminer la partie (simulation)</button>
+  </div>
+</main>
+</div>
+<script src="../commun/donnees.js"></script>
+<script src="../commun/maquette.js"></script>
+<script src="marais.js"></script>
+<script src="fond-video.js"></script>
+<script src="ambiance.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

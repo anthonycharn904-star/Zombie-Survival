@@ -1,0 +1,5 @@
+# carte non publiée : tout ce dossier reste hors du dépôt public, sauf ce README et ce fichier, jusqu'à l'autorisation
+# explicite d'Anthony (images, vidéos, affiches, chronologies, sons, et tout autre format à venir)
+*
+!README.md
+!.gitignore

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zombie Survival · Launcher · A · Militaire cinématographique (maquette)</title>
+<!-- ressources -->
+<link rel="stylesheet" href="../commun/maquette.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="zsm-bureau">
+<main class="zsm-fenetre a" id="zsm-fenetre">
+  <div class="a-scene" aria-hidden="true">
+    <img class="a-photo" data-img="bunker" alt="">
+    <div class="a-lampe" id="a-lampe"></div>
+    <canvas class="a-poussiere" id="a-poussiere"></canvas>
+    <div class="a-voile"></div>
+    <div class="a-grain"></div>
+  </div>
+
+  <header class="a-barre">
+    <div class="a-marque"><img data-img="icone" alt="" width="20" height="20"><b>Zombie Survival</b><span>Poste de commandement · Bunker 7</span></div>
+    <div class="a-badge" data-zsm-badge></div>
+    <div class="a-heure"><b id="a-heure">--:--</b><small>Bruxelles</small></div>
+    <div class="a-fen">
+      <button class="a-fen-btn" type="button" aria-label="Réduire" title="Réduire (simulé)" data-sim="Réduire la fenêtre"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+      <button class="a-fen-btn a-fermer" type="button" aria-label="Fermer" title="Fermer (simulé)" data-sim="Fermer le launcher"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="a-index" aria-label="Sections du launcher">
+    <p class="a-index-titre">Manuel de campagne</p>
+    <button type="button" data-section="accueil"><i>I</i><b>Opérations</b><span>Accueil</span></button>
+    <button type="button" data-section="actus"><i>II</i><b>Transmissions</b><span>Actualités</span></button>
+    <button type="button" data-section="maj"><i>III</i><b>Rapports</b><span>Mises à jour</span><em class="a-pastille" id="a-pastille-maj" hidden>1</em></button>
+    <button type="button" data-section="installation"><i>IV</i><b>Intendance</b><span>Installation</span></button>
+    <button type="button" data-section="modtools" id="a-nav-modtools"><i>V</i><b>Génie</b><span>Mod Tools</span><em class="a-auteur">Auteur</em></button>
+    <button type="button" data-section="reglages"><i>VI</i><b>Réglages</b><span>Paramètres</span></button>
+    <div class="a-plaques">
+      <div class="a-plaque"><small>Jeu</small><b id="a-v-jeu">2.0.6</b><span id="a-v-jeu-sous">construction 1</span></div>
+      <div class="a-plaque"><small>Launcher</small><b id="a-v-launcher">1.3.3</b><span>Windows</span></div>
+    </div>
+  </nav>
+
+  <div class="a-alerte" id="a-alerte" hidden>
+    <span><b>Nouveau launcher <span id="a-alerte-v"></span></b> disponible (simulé)</span>
+    <button type="button" id="a-alerte-btn">Installer et redémarrer</button>
+  </div>
+
+  <!-- I · Opérations -->
+  <section class="a-page a-accueil" data-page="accueil" aria-label="Accueil">
+    <div class="a-brief">
+      <p class="a-sur">Rapport d'incident · Bunker 7 · nuit du 14 décembre</p>
+      <h1 class="a-titre">Zombie<span>Survival</span></h1>
+      <p class="a-ordre"><span>Ordre de mission</span><b id="a-ordre-v">Jeu 2.0.6</b><span>Diffusion : tous les survivants</span></p>
+      <p class="a-texte">Les morts ont franchi l'entrepôt. Tenez Bunker 7, le plateau de Khamsin et la mine d'Ombre éternelle, manche après manche.</p>
+      <article class="a-telex" id="a-telex">
+        <header><b>Dernière transmission</b><span id="a-telex-date"></span><em>Exemple</em></header>
+        <h3 id="a-telex-titre"></h3>
+        <p id="a-telex-texte"></p>
+        <button type="button" class="a-lien" data-aller="actus">Toutes les transmissions ›</button>
+      </article>
+    </div>
+    <div class="a-theatres">
+      <p class="a-theatres-titre">Théâtres d'opérations</p>
+      <div class="a-photos" id="a-photos"></div>
+    </div>
+  </section>
+
+  <!-- II · Transmissions -->
+  <section class="a-page a-actus" data-page="actus" aria-label="Actualités" hidden>
+    <header class="a-entete"><p>II · Transmissions</p><h2>Actualités</h2><span>Communiqués reçus avec les mises à jour signées · contenus d'exemple</span></header>
+    <div class="a-actus-corps">
+      <ol class="a-bandes" id="a-actus-liste"></ol>
+      <article class="a-feuille" id="a-actus-feuille"></article>
+    </div>
+  </section>
+
+  <!-- III · Rapports -->
+  <section class="a-page a-maj" data-page="maj" aria-label="Mises à jour" hidden>
+    <header class="a-entete"><p>III · Rapports</p><h2>Mises à jour</h2><span id="a-maj-etat"></span></header>
+    <div class="a-maj-corps">
+      <ol class="a-onglets" id="a-maj-liste"></ol>
+      <article class="a-feuille a-dossier" id="a-maj-feuille"></article>
+    </div>
+  </section>
+
+  <!-- IV · Intendance -->
+  <section class="a-page a-inst" data-page="installation" aria-label="Installation" hidden>
+    <header class="a-entete"><p>IV · Intendance</p><h2>Installation</h2><span>Inventaire du jeu installé sur ce PC</span></header>
+    <div class="a-inst-corps">
+      <div class="a-presse">
+        <div class="a-pince" aria-hidden="true"></div>
+        <dl class="a-manifeste" id="a-manifeste"></dl>
+        <div class="a-sceau" aria-hidden="true"><b>Sceau vérifié</b><span id="a-sceau-cle"></span></div>
+      </div>
+      <div class="a-inst-actions">
+        <button type="button" class="a-plaque-btn" data-act="ouvrirDossier"><b>Ouvrir le dossier</b><span>Explorateur Windows</span></button>
+        <button type="button" class="a-plaque-btn" data-act="verifier"><b>Vérifier maintenant</b><span>Recherche de mises à jour</span></button>
+        <button type="button" class="a-plaque-btn" data-act="reparer"><b>Réparer le jeu</b><span>Remise en état des fichiers</span></button>
+        <button type="button" class="a-plaque-btn" data-act="revenir"><b>Revenir à la <span id="a-precedente">2.0.4</span></b><span>Version précédente gardée</span></button>
+        <button type="button" class="a-plaque-btn" data-act="ouvrirJournal"><b>Journal</b><span>launcher.log</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V · Génie -->
+  <section class="a-page a-genie" data-page="modtools" aria-label="Mod Tools" hidden>
+    <header class="a-entete"><p>V · Génie</p><h2>Mod Tools</h2><span>Atelier de l'auteur : l'éditeur de cartes de Zombie Survival</span></header>
+    <div class="a-plan">
+      <div class="a-plan-trace" aria-hidden="true">
+        <svg viewBox="0 0 400 260"><g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M20 30h150v70h60V30h150v200H250v-60h-80v60H20z"/><path d="M170 100v70M230 100v70M90 30v200M310 30v200M20 130h70M310 130h70"/>
+          <circle cx="200" cy="135" r="18" stroke-dasharray="4 4"/><path d="M60 60l12 12M72 60L60 72M330 190l12 12M342 190l-12 12"/></g>
+          <text x="28" y="248" font-size="11" fill="currentColor">PLAN DE BUNKER 7 · ÉCHELLE 1:200</text></svg>
+      </div>
+      <div class="a-plan-texte">
+        <p class="a-plan-sur">Atelier du génie</p>
+        <h3>Éditeur de cartes</h3>
+        <p>Plan, vue 3D, étages, bibliothèques de textures et de modèles, partie de test. Bunker 7, Khamsin et Ombre éternelle, plus les cartes de l'atelier.</p>
+        <dl class="a-plan-infos"><dt>Clé de l'auteur</dt><dd>présente sur ce PC</dd><dt>Interface des Mod Tools</dt><dd>9 · moteur du jeu 2.0.6</dd><dt>Fenêtre</dt><dd>1 600 × 940, agrandie</dd></dl>
+        <div class="a-plan-boutons">
+          <button type="button" class="a-gros" data-act="ouvrirModTools">Ouvrir les Mod Tools</button>
+          <button type="button" class="a-lien" data-act="ouvrirPublication">Outil de publication ›</button>
+        </div>
+      </div>
+      <div class="a-verrou" id="a-verrou" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <b>Accès réservé</b><span>Les Mod Tools sont réservés à l'auteur du jeu : sa clé de publication n'est pas sur ce PC.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- VI · Réglages -->
+  <section class="a-page a-regl" data-page="reglages" aria-label="Paramètres" hidden>
+    <header class="a-entete"><p>VI · Réglages</p><h2>Paramètres</h2><span>Réglages du poste (simulés : rien n'est enregistré)</span></header>
+    <div class="a-regl-corps">
+      <fieldset class="a-tole"><legend>Partie</legend>
+        <label class="a-inter"><input type="checkbox" data-reglage="fullscreen"><i aria-hidden="true"></i><span>Lancer le jeu en plein écran<small>F11 ou Alt+Entrée pour basculer en partie</small></span></label>
+        <label class="a-inter"><input type="checkbox" data-reglage="keepLauncherOpen"><i aria-hidden="true"></i><span>Garder le launcher ouvert pendant la partie</span></label>
+      </fieldset>
+      <fieldset class="a-tole"><legend>Mises à jour</legend>
+        <label class="a-inter"><input type="checkbox" data-reglage="autoCheck"><i aria-hidden="true"></i><span>Rechercher au démarrage et au retour d'une partie</span></label>
+        <label class="a-inter"><input type="checkbox" data-reglage="autoInstall"><i aria-hidden="true"></i><span>Installer automatiquement (jeu et launcher)</span></label>
+        <button type="button" class="a-lien" data-act="verifier">Vérifier maintenant ›</button>
+      </fieldset>
+      <fieldset class="a-tole a-tole-large"><legend>Source des mises à jour</legend>
+        <p class="a-source" id="a-source"></p>
+        <p class="a-cle">Clé de confiance : <b id="a-cle"></b></p>
+        <p class="a-petit">Chaque version est signée par l'auteur ; le launcher refuse tout fichier dont la signature ne correspond pas à cette clé.</p>
+      </fieldset>
+    </div>
+  </section>
+
+  <footer class="a-console">
+    <div class="a-terminal" id="a-terminal" data-ton="neutre">
+      <div class="a-term-tete"><i class="a-voyant" aria-hidden="true"></i><b id="a-st-titre" aria-live="polite"></b></div>
+      <p class="a-st-detail" id="a-st-detail" aria-live="polite"></p>
+      <div class="a-bande" id="a-bande" aria-hidden="true"></div>
+      <div class="a-liens" id="a-liens"></div>
+    </div>
+    <button class="a-jouer" id="a-jouer" type="button">
+      <span class="a-jouer-plaque"><i class="a-jouer-rempli" id="a-jouer-rempli"></i><b id="a-jouer-lib">Jouer</b><small id="a-jouer-sous">Déploiement</small></span>
+    </button>
+  </footer>
+
+  <div class="a-toasts" data-zsm-toasts></div>
+
+  <div class="a-boot" id="a-boot" aria-hidden="true">
+    <p class="a-boot-l1">Poste de commandement · Bunker 7</p>
+    <p class="a-boot-l2">› Mise sous tension…</p>
+    <p class="a-boot-l3">› Liaison avec le serveur de mises à jour…</p>
+    <p class="a-boot-l4">› Sceau de confiance <span id="a-boot-cle"></span></p>
+  </div>
+  <div class="a-veille" id="a-veille" hidden>
+    <b>Partie en cours</b>
+    <span>Le poste se met en veille pendant le déploiement (simulation : aucun jeu n'est lancé).</span>
+    <button type="button" class="a-gros" data-act="terminerPartie">Terminer la partie (simulation)</button>
+  </div>
+</main>
+</div>
+<script src="../commun/donnees.js"></script>
+<script src="../commun/maquette.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
