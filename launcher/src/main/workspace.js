@@ -21,7 +21,13 @@ const KEEP_VERSIONS = 5;
    Khamsin et Ombre éternelle (jeu 2.0.0) : mondes ouverts ; leur fichier, s'il y en a un, porte
    seulement ce que les Mod Tools changent (éléments, objets, règles, relief, sol, bâtiments). */
 const BUILTIN_MAPS = ['bunker7', 'khamsin', 'ombre'];
-const BUILTIN_NAMES = { bunker7: 'Bunker 7', khamsin: 'Khamsin', ombre: 'Ombre éternelle' };
+/* Cartes intégrées aux jeux récents seulement (Les Marécages Maudits : jeu 2.0.7). Jamais ajoutées d'office à une liste
+   (jeu livré, paquet sans liste de l'atelier) : le jeu qui les contient les met lui-même au menu (loadMapCatalog). Une
+   liste des Mod Tools peut les nommer, car sa liste par défaut copie le catalogue du jeu : elles y comptent alors comme
+   cartes intégrées (avant, la publication s'arrêtait sur « Cartes introuvables »). Un jeu qui ne les contient pas
+   ignore leur nom. */
+const RECENT_BUILTINS = ['marais'];
+const BUILTIN_NAMES = { bunker7: 'Bunker 7', khamsin: 'Khamsin', ombre: 'Ombre éternelle', marais: 'Les Marécages Maudits' };
 /* Une liste écrite avant Khamsin (editor < 3 : launcher 1.2 ou plus ancien) ne la nomme pas, une
    liste écrite avant Ombre éternelle (editor < 4 : launcher 1.3.0) ne nomme pas la Lune : le jeu
    2.0.0 les met de toute façon en deuxième et troisième places. Le paquet fait de même, pour que
@@ -218,7 +224,7 @@ class Workspace {
         try { name = JSON.parse(data.toString('utf8')).name || id; } catch (e) { missing.push(id); continue; }
         files.push({ id, name, from, data });
         index.push(id);
-      } else if (BUILTIN_MAPS.includes(id)) {
+      } else if (BUILTIN_MAPS.includes(id) || RECENT_BUILTINS.includes(id)) {
         index.push(id);
         files.push({ id, name: BUILTIN_NAMES[id] || id, from: 'intégrée', data: null });
       } else missing.push(id);

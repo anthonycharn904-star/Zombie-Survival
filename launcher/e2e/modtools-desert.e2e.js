@@ -281,8 +281,9 @@ async function run(userData) {
       page.on('pageerror', (e) => perr.push(e.message));
       await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
       await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
-      const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId['mon-desert']; return { list: ZS.MAPS_ALL.list.join(), src: m && m.source, base: m && m.base, thumb: !!(m && m.thumb), card: [...document.querySelectorAll('[data-map]')].some((e) => e.dataset.map === 'mon-desert') }; });
-      ok(g.list === 'bunker7,khamsin,mon-desert' && g.src === 'package' && g.base === 'desert' && g.thumb, `jeu publié : la carte est au menu (base désert, vignette) ${JSON.stringify(g)}`);
+      const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId['mon-desert']; return { list: ZS.MAPS_ALL.list.join(), marais: !!ZS.marais, src: m && m.source, base: m && m.base, thumb: !!(m && m.thumb), card: [...document.querySelectorAll('[data-map]')].some((e) => e.dataset.map === 'mon-desert') }; });
+      // jeu 2.0.7 : le jeu qui contient les Marécages Maudits les ajoute après les trois premières cartes de la liste, ici à sa fin (editor 4, moins de 10)
+      ok(g.list === ['bunker7', 'khamsin', 'mon-desert', ...(g.marais ? ['marais'] : [])].join() && g.src === 'package' && g.base === 'desert' && g.thumb, `jeu publié : la carte est au menu (base désert, vignette) ${JSON.stringify(g)}`);
       await page.evaluate(() => { window.frame = function () {}; renderEnabled = false; __zs.map('mon-desert'); __zs.start(); });
       await page.waitForFunction(() => ZS.G.state === 'playing' || ZS.G.state === 'paused', null, { timeout: 180000 });
       const pl = await page.evaluate(([x, z]) => ({ map: ZS.G.mapId, base: ZS.ow.baseId, g: ZS.ow.ground(x, z), bld: ZS.ow.objs.building.length, wb: ZS.Features.interactables.filter((q) => q.kind === 'wallbuy').length, locs: OW.locsShown.map((l) => l.name).join() }), [HX, HZ]);

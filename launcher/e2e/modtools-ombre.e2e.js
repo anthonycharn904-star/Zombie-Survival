@@ -60,8 +60,10 @@ async function run(userData) {
     const ground = (x, z) => mt.evaluate(([x, z]) => ZS.ow.ground(x, z), [x, z]);
 
     // 1. Ombre éternelle dans la liste ; ouverture : la Lune, outils et genres d'éléments de la Lune
-    const list = await mt.evaluate(() => ({ moon: MT.ow.okMoon(), all: MT.gameMaps().list.join(), pub: MT.state.publish.maps.join(), api: ZS.editorApi }));
-    ok(list.moon && list.api >= 4 && list.all === 'bunker7,khamsin,ombre' && list.pub === 'bunker7,khamsin,ombre', `Ombre éternelle parmi les cartes du jeu et de la publication ${JSON.stringify(list)}`);
+    const list = await mt.evaluate(() => ({ moon: MT.ow.okMoon(), all: MT.gameMaps().list.join(), pub: MT.state.publish.maps.join(), api: ZS.editorApi, marais: !!ZS.marais }));
+    // jeu 2.0.7 : les Marécages Maudits, quand le jeu les contient, sont la quatrième carte du jeu et de la liste par défaut
+    const cartes = ['bunker7', 'khamsin', 'ombre', ...(list.marais ? ['marais'] : [])].join();
+    ok(list.moon && list.api >= 4 && list.all === cartes && list.pub === cartes, `Ombre éternelle parmi les cartes du jeu et de la publication ${JSON.stringify(list)}`);
     const t0 = Date.now();
     await mt.evaluate(() => { MT.openGameMap('ombre'); MT.ui.setView('split'); });
     await until(() => MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !!MT.ow.plan.base, null, 180000);
@@ -246,8 +248,9 @@ async function run(userData) {
       page.on('pageerror', (e) => perr.push(e.message));
       await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
       await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
-      const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId.ombre; return { list: ZS.MAPS_ALL.list.join(), src: m.source, oxy: m.oxy.length, glas: !!m.glas, bld: m.buildings.length, wb: m.wallbuys.length, thumb: /^data:image\/jpeg/.test(m.thumb || '') }; });
-      ok(g.list === 'bunker7,khamsin,ombre' && g.src === 'package' && g.oxy === 7 && g.glas && g.bld === 1 && g.wb === 13 && g.thumb, `jeu publié : Ombre éternelle vient du fichier des Mod Tools ${JSON.stringify(g)}`);
+      const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId.ombre; return { list: ZS.MAPS_ALL.list.join(), marais: !!ZS.marais, src: m.source, oxy: m.oxy.length, glas: !!m.glas, bld: m.buildings.length, wb: m.wallbuys.length, thumb: /^data:image\/jpeg/.test(m.thumb || '') }; });
+      // jeu 2.0.7 : le jeu qui contient les Marécages Maudits les ajoute après les trois premières cartes de la liste, ici à sa fin (editor 4, moins de 10)
+      ok(g.list === ['bunker7', 'khamsin', 'ombre', ...(g.marais ? ['marais'] : [])].join() && g.src === 'package' && g.oxy === 7 && g.glas && g.bld === 1 && g.wb === 13 && g.thumb, `jeu publié : Ombre éternelle vient du fichier des Mod Tools ${JSON.stringify(g)}`);
       await page.evaluate(() => { window.frame = function () {}; renderEnabled = false; __zs.map('ombre'); __zs.start(); });
       await page.waitForFunction(() => ZS.G.state === 'playing' || ZS.G.state === 'paused', null, { timeout: 180000 });
       const pl = await page.evaluate(([x, z]) => ({ map: ZS.G.mapId, base: ZS.ow.baseId, h: ZS.ow.ground(x, z), bld: ZS.ow.objs.building.length, oxy: ZS.Features.interactables.filter((q) => q.kind === 'oxy').length, moon: GRAV.moon }), [HX, HZ]);
