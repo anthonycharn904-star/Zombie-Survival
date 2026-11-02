@@ -1,25 +1,44 @@
 'use strict';
-/* Interface du launcher : affiche l'état envoyé par le processus principal
-   (window.zs, voir preload/launcher.js) et déclenche les actions. */
+/* Interface du launcher (direction D de la maquette, validée le 31 octobre 2026) : affiche l'état envoyé par le
+   processus principal (window.zs, voir preload/launcher.js) et déclenche les actions. Les règles des états sont
+   celles du launcher 1.3.3 (bouton principal, ligne d'état, liens, bandeau du launcher, réglages) ; la maquette
+   apporte la barre latérale, les pages, le fond animé de Bunker 7 et le gestionnaire de téléchargement. */
 const $ = (id) => document.getElementById(id);
-const NB = ' ';
+const NB = '\u00a0';
+const fenetre = $('fenetre');
 
 /* ---------------------------------------------------------- formats --- */
 const num1 = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const dateCourteFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+const dateSeuleFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const heureFmt = new Intl.DateTimeFormat('fr-BE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Brussels' });
+const jourFmt = new Intl.DateTimeFormat('fr-BE', { day: 'numeric', month: 'short', timeZone: 'Europe/Brussels' });
 function fmtSize(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return '';
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}${NB}Ko`;
+  if (bytes < 1024 * 1024) return `${bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0}${NB}Ko`;
   return `${num1.format(bytes / 1048576)}${NB}Mo`;
 }
-function fmtDate(value) {
+function fmtDate(value, fmt = dateFmt) {
   const t = Date.parse(value || '');
-  return Number.isFinite(t) ? dateFmt.format(t) : (value || '');
+  if (!Number.isFinite(t)) return value || '';
+  // date seule (AAAA-MM-JJ, actualités) : lue comme minuit UTC, affichée en UTC pour garder le jour écrit
+  if (fmt === dateFmt && /^\d{4}-\d{2}-\d{2}$/.test(value)) return dateSeuleFmt.format(t);
+  return fmt.format(t);
 }
 function fmtEta(sec) {
   if (!Number.isFinite(sec) || sec <= 0) return '';
   if (sec < 60) return `environ ${Math.max(1, Math.round(sec))}${NB}s`;
   return `environ ${Math.round(sec / 60)}${NB}min`;
+}
+/* « vérifié à l'instant », « il y a 5 min », « à 17:42 » le même jour, « le 1 nov. » un autre jour (Bruxelles, comme l'horloge) */
+function depuis(t) {
+  if (!Number.isFinite(t)) return '';
+  const s = (Date.now() - t) / 1000;
+  if (s < 45) return 'à l’instant';
+  if (s < 3570) return `il y a ${Math.round(s / 60)}${NB}min`;
+  const jour = jourFmt.format(t);
+  return jour === jourFmt.format(Date.now()) ? `à ${heureFmt.format(t)}` : `le ${jour}`;
 }
 function parseV(v) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || ''));
@@ -44,14 +63,21 @@ function describeSource(url) {
   }
   return { main: url || '—', sub: '' };
 }
+/* Élément construit (jamais d'innerHTML : textes reçus du manifeste, politique de sécurité sans style en ligne). */
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
 
 /* ------------------------------------------------- vitesse / ETA --- */
-const rate = { target: null, t: 0, bytes: 0, bps: 0 };
+const rate = { target: null, t: 0, bytes: 0, bps: 0, courbe: [] };
 function trackRate(p) {
   const now = performance.now();
   const key = `${p.phase}:${p.target}`;
   if (rate.target !== key || p.received < rate.bytes) {
-    Object.assign(rate, { target: key, t: now, bytes: p.received, bps: 0 });
+    Object.assign(rate, { target: key, t: now, bytes: p.received, bps: 0, courbe: [] });
     return;
   }
   const dt = (now - rate.t) / 1000;
@@ -60,6 +86,26 @@ function trackRate(p) {
   rate.bps = rate.bps ? rate.bps * 0.7 + inst * 0.3 : inst;
   rate.t = now;
   rate.bytes = p.received;
+  rate.courbe.push(inst);
+  if (rate.courbe.length > 40) rate.courbe.shift();
+}
+
+/* ------------------------------------------------------- navigation --- */
+const NOMS = { accueil: 'Accueil', actus: 'Actualités', maj: 'Mises à jour', installation: 'Installation', modtools: 'Mod Tools', reglages: 'Paramètres' };
+let section = 'accueil';
+function aller(s) {
+  if (!NOMS[s]) return;
+  section = s;
+  for (const b of document.querySelectorAll('.d-nav button')) {
+    if (b.dataset.section === s) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  }
+  for (const p of document.querySelectorAll('.d-page')) p.hidden = p.dataset.page !== s;
+  $('d-fil').textContent = NOMS[s];
+  fermerLecture();
+  $('d-contenu').scrollTop = 0;
+  if (s === 'accueil') requestAnimationFrame(placer);
+  majVeille();
+  majFond();
 }
 
 /* ------------------------------------------------------------- état --- */
@@ -67,361 +113,529 @@ let current = null;
 let mainAction = null;
 let linkActions = [null, null];
 let pending = false;
+const OCCUPE = ['checking', 'downloading', 'installing', 'restarting', 'playing', 'starting'];
 
-function setLink(i, label, action) {
-  const el = $(i === 0 ? 'link-a' : 'link-b');
-  el.hidden = !label;
-  el.textContent = label || '';
-  linkActions[i] = action || null;
-}
-function setMain(label, { kind = 'play', disabled = false, action = null, progress = null } = {}) {
-  const b = $('btn-main');
-  $('btn-main-label').textContent = label;
-  b.dataset.kind = kind;
-  b.disabled = disabled || pending;
-  b.style.setProperty('--p', progress == null ? 0 : Math.max(0, Math.min(100, progress)));
-  mainAction = action;
-}
-function setProgress(value) {
-  const box = $('progress'), bar = $('progress-bar');
-  if (value === null || value === undefined) { box.hidden = true; return; }
-  box.hidden = false;
-  box.classList.toggle('indeterminate', value === 'indeterminate');
-  if (value !== 'indeterminate') bar.style.width = `${Math.max(0, Math.min(100, value))}%`;
-}
-
-function render(s) {
-  current = s;
-  pending = false;
+const hasUpdateOf = (s) => !!(s.installed && s.remote && !s.remote.cached && newer(s.remote.version, s.installed.version));
+/* notes publiées de la version installée (historique) : elles passent avant la note « Version livrée avec le
+   launcher » d'un jeu installé depuis l'installateur */
+function notesInstallees(s) {
   const inst = s.installed;
-  const rem = s.remote;
-  const err = s.error;
-  const hasUpdate = !!(inst && rem && !rem.cached && newer(rem.version, inst.version));
-  let tone = 'idle', title = '', detail = '';
-  setLink(0, null); setLink(1, null);
-  setProgress(null);
+  if (!inst) return [];
+  const published = (s.history || []).find((e) => e.version === inst.version && e.notes.length);
+  return published ? published.notes : (inst.notes || []);
+}
 
+/* Bouton principal, ligne d'état et liens selon la phase : les règles du launcher 1.3.3. */
+function etatDe(s) {
+  const inst = s.installed, rem = s.remote, err = s.error;
+  const v = inst ? inst.version : '—';
+  const r = { ton: 'neutre', titre: '', detail: '', liens: [], principal: { libelle: 'Jouer', sous: '', type: 'jouer', actif: false, action: null, pct: 0 } };
+  const jouer = () => window.zs.play();
+  const P = r.principal;
+  const pret = () => { P.actif = true; P.action = jouer; P.sous = `Déploiement · jeu ${v}`; };
   switch (s.phase) {
     case 'starting':
-      title = 'Ouverture du bunker…';
-      setMain('Jouer', { disabled: true });
+      r.titre = 'Ouverture du bunker…';
+      P.sous = 'Ouverture du bunker…';
       break;
     case 'checking':
-      tone = 'busy'; title = 'Vérification';
-      detail = 'Recherche de mises à jour…';
-      setProgress('indeterminate');
-      if (inst) setMain('Jouer', { action: () => window.zs.play() });
-      else setMain('Jouer', { disabled: true });
+      r.ton = 'occupe'; r.titre = 'Vérification';
+      r.detail = 'Recherche de mises à jour…';
+      if (inst) pret(); else P.sous = 'Recherche de mises à jour…';
       break;
     case 'ready':
-      tone = 'ok'; title = 'Prêt';
-      detail = inst ? `Version ${inst.version} installée · à jour` : '';
-      setMain('Jouer', { action: () => window.zs.play() });
+      r.ton = 'ok'; r.titre = 'Prêt';
+      r.detail = inst ? `Version ${inst.version} installée · à jour` : '';
+      pret();
       break;
     case 'update':
-      tone = 'update'; title = 'Mise à jour disponible';
-      detail = rem ? `Version ${inst ? inst.version : '—'} → ${rem.version}${rem.size ? ` · ${fmtSize(rem.size)}` : ''}` : '';
-      setMain('Mettre à jour', { kind: 'update', action: () => window.zs.install() });
-      if (inst) setLink(0, `Jouer à la ${inst.version}`, () => window.zs.play());
+      r.ton = 'maj'; r.titre = 'Mise à jour disponible';
+      r.detail = rem ? `Version ${v} → ${rem.version}${rem.size ? ` · ${fmtSize(rem.size)}` : ''}` : '';
+      Object.assign(P, { libelle: 'Mettre à jour', type: 'maj', actif: true, action: () => window.zs.install(), sous: rem ? `Vers la ${rem.version}` : '' });
+      if (inst) r.liens.push([`Jouer à la ${inst.version}`, jouer]);
       break;
     case 'downloading': {
       const p = s.progress || { received: 0, total: 0 };
       const launcher = p.phase === 'launcher';
-      tone = 'busy'; title = launcher ? 'Téléchargement du launcher' : 'Téléchargement';
+      r.ton = 'occupe'; r.titre = launcher ? 'Téléchargement du launcher' : 'Téléchargement';
       trackRate(p);
       const pct = p.total ? (p.received / p.total) * 100 : 0;
       const parts = [`${fmtSize(p.received)} sur ${fmtSize(p.total)}`];
       if (rate.bps > 0) parts.push(`${fmtSize(rate.bps)}/s`, fmtEta((p.total - p.received) / rate.bps));
-      detail = parts.filter(Boolean).join(' · ');
-      setProgress(pct);
-      setMain(`${Math.floor(pct)}${NB}%`, { kind: 'progress', disabled: true, progress: pct });
-      setLink(0, 'Annuler', () => window.zs.cancel());
+      r.detail = parts.filter(Boolean).join(' · ');
+      Object.assign(P, { libelle: `${Math.floor(pct)}${NB}%`, type: 'progres', pct, sous: p.target ? (launcher ? `Launcher ${p.target}` : `Vers la ${p.target}`) : '' });
+      r.liens.push(['Annuler', () => window.zs.cancel()]);
       break;
     }
     case 'installing':
-      tone = 'busy'; title = 'Installation';
-      detail = s.progress && s.progress.target ? `Version ${s.progress.target} : vérification et extraction…` : 'Remise en état du jeu…';
-      setProgress('indeterminate');
-      setMain('Installation', { kind: 'progress', disabled: true, progress: 100 });
+      r.ton = 'occupe'; r.titre = 'Installation';
+      r.detail = s.progress && s.progress.target ? `Version ${s.progress.target} : vérification et extraction…` : 'Remise en état du jeu…';
+      Object.assign(P, { libelle: 'Installation', type: 'progres', pct: 100, sous: s.progress && s.progress.target ? `Version ${s.progress.target}` : 'Remise en état' });
       break;
     case 'restarting':
-      tone = 'busy'; title = 'Redémarrage';
-      detail = 'Installation du nouveau launcher…';
-      setProgress('indeterminate');
-      setMain('Redémarrage', { disabled: true });
+      r.ton = 'occupe'; r.titre = 'Redémarrage';
+      r.detail = 'Installation du nouveau launcher…';
+      Object.assign(P, { libelle: 'Redémarrage', type: 'progres', pct: 100, sous: 'Nouveau launcher' });
       break;
     case 'playing':
-      tone = 'ok'; title = 'Partie en cours';
-      detail = inst ? `Version ${inst.version}` : '';
-      setMain('En jeu', { disabled: true });
+      r.ton = 'ok'; r.titre = 'Partie en cours';
+      r.detail = inst ? `Version ${inst.version}` : '';
+      Object.assign(P, { libelle: 'En jeu', type: 'partie', sous: 'Partie en cours' });
       break;
     case 'offline':
       if (err && err.code === 'NOT_CONFIGURED') {
-        title = 'Mises à jour inactives';
-        detail = `Adresse de publication provisoire · version ${inst ? inst.version : '—'} jouable`;
+        r.titre = 'Mises à jour inactives';
+        r.detail = `Adresse de publication provisoire · version ${v} jouable`;
       } else {
-        title = 'Hors ligne';
-        detail = `${err ? err.message : 'Serveur de mises à jour injoignable.'} Version ${inst ? inst.version : '—'} jouable.`;
-        setLink(0, 'Réessayer', () => window.zs.check());
+        r.titre = 'Hors ligne';
+        r.detail = `${err ? err.message : 'Serveur de mises à jour injoignable.'} Version ${v} jouable.`;
+        r.liens.push(['Réessayer', () => window.zs.check()]);
       }
-      setMain('Jouer', { disabled: !inst, action: () => window.zs.play() });
+      if (inst) pret();
       break;
     case 'error':
     default: {
-      tone = 'error'; title = 'Erreur';
-      detail = err ? err.message : 'Erreur inconnue.';
+      r.ton = 'erreur'; r.titre = 'Erreur';
+      r.detail = err ? err.message : 'Erreur inconnue.';
       if (inst) {
-        setMain('Jouer', { action: () => window.zs.play() });
+        pret();
         const ctx = err && err.context;
-        if (ctx === 'install') setLink(0, 'Réessayer', () => window.zs.install());
-        else if (ctx === 'launcher') setLink(0, 'Réessayer', () => window.zs.updateLauncher());
-        else if (ctx === 'check') setLink(0, 'Réessayer', () => window.zs.check());
+        if (ctx === 'install') r.liens.push(['Réessayer', () => window.zs.install()]);
+        else if (ctx === 'launcher') r.liens.push(['Réessayer', () => window.zs.updateLauncher()]);
+        else if (ctx === 'check') r.liens.push(['Réessayer', () => window.zs.check()]);
       } else {
-        setMain('Réparer', { kind: 'repair', action: () => window.zs.repair() });
+        Object.assign(P, { libelle: 'Réparer', type: 'maj', actif: true, action: () => window.zs.repair(), sous: 'Remise en état du jeu' });
       }
-      setLink(1, 'Ouvrir le journal', () => window.zs.open('logs'));
+      r.liens.push(['Ouvrir le journal', () => window.zs.open('logs')]);
     }
   }
-
-  const st = $('status');
-  st.dataset.tone = tone;
-  $('status-title').textContent = title;
-  $('status-detail').textContent = detail;
-  $('status-detail').title = detail;
-
-  // versions
-  $('chip-game').textContent = inst ? `Jeu ${inst.version}` : 'Jeu non installé';
-  $('chip-launcher').textContent = `Launcher ${s.launcherVersion}`;
-  $('chip-game').classList.toggle('hot', hasUpdate);
-  if (hasUpdate) $('chip-game').textContent = `Jeu ${inst.version} → ${rem.version}`;
-
-  $('btn-modtools').hidden = !s.author;
-  $('btn-modtools').disabled = !inst || ['downloading', 'installing', 'restarting'].includes(s.phase);
-
-  renderNotes(s, hasUpdate);
-  renderNews(s.news || []);
-  renderBanner(s);
-  renderDrawer(s);
+  return r;
 }
 
-function renderNotes(s, hasUpdate) {
+function render(s) {
+  pending = false;
+  dessiner(s);
+}
+function dessiner(s) {
+  current = s;
   const inst = s.installed, rem = s.remote;
-  const list = $('notes-list');
-  list.textContent = '';
-  const add = (text, cls) => { const li = document.createElement('li'); li.textContent = cls ? text : cleanNote(text); if (cls) li.className = cls; list.append(li); };
-  const heading = (text) => { const h = document.createElement('h4'); h.textContent = text; list.append(h); };
-  // notes publiées de la version installée (historique) : elles passent avant la note
-  // « Version livrée avec le launcher » d'un jeu installé depuis l'installateur
-  const published = inst && (s.history || []).find((e) => e.version === inst.version && e.notes.length);
-  const instNotes = published ? published.notes : (inst && inst.notes) || [];
-  if (hasUpdate) {
-    $('notes-stamp').textContent = `v${rem.version}`;
-    $('notes-meta').textContent = `Nouvelle version${rem.date ? ` du ${fmtDate(rem.date)}` : ''} · installée${NB}: ${inst.version}`;
-    (rem.notes && rem.notes.length ? rem.notes : ['Aucune note pour cette version.']).forEach((n) => add(n));
-    if (instNotes.length) {
-      heading(`Version ${inst.version}`);
-      instNotes.forEach((n) => add(n));
-    }
-  } else if (inst) {
-    $('notes-stamp').textContent = `v${inst.version}`;
-    $('notes-meta').textContent = `Version installée${inst.installedAt ? ` le ${fmtDate(inst.installedAt)}` : ''}`;
-    if (instNotes.length) instNotes.forEach((n) => add(n));
-    else add('Aucune note pour cette version.', 'empty');
-  } else {
-    $('notes-stamp').textContent = '—';
-    $('notes-meta').textContent = 'Aucune version installée';
-    add('Le jeu sera installé dès que le serveur de mises à jour sera joignable.', 'empty');
+  const hasUpdate = hasUpdateOf(s);
+  const busy = OCCUPE.includes(s.phase);
+  const st = etatDe(s);
+
+  // bouton principal
+  const P = st.principal, b = $('btn-main');
+  $('btn-main-label').textContent = P.libelle;
+  $('d-jouer-sous').textContent = P.sous;
+  b.dataset.type = P.type;
+  b.disabled = !P.actif || pending;
+  mainAction = P.actif ? P.action : null;
+  $('d-jouer-rempli').style.width = P.type === 'progres' ? `${Math.max(0, Math.min(100, P.pct))}%` : '0';
+
+  // ligne d'état et liens
+  $('d-statut').dataset.ton = st.ton;
+  $('status-title').textContent = st.titre;
+  $('status-detail').textContent = st.detail;
+  $('status-detail').title = st.detail;
+  for (let i = 0; i < 2; i++) {
+    const l = $(i === 0 ? 'link-a' : 'link-b'), x = st.liens[i];
+    l.hidden = !x;
+    l.textContent = x ? x[0] : '';
+    linkActions[i] = x ? x[1] : null;
   }
-  // la fiche ouvre l'historique de toutes les versions publiées
-  const count = (s.history || []).length;
-  const d = $('dossier');
-  d.classList.toggle('clickable', count > 0);
-  $('notes-more').hidden = count === 0;
-  $('notes-count').textContent = plural(count, 'version');
-  if (count > 0) { d.setAttribute('role', 'button'); d.tabIndex = 0; } else { d.removeAttribute('role'); d.removeAttribute('tabindex'); }
-  if (hist.open) renderHistory(false);
+
+  // accueil : la version et ses notes (la nouvelle quand une mise à jour attend)
+  $('d-mission-v').textContent = !inst ? 'Jeu non installé' : hasUpdate ? `Jeu ${inst.version} → ${rem.version}` : `Jeu ${inst.version}`;
+  const notes = (hasUpdate ? rem.notes || [] : notesInstallees(s)).map(cleanNote).filter((n) => n.trim());
+  $('d-mission-t').textContent = notes[0] || '';
+  $('d-mission-t').title = notes[0] || '';
+  $('d-hero-desc').textContent = notes.slice(1).reduce((a, n) => (a ? a + (/[,;:]$/.test(a) ? ' ' : ' · ') + n : n), '');
+  $('btn-modtools').hidden = !s.author;
+  const modtoolsOff = !inst || ['downloading', 'installing', 'restarting'].includes(s.phase);
+  $('btn-modtools').disabled = modtoolsOff;
+
+  // barre latérale : état, plaques, entrées
+  $('d-etat').dataset.ton = st.ton;
+  $('d-etat-titre').textContent = st.titre;
+  $('d-etat-detail').textContent = s.phase === 'downloading' ? st.principal.libelle + (rate.bps > 0 ? ` · ${fmtSize(rate.bps)}/s` : '')
+    : inst ? (s.checkedAt ? `vérifié ${depuis(s.checkedAt)}` : `jeu ${inst.version}`) : 'jeu non installé';
+  $('d-v-jeu').textContent = inst ? inst.version : '—';
+  $('d-v-jeu-sous').textContent = hasUpdate ? `${rem.version} disponible` : inst ? 'installé' : 'non installé';
+  $('d-v-launcher').textContent = s.launcherVersion || '—';
+  $('d-point-maj').hidden = !hasUpdate;
+  $('d-nav-modtools').hidden = !s.author;
+  $('d-verrou').hidden = !!s.author;
+  if (!s.author && section === 'modtools') aller('accueil');
+  const notif = (hasUpdate ? 1 : 0) + (s.launcherUpdate ? 1 : 0);
+  $('d-cloche-n').hidden = !notif;
+  $('d-cloche-n').textContent = String(notif);
+  $('d-cloche').title = notif ? `Notifications : ${plural(notif, 'nouvelle')}` : 'Notifications';
+  $('d-cloche').setAttribute('aria-label', $('d-cloche').title);
+  const navMaj = $('d-point-maj').parentElement;
+  if (hasUpdate) navMaj.setAttribute('aria-label', `Mises à jour : version ${rem.version} disponible`);
+  else navMaj.removeAttribute('aria-label');
+
+  // bandeau du nouveau launcher
+  const bandeau = !!s.launcherUpdate && !['downloading', 'installing', 'restarting', 'playing'].includes(s.phase);
+  $('d-bandeau').hidden = !bandeau;
+  if (bandeau) {
+    $('d-bandeau-v').textContent = s.launcherUpdate.version;
+    $('d-bandeau-btn').disabled = s.phase === 'checking';
+    $('d-bandeau').title = (s.launcherUpdate.notes || []).join('\n');
+  }
+
+  // fenêtre (taille et boutons : processus principal)
+  const fen = s.windowState, agrandie = !!(fen && fen.maximized);
+  $('d-agrandir').hidden = !fen;
+  $('d-agrandir').title = agrandie ? 'Restaurer' : 'Agrandir';
+  $('d-agrandir').setAttribute('aria-label', $('d-agrandir').title);
+  fenetre.classList.toggle('agrandie', agrandie);
+
+  dessinerTelechargement(s, st);
+  dessinerActus(s.news || []);
+  dessinerMaj(s, hasUpdate, busy);
+  dessinerInstallation(s, busy);
+  dessinerReglages(s, busy);
+
+  // boutons d'action des pages (mêmes règles que les réglages du launcher 1.3.3)
+  for (const x of document.querySelectorAll('[data-act]')) {
+    const a = x.dataset.act;
+    if (a === 'check' || a === 'repair' || a === 'rollback' || a === 'sourceOfficielle') x.disabled = busy;
+    else if (a === 'install') x.disabled = busy || !hasUpdate;
+    else if (a === 'dossier') x.disabled = !inst;
+    else if (a === 'modtools') x.disabled = modtoolsOff;
+  }
+  $('d-mod-moteur').textContent = inst ? `celui du jeu installé (${inst.version})` : 'aucun jeu installé';
+
+  // écran d'ouverture et veille
+  if (s.source && s.source.keyFingerprint) $('d-ouv-cle').textContent = s.source.keyFingerprint;
+  if (s.phase !== 'starting') ouverture.pret = true;
+  finOuverture();
+  majVeille();
+  majFond();
+}
+/* Pendant une partie, l'accueil se met en veille ; les autres pages (Paramètres, Installation, Mod Tools) restent
+   utilisables, comme dans le launcher 1.3.3 quand « Garder le launcher ouvert » est coché. */
+function majVeille() { $('d-veille').hidden = !(current && current.phase === 'playing' && section === 'accueil'); }
+
+/* -------------------------------------- gestionnaire de téléchargement --- */
+function dessinerTelechargement(s, st) {
+  const dl = ['downloading', 'installing', 'restarting'].includes(s.phase);
+  $('d-dl').hidden = !dl;
+  if (!dl) return;
+  const p = s.progress || {}, att = s.phase !== 'downloading';
+  const lu = s.launcherUpdate;
+  $('d-dl-titre').textContent = s.phase === 'restarting' || p.phase === 'launcher' ? `Launcher ${p.target || (lu && lu.version) || ''}`.trim()
+    : p.target ? `Zombie Survival ${p.target}` : s.phase === 'installing' ? 'Réparation de Zombie Survival' : 'Zombie Survival';
+  $('d-dl-detail').textContent = st.detail;
+  const bande = $('d-bande'), n = bande.children.length;
+  const pct = !att && p.total ? p.received / p.total : 0;
+  const on = att ? 0 : Math.round(pct * n);
+  bande.classList.toggle('attente', att);
+  [...bande.children].forEach((c, k) => c.classList.toggle('on', k < on));
+  $('d-dl-pct').textContent = att ? '' : `${Math.floor(pct * 100)}${NB}%`;
+  $('d-dl-annuler').hidden = att;
+  // courbe du débit : les 40 dernières mesures, étalées sur toute la largeur dès la deuxième
+  const c = att ? [] : rate.courbe, max = Math.max(1, ...c);
+  $('d-dl-poly').setAttribute('points', c.map((x, i) => `${((i / Math.max(1, c.length - 1)) * 120).toFixed(1)},${(30 - (x / max) * 26).toFixed(1)}`).join(' '));
+  $('d-dl-courbe').classList.toggle('vide', c.length < 2);
 }
 
-/* ------------------------------------------ historique des mises à jour --- */
-const hist = { open: false, sel: null, key: '' };
-const historyEntries = () => (current && current.history) || [];
-function badgeOf(version) {
-  const inst = current && current.installed, rem = current && current.remote;
-  if (inst && version === inst.version) return { cls: 'installed', text: 'Installée' };
-  if (inst && rem && !rem.cached && version === rem.version && newer(rem.version, inst.version)) return { cls: 'new', text: 'Nouvelle' };
-  return null;
+/* ---------------------------------------------------------- actualités --- */
+/* Pas d'image publiée avec les communiqués : une illustration par défaut, choisie d'après le sujet. */
+const IMAGES = { bunker: 'assets/bg.jpg', khamsin: 'assets/khamsin.svg', ombre: 'assets/ombre.svg' };
+function sujetDe(n) {
+  const t = `${n.title || ''} ${n.text || ''}`.toLowerCase();
+  if (/khamsin|désert|desert|pyramide|khépesh|khepesh|jeep|tempête|egypt|égypt/.test(t)) return 'khamsin';
+  if (/ombre éternelle|ombre eternelle|lune|lunaire|oxygène|gravité/.test(t)) return 'ombre';
+  return 'bunker';
 }
-function openHistory() {
-  const list = historyEntries();
-  if (!list.length || hist.open) return;
-  if ($('drawer').classList.contains('open')) openDrawer(false, false);
-  const inst = current && current.installed;
-  hist.sel = inst && list.some((e) => e.version === inst.version) ? inst.version : list[0].version;
-  hist.open = true;
-  hist.key = '';
-  $('history').hidden = false;
-  $('veil').hidden = false;
-  $('content').inert = true;
-  $('dock').inert = true;
-  renderHistory(false);
-  const b = $('history-list').querySelector('[aria-selected="true"]');
-  if (b) { b.focus(); b.scrollIntoView({ block: 'nearest' }); }
+function duo(sujet) {
+  const d = el('div', 'd-duo');
+  const img = el('img');
+  img.alt = '';
+  img.src = IMAGES[sujet];
+  img.dataset.sujet = sujet;
+  d.append(img);
+  return d;
 }
-function closeHistory() {
-  if (!hist.open) return;
-  hist.open = false;
-  $('history').hidden = true;
-  $('veil').hidden = true;
-  $('content').inert = false;
-  $('dock').inert = false;
-  $('dossier').focus();
+function carteActu(n, i, compacte) {
+  const b = el('button', 'd-actu');
+  b.type = 'button';
+  b.dataset.actu = String(i);
+  const im = el('div', 'd-actu-img');
+  im.append(duo(sujetDe(n)));
+  const corps = el('div', 'd-actu-corps');
+  corps.append(el('b', '', n.title || ''));
+  if (n.date) corps.append(el('small', '', fmtDate(n.date)));
+  if (!compacte && n.text) corps.append(el('p', '', n.text));
+  b.append(im, corps);
+  b.addEventListener('click', () => lire(i));
+  return b;
 }
-/* Liste des versions (reconstruite seulement si les versions ou leurs états changent : l'état du
-   launcher est renvoyé plusieurs fois par seconde pendant un téléchargement). */
-function renderHistory(swap) {
-  const list = historyEntries();
-  if (!list.some((e) => e.version === hist.sel)) hist.sel = list.length ? list[0].version : null;
-  const key = JSON.stringify([list, list.map((e) => badgeOf(e.version)), hist.sel]);
-  if (key === hist.key) return;
-  hist.key = key;
-  const hadFocus = $('history-list').contains(document.activeElement);
-  $('history-count').textContent = plural(list.length, 'version');
-  const ol = $('history-list');
-  ol.textContent = '';
-  for (const e of list) {
-    const li = document.createElement('li');
-    const b = document.createElement('button');
+let actusCle = null, actus = [];
+function dessinerActus(news) {
+  const cle = JSON.stringify(news);
+  if (cle === actusCle) return;
+  actusCle = cle;
+  actus = news;
+  $('d-mini-actus').replaceChildren(...news.slice(0, 3).map((n, i) => carteActu(n, i, true)));
+  $('d-grille-actus').replaceChildren(...news.map((n, i) => carteActu(n, i, false)));
+  $('d-mini-vide').hidden = news.length > 0;
+  $('d-actus-vide').hidden = news.length > 0;
+  if (!$('d-lecture').hidden) fermerLecture();
+}
+function lire(i) {
+  const n = actus[i];
+  if (!n) return;
+  const meta = [`Transmission ${String(i + 1).padStart(2, '0')}`];
+  if (n.date) meta.push(fmtDate(n.date));
+  const photo = el('div', 'd-photo');
+  photo.append(duo(sujetDe(n)));
+  const corps = [el('p', 'd-meta', meta.join(' · ')), el('h2', '', n.title || ''), photo];
+  if (n.text) corps.push(el('p', '', n.text));
+  $('d-lecture-corps').replaceChildren(...corps);
+  if (!$('d-lecture').contains(document.activeElement)) ouvreur = document.activeElement;
+  $('d-lecture').hidden = false;
+  $('d-lecture-fermer').focus();
+}
+// à la fermeture, le focus clavier revient à la carte qui a ouvert la lecture (s'il était dans le panneau)
+let ouvreur = null;
+function fermerLecture() {
+  const l = $('d-lecture'), rendre = !l.hidden && l.contains(document.activeElement);
+  l.hidden = true;
+  if (rendre && ouvreur && ouvreur.isConnected) ouvreur.focus();
+}
+
+/* ------------------------------------------------------------ cartes --- */
+const CARTES = [
+  { id: 'bunker7', sujet: 'bunker', nom: 'Bunker 7', genre: 'Carte à grille', lieu: 'Bunker militaire',
+    texte: 'Salles, couloirs et abords : 22 bâtiments abandonnés, des zombies propres à chaque pièce, le Glas.' },
+  { id: 'khamsin', sujet: 'khamsin', nom: 'Khamsin', genre: 'Monde ouvert', lieu: 'Désert égyptien',
+    texte: 'Le plateau des pyramides, cerné par une tempête permanente et mortelle ; trois jeeps d’archéologie.' },
+  { id: 'ombre', sujet: 'ombre', nom: 'Ombre éternelle', genre: 'Monde ouvert', lieu: 'Lune',
+    texte: 'Une mine de glace en gradins, une gravité de 1/6 g, l’oxygène compté.' },
+];
+function dessinerCartes() {
+  $('d-zones').replaceChildren(...CARTES.map((c, i) => {
+    const li = el('li'), b = el('button');
     b.type = 'button';
-    b.className = 'hl-item';
-    b.setAttribute('role', 'option');
-    b.dataset.version = e.version;
-    const v = document.createElement('span'); v.className = 'hl-v'; v.textContent = `v${e.version}`;
-    b.append(v);
-    const badge = badgeOf(e.version);
-    if (badge) { const t = document.createElement('span'); t.className = `hl-badge ${badge.cls}`; t.textContent = badge.text; b.append(t); }
-    const d = document.createElement('span'); d.className = 'hl-date';
-    d.textContent = `${e.date ? fmtDate(e.date) : 'Date inconnue'} · ${plural(e.notes.length, 'note')}`;
-    b.append(d);
+    b.dataset.carte = c.id;
+    const img = el('img');
+    img.alt = '';
+    img.src = IMAGES[c.sujet];
+    img.dataset.sujet = c.sujet;
+    const t = el('span');
+    t.append(el('small', '', `Zone ${i + 1} · ${c.lieu}`), el('b', '', c.nom), el('span', '', c.genre));
+    b.append(img, t);
+    b.addEventListener('click', () => toast(c.nom, `${c.texte} La carte se choisit dans le menu Jouer du jeu.`));
     li.append(b);
-    ol.append(li);
-  }
-  markSelected(hadFocus);
-  renderSheet(swap);
-}
-function markSelected(focus) {
-  for (const b of $('history-list').querySelectorAll('.hl-item')) {
-    const on = b.dataset.version === hist.sel;
-    b.setAttribute('aria-selected', String(on));
-    b.tabIndex = on ? 0 : -1;
-    if (on && focus) { b.focus(); b.scrollIntoView({ block: 'nearest' }); }
-  }
-}
-function renderSheet(swap) {
-  const e = historyEntries().find((x) => x.version === hist.sel);
-  const ul = $('hs-notes');
-  ul.textContent = '';
-  if (!e) return;
-  $('hs-stamp').textContent = `v${e.version}`;
-  const badge = badgeOf(e.version);
-  const parts = [e.date ? `Publiée le ${fmtDate(e.date)}` : 'Date de publication inconnue'];
-  if (badge) parts.push(badge.cls === 'installed' ? 'version installée' : 'pas encore installée');
-  $('hs-meta').textContent = parts.join(' · ');
-  const add = (text, cls) => { const li = document.createElement('li'); li.textContent = text; if (cls) li.className = cls; ul.append(li); };
-  if (e.notes.length) e.notes.forEach((n) => add(cleanNote(n)));
-  else add('Aucune note pour cette version.', 'empty');
-  ul.scrollTop = 0;
-  if (swap) {
-    const sheet = $('history-sheet');
-    sheet.classList.remove('swap');
-    void sheet.offsetWidth;
-    sheet.classList.add('swap');
-  }
-}
-function selectHistory(version, focus) {
-  if (!version) return;
-  const changed = version !== hist.sel;
-  hist.sel = version;
-  markSelected(focus);
-  if (changed) { hist.key = JSON.stringify([historyEntries(), historyEntries().map((e) => badgeOf(e.version)), hist.sel]); renderSheet(true); }
+    return li;
+  }));
 }
 
-function renderNews(news) {
-  const box = $('news'), list = $('news-list');
-  box.hidden = !news.length;
-  list.textContent = '';
-  for (const n of news.slice(0, 6)) {
-    const li = document.createElement('li');
-    if (n.date) { const t = document.createElement('time'); t.textContent = fmtDate(n.date); li.append(t); }
-    const strong = document.createElement('strong'); strong.textContent = n.title; li.append(strong);
-    if (n.text) { const p = document.createElement('p'); p.textContent = n.text; li.append(p); }
-    list.append(li);
+/* ------------------------------------------------------- mises à jour --- */
+const ouvertes = new Set();
+let chronoCle = null;
+function dessinerMaj(s, hasUpdate, busy) {
+  const inst = s.installed, rem = s.remote;
+  $('d-v-installee').textContent = inst ? inst.version : '—';
+  const sous = [];
+  if (inst && inst.installedAt) sous.push(`Installée le ${fmtDate(inst.installedAt)}`);
+  if (inst && s.checkedAt) sous.push(`vérifiée ${depuis(s.checkedAt)}`);
+  $('d-v-installee-sous').textContent = inst ? sous.join(' · ') : 'Jeu non installé';
+  const tampon = $('d-v-tampon');
+  const aJour = inst && rem && !rem.cached && !hasUpdate;
+  tampon.textContent = hasUpdate ? 'Mise à jour' : aJour ? 'À jour' : inst ? 'Installée' : 'Absent';
+  tampon.classList.toggle('ok', !hasUpdate && !!inst);
+  $('d-v-dispo').hidden = !hasUpdate;
+  if (hasUpdate) {
+    $('d-v-distante').textContent = rem.version;
+    const d = [];
+    if (rem.size) d.push(`${fmtSize(rem.size)} à télécharger`);
+    if (rem.date) d.push(`publiée le ${fmtDate(rem.date)}`);
+    $('d-v-distante-sous').textContent = d.join(' · ');
   }
+  dessinerChrono(s, hasUpdate);
+}
+/* Chronologie de toutes les versions publiées (reconstruite seulement si elle change : l'état est renvoyé
+   plusieurs fois par seconde pendant un téléchargement). */
+function dessinerChrono(s, hasUpdate) {
+  const list = s.history || [];
+  const inst = s.installed && s.installed.version, nouvelle = hasUpdate ? s.remote.version : null;
+  const cle = JSON.stringify([list, inst, nouvelle, [...ouvertes]]);
+  if (cle === chronoCle) return;
+  chronoCle = cle;
+  const focus = document.activeElement && $('d-chrono').contains(document.activeElement) ? document.activeElement.dataset.plus : null;
+  $('d-chrono').replaceChildren(...list.map((v) => {
+    const li = el('li');
+    li.dataset.version = v.version;
+    if (v.version === inst) li.classList.add('installee');
+    if (v.version === nouvelle) li.classList.add('nouvelle');
+    const h = el('header');
+    h.append(el('b', '', v.version), el('small', '', v.date ? fmtDate(v.date) : 'Date inconnue'));
+    if (v.version === inst) h.append(el('em', 'd-tampon', 'Installée'));
+    if (v.version === nouvelle) h.append(el('em', 'd-tampon ok', 'Nouvelle'));
+    const ul = el('ul');
+    const notes = v.notes || [];
+    const toutes = ouvertes.has(v.version) || notes.length <= 4;
+    const montrees = toutes ? notes : notes.slice(0, 3);
+    if (!notes.length) ul.append(el('li', 'vide', 'Aucune note pour cette version.'));
+    for (const n of montrees) ul.append(el('li', '', cleanNote(n)));
+    li.append(h, ul);
+    const reste = notes.length - montrees.length;
+    if (reste > 0) {
+      const plus = el('button', 'd-lien', `Voir les ${reste} autres notes`);
+      plus.type = 'button';
+      plus.dataset.plus = v.version;
+      plus.addEventListener('click', () => {
+        ouvertes.add(v.version);
+        dessinerChrono(current, hasUpdateOf(current));
+        const ligne = [...$('d-chrono').children].find((x) => x.dataset.version === v.version);
+        const premiere = ligne && ligne.querySelectorAll('ul li')[3];
+        if (premiere) { premiere.tabIndex = -1; premiere.focus(); }
+      });
+      li.append(plus);
+    }
+    return li;
+  }));
+  if (focus) { const b = $('d-chrono').querySelector(`[data-plus="${CSS.escape(focus)}"]`); if (b) b.focus(); }
 }
 
-function renderBanner(s) {
-  const show = !!s.launcherUpdate && !['downloading', 'installing', 'restarting', 'playing'].includes(s.phase);
-  $('launcher-banner').hidden = !show;
-  if (show) {
-    $('lu-version').textContent = s.launcherUpdate.version;
-    $('lu-install').disabled = s.phase === 'checking';
-    const notes = (s.launcherUpdate.notes || []).join('\n');
-    $('launcher-banner').title = notes;
+/* -------------------------------------------------------- installation --- */
+let chiffresCle = null;
+function dessinerInstallation(s, busy) {
+  const inst = s.installed, rem = s.remote;
+  const chiffres = [
+    [inst ? inst.version : '—', 'Version installée'],
+    [inst && inst.installedAt ? fmtDate(inst.installedAt, dateCourteFmt) : '—', 'Installée le'],
+    [inst && inst.previous ? inst.previous : 'aucune', 'Version précédente gardée'],
+    [rem && rem.size ? fmtSize(rem.size) : '—', rem ? `Paquet de la version ${rem.version}` : 'Paquet de la version en ligne'],
+  ];
+  const cle = JSON.stringify(chiffres);
+  if (cle !== chiffresCle) {
+    chiffresCle = cle;
+    $('d-chiffres').replaceChildren(...chiffres.map(([v, l]) => { const d = el('div', 'd-chiffre'); const b = el('b', '', v); b.title = v; d.append(b, el('span', '', l)); return d; }));
   }
+  $('d-sceau-cle').textContent = (s.source && s.source.keyFingerprint) || '—';
+  $('d-versions-ligne').textContent = !inst ? 'Aucune version installée.'
+    : inst.previous ? `Installée : ${inst.version} · précédente gardée : ${inst.previous} (retour possible).`
+      : `Installée : ${inst.version} · aucune version précédente gardée.`;
+  for (const x of document.querySelectorAll('[data-revenir]')) x.hidden = !(inst && inst.previous);
+  for (const x of document.querySelectorAll('[data-precedente]')) x.textContent = inst && inst.previous ? inst.previous : '';
 }
 
-function renderDrawer(s) {
+/* ---------------------------------------------------------- paramètres --- */
+function dessinerReglages(s, busy) {
   const set = s.settings || {};
-  for (const k of ['fullscreen', 'keepLauncherOpen', 'autoCheck', 'autoInstall']) {
-    const el = $(`set-${k}`);
-    if (el && document.activeElement !== el) el.checked = !!set[k];
+  for (const i of document.querySelectorAll('[data-reglage]')) {
+    const k = i.dataset.reglage;
+    // le fond animé est un réglage du launcher 1.4.0 : caché si le processus principal ne le connaît pas
+    if (k === 'fondAnime') i.closest('.d-carte').hidden = !Object.hasOwn(set, 'fondAnime');
+    if (document.activeElement !== i) i.checked = k === 'fondAnime' ? set[k] !== false : !!set[k];
   }
-  $('set-autoInstall').disabled = !set.autoCheck;
-  const busy = ['checking', 'downloading', 'installing', 'restarting', 'playing', 'starting'].includes(s.phase);
-  $('act-check').disabled = busy;
-  $('act-repair').disabled = busy;
-  const inst = s.installed;
-  const rb = $('act-rollback');
-  rb.hidden = !(inst && inst.previous);
-  rb.disabled = busy;
-  if (inst && inst.previous) rb.textContent = `Revenir à la ${inst.previous}`;
-  $('act-folder').disabled = !inst;
+  document.querySelector('[data-reglage="autoInstall"]').disabled = !set.autoCheck;
   const src = s.source || {};
   const desc = describeSource(src.url);
-  $('source-url').textContent = desc.main;
-  $('source-url').title = src.url || '';
-  $('source-sub').textContent = desc.sub;
-  $('source-sub').hidden = !desc.sub;
-  $('source-key').textContent = src.keyFingerprint || 'aucune';
-  $('source-custom').hidden = !src.custom;
-  $('source-reset-row').hidden = !src.custom;
-  $('act-reset-source').disabled = busy;
-  $('source-placeholder').hidden = !!src.configured || !!src.custom;
-  $('versions-line').textContent = `Launcher ${s.launcherVersion}${inst ? ` · jeu ${inst.version}` : ''}`;
+  $('d-source').textContent = desc.main;
+  $('d-source').title = src.url || '';
+  $('d-source-sous').textContent = desc.sub;
+  $('d-source-sous').hidden = !desc.sub;
+  $('d-cle').textContent = src.keyFingerprint || 'aucune';
+  $('d-source-test').hidden = !src.custom;
+  $('d-source-provisoire').hidden = !!src.configured || !!src.custom;
+  $('d-versions-pied').textContent = `Launcher ${s.launcherVersion}${s.installed ? ` · jeu ${s.installed.version}` : ''}`;
 }
 
-/* ---------------------------------------------------------- tiroir --- */
-function openDrawer(open, restoreFocus = true) {
-  if (open && hist.open) closeHistory();
-  const d = $('drawer');
-  d.classList.toggle('open', open);
-  d.inert = !open;
-  $('veil').hidden = !open;
-  $('content').inert = open;
-  $('btn-settings').setAttribute('aria-expanded', String(open));
-  if (open) setTimeout(() => $('drawer-close').focus(), 60);
-  else if (restoreFocus) $('btn-settings').focus();
+/* ----------------------------------------------------------- bulles --- */
+function toast(titre, texte, type) {
+  const box = $('d-bulles');
+  const b = el('div', `d-bulle${type === 'erreur' ? ' erreur' : ''}`);
+  b.setAttribute('role', 'status');
+  if (titre) b.append(el('b', '', titre));
+  b.append(el('span', '', texte));
+  box.append(b);
+  while (box.children.length > 3) box.firstElementChild.remove();
+  requestAnimationFrame(() => b.classList.add('visible'));
+  setTimeout(() => { b.classList.remove('visible'); setTimeout(() => b.remove(), 400); }, 6000);
 }
 
-/* ----------------------------------------------------------- toast --- */
-let toastTimer = 0;
-function toast(html) {
-  const t = $('toast');
-  t.textContent = '';
-  t.append(...html);
-  t.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 6000);
+/* ------------------------------------------- scène de Bunker 7 (lampe, poussière) --- */
+const hero = $('d-hero'), cv = $('d-poussiere'), cx = cv.getContext('2d');
+const lampe = { x: 0, y: 0, s: 1 };
+const reduire = matchMedia('(prefers-reduced-motion: reduce)');
+let grains = [], boucleId = 0, dernier = 0;
+function hasard(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function placer() {
+  const W = hero.clientWidth, H = hero.clientHeight;
+  if (!W || !H) return;
+  const iw = 2160, ih = 1320, sc = Math.max(W / iw, H / ih);         // object-fit: cover ; object-position: 62 % 45 %
+  lampe.x = (W - iw * sc) * 0.62 + 1107 * sc; lampe.y = (H - ih * sc) * 0.45 + 437 * sc; lampe.s = sc;
+  $('d-lampe').style.left = `${lampe.x}px`; $('d-lampe').style.top = `${lampe.y}px`;
+  const r = devicePixelRatio || 1;
+  cv.width = Math.round(W * r); cv.height = Math.round(H * r); cx.setTransform(r, 0, 0, r, 0, 0);
+  const h = hasard(7);
+  grains = Array.from({ length: 55 }, () => {
+    const t = h(), y = lampe.y + 10 + t * (H * 0.92 - lampe.y), demi = (y - lampe.y) * 0.6;
+    return { x: lampe.x + (h() * 2 - 1) * demi, y, vx: (h() - 0.5) * 0.1, vy: (h() - 0.35) * 0.07, r: 0.5 + h() * 1.5, a: 0.12 + h() * 0.4, ph: h() * 6.28 };
+  });
+  poussiere(performance.now());
 }
+function poussiere(t) {
+  const W = hero.clientWidth, H = hero.clientHeight;
+  cx.clearRect(0, 0, W, H);
+  const bas = H, g = cx.createLinearGradient(0, lampe.y, 0, bas);
+  g.addColorStop(0, 'rgba(255, 220, 160, .09)'); g.addColorStop(1, 'rgba(255, 220, 160, 0)');
+  cx.fillStyle = g; cx.beginPath(); cx.moveTo(lampe.x - 34 * lampe.s, lampe.y); cx.lineTo(lampe.x + 34 * lampe.s, lampe.y);
+  cx.lineTo(lampe.x + (bas - lampe.y) * 0.6, bas); cx.lineTo(lampe.x - (bas - lampe.y) * 0.6, bas); cx.closePath(); cx.fill();
+  for (const p of grains) {
+    const demi = Math.max(20, (p.y - lampe.y) * 0.6), dx = Math.abs(p.x - lampe.x) / demi;
+    const a = p.a * Math.max(0, 1 - dx) * (0.65 + 0.35 * Math.sin(t / 900 + p.ph));
+    if (a <= 0.01) continue;
+    cx.fillStyle = `rgba(255, 228, 185, ${a.toFixed(3)})`;
+    cx.beginPath(); cx.arc(p.x, p.y, p.r, 0, 6.283); cx.fill();
+  }
+}
+function boucle(t) {
+  boucleId = 0;
+  if (hero.dataset.anime !== 'oui') return;
+  if (t - dernier > 33) {
+    dernier = t;
+    const H = hero.clientHeight;
+    for (const p of grains) {
+      p.x += p.vx; p.y += p.vy;
+      const demi = (p.y - lampe.y) * 0.6;
+      if (p.y > H * 0.95 || p.y < lampe.y + 6 || Math.abs(p.x - lampe.x) > demi * 1.1) { p.y = lampe.y + 20 + Math.random() * (H * 0.7 - lampe.y); p.x = lampe.x + (Math.random() * 2 - 1) * (p.y - lampe.y) * 0.5; }
+    }
+    poussiere(t);
+  }
+  boucleId = requestAnimationFrame(boucle);
+}
+/* Le fond ne bouge que si on le voit : accueil, fenêtre visible et au premier plan (pas derrière les Mod Tools),
+   pas de partie en cours ; jamais avec le réglage « fond fixe » ni avec « réduire les animations » de Windows. */
+function majFond() {
+  const s = current || {};
+  const fixe = (s.settings && s.settings.fondAnime === false) || reduire.matches;
+  const visible = section === 'accueil' && !document.hidden && document.hasFocus() && s.phase !== 'playing';
+  const anime = visible && !fixe;
+  hero.classList.toggle('fond-fixe', fixe);
+  if ((hero.dataset.anime === 'oui') === anime) return;
+  hero.dataset.anime = anime ? 'oui' : 'non';
+  if (anime && !boucleId) boucleId = requestAnimationFrame(boucle);
+}
+new ResizeObserver(placer).observe(hero, { box: 'device-pixel-content-box' });
+
+/* ------------------------------------------------- écran d'ouverture --- */
+// une seconde au moins (les trois lignes s'écrivent), jusqu'au premier état ; jamais plus de 2,5 s
+const ouverture = { t0: performance.now(), pret: false, fini: false, apres: [] };
+function finOuverture(force) {
+  if (ouverture.fini || (!force && (!ouverture.pret || performance.now() - ouverture.t0 < 1000))) return;
+  ouverture.fini = true;
+  $('d-ouverture').classList.add('fini');
+  for (const f of ouverture.apres.splice(0)) f();
+}
+setTimeout(() => finOuverture(), 1050);
+setTimeout(() => finOuverture(true), 2500);
 
 /* ---------------------------------------------------------- actions --- */
 function guard(fn) {
@@ -429,9 +643,34 @@ function guard(fn) {
     try { await fn(); } catch (e) { console.error(e); }
   };
 }
+/* Le second clic d'un double-clic (event.detail = 2) ne relance pas l'action : le retour à la version précédente n'a
+   pas de phase occupée et se serait défait ; un lien d'état peut avoir changé sous le pointeur. Au clavier, detail = 0. */
+function unClic(fn) {
+  const g = guard(fn);
+  return (e) => { if (e.detail > 1) return; g(); };
+}
+async function ouvrirModtools() {
+  try { await window.zs.openModtools(); } catch (e) {
+    toast('Mod Tools', String(e && e.message ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), 'erreur');
+  }
+}
+const ACTIONS = {
+  check: () => window.zs.check(),
+  install: () => window.zs.install(),
+  repair: () => window.zs.repair(),
+  rollback: () => window.zs.rollback(),
+  dossier: () => window.zs.open('game'),
+  journal: () => window.zs.open('logs'),
+  publication: () => window.zs.openPublisher(),
+  modtools: ouvrirModtools,
+  sourceOfficielle: () => window.zs.resetSource(),
+  revenirPartie: () => window.zs.play(),
+};
 function bind() {
-  $('win-min').addEventListener('click', () => window.zs.windowAction('minimize'));
-  $('win-close').addEventListener('click', () => window.zs.windowAction('close'));
+  $('d-reduire').addEventListener('click', guard(() => window.zs.windowAction('minimize')));
+  $('d-fermer').addEventListener('click', guard(() => window.zs.windowAction('close')));
+  // agrandir ou restaurer : le processus principal renvoie ensuite l'état de la fenêtre (windowState)
+  $('d-agrandir').addEventListener('click', guard(() => window.zs.windowAction('maximize')));
   $('btn-main').addEventListener('click', guard(async () => {
     if (!mainAction || pending) return;
     const action = mainAction;
@@ -440,73 +679,49 @@ function bind() {
     setTimeout(() => { if (pending && current) render(current); }, 1500);
     await action();
   }));
-  $('link-a').addEventListener('click', guard(() => linkActions[0] && linkActions[0]()));
-  $('link-b').addEventListener('click', guard(() => linkActions[1] && linkActions[1]()));
-  $('lu-install').addEventListener('click', guard(() => window.zs.updateLauncher()));
-  $('btn-folder').addEventListener('click', guard(() => window.zs.open('game')));
-  $('btn-settings').addEventListener('click', () => openDrawer(!$('drawer').classList.contains('open')));
-  $('drawer-close').addEventListener('click', () => openDrawer(false));
-  $('veil').addEventListener('click', () => { if (hist.open) closeHistory(); else openDrawer(false); });
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (hist.open) closeHistory();
-    else if ($('drawer').classList.contains('open')) openDrawer(false);
+  $('link-a').addEventListener('click', unClic(() => linkActions[0] && linkActions[0]()));
+  $('link-b').addEventListener('click', unClic(() => linkActions[1] && linkActions[1]()));
+  $('btn-modtools').addEventListener('click', ouvrirModtools);
+  $('d-bandeau-btn').addEventListener('click', guard(() => window.zs.updateLauncher()));
+  $('d-dl-annuler').addEventListener('click', guard(() => window.zs.cancel()));
+  for (const b of document.querySelectorAll('[data-section]')) b.addEventListener('click', () => aller(b.dataset.section));
+  for (const b of document.querySelectorAll('[data-aller]')) b.addEventListener('click', () => aller(b.dataset.aller));
+  for (const b of document.querySelectorAll('[data-act]')) b.addEventListener('click', unClic(() => ACTIONS[b.dataset.act]()));
+  for (const i of document.querySelectorAll('[data-reglage]')) i.addEventListener('change', guard(() => window.zs.setSetting(i.dataset.reglage, i.checked)));
+  $('d-lecture-fermer').addEventListener('click', fermerLecture);
+  $('d-cloche').addEventListener('click', () => {
+    const s = current || {};
+    if (hasUpdateOf(s)) aller('maj');
+    else if (s.launcherUpdate) toast('Launcher', `Nouveau launcher ${s.launcherUpdate.version} disponible : le bandeau en haut le télécharge et l’installe, puis le launcher redémarre.`);
+    else toast('', 'Aucune notification.');
   });
-  // fiche des notes : ouvre l'historique (sauf clic sur la barre de défilement des notes)
-  $('dossier').addEventListener('click', (e) => {
-    const sc = $('notes-list');
-    if (e.target === sc && e.offsetX >= sc.clientWidth) return;
-    if ($('dossier').classList.contains('clickable')) openHistory();
-  });
-  $('dossier').addEventListener('keydown', (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && e.target === $('dossier') && $('dossier').classList.contains('clickable')) { e.preventDefault(); openHistory(); }
-  });
-  $('history-close').addEventListener('click', closeHistory);
-  $('history-list').addEventListener('click', (e) => {
-    const b = e.target.closest('.hl-item');
-    if (b) selectHistory(b.dataset.version, true);
-  });
-  $('history-list').addEventListener('keydown', (e) => {
-    const list = historyEntries();
-    const i = list.findIndex((x) => x.version === hist.sel);
-    let j = -1;
-    if (e.key === 'ArrowDown') j = Math.min(list.length - 1, i + 1);
-    else if (e.key === 'ArrowUp') j = Math.max(0, i - 1);
-    else if (e.key === 'Home') j = 0;
-    else if (e.key === 'End') j = list.length - 1;
-    else return;
-    e.preventDefault();
-    if (j >= 0) selectHistory(list[j].version, true);
-  });
-  for (const k of ['fullscreen', 'keepLauncherOpen', 'autoCheck', 'autoInstall']) {
-    $(`set-${k}`).addEventListener('change', guard(() => window.zs.setSetting(k, $(`set-${k}`).checked)));
-  }
-  $('act-check').addEventListener('click', guard(() => window.zs.check()));
-  $('act-repair').addEventListener('click', guard(() => window.zs.repair()));
-  $('act-rollback').addEventListener('click', guard(() => window.zs.rollback()));
-  $('act-folder').addEventListener('click', guard(() => window.zs.open('game')));
-  $('act-logs').addEventListener('click', guard(() => window.zs.open('logs')));
-  $('act-reset-source').addEventListener('click', guard(() => window.zs.resetSource()));
-  $('act-publisher').addEventListener('click', guard(() => window.zs.openPublisher()));
-  $('btn-modtools').addEventListener('click', async () => {
-    try { await window.zs.openModtools(); } catch (e) {
-      const b = document.createElement('b');
-      b.textContent = String(e && e.message ? e.message : e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-      toast([b]);
-    }
-  });
-  // Pas de menu contextuel ni de glisser-déposer de fichiers dans le launcher.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('d-lecture').hidden) fermerLecture(); });
+  document.addEventListener('visibilitychange', majFond);
+  addEventListener('focus', majFond);
+  addEventListener('blur', majFond);
+  reduire.addEventListener('change', majFond);
+  // Pas de glisser-déposer de fichiers dans le launcher.
   document.addEventListener('dragover', (e) => e.preventDefault());
   document.addEventListener('drop', (e) => e.preventDefault());
 }
 
+/* horloge de Bruxelles ; « vérifié il y a … » se met à jour sans attendre un nouvel état (pas pendant un
+   téléchargement : les états s'y suivent, et la vitesse ne se mesure que sur un état nouveau) */
+function horloge() { $('d-heure').textContent = heureFmt.format(Date.now()); }
+horloge();
+setInterval(horloge, 15000);
+setInterval(() => { if (current && current.phase !== 'downloading') dessiner(current); }, 30000);
+
+$('d-bande').replaceChildren(...Array.from({ length: 40 }, (_, i) => { const c = el('i'); c.style.setProperty('--i', String(i)); return c; }));
+dessinerCartes();
 bind();
+aller('accueil');
 window.zs.onStatus(render);
 window.zs.status().then((s) => {
   render(s);
+  // la bulle attend la fin de l'écran d'ouverture, qui la cacherait
   if (s.justUpdated) {
-    const b = document.createElement('b');
-    b.textContent = `Launcher mis à jour${NB}: version ${s.justUpdated}`;
-    toast([b]);
+    const bulle = () => toast('', `Launcher mis à jour${NB}: version ${s.justUpdated}`);
+    if (ouverture.fini) bulle(); else ouverture.apres.push(bulle);
   }
 }).catch((e) => console.error(e));

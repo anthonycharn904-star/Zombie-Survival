@@ -57,7 +57,7 @@ Demande d'Anthony du 31 octobre 2026 au soir : remplacer le fond de l'accueil (l
 - Badge « Maquette · fonctions simulées » dans la barre de titre de chaque direction.
 - Bulle « Simulation » à chaque action sans effet réel : lancer le jeu, ouvrir les Mod Tools, le dossier, le journal, enregistrer un réglage.
 - **Actualités** : exemples, marqués « Exemple ». Le vrai launcher reçoit les siennes, en titre, texte et date, avec chaque version publiée. Les images des actualités sont une proposition.
-- **Versions fictives** : la 2.0.7 et le launcher 1.4.0 des scénarios sont marqués « simulée ».
+- **Versions fictives** : la 2.0.7 et le launcher 1.4.0 des scénarios (numéro confirmé par Anthony le 2 novembre 2026) sont marqués « simulée ».
 - **Notes des versions 1.5.1 à 2.0.6** : résumés d'après le README, marqués « Exemple ». Celles des versions 1.0.2 à 1.5.0 sont les notes publiées (`launcher/config/notes-history.json`).
 - **Données réelles** (relevées le 31 octobre 2026) :
   - versions du jeu et du launcher ;
@@ -101,4 +101,4 @@ Les maquettes respectent déjà ces contraintes de l'intégration :
 - états et actions calqués sur l'interface `window.zs` du launcher (`status`, `check`, `install`, `cancel`, `play`, `repair`, `rollback`, `updateLauncher`, `openModtools`, `openPublisher`, `open`, `setSetting`) ;
 - barre de titre dessinée, la fenêtre étant sans bordure.
 
-Reste à faire à l'intégration : la politique de sécurité du launcher (`style-src 'self'`) interdit les styles en ligne. Les attributs `style` écrits par les maquettes passeront par des classes ou par le CSSOM.
+Fait au portage dans le launcher (2 novembre 2026, `docs/plan-integration-launcher.md` §9) : la politique de sécurité du launcher (`style-src 'self'`) interdit les styles en ligne ; les attributs `style` écrits par les maquettes passent par des classes ou par le CSSOM.

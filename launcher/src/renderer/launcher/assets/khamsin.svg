@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" preserveAspectRatio="xMidYMid slice">
+<!-- Khamsin : le plateau des pyramides sous la tempête. Dessin du launcher (pas une image du jeu). -->
+<defs><linearGradient id="c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a0a07"/><stop offset=".55" stop-color="#6b2410"/><stop offset="1" stop-color="#c2662a"/></linearGradient>
+<radialGradient id="s" cx=".68" cy=".42" r=".35"><stop offset="0" stop-color="#ffd9a0" stop-opacity=".85"/><stop offset=".25" stop-color="#ff9a4a" stop-opacity=".35"/><stop offset="1" stop-color="#ff9a4a" stop-opacity="0"/></radialGradient>
+<linearGradient id="d" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7a3a18"/><stop offset="1" stop-color="#2a0f07"/></linearGradient>
+<filter id="b"><feGaussianBlur stdDeviation="6"/></filter></defs>
+<rect width="640" height="360" fill="url(#c)"/><rect width="640" height="360" fill="url(#s)"/>
+<g filter="url(#b)" opacity=".5" fill="none" stroke="#f3c48a"><path d="M-20 120 C 120 90 260 150 420 110 S 640 120 680 90" stroke-width="10"/><path d="M-20 175 C 160 150 300 200 470 160 S 640 170 680 150" stroke-width="6"/></g>
+<polygon points="170,262 300,128 430,262" fill="#3a160b"/><polygon points="300,128 430,262 330,262" fill="#5a2410"/>
+<polygon points="370,262 470,160 570,262" fill="#30120a"/><polygon points="470,160 570,262 492,262" fill="#4d1f0e"/>
+<polygon points="60,262 130,196 200,262" fill="#2a1009"/><polygon points="130,196 200,262 145,262" fill="#43190c"/>
+<path d="M0 255 C 120 238 220 262 340 250 S 560 236 640 252 L640 360 L0 360 Z" fill="url(#d)"/>
+<g filter="url(#b)" opacity=".55" fill="none" stroke="#e9b27a"><path d="M-20 230 C 140 205 300 250 460 215 S 640 225 680 200" stroke-width="14"/><path d="M-20 300 C 150 280 320 310 500 285 S 640 290 680 280" stroke-width="9"/></g>
+</svg>

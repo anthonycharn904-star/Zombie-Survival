@@ -8,143 +8,209 @@
 <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
-<div class="bg" aria-hidden="true"></div>
-<div class="grain" aria-hidden="true"></div>
+<!-- Interface du launcher : la maquette D (validée par Anthony le 31 octobre 2026), branchée sur window.zs.
+     Les identifiants btn-main, status-title et btn-modtools sont lus par les essais de bout en bout : leur état de
+     départ (désactivé, « Ouverture du bunker… », caché) fait partie du contrat. -->
+<main class="fenetre d" id="fenetre">
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></symbol>
+    <symbol id="i-actus" viewBox="0 0 24 24"><path d="M4 5h11v14H6a2 2 0 0 1-2-2z"/><path d="M15 9h4v8a2 2 0 0 1-2 2h-2"/><path d="M7.5 9h4M7.5 12.5h4M7.5 16h2.5"/></symbol>
+    <symbol id="i-maj" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 20v-4h-4"/></symbol>
+    <symbol id="i-installation" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-modtools" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-cloche" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-dossier" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-cible" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></symbol>
+  </svg>
 
-<header class="titlebar">
-  <div class="brand"><img src="../../assets/icon.png" alt="" width="18" height="18"><span>Zombie Survival</span><em>Launcher</em></div>
-  <div class="win-buttons">
-    <button class="win" id="win-min" type="button" aria-label="Réduire" title="Réduire">
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M1.5 6h9"/></svg>
-    </button>
-    <button class="win close" id="win-close" type="button" aria-label="Fermer" title="Fermer">
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>
-    </button>
-  </div>
-</header>
-
-<div class="banner" id="launcher-banner" hidden>
-  <span><b>Nouveau launcher</b> <span id="lu-version"></span> disponible</span>
-  <button class="banner-btn" id="lu-install" type="button">Installer et redémarrer</button>
-</div>
-<div class="toast" id="toast" role="status" hidden></div>
-
-<main class="content" id="content">
-  <section class="intro">
-    <p class="eyebrow">Rapport d'incident · Bunker 7 · nuit du 14 décembre</p>
-    <h1 class="title">Zombie<span>Survival.</span></h1>
-    <div class="chips">
-      <span class="chip" id="chip-game">Jeu —</span>
-      <span class="chip" id="chip-launcher">Launcher —</span>
+  <aside class="d-cote">
+    <div class="d-logo"><img src="../../assets/icon.png" alt="" width="36" height="36"><div><b>Zombie Survival</b><span>Poste de commandement</span></div></div>
+    <nav class="d-nav" aria-label="Sections du launcher">
+      <button type="button" data-section="accueil"><svg><use href="#i-accueil"/></svg><span>Accueil</span></button>
+      <button type="button" data-section="actus"><svg><use href="#i-actus"/></svg><span>Actualités</span></button>
+      <button type="button" data-section="maj"><svg><use href="#i-maj"/></svg><span>Mises à jour</span><em class="d-point" id="d-point-maj" hidden></em></button>
+      <button type="button" data-section="installation"><svg><use href="#i-installation"/></svg><span>Installation</span></button>
+      <button type="button" data-section="modtools" id="d-nav-modtools" hidden><svg><use href="#i-modtools"/></svg><span>Mod Tools</span><em class="d-auteur">Auteur</em></button>
+      <button type="button" data-section="reglages"><svg><use href="#i-reglages"/></svg><span>Paramètres</span></button>
+    </nav>
+    <div class="d-cote-pied">
+      <p class="d-etat" id="d-etat" data-ton="neutre"><i aria-hidden="true"></i><b id="d-etat-titre">—</b><span id="d-etat-detail"></span></p>
+      <div class="d-plaques">
+        <div class="d-plaque"><small>Jeu</small><b id="d-v-jeu">—</b><span id="d-v-jeu-sous"></span></div>
+        <div class="d-plaque"><small>Launcher</small><b id="d-v-launcher">—</b><span>Windows</span></div>
+      </div>
     </div>
-    <section class="news" id="news" hidden aria-labelledby="news-title">
-      <h2 id="news-title">Communiqués</h2>
-      <ul id="news-list"></ul>
-    </section>
+  </aside>
+
+  <section class="d-principal">
+    <header class="d-haut">
+      <p class="d-fil"><span>Bunker 7 ·</span> <b id="d-fil">Accueil</b></p>
+      <p class="d-heure"><b id="d-heure">--:--</b><small>Bruxelles</small></p>
+      <button type="button" class="d-icone-btn" id="d-cloche" aria-label="Notifications" title="Notifications"><svg><use href="#i-cloche"/></svg><em id="d-cloche-n" hidden>1</em></button>
+      <div class="d-fen">
+        <button class="d-fen-btn" type="button" id="d-reduire" aria-label="Réduire" title="Réduire"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+        <button class="d-fen-btn" type="button" id="d-agrandir" aria-label="Agrandir" title="Agrandir" hidden><svg viewBox="0 0 12 12"><rect class="d-fen-plein" x="2.5" y="2.5" width="7" height="7"/><path class="d-fen-retour" d="M4.5 2.5h5v5M2.5 4.5h5v5h-5z"/></svg></button>
+        <button class="d-fen-btn d-fermer" type="button" id="d-fermer" aria-label="Fermer" title="Fermer"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+      </div>
+    </header>
+    <div class="d-bandeau" id="d-bandeau" hidden><span><b>Nouveau launcher <span id="d-bandeau-v"></span></b> disponible · téléchargement et installation, puis redémarrage</span><button type="button" id="d-bandeau-btn">Installer et redémarrer</button></div>
+
+    <div class="d-contenu" id="d-contenu">
+      <!-- Accueil -->
+      <section class="d-page d-accueil" data-page="accueil" aria-label="Accueil">
+        <div class="d-hero" id="d-hero" data-fond="bunker" data-anime="non">
+          <img class="d-hero-photo" src="assets/bg.jpg" alt="">
+          <div class="d-lampe" id="d-lampe" aria-hidden="true"></div>
+          <canvas class="d-poussiere" id="d-poussiere" aria-hidden="true"></canvas>
+          <div class="d-hero-voile" aria-hidden="true"></div>
+          <div class="d-hero-texte">
+            <p class="d-sur" id="d-sur">Rapport d’incident · Bunker 7 · nuit du 14 décembre</p>
+            <h1 class="d-titre">Zombie<span>Survival</span></h1>
+            <p class="d-mission"><b id="d-mission-v">Jeu —</b><span id="d-mission-t"></span></p>
+            <p class="d-hero-desc" id="d-hero-desc"></p>
+            <div class="d-cta">
+              <button type="button" class="d-jouer" id="btn-main" disabled><i class="d-jouer-rempli" id="d-jouer-rempli"></i><span><b id="btn-main-label">Jouer</b><small id="d-jouer-sous">Ouverture du bunker…</small></span></button>
+              <button type="button" class="d-btn d-btn-verre" data-aller="maj">Notes de version</button>
+              <button type="button" class="d-btn d-btn-verre" id="btn-modtools" hidden>Mod Tools</button>
+            </div>
+            <p class="d-statut" id="d-statut" data-ton="neutre" aria-live="polite"><i aria-hidden="true"></i><b id="status-title">Ouverture du bunker…</b><span id="status-detail"></span><span class="d-st-liens"><button type="button" id="link-a" hidden></button><button type="button" id="link-b" hidden></button></span></p>
+          </div>
+          <div class="d-hero-grain" aria-hidden="true"></div>
+        </div>
+        <div class="d-rangee">
+          <div class="d-bloc">
+            <div class="d-bloc-tete"><h2><span>Transmissions</span> Actualités</h2><button type="button" class="d-lien" data-aller="actus">Tout voir</button></div>
+            <div class="d-mini-actus" id="d-mini-actus"></div>
+            <p class="d-vide" id="d-mini-vide" hidden>Aucun communiqué pour l’instant : ils arrivent avec les versions publiées.</p>
+          </div>
+          <div class="d-bloc">
+            <div class="d-bloc-tete"><h2><span>Théâtres</span> Cartes</h2></div>
+            <ul class="d-zones" id="d-zones"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Actualités -->
+      <section class="d-page" data-page="actus" aria-label="Actualités" hidden>
+        <header class="d-page-tete"><div><p>II · Transmissions</p><h1>Actualités</h1><span>Communiqués publiés avec les mises à jour</span></div></header>
+        <div class="d-grille-actus" id="d-grille-actus"></div>
+        <p class="d-vide" id="d-actus-vide" hidden>Aucun communiqué pour l’instant : ils arrivent avec les versions publiées.</p>
+      </section>
+
+      <!-- Mises à jour -->
+      <section class="d-page" data-page="maj" aria-label="Mises à jour" hidden>
+        <header class="d-page-tete"><div><p>III · Rapports</p><h1>Mises à jour</h1><span>Notes de version et historique de toutes les versions publiées</span></div></header>
+        <div class="d-maj-corps">
+          <div class="d-maj-gauche">
+            <div class="d-carte d-v-carte"><small>Version installée</small><b id="d-v-installee">—</b><span id="d-v-installee-sous"></span><em class="d-tampon" id="d-v-tampon">—</em>
+              <button type="button" class="d-btn" data-act="check">Vérifier maintenant</button></div>
+            <div class="d-carte d-v-carte d-v-dispo" id="d-v-dispo" hidden><small>Disponible</small><b id="d-v-distante"></b><span id="d-v-distante-sous"></span>
+              <button type="button" class="d-btn d-btn-laiton" data-act="install">Mettre à jour</button></div>
+          </div>
+          <ol class="d-chrono" id="d-chrono"></ol>
+        </div>
+      </section>
+
+      <!-- Installation -->
+      <section class="d-page" data-page="installation" aria-label="Installation" hidden>
+        <header class="d-page-tete"><div><p>IV · Intendance</p><h1>Installation</h1><span>Le jeu installé sur ce PC</span></div></header>
+        <div class="d-chiffres" id="d-chiffres"></div>
+        <div class="d-inst-grille">
+          <div class="d-carte"><h3><svg><use href="#i-dossier"/></svg>Emplacement</h3><p class="d-texte-clair">Le dossier de la version installée, et le journal du launcher.</p>
+            <div class="d-boutons"><button type="button" class="d-btn" data-act="dossier">Ouvrir le dossier</button><button type="button" class="d-btn d-btn-discret" data-act="journal">Journal</button></div></div>
+          <div class="d-carte d-carte-sceau"><h3><svg><use href="#i-bouclier"/></svg>Intégrité et signature</h3>
+            <p class="d-texte-clair">Chaque version est signée par l’auteur ; le launcher refuse tout fichier dont la signature ne correspond pas.</p>
+            <div class="d-boutons"><button type="button" class="d-btn" data-act="check">Vérifier maintenant</button><button type="button" class="d-btn d-btn-discret" data-act="repair">Réparer le jeu</button></div>
+            <div class="d-sceau" aria-hidden="true"><b>Sceau vérifié</b><span id="d-sceau-cle"></span></div></div>
+          <div class="d-carte"><h3><svg><use href="#i-maj"/></svg>Versions</h3><p id="d-versions-ligne"></p>
+            <div class="d-boutons"><button type="button" class="d-btn" data-act="rollback" data-revenir hidden>Revenir à la <span data-precedente></span></button></div></div>
+        </div>
+      </section>
+
+      <!-- Mod Tools -->
+      <section class="d-page" data-page="modtools" aria-label="Mod Tools" hidden>
+        <div class="d-mod-hero">
+          <div class="d-mod-apercu" aria-hidden="true">
+            <svg viewBox="0 0 420 250"><rect width="420" height="250" rx="6" fill="#0f1112"/><rect width="420" height="22" rx="6" fill="#1a1d1f"/>
+              <g fill="#3a3f42"><circle cx="12" cy="11" r="3"/><circle cx="22" cy="11" r="3"/><circle cx="32" cy="11" r="3"/></g>
+              <rect y="22" width="28" height="228" fill="#16191b"/><g fill="#2a2e31"><rect x="7" y="32" width="14" height="14" rx="2"/><rect x="7" y="76" width="14" height="14" rx="2"/><rect x="7" y="98" width="14" height="14" rx="2"/></g><rect x="7" y="54" width="14" height="14" rx="2" fill="#b8141d"/>
+              <rect x="330" y="22" width="90" height="228" fill="#16191b"/><g fill="#262a2d"><rect x="338" y="34" width="74" height="8" rx="2"/><rect x="338" y="50" width="56" height="8" rx="2"/><rect x="338" y="74" width="74" height="40" rx="3"/><rect x="338" y="124" width="74" height="8" rx="2"/><rect x="338" y="140" width="62" height="8" rx="2"/></g>
+              <g stroke="rgba(226,49,58,.14)" stroke-width="1"><path d="M40 40h280M40 70h280M40 100h280M40 130h280M40 160h280M40 190h280M40 220h280M60 30v210M100 30v210M140 30v210M180 30v210M220 30v210M260 30v210M300 30v210"/></g>
+              <g fill="none" stroke="#e2313a" stroke-width="2.2"><path d="M70 60h90v40h40V60h90v130h-70v-40h-60v40H70z"/><path d="M160 100v50M200 100v50"/></g>
+              <circle cx="180" cy="125" r="9" fill="none" stroke="#e8dfc8" stroke-dasharray="3 3"/><g fill="#e8dfc8"><circle cx="92" cy="82" r="3"/><circle cx="270" cy="170" r="3"/></g>
+              <text x="40" y="242" font-size="9" fill="#e2313a" letter-spacing="1.5">PLAN DE BUNKER 7 · NIVEAU 0 · 1:200</text></svg>
+          </div>
+          <div class="d-mod-texte">
+            <p class="d-sur">V · Atelier du génie</p>
+            <h1>Mod Tools</h1>
+            <p>L’éditeur de cartes de Zombie Survival : plan et vue 3D, étages, bibliothèques de textures et de modèles, partie de test.</p>
+            <dl class="d-mod-infos"><dt>Accès</dt><dd>réservé à l’auteur · clé présente sur ce PC</dd><dt>Moteur</dt><dd id="d-mod-moteur">celui du jeu installé</dd><dt>Fenêtre</dt><dd>la sienne, agrandie</dd></dl>
+            <div class="d-cta"><button type="button" class="d-btn d-btn-rouge d-btn-grand" data-act="modtools">Ouvrir les Mod Tools</button><button type="button" class="d-btn d-btn-verre" data-act="publication">Outil de publication</button></div>
+          </div>
+          <div class="d-verrou" id="d-verrou" hidden><svg><use href="#i-cadenas"/></svg><b>Accès réservé</b><span>Les Mod Tools sont réservés à l’auteur du jeu : sa clé de publication n’est pas sur ce PC.</span></div>
+        </div>
+        <div class="d-mod-cartes">
+          <div class="d-carte"><h3>Cartes intégrées</h3><p>Bunker 7 · Khamsin · Ombre éternelle, et les cartes faites à partir d’elles.</p></div>
+          <div class="d-carte"><h3>Bibliothèques</h3><p>Textures <code>gx_</code> et modèles <code>gm_</code> ; une carte qui les utilise demande le jeu 2.0.4 ou plus récent.</p></div>
+          <div class="d-carte"><h3>Partie de test</h3><p>Le bouton Test lance la carte dans le moteur du jeu installé.</p></div>
+        </div>
+      </section>
+
+      <!-- Paramètres -->
+      <section class="d-page" data-page="reglages" aria-label="Paramètres" hidden>
+        <header class="d-page-tete"><div><p>VI · Réglages</p><h1>Paramètres</h1><span>Enregistrés sur ce PC</span></div></header>
+        <div class="d-regl-grille">
+          <div class="d-carte"><h3>Partie</h3>
+            <label class="d-inter"><span>Lancer le jeu en plein écran<small>F11 ou Alt+Entrée pour basculer en partie</small></span><input type="checkbox" data-reglage="fullscreen"><i aria-hidden="true"></i></label>
+            <label class="d-inter"><span>Garder le launcher ouvert pendant la partie<small>Sinon, il se cache et revient à la fin</small></span><input type="checkbox" data-reglage="keepLauncherOpen"><i aria-hidden="true"></i></label></div>
+          <div class="d-carte"><h3>Mises à jour</h3>
+            <label class="d-inter"><span>Rechercher au démarrage et au retour d’une partie</span><input type="checkbox" data-reglage="autoCheck"><i aria-hidden="true"></i></label>
+            <label class="d-inter"><span>Installer automatiquement<small>Jeu et launcher</small></span><input type="checkbox" data-reglage="autoInstall"><i aria-hidden="true"></i></label></div>
+          <div class="d-carte d-large"><h3>Accueil</h3>
+            <label class="d-inter"><span>Fond d’écran animé<small>Coupé : une image fixe. En pause quand la fenêtre est masquée, réduite ou à l’arrière-plan, hors de l’accueil et pendant une partie.</small></span><input type="checkbox" data-reglage="fondAnime"><i aria-hidden="true"></i></label></div>
+          <div class="d-carte d-large"><h3>Source des mises à jour</h3><p class="d-chemin" id="d-source"></p><p class="d-petit" id="d-source-sous"></p>
+            <p class="d-petit">Clé de confiance <b id="d-cle">—</b> · chaque version est signée par l’auteur ; un fichier dont la signature ne correspond pas est refusé.</p>
+            <p class="d-avert" id="d-source-test" hidden>Source de test active : ce launcher lit une adresse personnalisée. <button type="button" class="d-lien" data-act="sourceOfficielle">Revenir à la source officielle</button></p>
+            <p class="d-petit" id="d-source-provisoire" hidden>Adresse provisoire : les mises à jour seront actives dès que l’auteur aura publié la première version.</p></div>
+          <div class="d-carte d-large"><h3>Dépannage</h3><div class="d-boutons">
+            <button type="button" class="d-btn" data-act="check">Vérifier maintenant</button><button type="button" class="d-btn" data-act="repair">Réparer le jeu</button><button type="button" class="d-btn" data-act="rollback" data-revenir hidden>Revenir à la <span data-precedente></span></button>
+            <button type="button" class="d-btn d-btn-discret" data-act="dossier">Dossier du jeu</button><button type="button" class="d-btn d-btn-discret" data-act="journal">Journal</button><button type="button" class="d-btn d-btn-discret" data-act="publication">Outil de publication</button></div>
+            <p class="d-petit" id="d-versions-pied"></p></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="d-dl" id="d-dl" hidden>
+      <div class="d-dl-titre"><b id="d-dl-titre"></b><span id="d-dl-detail"></span></div>
+      <div class="d-bande" id="d-bande" aria-hidden="true"></div>
+      <svg class="d-dl-courbe" id="d-dl-courbe" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"><polyline id="d-dl-poly" points=""/></svg>
+      <b class="d-dl-pct" id="d-dl-pct"></b>
+      <button type="button" class="d-btn d-btn-discret" id="d-dl-annuler">Annuler</button>
+    </div>
   </section>
 
-  <aside class="dossier" id="dossier" aria-labelledby="notes-title" aria-describedby="notes-more" aria-haspopup="dialog" aria-controls="history">
-    <span class="stamp" id="notes-stamp">—</span>
-    <h2 id="notes-title">Notes de version</h2>
-    <p class="notes-meta" id="notes-meta"></p>
-    <ul class="notes" id="notes-list"></ul>
-    <p class="notes-more" id="notes-more" hidden><span>Historique des mises à jour</span><b id="notes-count"></b><i aria-hidden="true">›</i></p>
+  <aside class="d-lecture" id="d-lecture" hidden aria-label="Lecture d’une actualité">
+    <button type="button" class="d-lecture-fermer" id="d-lecture-fermer" aria-label="Fermer">×</button>
+    <div class="d-feuille" id="d-lecture-corps"></div>
   </aside>
+  <div class="d-bulles" id="d-bulles"></div>
+  <div class="d-ouverture" id="d-ouverture" aria-hidden="true">
+    <img src="../../assets/icon.png" alt="" width="64" height="64">
+    <b>Zombie Survival</b>
+    <p class="d-ouv-l1">› Mise sous tension du poste…</p>
+    <p class="d-ouv-l2">› Liaison avec le serveur de mises à jour…</p>
+    <p class="d-ouv-l3">› Sceau de confiance <span id="d-ouv-cle"></span></p>
+  </div>
+  <div class="d-veille" id="d-veille" hidden>
+    <svg aria-hidden="true"><use href="#i-cible"/></svg>
+    <b>Partie en cours</b>
+    <span>Le poste se met en veille pendant le déploiement : le fond s’arrête, les mises à jour attendent la fin de la partie.</span>
+    <button type="button" class="d-btn d-btn-rouge" data-act="revenirPartie">Revenir à la partie</button>
+  </div>
 </main>
-
-<footer class="dock" id="dock">
-  <div class="status" id="status" data-tone="idle">
-    <div class="status-head" aria-live="polite"><i class="dot" aria-hidden="true"></i><span id="status-title">Ouverture du bunker…</span></div>
-    <p class="status-detail" id="status-detail" aria-live="polite"></p>
-    <div class="progress" id="progress" hidden><i id="progress-bar"></i></div>
-    <div class="status-links">
-      <button class="link" id="link-a" type="button" hidden></button>
-      <button class="link" id="link-b" type="button" hidden></button>
-    </div>
-  </div>
-  <div class="dock-actions">
-    <button class="mod-btn" id="btn-modtools" type="button" hidden title="Éditeur de cartes (réservé à l'auteur du jeu)">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
-      <span>Mod Tools</span>
-    </button>
-    <button class="icon-btn" id="btn-folder" type="button" title="Ouvrir le dossier du jeu" aria-label="Ouvrir le dossier du jeu">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-    </button>
-    <button class="icon-btn" id="btn-settings" type="button" title="Réglages" aria-label="Réglages" aria-controls="drawer" aria-expanded="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    </button>
-    <button class="play" id="btn-main" type="button" disabled><span id="btn-main-label">Jouer</span></button>
-  </div>
-</footer>
-
-<div class="veil" id="veil" hidden></div>
-<section class="history" id="history" role="dialog" aria-modal="true" aria-labelledby="history-title" hidden>
-  <header class="history-head">
-    <div>
-      <p class="history-eyebrow">Archives du bunker · toutes les versions publiées</p>
-      <h2 id="history-title">Historique des mises à jour</h2>
-    </div>
-    <span class="history-count" id="history-count"></span>
-    <button class="win" id="history-close" type="button" aria-label="Fermer l'historique" title="Fermer (Échap)">
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>
-    </button>
-  </header>
-  <div class="history-body">
-    <ol class="history-list" id="history-list" role="listbox" aria-label="Versions" tabindex="-1"></ol>
-    <article class="dossier history-sheet" id="history-sheet" aria-live="polite">
-      <span class="stamp" id="hs-stamp">—</span>
-      <h2>Notes de version</h2>
-      <p class="notes-meta" id="hs-meta"></p>
-      <ul class="notes" id="hs-notes"></ul>
-    </article>
-  </div>
-</section>
-<aside class="drawer" id="drawer" aria-labelledby="drawer-title" inert>
-  <div class="drawer-head">
-    <h2 id="drawer-title">Réglages</h2>
-    <button class="win" id="drawer-close" type="button" aria-label="Fermer les réglages" title="Fermer (Échap)">
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8"/></svg>
-    </button>
-  </div>
-  <div class="drawer-body">
-    <section>
-      <h3>Partie</h3>
-      <label class="toggle"><input type="checkbox" id="set-fullscreen"><i aria-hidden="true"></i><span>Lancer le jeu en plein écran<small>F11 ou Alt+Entrée pour basculer pendant la partie</small></span></label>
-      <label class="toggle"><input type="checkbox" id="set-keepLauncherOpen"><i aria-hidden="true"></i><span>Garder le launcher ouvert pendant la partie</span></label>
-    </section>
-    <section>
-      <h3>Mises à jour</h3>
-      <label class="toggle"><input type="checkbox" id="set-autoCheck"><i aria-hidden="true"></i><span>Rechercher les mises à jour au démarrage et au retour d’une partie</span></label>
-      <label class="toggle"><input type="checkbox" id="set-autoInstall"><i aria-hidden="true"></i><span>Installer automatiquement les mises à jour (jeu et launcher)</span></label>
-      <div class="row"><button class="btn" id="act-check" type="button">Vérifier maintenant</button></div>
-    </section>
-    <section>
-      <h3>Dépannage</h3>
-      <div class="row">
-        <button class="btn" id="act-repair" type="button">Réparer le jeu</button>
-        <button class="btn" id="act-rollback" type="button" hidden>Revenir à la version précédente</button>
-      </div>
-      <div class="row">
-        <button class="btn" id="act-folder" type="button">Dossier du jeu</button>
-        <button class="btn" id="act-logs" type="button">Journal</button>
-      </div>
-    </section>
-    <section>
-      <h3>Source des mises à jour</h3>
-      <p class="source" id="source-url">—</p>
-      <p class="source-sub" id="source-sub" hidden></p>
-      <p class="source-key">Clé de confiance : <b id="source-key">—</b></p>
-      <p class="note warn" id="source-custom" hidden>Source de test active (créée par l'outil de publication).</p>
-      <p class="note" id="source-placeholder" hidden>Adresse provisoire : les mises à jour en ligne seront actives quand le jeu sera publié sur GitHub.</p>
-      <div class="row" id="source-reset-row" hidden><button class="btn" id="act-reset-source" type="button">Revenir à la source officielle</button></div>
-    </section>
-  </div>
-  <div class="drawer-foot">
-    <span id="versions-line">—</span>
-    <button class="link" id="act-publisher" type="button">Outil de publication</button>
-  </div>
-</aside>
-
 <script src="launcher.js"></script>
 </body>
 </html>

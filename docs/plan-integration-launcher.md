@@ -1,6 +1,6 @@
 # Plan d'intégration du nouveau launcher (maquette D)
 
-Plan préparé le 31 octobre 2026, à la demande d'Anthony (« Je valide D, prépare le plan d'intégration au launcher ») ; principe validé le même soir, procédure détaillée au §8. Rien n'est encore fait dans `launcher/` : Anthony veut d'abord voir la scène finale de la Mère-Vase. Chaque étape attend son accord. L'intégration finale dans `dev` et `main` revient à la cinquième session (Claude Code 5), sur son ordre.
+Plan préparé le 31 octobre 2026, à la demande d'Anthony (« Je valide D, prépare le plan d'intégration au launcher ») ; principe validé le même soir, procédure détaillée au §8. Portage commencé le 2 novembre 2026 à sa demande : état au §9. Chaque étape attend son accord. L'intégration finale dans `dev` et `main` revient à la cinquième session (Claude Code 5), sur son ordre.
 
 - **Référence visuelle et fonctionnelle** : `maquettes/launcher/D-hybride/` et son socle `commun/`.
 - **Fond animé** : `maquettes/launcher/ressources/marecages/README.md`.
@@ -60,7 +60,7 @@ Plan préparé le 31 octobre 2026, à la demande d'Anthony (« Je valide D, pré
 | `erreur` | `error` | contextes `install`, `launcher`, `check` |
 | `absent` | `installed` vide | « Installer », taille du paquet |
 
-**Actions** : `play`, `install`, `cancel`, `check`, `repair`, `rollback`, `updateLauncher`, `openModtools`, `openPublisher`, `open('folder' | 'logs')`, `setSetting`, `resetSource`, `windowAction`, `openExternal`. Elles existent toutes.
+**Actions** : `play`, `install`, `cancel`, `check`, `repair`, `rollback`, `updateLauncher`, `openModtools`, `openPublisher`, `open('game' | 'logs')`, `setSetting`, `resetSource`, `windowAction`, `openExternal`. Elles existent toutes.
 
 **Données** :
 - `status.installed`, `remote`, `history` (notes publiées), `news`, `launcherUpdate`, `author`, `settings`, `source` (adresse, empreinte de la clé, source de test, adresse provisoire) ;
@@ -99,7 +99,7 @@ Les identifiants des Mod Tools et du jeu ne changent pas.
    - la page du launcher chargée dans le Chromium sans tête avec un faux `window.zs`, pour les captures de chaque phase (Electron ne démarre pas dans le bac à sable) ;
    - les captures sont comparées à la maquette.
 4. **Suite E2** lancée par Anthony (méthode E2), les 29 essais, avec `publish-online` adapté et le nouvel essai de l'interface.
-5. **Numéro du launcher** : 1.4.0, à fixer en coordination (décision 2 du 31 octobre). Le launcher se met à jour lui-même ; `publish-online` le contrôle.
+5. **Numéro du launcher** : 1.4.0, décision d'Anthony du 2 novembre 2026 à 17 h 30 (« Change la version du launcher, elle sera finalement en 1.4.0. »), transmise par la cinquième session ; elle remplace le 2.3.4 annoncé à 17 h 27. Le jeu 2.0.7 et le launcher 1.4.0 partent dans la même publication. La cinquième session pose les numéros à l'intégration : `launcher/package.json` ne bouge pas sur cette branche. Le launcher se met à jour lui-même ; `publish-online` le contrôle (il simule un launcher 9.9.9).
 6. **Commit** sur `chantier/interface` avec son accord, puis remise à la cinquième session pour l'intégration. L'installateur demande wine, absent de WSL (`CLAUDE.md` §6).
 
 ## 7. Risques et coordination
@@ -135,7 +135,7 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
 | Lancement du jeu, partie, retour | `main.js` (`play`, fenêtre du jeu, `keepLauncherOpen`) | `#btn-main`, phase `playing` ; fond en pause ; launcher réduit ou caché selon le réglage | les 19 essais E2 |
 | Historique et notes | `status.history`, `config/notes-history.json` | page Mises à jour (chronologie) | E2 `publish-online`, adapté |
 | Actualités | `manifest.news` | cartes d'actualités (titre, texte, date) | à ajouter au nouvel essai |
-| Dossier du jeu, journal | `zs.open('folder' \| 'logs')` | boutons de la page Installation | manuel |
+| Dossier du jeu, journal | `zs.open('game' \| 'logs')` | boutons de la page Installation | manuel |
 
 ### 8.2 Pas à pas
 
@@ -158,7 +158,7 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
    - le fond en pause dans tous les cas.
 6. **Suite E2 par Anthony** (les 29 essais, `publish-online` adapté, plus le nouvel essai) ; analyse de `resume.tsv`.
 7. **Retour arrière** : l'ancienne interface reste dans l'historique Git (`git checkout <commit> -- launcher/src/renderer/launcher`). Les trois retouches du processus principal sont isolées dans un commit à part.
-8. **Commit avec l'accord d'Anthony**, puis remise à la cinquième session. Le numéro du launcher (1.4.0) se fixe en coordination.
+8. **Commit avec l'accord d'Anthony**, puis remise à la cinquième session, qui pose le numéro du launcher (1.4.0) à l'intégration.
 
 ### 8.3 Sons de l'ambiance (maquette D : `ambiance.js`)
 
@@ -175,9 +175,9 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
 - **Proposé** : le processus principal lit les `.ogg` et le préchargement les passe à la page (`zs.ambiance()` → `{ meta, fichiers: { id: ArrayBuffer } }`). La page les décode (`decodeAudioData`, que la politique ne bride pas). La politique reste inchangée.
 - **Repli** : un script local qui contient les sons en base64, comme la maquette (`script-src 'self'` le permet). Environ 1,8 Mo de texte.
 
-**Deux réglages du processus principal à connaître** (`main.js`, lignes 305 et 416) :
-- `autoplayPolicy: 'no-user-gesture-required'` : un contexte audio jouerait sans geste. La page n'en crée donc aucun tant que « Sons de l'ambiance » est coupé ; `ambiance.js` le fait déjà.
-- `backgroundThrottling: false` : rien ne ralentit une fenêtre réduite. La page doit suspendre elle-même le son : fenêtre réduite (événements `minimize` et `restore`), masquée, partie en cours (`status.phase === 'playing'`), hors de l'accueil.
+**Deux réglages du processus principal à connaître** : `autoplayPolicy: 'no-user-gesture-required'` et `backgroundThrottling: false` sont ceux des fenêtres du jeu et des Mod Tools (`play` et `openModtools` dans `main.js`). La fenêtre du launcher (`createLauncherWindow`) garde les valeurs par défaut d'Electron :
+- `autoplayPolicy` vaut déjà `no-user-gesture-required` par défaut : un contexte audio jouerait sans geste. La page n'en crée donc aucun tant que « Sons de l'ambiance » est coupé ; `ambiance.js` le fait déjà.
+- `backgroundThrottling` vaut `true` : une fenêtre réduite ou masquée passe en `document.hidden` (à vérifier sous Windows, §3), mais un contexte audio continue de jouer. La page doit suspendre elle-même le son : fenêtre réduite ou masquée, partie en cours (`status.phase === 'playing'`), hors de l'accueil.
 
 **Poids** : 1,4 Mo de fichiers. Une fois les sons allumés, environ 25 Mo de mémoire pour les sons décodés ; rien tant qu'ils sont coupés. Contexte suspendu dès que le fond ne se voit plus.
 
@@ -202,3 +202,64 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
 - **Taille d'affichage** : la fenêtre agrandie sur l'écran de 3 440 × 1 440 d'Anthony montre la vidéo à × 1,96 ; le choix du CRF se juge sur des planches agrandies deux fois.
 - **Coût du décodage** : à lire sur l'accueil (Gestionnaire des tâches : processeur, GPU, « Video Decode »). Le décodage VP9 matériel est probable avec sa carte NVIDIA. La pause pendant une partie est déjà prévue (§8.1).
 - **Deux versions cohérentes** : les deux `.json` doivent donner les mêmes `fps`, `images`, `fondu` et `duree`, et les deux vidéos le même nombre d'images (une ligne de contrôle après l'encodage).
+
+## 9. État du portage (2 novembre 2026)
+
+Demande d'Anthony du 2 novembre 2026 : « Commence le portage vers Claude 5. Claude 5 me dira comment installer le launcher ensuite. » Ses réponses du même jour :
+- fond par défaut pour les joueurs : Marécages maudits, la carte sortant avec le jeu 2.0.7, en même temps que le launcher ;
+- actualités : illustration par défaut pour le moment ;
+- vidéo et sons des Marécages en local : plus tard.
+
+**Fait**, sur `chantier/interface`, en deux commits (les retouches du processus principal à part, §8.2, point 7), avec l'accord d'Anthony du 2 novembre 2026 (« Envoie le commit ! ») :
+1. Faux `window.zs` (`launcher/e2e/faux-zs.js`) et contrôle de la page sans Electron (`launcher/e2e/page-launcher.js`). Sur l'ancienne interface, avant le portage : 96 sur 96 à 1 080 × 660, avec 12 scénarios ; le scénario « pages », ajouté ensuite, n'y fait que les 6 contrôles communs.
+2. Interface de D dans `launcher/src/renderer/launcher/` (`index.html`, `launcher.css`, `launcher.js`, `assets/khamsin.svg`, `assets/ombre.svg`), avec le fond Bunker 7. Contrôle : 148 sur 148 à 1 280 × 720, 960 × 600 et 1 600 × 900 (13 scénarios, dont les pages), sans erreur de page ni refus de la politique de sécurité ; captures comparées à celles de la maquette, et à 3 440 × 1 400 (fenêtre agrandie sur l'écran d'Anthony).
+3. Processus principal (`main.js`, trois retouches) :
+   - fenêtre de 1 280 × 720 (ou la zone de travail), au moins 960 × 600, redimensionnable, agrandissable ;
+   - état de la fenêtre envoyé à la page (`windowState`) et action `maximize` ;
+   - réglage `fondAnime`.
+4. Essais :
+   - `test/interface.test.js` : 4 tests statiques ; `npm test` donne 35 sur 35, ou 34 avec l'intermittent connu ;
+   - `publish-online.e2e.js` adapté contrôle par contrôle : toujours 30 contrôles, dont les 9 de l'historique, rejoués contre la page (9 sur 9) ;
+   - nouvel essai `launcher-interface.e2e.js` (14 contrôles), à ajouter à `test:e2e` à l'intégration (le chantier des cartes modifie aussi cette liste).
+
+**Choix faits par défaut** (Anthony peut les changer) :
+- Données que le launcher n'a pas, remplacées :
+  - les chiffres de la page Installation sont la version installée, sa date d'installation, la version précédente gardée et la taille du paquet en ligne ; la maquette montrait la taille installée, la construction, l'interface des Mod Tools et le chemin du dossier ;
+  - les actualités n'ont ni catégories ni filtres.
+- L'accueil montre les notes de la version (l'installée, ou la nouvelle à installer), au lieu du titre et du texte écrits à la main pour la 2.0.6 dans la maquette.
+- Bloc « Théâtres » gardé : Bunker 7 (photo), Khamsin et Ombre éternelle (dessins du launcher, pas des images du jeu).
+- Veille « Partie en cours », avec un bouton « Revenir à la partie » (`zs.play()` ramène la fenêtre du jeu).
+- Taille de la fenêtre non gardée d'une ouverture à l'autre.
+- Fond en pause aussi quand le launcher n'est pas au premier plan (derrière les Mod Tools ou le jeu en fenêtre).
+- Largeur de la barre latérale réglée sur les captures de la maquette (246 px à 1 280). Dans la maquette, elle suivait la page du navigateur, pas la fenêtre.
+- Écran de titre : une seconde au moins, 2,5 s au plus ; la bulle « Launcher mis à jour » attend sa fin.
+- Pendant une partie (« Garder le launcher ouvert » coché), seul l'accueil se met en veille : la barre latérale et les autres pages restent utilisables, comme dans le launcher 1.3.3.
+- Le bandeau de l'accueil grandit si les notes ou la ligne d'état ne tiennent pas (la première note tient en deux lignes au plus, texte entier en info-bulle).
+- Fenêtre agrandie sur un écran large : au-delà de 1 920 px, les pages et le gestionnaire de téléchargement restent centrés sur 1 660 px. L'accueil garde toute la largeur (bandeau cinématographique) : à juger par Anthony sur son écran.
+
+**Relecture indépendante avant les commits** (2 novembre 2026, six relecteurs et un contradicteur par constat) : 34 constats, 33 confirmés, tous corrigés, 1 réfuté.
+- Le plus important : le texte de l'accueil était rogné par le haut avec une longue note ou une ligne d'état sur deux lignes.
+- Défauts hérités de la maquette, corrigés dans le launcher seulement (la maquette reste la référence commitée) :
+  - courbe du débit dessinée en 20 × 20 au lieu de 120 × 32 ;
+  - pastille de la ligne d'état de l'accueil toujours grise ;
+  - texte crème sur le bouton laiton « Mettre à jour » de la page Mises à jour ;
+  - sceau qui masquait du texte ;
+  - bulles qui captaient les clics des cartes.
+- Comme dans le launcher 1.3.3 : message d'erreur, adresse de la source et empreinte de la clé sélectionnables ; espace insécable entre un nombre et son unité.
+- Robustesse :
+  - un double-clic ne relance pas une action ;
+  - dates des actualités sans décalage de fuseau ;
+  - « vérifié le … » pour un autre jour ;
+  - « 0 Ko » au début d'un téléchargement ;
+  - focus rendu à la fermeture d'une actualité ;
+  - nombre de notifications lu par les lecteurs d'écran.
+- Essais : `publish-online` contrôle de nouveau le retrait des tirets de tête (notes dépliées) ; `launcher-interface` écoute les erreurs dès le premier chargement.
+
+**Reste** :
+1. Suite E2 par Anthony (méthode E2) : les 29 essais, dont `publish-online` adapté, et `launcher-interface`.
+2. Remise à la cinquième session :
+   - numéro 1.4.0 (`launcher/package.json`) et ligne `test:e2e` (ajouter `launcher-interface`) ;
+   - entrée « Historique » du README, à dater et à numéroter à la publication ;
+   - comptes de `CLAUDE.md` (avec l'accord d'Anthony) : 4 tests unitaires de plus (35, ou 34 avec l'intermittent connu) et un essai E2 de plus (`launcher-interface`, 14 contrôles) ;
+   - intégration, installateur, explication de l'installation à Anthony.
+3. Étape des Marécages : fond par défaut des joueurs, vidéo, sons, réglages `fond`, `fondEclairs`, `fondSons` et `volumeSons`, politique de sécurité (`media-src`). Elle attend l'autorisation explicite d'Anthony de publier les ressources de la carte (règle du 31 octobre 2026), donnée pour cette étape.
