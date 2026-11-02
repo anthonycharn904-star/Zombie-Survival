@@ -269,9 +269,9 @@ Demande d'Anthony du 2 novembre 2026 : « Commence le portage vers Claude 5. Cla
 Réponses d'Anthony du 2 novembre 2026, au soir : accueil centré sur un écran large (« Oui ») ; les deux dossiers vides du harnais retirés (« Oui ») ; publication des ressources des Marécages pour le fond (« oui. Claude 6 (Marécage) finalise justement la publication de la map et la commit vers claude 5. »).
 
 **Fait** :
-- Ressources copiées par `maquettes/launcher/scene-bete/vers-launcher.py` dans `launcher/src/renderer/launcher/assets/marecages/` : les deux vidéos (4,51 et 4,46 Mo), l'affiche (81 Ko), les 11 sons que charge `ambiance.js` (1,41 Mo : 4 nappes de pluie, la réverbération, 6 tonnerres ; avec la boucle actuelle, un seul éclair dans les nuages à 4,4 km, seuls `tonnerre-nuages-3500` et `tonnerre-sol-1700` sont joués, en alternance ; les 4 autres gardent la gamme validée pour une boucle aux éclairs plus proches) et leurs réglages (`sons/ambiance.json`). Soit 10,5 Mo de plus dans le dépôt et dans l'installateur.
+- Ressources copiées par `maquettes/launcher/scene-bete/vers-launcher.py` dans `launcher/src/renderer/launcher/assets/marecages/` : les deux vidéos (4,51 et 4,46 Mo), l'affiche (81 Ko), les 11 sons que charge `ambiance.js` (1,41 Mo : 4 nappes de pluie, la réverbération, 6 tonnerres ; avec la boucle actuelle, un seul éclair dans les nuages à 4,4 km, seuls `tonnerre-nuages-3500` et `tonnerre-sol-3000` sont joués, en alternance (décision d'Anthony du 2 novembre 2026, ci-dessous) ; les 4 autres gardent la gamme validée pour une boucle aux éclairs plus proches) et leurs réglages (`sons/ambiance.json`). Soit 10,5 Mo de plus dans le dépôt et dans l'installateur.
 - Fond des Marécages Maudits par défaut ; Bunker 7 au choix (réglage « Fond de l'accueil »), et à la place si la vidéo est illisible.
-- `fond-video.js` et `ambiance.js` repris de la maquette, sans changer leurs réglages validés. Une correction pour le vrai launcher : la vidéo n'est pas encore chargée au démarrage, elle est donc calée sur l'image de l'affiche avant de jouer.
+- `fond-video.js` et `ambiance.js` repris de la maquette, sans changer leurs réglages validés. Une correction pour le vrai launcher : la vidéo n'est pas encore chargée au démarrage ; elle est donc calée sur l'image de l'affiche, et la lecture attend la fin de ce calage (sinon l'image de 0 s pouvait passer d'abord).
 - Sons : par le préchargement (§8.3). Vidéo : `media-src 'self'` (§8.4).
 - Réglages : `src/main/reglages.js` (`fond`, `fondEclairs`, `volumeSons` ; une valeur de `settings.json` qui ne convient pas reprend sa valeur par défaut en mémoire, et reste dans le fichier : `aEcrire`, pour un launcher plus récent) et `test/reglages.test.js`. Les sons eux-mêmes repartent coupés à chaque lancement : réglage de la page seulement.
 - Textes de la carte, confirmés par Claude 6 : « Les Marécages Maudits », l'accroche du jeu (« Rapport d'incident · Les Marécages Maudits · nuit ») et sa description. La 2.0.7 garde le tampon « en développement » dans le choix des cartes : la carte du launcher le dit aussi.
@@ -284,7 +284,7 @@ Réponses d'Anthony du 2 novembre 2026, au soir : accueil centré sur un écran 
 - pause du son quand la fenêtre est réduite ;
 - volume réel (régler dans Paramètres, écouter à l'accueil : hors de l'accueil, les sons sont en pause).
 
-**Relecture indépendante de l'étape** (2 novembre 2026, six relecteurs et un contradicteur par constat) : 30 constats, 28 confirmés, 1 incertain, 1 réfuté ; tous corrigés, sauf un, laissé à Anthony.
+**Relecture indépendante de l'étape** (2 novembre 2026, six relecteurs et un contradicteur par constat) : 30 constats, 28 confirmés, 1 incertain, 1 réfuté ; tous corrigés, l'alternance des tonnerres sur la décision d'Anthony.
 - Code :
   - fenêtre à l'écran mais à l'arrière-plan : la vidéo s'arrête sur l'image en cours, sans revenir à l'affiche ;
   - reprise du son revérifiée après coup (une pause pendant la reprise laissait la pluie) ;
@@ -296,5 +296,5 @@ Réponses d'Anthony du 2 novembre 2026, au soir : accueil centré sur un écran 
   - halo de la lampe plafonné ; légende hors de la colonne du texte ;
   - curseur du volume annoncé avec son unité.
 - Essais : silence vérifié une seconde après les pauses ; éclairs coupés puis rallumés comme le ferait le processus principal ; contrôles plus stricts.
-- Laissé à Anthony : la règle « pas deux fois le même tonnerre de suite » (maquette D) fait alterner, avec le seul éclair de la boucle, `tonnerre-nuages-3500` et `tonnerre-sol-1700`, 7,4 dB plus fort et 5,3 s plus tôt. Proposé : prendre le voisin en distance (`tonnerre-sol-3000` : 2,7 dB de plus et 1,6 s plus tôt). Il avait validé ces sons à l'écoute : rien n'est changé sans lui.
+- Alternance des tonnerres, décidée par Anthony le 2 novembre 2026 (« Fais cela pour le tonnerre ») : la règle « pas deux fois le même tonnerre de suite » de la maquette D faisait alterner, avec le seul éclair de la boucle, `tonnerre-nuages-3500` et `tonnerre-sol-1700`, 7,4 dB plus fort et 5,3 s plus tôt. Elle prend désormais le voisin en distance (`VOISIN` dans `ambiance.js`, launcher et maquette) : `tonnerre-sol-3000`, 2,7 dB de plus et 1,6 s plus tôt. Un coup au sol ne se remplace jamais par un plus proche : 450 m reste réservé aux éclairs au sol les plus forts (règle validée le 31 octobre).
 

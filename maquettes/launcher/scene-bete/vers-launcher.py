@@ -7,7 +7,7 @@ Copie :
 - les deux vidéos de la boucle, avec et sans éclairs (encoder.js) ;
 - l'affiche, une seule : les deux versions ont la même image ;
 - les 11 sons que charge ambiance.js (4 nappes de pluie, la réverbération, 6 tonnerres ; boue et toit ne servent pas ;
-  avec la boucle actuelle, un seul éclair à 4,4 km, seuls tonnerre-nuages-3500 et tonnerre-sol-1700 sont joués) ;
+  avec la boucle actuelle, un seul éclair à 4,4 km, seuls tonnerre-nuages-3500 et tonnerre-sol-3000 sont joués) ;
 - leurs réglages, dans sons/ambiance.json : les champs utiles.
 Publication de ces ressources autorisée par Anthony le 2 novembre 2026, après l'export des sons (31 octobre 2026) et la
 capture de la scène (2 novembre 2026).

@@ -346,6 +346,9 @@ const SCENARIOS = {
     const avant = f.sons.tonnerres;
     await p.evaluate(() => ZS_FOND.video().provoquer());
     s.ok(await attendre((n) => ZS_FOND.sons().etat().tonnerres > n, avant, 15000), 'sons : le tonnerre suit l’éclair de la vidéo');
+    // pas deux fois le même de suite : le voisin en distance (nuages à 3,5 km, puis sol à 3 km), jamais le coup au sol à 1,7 km
+    const ids = await p.evaluate(() => { const A = ZS_FOND.sons(), e = { sol: false, force: 0.8, x: 0.15 }, a = A.tonnerre(e, ''), b = A.tonnerre(e, a), c = A.tonnerre(e, b); return [a, b, c]; });
+    s.ok(ids.join() === 'tonnerre-nuages-3500,tonnerre-sol-3000,tonnerre-nuages-3500', 'sons : tonnerres en alternance avec le voisin en distance (nuages à 3,5 km, sol à 3 km)', ids);
     // pauses : autre page, partie en cours, fond de Bunker 7 ; reprise à l'accueil
     await s.clic('.d-nav [data-section="actus"]');
     s.ok(await attendre(() => ZS_FOND.sons().etat().contexte === 'suspended' && !ZS_FOND.video().etat().joue, null, 5000), 'pause : autre page (son suspendu, vidéo arrêtée)');

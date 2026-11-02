@@ -122,7 +122,13 @@ window.FondVideo = (function () {
           if (x.requestVideoFrameCallback) x.requestVideoFrameCallback(montrer); else x.addEventListener('playing', () => montrer(), { once: true });
           // la lecture part de l'instant de l'affiche : calée avant de jouer, une fois la durée connue (au démarrage, la
           // vidéo n'est pas encore chargée : jouer d'abord ferait passer l'image de 0 s)
-          const partir = () => { attente = false; try { x.currentTime = viseAffiche; } catch (e) { /* position refusée : départ à 0 s */ } lire(); };
+          // calage puis lecture, une fois la recherche faite : jouer pendant la recherche pourrait montrer d'abord l'image de 0 s
+          const partir = () => {
+            if (Math.abs(x.currentTime - viseAffiche) < 0.5 / fps) { attente = false; lire(); return; }
+            attente = true;
+            x.addEventListener('seeked', () => { if (attente && x === v && !surAffiche && actif && anim && !enPanne) { attente = false; lire(); } }, { once: true });
+            try { x.currentTime = viseAffiche; } catch (e) { attente = false; lire(); }   // position refusée : départ à 0 s
+          };
           if (x.readyState >= 1) partir();
           else {
             attente = true;

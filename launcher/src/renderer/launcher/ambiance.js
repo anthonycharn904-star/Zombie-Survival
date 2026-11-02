@@ -17,6 +17,10 @@ window.Ambiance = (function () {
   const AUTOUR = { water: 0.75, wood: 0.25, leaves: 0.1 };
   const NAPPES = [['pluie-eau', 'water'], ['pluie-bois', 'wood'], ['pluie-feuillage', 'leaves'], ['pluie-lointain', 'wash']];
   const VOIX_MAX = 3;
+  /* pas deux fois le même tonnerre de suite : le voisin en distance (décision d'Anthony du 2 novembre 2026), jamais plus
+     près pour un coup au sol (450 m reste réservé aux éclairs au sol les plus forts). Avec la vidéo du launcher, un seul
+     éclair dans les nuages à 4,4 km : nuages-3500 puis sol-3000, au lieu de sol-1700 (7,4 dB plus fort, 5,3 s plus tôt) */
+  const VOISIN = { 'sol-450': 'sol-900', 'sol-900': 'sol-1700', 'sol-1700': 'nuages-2000', 'nuages-2000': 'sol-1700', 'sol-3000': 'nuages-3500', 'nuages-3500': 'sol-3000' };
   const disponible = !!(window.zs && typeof window.zs.ambiance === 'function');
   let S = null, ctx = null, pret = null, bufs = {}, maitre = null, pluie = null, orage = null, sonde = null, erreur = null, surPanne = null;
   let veut = false, visible = false, volume = 0.8, I = 0.72, dernier = '', voix = [], rejoue = 0;   // 0,8 : le volume général du jeu par défaut
@@ -104,10 +108,14 @@ window.Ambiance = (function () {
     if (e.sol) return e.force >= 1.15 ? 'sol-450' : e.force >= 0.95 ? 'sol-900' : 'sol-1700';
     return e.force >= 1.1 ? 'nuages-2000' : e.force >= 0.9 ? 'sol-3000' : 'nuages-3500';
   }
+  // le tonnerre d'un éclair, après celui qui vient de jouer (avant) : pas deux fois le même de suite
+  function tonnerre(e, avant) {
+    const id = 'tonnerre-' + choisir(e);
+    return id === avant ? 'tonnerre-' + VOISIN[id.slice('tonnerre-'.length)] : id;
+  }
   function eclair(e) {
     if (!(veut && visible) || !ctx || ctx.state !== 'running' || !bufs['orage-reverberation']) return null;
-    let id = 'tonnerre-' + choisir(e);
-    if (id === dernier) id = 'tonnerre-' + choisir({ sol: !e.sol, force: e.force });   // pas deux fois le même de suite
+    const id = tonnerre(e, dernier);
     voix = voix.filter((v) => v.fin > ctx.currentTime);
     if (voix.length >= VOIX_MAX || !bufs[id]) return null;
     const M = S.meta[id], t = ctx.currentTime;
@@ -149,6 +157,7 @@ window.Ambiance = (function () {
       for (const k in pluie.nappes) { const N = pluie.nappes[k]; N.g.gain.setTargetAtTime(f[k] * N.M.kJeu * N.M.echelle, t, 0.35); }
     },
     eclair,
+    tonnerre,
     erreur: () => erreur,
     /* pour les essais */
     etat: () => ({ contexte: ctx ? ctx.state : 'aucun', charges: Object.keys(bufs).length, attendus: S ? Object.keys(S.fichiers).length : 0,
