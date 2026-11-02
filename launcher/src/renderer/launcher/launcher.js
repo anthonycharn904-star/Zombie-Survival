@@ -343,9 +343,10 @@ function dessinerTelechargement(s, st) {
 
 /* ---------------------------------------------------------- actualités --- */
 /* Pas d'image publiée avec les communiqués : une illustration par défaut, choisie d'après le sujet. */
-const IMAGES = { bunker: 'assets/bg.jpg', khamsin: 'assets/khamsin.svg', ombre: 'assets/ombre.svg' };
+const IMAGES = { bunker: 'assets/bg.jpg', khamsin: 'assets/khamsin.svg', ombre: 'assets/ombre.svg', marais: 'assets/marecages/fond-marais-affiche.jpg' };
 function sujetDe(n) {
   const t = `${n.title || ''} ${n.text || ''}`.toLowerCase();
+  if (/marécage|marecage|marais|mère-vase|mere-vase|noyé|stryge|barque/.test(t)) return 'marais';
   if (/khamsin|désert|desert|pyramide|khépesh|khepesh|jeep|tempête|egypt|égypt/.test(t)) return 'khamsin';
   if (/ombre éternelle|ombre eternelle|lune|lunaire|oxygène|gravité/.test(t)) return 'ombre';
   return 'bunker';
@@ -415,6 +416,9 @@ const CARTES = [
     texte: 'Le plateau des pyramides, cerné par une tempête permanente et mortelle ; trois jeeps d’archéologie.' },
   { id: 'ombre', sujet: 'ombre', nom: 'Ombre éternelle', genre: 'Monde ouvert', lieu: 'Lune',
     texte: 'Une mine de glace en gradins, une gravité de 1/6 g, l’oxygène compté.' },
+  // jeu 2.0.7 : publiée « en développement », comme dans le choix des cartes du jeu (MARAIS.dev)
+  { id: 'marais', sujet: 'marais', nom: 'Les Marécages Maudits', genre: 'Monde ouvert · en développement', lieu: 'Marais',
+    texte: 'Un marais sans bord sous une lune voilée : cinq îles dans la brume, des pontons, des barques à moteur, et quelque chose de très grand sous l’eau noire.' },
 ];
 function dessinerCartes() {
   $('d-zones').replaceChildren(...CARTES.map((c, i) => {
@@ -526,15 +530,38 @@ function dessinerInstallation(s, busy) {
 }
 
 /* ---------------------------------------------------------- paramètres --- */
+// réglages du fond (launcher 1.4.0) : chacun caché si le processus principal ne le connaît pas
+const REGLAGES_FOND = ['fond', 'fondAnime', 'fondEclairs', 'volumeSons'];
+const valeurDe = (i) => (i.type === 'checkbox' ? i.checked : i.type === 'range' ? Math.round(Number(i.value)) : i.value);
+function majVolume(v) {
+  const t = `${v}${NB}%`;
+  $('d-volume-val').textContent = t;
+  $('d-volume').setAttribute('aria-valuetext', t);
+  $('d-volume').style.setProperty('--v', `${v}%`);
+}
 function dessinerReglages(s, busy) {
   const set = s.settings || {};
   for (const i of document.querySelectorAll('[data-reglage]')) {
     const k = i.dataset.reglage;
-    // le fond animé est un réglage du launcher 1.4.0 : caché si le processus principal ne le connaît pas
-    if (k === 'fondAnime') i.closest('.d-carte').hidden = !Object.hasOwn(set, 'fondAnime');
-    if (document.activeElement !== i) i.checked = k === 'fondAnime' ? set[k] !== false : !!set[k];
+    if (REGLAGES_FOND.includes(k)) i.closest('[data-ligne]').hidden = !Object.hasOwn(set, k);
+    if (document.activeElement === i) continue;
+    if (i.type === 'checkbox') i.checked = k === 'fondAnime' || k === 'fondEclairs' ? set[k] !== false : !!set[k];
+    else if (i.type === 'range') { const v = Number.isInteger(set[k]) ? set[k] : 80; i.value = String(v); majVolume(v); }
+    else if (typeof set[k] === 'string') i.value = set[k];
   }
   document.querySelector('[data-reglage="autoInstall"]').disabled = !set.autoCheck;
+  // éclairs, sons et volume ne valent que pour le fond des Marécages Maudits montré (choisi, et vidéo lisible) ; les sons
+  // repartent coupés à chaque lancement
+  const marais = fondActuel() === 'marais', panne = sons && sons.erreur();
+  $('d-fond-note').textContent = videoEnPanne ? 'Les Marécages Maudits ne peuvent pas être lus sur ce PC : Bunker 7 à la place'
+    : 'La scène d’une carte du jeu, derrière le bouton Jouer';
+  document.querySelector('[data-reglage="fondEclairs"]').disabled = !marais;
+  $('d-sons').closest('[data-ligne]').hidden = !sons;
+  $('d-sons').checked = fondSons;
+  $('d-sons').disabled = !sons || !!panne || !marais;
+  $('d-sons-note').textContent = panne ? `Indisponibles sur ce PC : ${panne}` : 'Les Marécages Maudits : coupés à chaque lancement du launcher ; seulement quand le fond est visible';
+  $('d-volume').disabled = !fondSons || !marais;
+  $('d-regl-accueil').hidden = [...$('d-regl-accueil').querySelectorAll('[data-ligne]')].every((l) => l.hidden);
   const src = s.source || {};
   const desc = describeSource(src.url);
   $('d-source').textContent = desc.main;
@@ -598,7 +625,7 @@ function poussiere(t) {
 }
 function boucle(t) {
   boucleId = 0;
-  if (hero.dataset.anime !== 'oui') return;
+  if (hero.dataset.anime !== 'oui' || hero.dataset.fond !== 'bunker') return;
   if (t - dernier > 33) {
     dernier = t;
     const H = hero.clientHeight;
@@ -611,17 +638,61 @@ function boucle(t) {
   }
   boucleId = requestAnimationFrame(boucle);
 }
+/* ----------------------------------- fond des Marécages Maudits (vidéo, sons de l'ambiance) --- */
+/* La scène capturée dans le jeu du kit 2.0.7 (maquettes/launcher/scene-bete) : boucle de 7,7 s encodée par encoder.js
+   (CRF 28, fondu d'une seconde : choix d'Anthony du 2 novembre 2026), copiée par scene-bete/vers-launcher.py, qui
+   donne aussi sa chronologie (fond-marais.json : l'éclair de la boucle, qui déclenche le tonnerre). Fond par défaut
+   des joueurs (choix d'Anthony du 2 novembre 2026) ; publication de ces ressources autorisée par lui le même jour. */
+const MARAIS = {
+  video: 'assets/marecages/fond-marais.webm', sans: 'assets/marecages/fond-marais-sans-eclairs.webm', affiche: 'assets/marecages/fond-marais-affiche.jpg',
+  boucle: { fps: 30, images: 231, fondu: 30, duree: 7.7, eclairs: [{ t: 2.133, x: 0.151, d: 4436 }] },
+};
+// textes de la carte dans le jeu (MARAIS : eyebrow) et légende de la scène
+const TEXTES = {
+  marais: ['Rapport d’incident · Les Marécages Maudits · nuit', 'Les Marécages Maudits · la Mère-Vase se jette sur les Noyés · scène du jeu 2.0.7, sous l’orage'],
+  bunker: ['Rapport d’incident · Bunker 7 · nuit du 14 décembre', ''],
+};
+const sons = window.Ambiance && Ambiance.disponible ? Ambiance : null;
+let fondSons = false;                                  // les sons repartent coupés à chaque lancement
+let videoEnPanne = false;
+const video = window.FondVideo ? FondVideo.create(hero, MARAIS.video, MARAIS.affiche, {
+  sans: MARAIS.sans, boucle: MARAIS.boucle, ecoute: sons ? { eclair: (e) => sons.eclair(e) } : null,
+  panne: () => {
+    videoEnPanne = true; fondSons = false;
+    majFond();
+    if (current) dessinerReglages(current);
+    toast('Fond de l’accueil', 'La vidéo des Marécages Maudits ne peut pas être lue sur ce PC : Bunker 7 à la place.', 'erreur');
+  },
+}) : null;
+if (sons) sons.regler({ panne: (m) => { fondSons = false; if (current) dessinerReglages(current); toast('Sons de l’ambiance', m, 'erreur'); } });
+function fondActuel() {
+  const set = (current && current.settings) || {};
+  return set.fond !== 'bunker' && video && !videoEnPanne ? 'marais' : 'bunker';
+}
+// pour les essais (lecture seule) : le lecteur, l'ambiance, le fond montré
+window.ZS_FOND = Object.freeze({ video: () => video, sons: () => sons, actuel: fondActuel, sonsAllumes: () => fondSons });
 /* Le fond ne bouge que si on le voit : accueil, fenêtre visible et au premier plan (pas derrière les Mod Tools),
-   pas de partie en cours ; jamais avec le réglage « fond fixe » ni avec « réduire les animations » de Windows. */
+   pas de partie en cours ; jamais avec le réglage « fond fixe » ni avec « réduire les animations » de Windows. Fenêtre
+   restée à l'écran mais à l'arrière-plan : la vidéo s'arrête sur l'image en cours (pas de retour à l'affiche). Les sons
+   de l'ambiance, s'ils sont allumés, suivent la même visibilité, mais pas le fond fixe : sur l'image fixe, la pluie
+   continue, sans tonnerre (pas d'éclair, pas de tonnerre ; plan §8.3, choix validé par Anthony le 31 octobre 2026). */
 function majFond() {
-  const s = current || {};
-  const fixe = (s.settings && s.settings.fondAnime === false) || reduire.matches;
-  const visible = section === 'accueil' && !document.hidden && document.hasFocus() && s.phase !== 'playing';
-  const anime = visible && !fixe;
+  const s = current || {}, set = s.settings || {};
+  const fixe = set.fondAnime === false || reduire.matches;
+  const ecran = section === 'accueil' && !document.hidden && s.phase !== 'playing';   // le fond est à l'écran
+  const visible = ecran && document.hasFocus();
+  const anime = visible && !fixe, f = fondActuel();
+  if (hero.dataset.fond !== f) {
+    hero.dataset.fond = f;
+    $('d-sur').textContent = TEXTES[f][0];
+    $('d-legende').textContent = TEXTES[f][1];
+    if (f === 'bunker') requestAnimationFrame(placer);
+  }
   hero.classList.toggle('fond-fixe', fixe);
-  if ((hero.dataset.anime === 'oui') === anime) return;
   hero.dataset.anime = anime ? 'oui' : 'non';
-  if (anime && !boucleId) boucleId = requestAnimationFrame(boucle);
+  if (anime && f === 'bunker' && !boucleId) boucleId = requestAnimationFrame(boucle);
+  if (video) video.regler({ actif: f === 'marais' && visible, garder: f === 'marais' && ecran && !fixe, anim: !fixe, eclairs: set.fondEclairs !== false });
+  if (sons) sons.regler({ veut: fondSons, visible: f === 'marais' && visible, volume: (Number.isInteger(set.volumeSons) ? set.volumeSons : 80) / 100 });
 }
 new ResizeObserver(placer).observe(hero, { box: 'device-pixel-content-box' });
 
@@ -687,7 +758,13 @@ function bind() {
   for (const b of document.querySelectorAll('[data-section]')) b.addEventListener('click', () => aller(b.dataset.section));
   for (const b of document.querySelectorAll('[data-aller]')) b.addEventListener('click', () => aller(b.dataset.aller));
   for (const b of document.querySelectorAll('[data-act]')) b.addEventListener('click', unClic(() => ACTIONS[b.dataset.act]()));
-  for (const i of document.querySelectorAll('[data-reglage]')) i.addEventListener('change', guard(() => window.zs.setSetting(i.dataset.reglage, i.checked)));
+  for (const i of document.querySelectorAll('[data-reglage]')) i.addEventListener('change', guard(() => window.zs.setSetting(i.dataset.reglage, valeurDe(i))));
+  // volume de l'ambiance : retenu pendant le glissement (sons.regler), enregistré au relâchement (change, ci-dessus) ; le
+  // curseur est dans Paramètres, où les sons sont en pause : on l'entend au retour à l'accueil, par la montée de 1,5 s
+  $('d-volume').addEventListener('input', () => { const v = valeurDe($('d-volume')); majVolume(v); if (sons) sons.regler({ volume: v / 100 }); });
+  // sons de l'ambiance : réglage de la page seulement (coupés à chaque lancement) ; le contexte audio naît au premier
+  // passage à l'accueil, sons allumés (ambiance.js, appliquer), sur ce geste
+  $('d-sons').addEventListener('change', () => { fondSons = $('d-sons').checked; majFond(); if (current) dessinerReglages(current); });
   $('d-lecture-fermer').addEventListener('click', fermerLecture);
   $('d-cloche').addEventListener('click', () => {
     const s = current || {};

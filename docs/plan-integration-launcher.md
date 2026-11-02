@@ -130,7 +130,7 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
 | Vérifications : manifeste signé, SHA-256, clé de confiance | `updater.js`, `publisher.js` (`fingerprint`), `config/default.json` | source et empreinte (`8508-2046-8B30-034A`) ; erreurs (`MANIFEST_INVALID`…) en phase `error`, avec « Réessayer » et « Journal » | `updater.test.js`, `publisher.test.js`, `config.test.js` |
 | Signature et publication (auteur) | `publisher.js`, `github.js`, `history.js`, fenêtre de l'outil de publication | lien « Outil de publication » (`zs.openPublisher`) dans Mod Tools et Paramètres | `github.test.js`, `history.test.js` ; E2 `publish-online` |
 | Mise à jour du launcher lui-même | `main.js` (`launcherUpdate`, `updateLauncher`, `restarting`) | bandeau « Nouveau launcher », phase `restarting` | E2 `publish-online` |
-| Paramètres | `main.js` (`DEFAULT_SETTINGS`, `launcher:setting`) | les quatre réglages actuels, plus `fondAnime`, `fondEclairs` et `fondSons` (booléens), `fond` (`marais` ou `bunker`) et `volumeSons` (entier de 0 à 100, 80 par défaut) | nouvel essai de l'interface ; relecture de `settings.json` |
+| Paramètres | `reglages.js`, repris par `main.js` (`DEFAULT_SETTINGS`, `launcher:setting`) | les quatre réglages actuels, plus `fondAnime` et `fondEclairs` (booléens), `fond` (`marais` ou `bunker`) et `volumeSons` (entier de 0 à 100, 80 par défaut) ; les sons de l'ambiance : réglage de la page, coupés à chaque lancement, absents de `settings.json` (§9.1) | nouvel essai de l'interface ; relecture de `settings.json` |
 | Mod Tools | `main.js` (`openModtools`, mode auteur) | `#btn-modtools` sur l'accueil pour l'auteur ; page Mod Tools | les 9 essais E2 des Mod Tools |
 | Lancement du jeu, partie, retour | `main.js` (`play`, fenêtre du jeu, `keepLauncherOpen`) | `#btn-main`, phase `playing` ; fond en pause ; launcher réduit ou caché selon le réglage | les 19 essais E2 |
 | Historique et notes | `status.history`, `config/notes-history.json` | page Mises à jour (chronologie) | E2 `publish-online`, adapté |
@@ -149,9 +149,9 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
    - Garder les identifiants du §5.
 3. **Processus principal** : la fenêtre (1 280 × 720, au moins 960 × 600, redimensionnable), `launcher:window` + `maximize`, les réglages du fond (gestionnaire `launcher:setting`, qui n'accepte que des booléens, élargi au choix `fond` et au nombre `volumeSons`, borné de 0 à 100).
 4. **Ressources** :
-   - **Bunker 7** (`assets/bg.jpg`) reste le fond livré.
-   - **Les Marécages** (capture, vidéo, sons) ne sont ni versionnés ni empaquetés tant qu'Anthony ne l'autorise pas. Ils iraient dans un dossier exclu de Git ; sans eux, le launcher prend Bunker 7 tout seul, comme la maquette.
-   - **Les sons** (§8.3) : sans eux, l'interrupteur reste inactif, comme dans la maquette.
+   - **Bunker 7** (`assets/bg.jpg`) : au choix (« Fond de l'accueil »), et en secours si la vidéo est illisible.
+   - **Les Marécages** (capture, vidéo, sons) : prévus hors de Git tant qu'Anthony ne l'autorisait pas. **Publication autorisée le 2 novembre 2026** (§9.1) : vidéos, affiche et sons copiés dans `launcher/src/renderer/launcher/assets/marecages/`, versionnés et livrés ; fond par défaut.
+   - **Les sons** (§8.3) : sons introuvables, l'interrupteur se désactive.
 5. **Contrôles dans la session** :
    - `npm test` ;
    - la page du launcher dans le Chromium sans tête, avec un faux `window.zs` qui rejoue toutes les phases ; captures comparées à la maquette ;
@@ -169,10 +169,10 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
 - Nappes eau, bois, feuillage et lointain ; boue et toit pas utilisées.
 
 **Sources** : les fichiers Opus de `maquettes/launcher/ressources/marecages/sons/` et les réglages de `sons.json` (`boucle`, `echelle`, `t0`, `niveauJeu`, `medium_dB`, `envoiReverb`, `kJeu`). Ils viennent de `scene-bete/exporter-sons.js` (export autorisé par Anthony le 31 octobre 2026).
-- Ce sont des ressources de la carte non publiée : ni Git ni paquet sans son accord.
+- Ce sont des ressources de la carte non publiée : ni Git ni paquet sans son accord. **Publication autorisée par Anthony le 2 novembre 2026** (§9).
 
 **Chargement** : la politique de sécurité de la page du launcher (`default-src 'none'`, `connect-src 'none'`) interdit à la page de lire un fichier son (`fetch`, balise `<audio>`). Electron ne sert pas non plus `file://` à `fetch`.
-- **Proposé** : le processus principal lit les `.ogg` et le préchargement les passe à la page (`zs.ambiance()` → `{ meta, fichiers: { id: ArrayBuffer } }`). La page les décode (`decodeAudioData`, que la politique ne bride pas). La politique reste inchangée.
+- **Proposé, et fait le 2 novembre 2026** : le processus principal lit les `.ogg` et le préchargement les passe à la page (`zs.ambiance()` → `{ meta, fichiers: { id: ArrayBuffer } }` ; `lireAmbiance` dans `main.js`). La page les décode (`decodeAudioData`, que la politique ne bride pas). La politique ne change pas pour les sons.
 - **Repli** : un script local qui contient les sons en base64, comme la maquette (`script-src 'self'` le permet). Environ 1,8 Mo de texte.
 
 **Deux réglages du processus principal à connaître** : `autoplayPolicy: 'no-user-gesture-required'` et `backgroundThrottling: false` sont ceux des fenêtres du jeu et des Mod Tools (`play` et `openModtools` dans `main.js`). La fenêtre du launcher (`createLauncherWindow`) garde les valeurs par défaut d'Electron :
@@ -192,10 +192,10 @@ Principe d'Anthony du 31 octobre au soir : le plan est validé, mais le launcher
 
 ### 8.4 Vidéo du fond (maquette D : `fond-video.js`)
 
-**Source** : `fond-marais.webm` et `fond-marais-sans-eclairs.webm`, leurs affiches et la chronologie `fond-marais.json`, faits par `maquettes/launcher/scene-bete/encoder.js` (ffmpeg, VP9, depuis le 2 novembre 2026). Réglages choisis par Anthony le 2 novembre : CRF 28, fondu d'une seconde ; boucle de 7,7 s, 1 600 × 620, environ 4,5 Mo par version (9 Mo pour les deux). Ce sont des ressources de la carte non publiée : ni Git ni paquet sans l'accord d'Anthony.
+**Source** : `fond-marais.webm` et `fond-marais-sans-eclairs.webm`, leurs affiches et la chronologie `fond-marais.json`, faits par `maquettes/launcher/scene-bete/encoder.js` (ffmpeg, VP9, depuis le 2 novembre 2026). Réglages choisis par Anthony le 2 novembre : CRF 28, fondu d'une seconde ; boucle de 7,7 s, 1 600 × 620, environ 4,5 Mo par version (9 Mo pour les deux). Ce sont des ressources de la carte non publiée : ni Git ni paquet sans l'accord d'Anthony. **Publication autorisée par Anthony le 2 novembre 2026** (§9).
 
 **Points relevés le 2 novembre 2026, à décider ou à vérifier à l'intégration** (relecture indépendante de l'encodeur ; détail : `scene-bete/README.md`, §3 bis) :
-- **Politique de sécurité** : la page du launcher déclare `default-src 'none'` sans `media-src` ; une balise `<video>` y est refusée. La maquette lit des URI `data:` sans aucune politique. Deux voies, à décider avec Anthony puisqu'elles touchent la politique : `media-src 'self'` avec le fichier dans les ressources du launcher, ou un `blob:` fait par la page à partir d'un `ArrayBuffer` passé par le préchargement, comme les sons (`media-src blob:`).
+- **Politique de sécurité** : la page du launcher déclare `default-src 'none'` sans `media-src` ; une balise `<video>` y est refusée. La maquette lit des URI `data:` sans aucune politique. Deux voies : `media-src 'self'` avec le fichier dans les ressources du launcher, ou un `blob:` fait par la page à partir d'un `ArrayBuffer` passé par le préchargement, comme les sons (`media-src blob:`). **Retenue le 2 novembre 2026 : `media-src 'self'`**, la plus simple : la vidéo est lue au fil de la lecture, sans 9 Mo de plus en mémoire ni `blob:`. Ce n'est pas la plus étroite : dans une page chargée par `loadFile` (`file://`), `'self'` admet toute adresse `file:` du poste, pas seulement les fichiers du launcher ; `media-src blob:` n'aurait admis que les blobs faits par la page. Ce choix vaut tant que la page ne lit que ses chemins fixes (`MARAIS` dans `launcher.js`, `assets/marecages/`) et n'écrit jamais dans un `src` une adresse reçue (actualités, réglages, fichier choisi) ; sinon, revoir ce choix (`blob:`, ou un protocole propre au launcher).
 - **Couleurs** : mesurées dans le Chromium sans tête des essais (Chromium 141, rendu logiciel, Linux) : biais de 0,13 niveau au plus en moyenne. Le launcher tourne sur Electron 44.5.1 (Chromium 152), avec la carte graphique, sous Windows : refaire la mesure ou comparer à l'œil avec les images d'origine.
 - **Affiche** : corrigé dans la maquette le 2 novembre 2026, à la demande d'Anthony (`fond-video.js`). L'affiche est F[M], l'image de l'instant M/fps ; chaque lecture qui part de l'affiche (démarrage, reprise après une pause) repart de cet instant, et l'affiche ne s'efface qu'à la première image présentée. Avant : départ à 0 s, sur une autre image (écart moyen de 8,6 niveaux, 13 % des pixels à plus de 20) ; après : l'écart d'une image à la suivante (2,1 niveaux). À reprendre tel quel à l'intégration ; `essai.js` le contrôle au démarrage et à la reprise.
 - **Passage avec ou sans éclairs** : corrigé dans la maquette le 2 novembre 2026, à la demande d'Anthony (`fond-video.js`). Un lecteur par version, superposés ; celui qui n'est pas montré reste rendu mais transparent (`.en-retrait`) et à l'arrêt. En lecture, il se cale sur une image un peu à venir, avec une avance apprise selon la durée de sa recherche (la version sans éclairs n'a qu'une image clé), puis prend le relais quand le lecteur montré présente l'image juste avant. Pas d'affiche, pas d'arrêt, la boucle continue d'une image à la suivante. À l'arrêt, la bascule est immédiate, l'affiche couvrant tout. Mesuré en rendu logiciel : relais 0,3 à 3,3 s après la demande, la version d'avant jouant jusque-là ; `essai.js` contrôle quatre bascules, dont une tardive et une à cheval sur le retour au début. Pas besoin d'images clés en plus (`-g 30`). À reprendre tel quel à l'intégration.
@@ -235,7 +235,7 @@ Demande d'Anthony du 2 novembre 2026 : « Commence le portage vers Claude 5. Cla
 - Écran de titre : une seconde au moins, 2,5 s au plus ; la bulle « Launcher mis à jour » attend sa fin.
 - Pendant une partie (« Garder le launcher ouvert » coché), seul l'accueil se met en veille : la barre latérale et les autres pages restent utilisables, comme dans le launcher 1.3.3.
 - Le bandeau de l'accueil grandit si les notes ou la ligne d'état ne tiennent pas (la première note tient en deux lignes au plus, texte entier en info-bulle).
-- Fenêtre agrandie sur un écran large : au-delà de 1 920 px, les pages et le gestionnaire de téléchargement restent centrés sur 1 660 px. L'accueil garde toute la largeur (bandeau cinématographique) : à juger par Anthony sur son écran.
+- Fenêtre agrandie sur un écran large : au-delà de 1 920 px, les pages, accueil compris, et le gestionnaire de téléchargement restent centrés sur 1 660 px. L'accueil gardait d'abord toute la largeur (bandeau cinématographique) ; il est centré lui aussi depuis le 2 novembre 2026 au soir (réponse « Oui » d'Anthony, §9.1).
 
 **Relecture indépendante avant les commits** (2 novembre 2026, six relecteurs et un contradicteur par constat) : 34 constats, 33 confirmés, tous corrigés, 1 réfuté.
 - Le plus important : le texte de l'accueil était rogné par le haut avec une longue note ou une ligne d'état sur deux lignes.
@@ -260,6 +260,41 @@ Demande d'Anthony du 2 novembre 2026 : « Commence le portage vers Claude 5. Cla
 2. Remise à la cinquième session :
    - numéro 1.4.0 (`launcher/package.json`) et ligne `test:e2e` (ajouter `launcher-interface`) ;
    - entrée « Historique » du README, à dater et à numéroter à la publication ;
-   - comptes de `CLAUDE.md` (avec l'accord d'Anthony) : 4 tests unitaires de plus (35, ou 34 avec l'intermittent connu) et un essai E2 de plus (`launcher-interface`, 14 contrôles) ;
+   - comptes de `CLAUDE.md` (avec l'accord d'Anthony) : 7 tests unitaires de plus (`interface.test.js` 4, `reglages.test.js` 4 depuis la relecture de l'étape des Marécages : 39, ou 38 avec l'intermittent connu) et un essai E2 de plus (`launcher-interface`, 18 contrôles, §9.1) ;
    - intégration, installateur, explication de l'installation à Anthony.
-3. Étape des Marécages : fond par défaut des joueurs, vidéo, sons, réglages `fond`, `fondEclairs`, `fondSons` et `volumeSons`, politique de sécurité (`media-src`). Elle attend l'autorisation explicite d'Anthony de publier les ressources de la carte (règle du 31 octobre 2026), donnée pour cette étape.
+3. Étape des Marécages : faite le 2 novembre 2026 au soir, avec l'autorisation d'Anthony de publier les ressources de la carte (§9.1).
+
+### 9.1 Étape des Marécages (2 novembre 2026, au soir)
+
+Réponses d'Anthony du 2 novembre 2026, au soir : accueil centré sur un écran large (« Oui ») ; les deux dossiers vides du harnais retirés (« Oui ») ; publication des ressources des Marécages pour le fond (« oui. Claude 6 (Marécage) finalise justement la publication de la map et la commit vers claude 5. »).
+
+**Fait** :
+- Ressources copiées par `maquettes/launcher/scene-bete/vers-launcher.py` dans `launcher/src/renderer/launcher/assets/marecages/` : les deux vidéos (4,51 et 4,46 Mo), l'affiche (81 Ko), les 11 sons que charge `ambiance.js` (1,41 Mo : 4 nappes de pluie, la réverbération, 6 tonnerres ; avec la boucle actuelle, un seul éclair dans les nuages à 4,4 km, seuls `tonnerre-nuages-3500` et `tonnerre-sol-1700` sont joués, en alternance ; les 4 autres gardent la gamme validée pour une boucle aux éclairs plus proches) et leurs réglages (`sons/ambiance.json`). Soit 10,5 Mo de plus dans le dépôt et dans l'installateur.
+- Fond des Marécages Maudits par défaut ; Bunker 7 au choix (réglage « Fond de l'accueil »), et à la place si la vidéo est illisible.
+- `fond-video.js` et `ambiance.js` repris de la maquette, sans changer leurs réglages validés. Une correction pour le vrai launcher : la vidéo n'est pas encore chargée au démarrage, elle est donc calée sur l'image de l'affiche avant de jouer.
+- Sons : par le préchargement (§8.3). Vidéo : `media-src 'self'` (§8.4).
+- Réglages : `src/main/reglages.js` (`fond`, `fondEclairs`, `volumeSons` ; une valeur de `settings.json` qui ne convient pas reprend sa valeur par défaut en mémoire, et reste dans le fichier : `aEcrire`, pour un launcher plus récent) et `test/reglages.test.js`. Les sons eux-mêmes repartent coupés à chaque lancement : réglage de la page seulement.
+- Textes de la carte, confirmés par Claude 6 : « Les Marécages Maudits », l'accroche du jeu (« Rapport d'incident · Les Marécages Maudits · nuit ») et sa description. La 2.0.7 garde le tampon « en développement » dans le choix des cartes : la carte du launcher le dit aussi.
+- Accueil centré sur 1 660 px au-delà de 1 920 px, comme les autres pages (`@container fenetre (min-width: 1800px)` vise `.d-page`) ; le halo de la lampe de Bunker 7 garde sa taille de 1 920 px.
+- Contrôles : `npm test` 39 sur 39 ; la page avec un faux `window.zs` qui rend les vrais sons (scénarios `marais` et `maraisPannes`) : 189 sur 189 à 1 280 × 720, 960 × 600 et 1 600 × 900 ; `launcher-interface` passe à 18 contrôles (vidéo lue dans la vraie fenêtre, sons décodés, réglages enregistrés).
+
+**À vérifier sous Windows** (suite E2 et essai d'Anthony) :
+- couleurs de la vidéo dans Electron 44 ;
+- coût du décodage (Gestionnaire des tâches) ;
+- pause du son quand la fenêtre est réduite ;
+- volume réel (régler dans Paramètres, écouter à l'accueil : hors de l'accueil, les sons sont en pause).
+
+**Relecture indépendante de l'étape** (2 novembre 2026, six relecteurs et un contradicteur par constat) : 30 constats, 28 confirmés, 1 incertain, 1 réfuté ; tous corrigés, sauf un, laissé à Anthony.
+- Code :
+  - fenêtre à l'écran mais à l'arrière-plan : la vidéo s'arrête sur l'image en cours, sans revenir à l'affiche ;
+  - reprise du son revérifiée après coup (une pause pendant la reprise laissait la pluie) ;
+  - bascule des éclairs pendant le chargement ;
+  - préchargement de l'en-tête seulement tant que rien ne joue ;
+  - Paramètres à jour après une panne de la vidéo ;
+  - un seul message, en français, si les sons sont introuvables ou illisibles ;
+  - valeurs d'un launcher plus récent gardées dans `settings.json` ;
+  - halo de la lampe plafonné ; légende hors de la colonne du texte ;
+  - curseur du volume annoncé avec son unité.
+- Essais : silence vérifié une seconde après les pauses ; éclairs coupés puis rallumés comme le ferait le processus principal ; contrôles plus stricts.
+- Laissé à Anthony : la règle « pas deux fois le même tonnerre de suite » (maquette D) fait alterner, avec le seul éclair de la boucle, `tonnerre-nuages-3500` et `tonnerre-sol-1700`, 7,4 dB plus fort et 5,3 s plus tôt. Proposé : prendre le voisin en distance (`tonnerre-sol-3000` : 2,7 dB de plus et 1,6 s plus tôt). Il avait validé ces sons à l'écoute : rien n'est changé sans lui.
+

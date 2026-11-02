@@ -16,6 +16,7 @@ const github = require('./github');
 const { readGameVersion } = require('./gamepack');
 const { Workspace } = require('./workspace');
 const history = require('./history');
+const reglages = require('./reglages');
 const createLog = require('./log');
 
 if (process.env.ZS_USER_DATA) app.setPath('userData', process.env.ZS_USER_DATA);
@@ -32,8 +33,8 @@ const MODTOOLS_DIR = path.join(__dirname, '..', 'modtools');
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 const APP_ID = 'fr.zombiesurvival.launcher';
 const PLACEHOLDER = 'VOTRE-PSEUDO';
-// fondAnime : fond de l'accueil animé (lampe et poussière de Bunker 7), ou image fixe (launcher 1.4.0)
-const DEFAULT_SETTINGS = { autoCheck: true, autoInstall: true, fullscreen: true, keepLauncherOpen: false, fondAnime: true };
+// réglages (settings.json) : valeurs par défaut et contrôles dans reglages.js (fond de l'accueil depuis le launcher 1.4.0)
+const DEFAULT_SETTINGS = reglages.DEFAULTS;
 // Notes des versions publiées avant le launcher 1.2.6 (les manifestes suivants portent leur historique).
 const BUNDLED_HISTORY = (readJson(path.join(APP_ROOT, 'config', 'notes-history.json')) || {}).versions || [];
 
@@ -69,7 +70,7 @@ function writeJson(file, data) {
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2));
   fs.renameSync(`${file}.tmp`, file);
 }
-function loadSettings() { return { ...DEFAULT_SETTINGS, ...(readJson(userFile('settings.json')) || {}) }; }
+function loadSettings() { return reglages.lire(readJson(userFile('settings.json'))); }
 function loadConfig() {
   const def = readJson(path.join(APP_ROOT, 'config', 'default.json')) || {};
   const user = readJson(userFile('config.json')) || {};
@@ -693,6 +694,22 @@ function handle(channel, wins, fn) {
     return fn(...args);
   });
 }
+/* Sons de l'ambiance du fond « Les Marécages Maudits » (pluie, orage) : la page n'a ni fetch ni accès aux fichiers
+   (politique de sécurité) ; ils lui sont passés en ArrayBuffer, avec leurs réglages, quand elle allume les sons. Seuls
+   les sons nommés dans ambiance.json, au nom contrôlé, sont lus. */
+function lireAmbiance() {
+  const dir = path.join(RENDERER, 'launcher', 'assets', 'marecages', 'sons');
+  const doc = readJson(path.join(dir, 'ambiance.json'));
+  if (!doc || !doc.sons || typeof doc.sons !== 'object') throw new Error('ambiance.json illisible');
+  const meta = {}, fichiers = {};
+  for (const [id, m] of Object.entries(doc.sons)) {
+    if (!/^[a-z0-9-]+$/.test(id)) continue;
+    const b = fs.readFileSync(path.join(dir, `${id}.ogg`));
+    meta[id] = m;
+    fichiers[id] = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  }
+  return { meta, fichiers };
+}
 function setupIpc() {
   const L = () => [launcherWin];
   const P = () => [publisherWin];
@@ -712,11 +729,19 @@ function setupIpc() {
     return shell.openPath(target);
   });
   handle('launcher:setting', L, (k, v) => {
-    if (!(k in DEFAULT_SETTINGS) || typeof v !== 'boolean') return settings;
+    if (!reglages.valide(k, v)) return settings;
     settings[k] = v;
-    writeJson(userFile('settings.json'), settings);
+    const f = userFile('settings.json');
+    writeJson(f, reglages.aEcrire(settings, readJson(f), k));
     setStatus({ settings: { ...settings } });
     return settings;
+  });
+  // une seule phrase pour le joueur, le détail (fichier, code) dans le journal
+  handle('launcher:ambiance', L, () => {
+    try { return lireAmbiance(); } catch (e) {
+      log(`[ambiance] ${e && e.message ? e.message : e}`);
+      throw new Error('Sons de l’ambiance introuvables.');
+    }
   });
   handle('launcher:resetSource', L, () => {
     fs.rmSync(userFile('config.json'), { force: true });

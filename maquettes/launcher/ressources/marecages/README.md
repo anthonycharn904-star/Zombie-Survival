@@ -12,9 +12,10 @@ C'est une capture du jeu du kit 2.0.7, prise en vue libre, sans HUD ni arme : la
 - **Usage** : fond de l'accueil, retournée horizontalement pour que la bête soit à droite, hors du texte. La légende du bandeau le dit.
 - **Image fixe de secours** : la même capture, en arrière-plan CSS sous le canevas.
 
-**Statut : carte non publiée** (« en développement » dans le kit 2.0.7).
-- Tout ce dossier, sauf ce README et son `.gitignore`, est exclu de Git : les images, les vidéos (`fond-marais.webm`, `fond-marais-sans-eclairs.webm`, leurs affiches et la chronologie `fond-marais.json`) et les sons (`sons/`).
-- **Règle d'Anthony du 31 octobre 2026** : aucune image, vidéo ou ressource de cette carte sur GitHub sans son autorisation explicite. Usage local seulement (maquette et intégration future).
+**Statut** : la carte sort avec le jeu 2.0.7 (« en développement » dans le choix des cartes, comme dans le kit), et le launcher 1.4.0 avec elle.
+- **Publication autorisée par Anthony le 2 novembre 2026** pour le fond de l'accueil du launcher. Les copies livrées sont dans `launcher/src/renderer/launcher/assets/marecages/` : les deux vidéos, une affiche (les deux sont identiques), les 11 sons que charge `ambiance.js` et leurs réglages (`sons/ambiance.json`), faites par `../../scene-bete/vers-launcher.py`, qui contrôle la concordance des chronologies, des affiches et des sons.
+- Ce dossier garde les originaux, exclus de Git, sauf ce README et son `.gitignore` : la capture de la scène 2D, les vidéos et leurs chronologies (`fond-marais*.json`), les affiches, les sons (`sons/`, avec les maîtres et l'aperçu).
+- **Règle d'Anthony du 31 octobre 2026**, qui valait jusque-là : aucune image, vidéo ou ressource de cette carte sur GitHub sans son autorisation explicite. Une nouvelle ressource de la carte demande toujours son accord.
 - La vraie scène de la bête (capture dans le jeu du kit) a sa procédure dans `../../scene-bete/README.md`.
 
 ## Références consultées (lues, pas copiées)
@@ -104,13 +105,10 @@ L'étude a été faite en lecture seule.
   - La capture passe par la file commune des tâches lourdes (`zs-lourd`, consigne du 2 novembre) et part sur l'ordre d'Anthony.
   - L'encodeur : ffmpeg (VP9 en deux passes, `scene-bete/encoder.js`), installé par Anthony le 2 novembre 2026. Avant, faute de ffmpeg, l'enregistrement d'un canevas par le navigateur : des images perdues et un rythme irrégulier.
 
-## Pour l'intégration au vrai launcher
+## Intégration au vrai launcher (faite le 2 novembre 2026)
 
-**Condition** : les ressources de cette carte (capture, vidéos, sons) n'entrent dans un dossier suivi par Git, dans le paquet du launcher ou dans l'installateur qu'avec l'autorisation explicite d'Anthony de publier la carte. D'ici là, elles restent dans un dossier exclu de Git (`docs/plan-integration-launcher.md`, §8).
-
-1. **Image** : après son autorisation, copier la capture dans `launcher/src/renderer/launcher/assets/` (une version WebP de 1 280 px suffit). Le `img-src 'self' data:` de la page l'autorise.
-2. **Scène** : reprendre `D-hybride/marais.js` comme module de la scène de l'accueil. Il n'écrit aucun style en ligne : le canevas est permis par la politique de sécurité du launcher.
-3. **Réglages** : ajouter deux réglages, `fondAnime` (oui par défaut) et `fond` (`marais` ou `bunker`). Les enregistrer comme les autres (`setSetting`).
-4. **Pause** : brancher sur `visibilitychange`, sur les événements `minimize` et `restore` de la fenêtre, et sur l'état « partie en cours » (`status.phase === 'playing'`). Brancher aussi sur `prefers-reduced-motion` et sur le réglage `fondAnime`.
-5. **Poids** : environ 80 Ko d'image et 12 Ko de script ; 30 images par seconde au plus, et rien quand la scène est invisible.
-6. **Sons** : 11 fichiers Opus (1,4 Mo), `D-hybride/ambiance.js` et deux réglages, `fondSons` (coupé par défaut) et `volumeSons` (80). La page du launcher ne peut pas lire de fichier son (`connect-src 'none'`) : le chargement passe par le préchargement (`docs/plan-integration-launcher.md` §8.3).
+Faite autrement que prévu ici au départ (une capture en WebP et la scène 2D `marais.js`) : le launcher reçoit la vidéo et les sons, copiés par `../../scene-bete/vers-launcher.py` dans `launcher/src/renderer/launcher/assets/marecages/` (publication autorisée par Anthony le 2 novembre 2026).
+- **Vidéo** : `fond-video.js`, politique de sécurité `media-src 'self'`.
+- **Sons** : par le préchargement (`zs.ambiance()`). Les 11 sons que charge `ambiance.js` : 4 nappes de pluie, la réverbération de l'orage, 6 tonnerres. Avec la boucle actuelle (un seul éclair, dans les nuages à 4,4 km), seuls `tonnerre-nuages-3500` et `tonnerre-sol-1700` sont joués, en alternance (« pas deux fois le même de suite ») ; les 4 autres gardent la gamme validée de 450 m à 3,5 km pour une boucle aux éclairs plus proches (0,49 Mo dans l'installateur).
+- **Réglages** : `fond`, `fondAnime`, `fondEclairs` et `volumeSons`. Les sons repartent coupés à chaque lancement et ne sont jamais enregistrés.
+- Détail : `docs/plan-integration-launcher.md`, §8.3, §8.4 et §9.1.

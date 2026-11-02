@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Zombie Survival</title>
 <link rel="stylesheet" href="../fonts/fonts.css">
 <link rel="stylesheet" href="launcher.css">
@@ -10,7 +10,8 @@
 <body>
 <!-- Interface du launcher : la maquette D (validée par Anthony le 31 octobre 2026), branchée sur window.zs.
      Les identifiants btn-main, status-title et btn-modtools sont lus par les essais de bout en bout : leur état de
-     départ (désactivé, « Ouverture du bunker… », caché) fait partie du contrat. -->
+     départ (désactivé, « Ouverture du bunker… », caché) fait partie du contrat. media-src 'self' : la vidéo du fond
+     des Marécages Maudits, lue dans les fichiers du launcher (assets/marecages). -->
 <main class="fenetre d" id="fenetre">
   <svg class="sprite" aria-hidden="true">
     <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></symbol>
@@ -79,6 +80,7 @@
             <p class="d-statut" id="d-statut" data-ton="neutre" aria-live="polite"><i aria-hidden="true"></i><b id="status-title">Ouverture du bunker…</b><span id="status-detail"></span><span class="d-st-liens"><button type="button" id="link-a" hidden></button><button type="button" id="link-b" hidden></button></span></p>
           </div>
           <div class="d-hero-grain" aria-hidden="true"></div>
+          <p class="d-legende" id="d-legende"></p>
         </div>
         <div class="d-rangee">
           <div class="d-bloc">
@@ -169,8 +171,12 @@
           <div class="d-carte"><h3>Mises à jour</h3>
             <label class="d-inter"><span>Rechercher au démarrage et au retour d’une partie</span><input type="checkbox" data-reglage="autoCheck"><i aria-hidden="true"></i></label>
             <label class="d-inter"><span>Installer automatiquement<small>Jeu et launcher</small></span><input type="checkbox" data-reglage="autoInstall"><i aria-hidden="true"></i></label></div>
-          <div class="d-carte d-large"><h3>Accueil</h3>
-            <label class="d-inter"><span>Fond d’écran animé<small>Coupé : une image fixe. En pause quand la fenêtre est masquée, réduite ou à l’arrière-plan, hors de l’accueil et pendant une partie.</small></span><input type="checkbox" data-reglage="fondAnime"><i aria-hidden="true"></i></label></div>
+          <div class="d-carte d-large" id="d-regl-accueil"><h3>Accueil</h3>
+            <label class="d-choix" data-ligne><span>Fond de l’accueil<small id="d-fond-note">La scène d’une carte du jeu, derrière le bouton Jouer</small></span><select data-reglage="fond"><option value="marais">Les Marécages Maudits</option><option value="bunker">Bunker 7</option></select></label>
+            <label class="d-inter" data-ligne><span>Fond d’écran animé<small>Coupé : une image fixe. En pause quand la fenêtre est masquée, réduite ou à l’arrière-plan, hors de l’accueil et pendant une partie.</small></span><input type="checkbox" data-reglage="fondAnime"><i aria-hidden="true"></i></label>
+            <label class="d-inter" data-ligne><span>Éclairs de l’orage<small>Les Marécages Maudits : discrets ; on peut les couper (vertige, sensibilité aux éclats)</small></span><input type="checkbox" data-reglage="fondEclairs"><i aria-hidden="true"></i></label>
+            <label class="d-inter" data-ligne><span>Sons de l’ambiance (pluie, tonnerre)<small id="d-sons-note">Les Marécages Maudits : coupés à chaque lancement du launcher ; seulement quand le fond est visible</small></span><input type="checkbox" id="d-sons"><i aria-hidden="true"></i></label>
+            <label class="d-choix d-volume" data-ligne><span>Volume de l’ambiance<small>Pluie et tonnerre ensemble ; montée progressive à chaque reprise</small></span><input type="range" data-reglage="volumeSons" id="d-volume" min="0" max="100" step="5" value="80" aria-valuetext="80&#160;%"><b id="d-volume-val" aria-hidden="true">80&#160;%</b></label></div>
           <div class="d-carte d-large"><h3>Source des mises à jour</h3><p class="d-chemin" id="d-source"></p><p class="d-petit" id="d-source-sous"></p>
             <p class="d-petit">Clé de confiance <b id="d-cle">—</b> · chaque version est signée par l’auteur ; un fichier dont la signature ne correspond pas est refusé.</p>
             <p class="d-avert" id="d-source-test" hidden>Source de test active : ce launcher lit une adresse personnalisée. <button type="button" class="d-lien" data-act="sourceOfficielle">Revenir à la source officielle</button></p>
@@ -211,6 +217,8 @@
     <button type="button" class="d-btn d-btn-rouge" data-act="revenirPartie">Revenir à la partie</button>
   </div>
 </main>
+<script src="fond-video.js"></script>
+<script src="ambiance.js"></script>
 <script src="launcher.js"></script>
 </body>
 </html>

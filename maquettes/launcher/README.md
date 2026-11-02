@@ -27,7 +27,7 @@ Demande d'Anthony du 31 octobre 2026 au soir : remplacer le fond de l'accueil (l
   - réglage « Fond d'écran animé » ;
   - pause quand la fenêtre est masquée ou réduite (bouton Réduire simulé), hors de l'accueil et pendant une partie.
 - **Réglage « Fond de l'accueil »** : Marécages maudits ou Bunker 7.
-- **Provenance, références et suite** : `ressources/marecages/README.md`. La capture reste hors de Git (carte non publiée).
+- **Provenance, références et suite** : `ressources/marecages/README.md`. Les originaux restent hors de Git ; le launcher 1.4.0 livre les vidéos et les sons (publication autorisée par Anthony le 2 novembre 2026, copies dans `launcher/src/renderer/launcher/assets/marecages/`).
 - **Éclairs discrets**, à éclat plafonné (une ambiance sombre, sans excès de lumière). Réglage « Éclairs de l'orage ».
 - **Sons de l'ambiance** (`D-hybride/ambiance.js`) : les sons calculés du kit 2.0.7, exportés avec l'accord d'Anthony (`scene-bete/exporter-sons.js`), mêlés comme dans le jeu.
   - Pluie : à la force du jeu, réglée sur l'intensité de la pluie qu'on voit.

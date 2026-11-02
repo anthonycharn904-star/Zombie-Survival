@@ -11,9 +11,10 @@ const DIR = path.join(__dirname, '..', 'src', 'renderer', 'launcher');
 const HTML = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
 const JS = fs.readFileSync(path.join(DIR, 'launcher.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(DIR, 'launcher.css'), 'utf8');
-const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'";
+// media-src 'self' depuis le launcher 1.4.0 : la vidéo du fond des Marécages Maudits, lue dans les fichiers du launcher
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'";
 
-test('interface : politique de sécurité inchangée, ni style ni script en ligne', () => {
+test('interface : politique de sécurité, ni style ni script en ligne', () => {
   const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(HTML);
   assert.ok(meta, 'balise de la politique de sécurité');
   assert.equal(meta[1], CSP);
@@ -49,7 +50,9 @@ test('interface : chaque identifiant du script existe dans la page, une seule fo
   // les symboles du sprite utilisés par la page
   for (const m of HTML.matchAll(/<use href="#([^"]+)"/g)) assert.ok(ids.has(m[1]), `symbole #${m[1]} absent`);
   // chaque data-act et data-section a son action ou sa page
-  const actions = new Set([...JS.matchAll(/^\s{2}([a-zA-Z]+): /gm)].map((m) => m[1]));
+  const bloc = /^const ACTIONS = \{\n([\s\S]*?)\n\};$/m.exec(JS);
+  assert.ok(bloc, 'bloc « const ACTIONS = { … }; » dans launcher.js');
+  const actions = new Set([...bloc[1].matchAll(/^ {2}([a-zA-Z]+):/gm)].map((m) => m[1]));
   for (const m of HTML.matchAll(/data-act="([^"]+)"/g)) assert.ok(actions.has(m[1]), `action inconnue : ${m[1]}`);
   const pages = new Set([...HTML.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]));
   for (const m of HTML.matchAll(/data-(?:section|aller)="([^"]+)"/g)) assert.ok(pages.has(m[1]), `page inconnue : ${m[1]}`);

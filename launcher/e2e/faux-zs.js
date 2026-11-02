@@ -8,13 +8,15 @@
      etat()                copie de l'état courant
      appels                liste des appels reçus { nom, args, t }
      reponses[nom]         { valeur } renvoyée, ou { rejet: 'message' } (rejet au format d'Electron)
-     violations, erreurs   refus de la politique de sécurité, erreurs de la page */
+     violations, erreurs   refus de la politique de sécurité, erreurs de la page
+   ambiance() rend les sons de window.__fauxZsAmbiance ({ meta, fichiers: { id: base64 } }, posé par le lanceur), en
+   ArrayBuffer comme le processus principal ; sans eux, null. */
 (() => {
   const CANAUX = {
     status: 'launcher:status', check: 'launcher:check', install: 'launcher:install', cancel: 'launcher:cancel', play: 'launcher:play',
     repair: 'launcher:repair', rollback: 'launcher:rollback', updateLauncher: 'launcher:updateLauncher', openPublisher: 'launcher:publisher',
     openModtools: 'launcher:modtools', open: 'launcher:open', setSetting: 'launcher:setting', resetSource: 'launcher:resetSource',
-    windowAction: 'launcher:window', openExternal: 'launcher:external',
+    windowAction: 'launcher:window', openExternal: 'launcher:external', ambiance: 'launcher:ambiance',
   };
   // état initial de main.js (objet status) ; le lanceur le complète avant le chargement si besoin (__fauxZsDepart)
   const etat = Object.assign({
@@ -36,6 +38,17 @@
     if (r && 'valeur' in r) return Promise.resolve(JSON.parse(JSON.stringify(r.valeur)));
     if (nom === 'status') return Promise.resolve(copie());
     if (nom === 'setSetting') return Promise.resolve(Object.assign({}, etat.settings));
+    if (nom === 'ambiance') {
+      const A = window.__fauxZsAmbiance;
+      if (!A) return Promise.resolve(null);
+      const fichiers = {};
+      for (const [id, b64] of Object.entries(A.fichiers)) {
+        const b = atob(b64), u = new Uint8Array(b.length);
+        for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+        fichiers[id] = u.buffer;
+      }
+      return Promise.resolve({ meta: JSON.parse(JSON.stringify(A.meta)), fichiers });
+    }
     return Promise.resolve(true);
   };
   const api = {};

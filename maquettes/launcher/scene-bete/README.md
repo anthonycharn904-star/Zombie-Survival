@@ -211,7 +211,7 @@ Caméra : 6 m vers le large et 7 m de côté, à 1,1 m au-dessus de l'eau, champ
 
 ## 6. Sorties
 
-Tout reste hors de Git : la carte n'est pas publiée. `sortie/` est ignoré en entier ; dans `../ressources/marecages/`, les vidéos (y compris la vidéo partielle `….partiel.webm` pendant l'encodage), les affiches et les chronologies `fond-marais*.json` le sont aussi.
+Ces sorties restent hors de Git (les copies livrées avec le launcher sont faites par `vers-launcher.py`, voir plus bas). `sortie/` est ignoré en entier ; dans `../ressources/marecages/`, les vidéos (y compris la vidéo partielle `….partiel.webm` pendant l'encodage), les affiches et les chronologies `fond-marais*.json` le sont aussi.
 - `sortie/cadrage/` :
   - `images/` : une image par 1/3 s, sur toute la fenêtre de la capture ;
   - `cadrage.json` : réglages, étapes, état de la bête image par image, journal, éclairs ;
@@ -227,6 +227,7 @@ Tout reste hors de Git : la carte n'est pas publiée. `sortie/` est ignoré en e
   - `fond-marais-sans-eclairs.webm` ;
   - les affiches (`…-affiche.jpg`), celle de la version sans éclairs de préférence.
 - **Règle d'Anthony du 31 octobre** : aucune image, vidéo ou ressource de cette carte sur GitHub sans son autorisation explicite. Les fichiers texte qui la décrivent (ces README, les scripts, `marais.js`) sont aussi à relire avant tout commit.
+- **Publication autorisée par Anthony le 2 novembre 2026** pour le launcher 1.4.0 : `python3 maquettes/launcher/scene-bete/vers-launcher.py` copie les deux vidéos, l'affiche et les 11 sons de l'ambiance (avec `sons/ambiance.json`) dans `launcher/src/renderer/launcher/assets/marecages/`. Il refuse (code 2), avant toute copie, si une vidéo ou une affiche manque, si les chronologies des deux vidéos diffèrent, si les affiches diffèrent ou si un son manque, et affiche la chronologie à reporter dans `MARAIS` (`launcher.js`). Après un nouvel encodage : le relancer, puis reporter la chronologie.
 
 ## 7. Sons de pluie et de tonnerre (exportés le 31 octobre 2026)
 
@@ -279,6 +280,7 @@ Tout reste hors de Git : la carte n'est pas publiée. `sortie/` est ignoré en e
 - `couleurs-video.js` : les couleurs d'une vidéo telles que Chromium les rend, comparées aux images d'origine (§3 bis).
 - `planche-video.py` : planche de comparaison, à l'échelle 1 ou agrandie (`--echelle 2`) : la source et une ou plusieurs vidéos côte à côte, sur des zones choisies, avec le PSNR de chaque zone.
 - `exporter-sons.js` : export des sons calculés du kit (pluie, tonnerre, réverbération), contrôle et aperçu.
+- `vers-launcher.py` : copie des vidéos, de l'affiche et des 11 sons de l'ambiance dans le launcher (`launcher/src/renderer/launcher/assets/marecages/`), avec contrôles (§6).
 - `images-2d.js` : images d'essai tirées du fond 2D, pour essayer la chaîne sans le kit.
 - `.gitignore` : `kit/`, `sortie/` et les caches de Python hors du dépôt.
 - **Prérequis** : ffmpeg et ffprobe (paquet Ubuntu `ffmpeg`) ; Python 3 avec numpy, scipy et Pillow (`comparer-video.py`, `planche-video.py`) ; `playwright-core` (`npm ci` dans `launcher/`, avec l'accord d'Anthony) et le Chromium « sans tête » de Playwright, ou `ZS_CHROMIUM`, pour les scripts qui ouvrent une page.

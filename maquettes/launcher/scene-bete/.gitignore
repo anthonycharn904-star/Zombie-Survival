@@ -1,5 +1,5 @@
-# Marécages maudits n'est pas publiée : la copie du jeu du kit, les images capturées, la vidéo et les sons restent
-# hors du dépôt public jusqu'à l'accord explicite d'Anthony.
+# la copie du jeu du kit et les sorties de la capture (images, vidéos, sons) restent hors du dépôt ; les copies livrées
+# avec le launcher (publication autorisée par Anthony le 2 novembre 2026) sont faites par vers-launcher.py
 kit/
 sortie/
 # caches de Python (comparer-video.py, planche-video.py)

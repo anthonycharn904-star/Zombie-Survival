@@ -2,7 +2,9 @@
 /* Essai de bout en bout de l'interface du launcher 1.4.0 (direction D de la maquette) dans la vraie fenêtre :
    taille et redimensionnement de la fenêtre, bouton Agrandir ou Restaurer (état renvoyé par le processus
    principal), écran d'ouverture, pages de la barre latérale, réglage du fond animé (enregistré dans
-   settings.json), fond en pause hors de l'accueil, aucune erreur de page ni refus de la politique de sécurité.
+   settings.json), fond en pause hors de l'accueil ; fond des Marécages Maudits : vidéo lue dans les fichiers du
+   launcher (media-src 'self'), sons de l'ambiance passés par le préchargement et décodés, réglages du fond
+   enregistrés ; aucune erreur de page ni refus de la politique de sécurité.
    Sans réseau : la source des mises à jour du dossier de l'essai (config.json) ne répond pas, le launcher reste
    hors ligne avec le jeu livré. Les états simulés (téléchargement, erreurs, partie) se contrôlent sans Electron
    avec e2e/page-launcher.js.
@@ -117,7 +119,7 @@ const principal = (app, corps, arg) => app.evaluate(new Function('electron', 'ar
 
     /* ---- réglage du fond animé : enregistré dans settings.json, image fixe à l'accueil */
     await launcher.click('.d-nav [data-section="reglages"]');
-    ok(await dom(() => !document.querySelector('[data-reglage="fondAnime"]').closest('.d-carte').hidden && document.querySelector('[data-reglage="fondAnime"]').checked), 'paramètres : « Fond d’écran animé », allumé par défaut');
+    ok(await dom(() => { const i = document.querySelector('[data-reglage="fondAnime"]'); return !i.closest('[data-ligne]').hidden && i.checked; }), 'paramètres : « Fond d’écran animé », allumé par défaut');
     const reglages = () => JSON.parse(fs.readFileSync(path.join(USER, 'settings.json'), 'utf8'));
     await launcher.click('label:has([data-reglage="fondAnime"])');
     await pause(500);
@@ -130,6 +132,44 @@ const principal = (app, corps, arg) => app.evaluate(new Function('electron', 'ar
     await pause(500);
     ok(reglages().fondAnime === true, 'fond animé rallumé : enregistré');
     await shot(launcher, 'interface-4-parametres');
+
+    /* ---- fond des Marécages Maudits (par défaut) : la vidéo se lit dans la vraie fenêtre, quel que soit le focus
+       (sous Xvfb, la fenêtre peut ne pas l'avoir) ; les sons passent par le préchargement et se décodent */
+    await launcher.click('.d-nav [data-section="accueil"]');
+    const lu = await dom(async () => {
+      const v = window.ZS_FOND.video().video, t0 = v.currentTime;
+      await v.play().catch(() => {});
+      await new Promise((r) => setTimeout(r, 2000));
+      return { fond: document.getElementById('d-hero').dataset.fond, erreur: v.error ? v.error.code : null, pret: v.readyState, avance: +(v.currentTime - t0).toFixed(2), duree: v.duration };
+    });
+    ok(lu.fond === 'marais' && !lu.erreur && lu.pret >= 2 && lu.avance > 0 && Math.abs(lu.duree - 7.7) < 0.1, 'Marécages : fond par défaut, vidéo lue dans les fichiers du launcher (media-src)', lu);
+    const amb = await dom(async () => {
+      const r = await window.zs.ambiance(), c = new AudioContext();
+      const ids = Object.keys(r.fichiers).sort();
+      const decodes = await Promise.all(ids.map((id) => c.decodeAudioData(r.fichiers[id].slice(0)).then((b) => b.duration > 0, () => false)));
+      c.close();
+      return { ids: ids.length, meta: Object.keys(r.meta).length, decodes: decodes.filter(Boolean).length, octets: ids.reduce((n, id) => n + r.fichiers[id].byteLength, 0) };
+    });
+    ok(amb.ids === 11 && amb.meta === 11 && amb.decodes === 11 && amb.octets > 1e6, 'sons de l’ambiance : 11 fichiers passés par le préchargement et décodés', amb);
+    await launcher.click('.d-nav [data-section="reglages"]');
+    await launcher.click('label:has([data-reglage="fondEclairs"])');
+    // le volume ne se règle que sons allumés (ils restent une affaire de la page : rien dans settings.json)
+    await launcher.click('label:has(#d-sons)');
+    await dom(() => { const i = document.getElementById('d-volume'); i.value = '35'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); });
+    await launcher.click('label:has(#d-sons)');
+    await launcher.selectOption('[data-reglage="fond"]', 'bunker');
+    await pause(600);
+    const r2 = reglages();
+    await launcher.click('.d-nav [data-section="accueil"]');
+    const bunker = await dom(() => document.getElementById('d-hero').dataset.fond);
+    ok(r2.fond === 'bunker' && r2.fondEclairs === false && r2.volumeSons === 35 && !('fondSons' in r2) && bunker === 'bunker', 'réglages du fond : Bunker 7, éclairs coupés, volume 35 %, enregistrés dans settings.json (pas les sons)', { ...r2, accueil: bunker });
+    await launcher.click('.d-nav [data-section="reglages"]');
+    await launcher.selectOption('[data-reglage="fond"]', 'marais');
+    await pause(400);
+    await launcher.click('label:has([data-reglage="fondEclairs"])');
+    await pause(400);
+    const r3 = reglages();
+    ok(r3.fond === 'marais' && r3.fondEclairs === true, 'réglages du fond : retour aux Marécages Maudits, éclairs rallumés', r3);
 
     ok(!erreurs.length, 'aucune erreur de page ni refus de la politique de sécurité', erreurs.slice(0, 5));
   } catch (e) {

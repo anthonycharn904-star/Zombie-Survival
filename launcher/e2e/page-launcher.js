@@ -51,7 +51,17 @@ const ACTUS = [
   { title: 'Ombre éternelle : oxygène et gravité', text: 'La mine de glace sur la Lune.', date: '2026-10-05' },
 ];
 const SOURCE = { url: 'https://github.com/anthonycharn904-star/zombie-survival/releases/latest/download/latest.json', custom: false, configured: true, keyFingerprint: '8508-2046-8B30-034A' };
-const REGLAGES = { autoCheck: true, autoInstall: true, fullscreen: true, keepLauncherOpen: false };
+// réglages envoyés par le processus principal : ceux du launcher 1.4.0 (reglages.js) ; le 1.3.3 n'avait que les quatre premiers
+const REGLAGES = { ...require(path.join(ROOT, 'src', 'main', 'reglages.js')).DEFAULTS };
+const REGLAGES_133 = { autoCheck: true, autoInstall: true, fullscreen: true, keepLauncherOpen: false };
+// sons de l'ambiance, rendus par le faux window.zs comme par le processus principal (lus ici, passés en base64)
+const SONS_DIR = path.join(ROOT, 'src', 'renderer', 'launcher', 'assets', 'marecages', 'sons');
+const AMBIANCE = (() => {
+  try {
+    const doc = JSON.parse(fs.readFileSync(path.join(SONS_DIR, 'ambiance.json'), 'utf8'));
+    return { meta: doc.sons, fichiers: Object.fromEntries(Object.keys(doc.sons).map((id) => [id, fs.readFileSync(path.join(SONS_DIR, `${id}.ogg`)).toString('base64')])) };
+  } catch (e) { return null; }
+})();
 const depart = () => ({ launcherVersion: LAUNCHER, settings: { ...REGLAGES }, source: { ...SOURCE } });
 
 /* ------------------------------------------------------------------ scénarios */
@@ -256,14 +266,17 @@ const SCENARIOS = {
     await s.clic('[data-page="modtools"] [data-act="publication"]');
     const ap = (await s.appels()).map((a) => a.nom);
     s.ok(ap.includes('openModtools') && ap.includes('openPublisher'), 'Mod Tools : ouvrir et publication');
-    // paramètres : interrupteurs ; fond animé caché tant que le processus principal ne le connaît pas
+    // paramètres : réglages du fond cachés tant que le processus principal ne les connaît pas (launcher 1.3.3)
     await s.clic('.d-nav [data-section="reglages"]');
-    s.ok(await p.evaluate(() => document.querySelector('[data-reglage="fondAnime"]').closest('.d-carte').hidden), 'paramètres : fond animé caché sans le réglage');
+    const lignesFond = () => p.evaluate(() => ['fond', 'fondAnime', 'fondEclairs', 'volumeSons'].map((k) => document.querySelector(`[data-reglage="${k}"]`).closest('[data-ligne]').hidden));
+    await s.emettre({ settings: { ...REGLAGES_133 } });
+    await s.attendre(100);
+    s.ok((await lignesFond()).every(Boolean), 'paramètres : réglages du fond cachés sans le processus principal 1.4.0');
     await s.clic('label:has([data-reglage="keepLauncherOpen"])');
     s.ok((await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'keepLauncherOpen' && a.args[1] === true), 'paramètres : l’interrupteur appelle zs.setSetting');
-    await s.emettre({ settings: { ...REGLAGES, fondAnime: true } });
+    await s.emettre({ settings: { ...REGLAGES } });
     await s.attendre(100);
-    s.ok(!(await p.evaluate(() => document.querySelector('[data-reglage="fondAnime"]').closest('.d-carte').hidden)), 'paramètres : fond animé visible avec le réglage');
+    s.ok((await lignesFond()).every((h) => !h), 'paramètres : réglages du fond visibles avec le processus principal 1.4.0');
     await s.clic('label:has([data-reglage="fondAnime"])');
     s.ok((await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'fondAnime' && a.args[1] === false), 'paramètres : fond animé coupé');
     await s.emettre({ settings: { ...REGLAGES, fondAnime: false } });
@@ -279,6 +292,107 @@ const SCENARIOS = {
     await s.attendre(100);
     s.ok(await p.evaluate(() => document.getElementById('fenetre').classList.contains('agrandie')), 'fenêtre : icône « Restaurer » une fois agrandie');
     await s.capture('accueil-maj');
+  },
+  // fond des Marécages Maudits : vidéo, affiche, éclairs, sons de l'ambiance, volume, pauses, Bunker 7
+  async marais(s) {
+    if (await s.interface() !== 'nouvelle') return;
+    const p = page(s), inst = installe(LIVRE), m = manifeste(LIVRE, ['Version livrée avec le launcher']);
+    await s.emettre({ phase: 'ready', remote: { ...m.game }, installed: inst, history: histo(m, inst), news: ACTUS });
+    await s.apresOuverture();
+    await p.bringToFront();
+    const F = () => p.evaluate(() => { const v = ZS_FOND.video(), a = ZS_FOND.sons(); return { fond: document.getElementById('d-hero').dataset.fond, video: v && v.etat(), sons: a && a.etat(),
+      sur: document.getElementById('d-sur').textContent, legende: document.getElementById('d-legende').textContent, lecteurs: document.querySelectorAll('.d-hero-video').length }; });
+    const attendre = (fn, arg, ms = 20000) => p.waitForFunction(fn, arg, { timeout: ms }).then(() => true, () => false);
+    let f = await F();
+    s.ok(f.fond === 'marais' && f.lecteurs === 2 && f.sur === 'Rapport d’incident · Les Marécages Maudits · nuit' && /Mère-Vase/.test(f.legende), 'Marécages : fond par défaut, deux lecteurs, textes de la carte', f);
+    s.ok(f.sons && f.sons.contexte === 'aucun', 'sons : aucun contexte audio au démarrage', f.sons);
+    s.ok(await attendre(() => { const e = ZS_FOND.video().etat(); return e.joue && !e.affiche; }, null, 40000), 'vidéo : elle joue à l’accueil', (await F()).video);
+    f = await F();
+    s.ok(f.video.premiereImage >= f.video.instantAffiche - 0.001 && f.video.premiereImage < f.video.instantAffiche + 0.1, 'vidéo : la lecture part de l’image de l’affiche', f.video);
+    await s.capture('marais-accueil');
+    // éclairs coupés pendant la lecture : la version sans éclairs prend le relais, sans affiche ni arrêt
+    await s.emettre({ settings: { ...REGLAGES, fondEclairs: false } });
+    s.ok(await attendre(() => { const e = ZS_FOND.video().etat(); return e.version === 'sans' && !e.enBascule && e.joue; }), 'éclairs coupés : relais par la version sans éclairs', (await F()).video);
+    f = await F();
+    s.ok(!f.video.affiche && f.video.bascule && f.video.bascule.version === 'sans', 'éclairs coupés : sans repasser par l’affiche', f.video.bascule);
+    await s.emettre({ settings: { ...REGLAGES } });
+    s.ok(await attendre(() => { const e = ZS_FOND.video().etat(); return e.version === 'avec' && !e.enBascule && e.joue; }), 'éclairs rallumés : relais par la version avec éclairs');
+    // réglages : éclairs (enregistrés), sons (page seulement), volume (retenu, enregistré au relâchement, entendu à l'accueil)
+    await s.clic('.d-nav [data-section="reglages"]');
+    s.ok(await attendre(() => !ZS_FOND.video().etat().joue && ZS_FOND.video().etat().affiche, null, 5000), 'vidéo : en pause hors de l’accueil, l’affiche à la place');
+    await s.clic('label:has([data-reglage="fondEclairs"])');
+    s.ok((await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'fondEclairs' && a.args[1] === false), 'éclairs : l’interrupteur appelle zs.setSetting');
+    await s.emettre({ settings: { ...REGLAGES, fondEclairs: false } });   // la réponse de main.js (setStatus)
+    s.ok(await p.evaluate(() => ZS_FOND.video().etat().version === 'sans' && !document.querySelector('[data-reglage="fondEclairs"]').checked), 'éclairs : coupés après la réponse du processus principal');
+    await s.clic('label:has([data-reglage="fondEclairs"])');
+    s.ok((await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'fondEclairs' && a.args[1] === true), 'éclairs : l’interrupteur les rallume');
+    await s.emettre({ settings: { ...REGLAGES } });
+    s.ok(await p.evaluate(() => document.getElementById('d-volume').disabled), 'volume : inactif tant que les sons sont coupés');
+    await s.clic('label:has(#d-sons)');
+    s.ok(await p.evaluate(() => ZS_FOND.sonsAllumes() && !document.getElementById('d-volume').disabled), 'sons : l’interrupteur les allume, le volume devient réglable');
+    s.ok(!(await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'fondSons'), 'sons : pas enregistrés (coupés au prochain lancement)');
+    await p.evaluate(() => { const i = document.getElementById('d-volume'); i.value = '40'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); });
+    s.ok((await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'volumeSons' && a.args[1] === 40) && await s.texte('#d-volume-val') === '40\u00a0%'
+      && await p.evaluate(() => document.getElementById('d-volume').getAttribute('aria-valuetext')) === '40\u00a0%', 'volume : 40 %, enregistré, annoncé avec son unité', await s.texte('#d-volume-val'));
+    await s.capture('marais-reglages');
+    await s.emettre({ settings: { ...REGLAGES, volumeSons: 40 } });
+    // à l'accueil : la pluie, puis le tonnerre de l'éclair de la boucle
+    await s.clic('.d-nav [data-section="accueil"]');
+    s.ok(await attendre(() => { const e = ZS_FOND.sons().etat(); return e.contexte === 'running' && e.charges === 11 && e.nappes === 4; }), 'sons : 11 sons décodés, 4 nappes de pluie', (await F()).sons);
+    await s.attendre(2000);
+    const niv = await p.evaluate(() => ZS_FOND.sons().niveau());
+    f = await F();
+    s.ok(niv > -60 && Math.abs(f.sons.volume - 0.4) < 0.02, 'sons : la pluie à l’accueil, au volume réglé (40 %)', { niveau: niv, volume: f.sons.volume });
+    const avant = f.sons.tonnerres;
+    await p.evaluate(() => ZS_FOND.video().provoquer());
+    s.ok(await attendre((n) => ZS_FOND.sons().etat().tonnerres > n, avant, 15000), 'sons : le tonnerre suit l’éclair de la vidéo');
+    // pauses : autre page, partie en cours, fond de Bunker 7 ; reprise à l'accueil
+    await s.clic('.d-nav [data-section="actus"]');
+    s.ok(await attendre(() => ZS_FOND.sons().etat().contexte === 'suspended' && !ZS_FOND.video().etat().joue, null, 5000), 'pause : autre page (son suspendu, vidéo arrêtée)');
+    await s.clic('.d-nav [data-section="accueil"]');
+    s.ok(await attendre(() => ZS_FOND.sons().etat().contexte === 'running' && ZS_FOND.video().etat().joue, null, 20000), 'reprise : retour à l’accueil');
+    await s.emettre({ phase: 'playing' });
+    s.ok(await attendre(() => ZS_FOND.sons().etat().contexte === 'suspended' && !ZS_FOND.video().etat().joue, null, 5000), 'pause : partie en cours');
+    await s.emettre({ phase: 'ready' });
+    await s.emettre({ settings: { ...REGLAGES, volumeSons: 40, fond: 'bunker' } });
+    s.ok(await attendre(() => document.getElementById('d-hero').dataset.fond === 'bunker' && ZS_FOND.sons().etat().contexte === 'suspended' && !ZS_FOND.video().etat().joue
+      && document.getElementById('d-sur').textContent.includes('Bunker 7') && document.getElementById('d-legende').textContent === '', null, 5000), 'Bunker 7 : son et vidéo arrêtés, textes de Bunker 7');
+    await s.attendre(1000);
+    s.ok(await p.evaluate(() => { const e = ZS_FOND.sons().etat(); return e.contexte === 'suspended' && e.volume < 0.01; }), 'Bunker 7 : toujours le silence une seconde après (contexte suspendu, gain nul)', (await F()).sons);
+    await s.capture('marais-bunker');
+    await s.clic('.d-nav [data-section="reglages"]');
+    s.ok(await p.evaluate(() => document.getElementById('d-sons').disabled && document.querySelector('[data-reglage="fondEclairs"]').disabled), 'Bunker 7 : éclairs et sons inactifs dans les paramètres');
+    await p.selectOption('[data-reglage="fond"]', 'marais');
+    s.ok((await s.appels()).some((a) => a.nom === 'setSetting' && a.args[0] === 'fond' && a.args[1] === 'marais'), 'fond : la liste appelle zs.setSetting');
+    await s.emettre({ settings: { ...REGLAGES, volumeSons: 40 } });
+    await s.clic('label:has(#d-sons)');
+    await s.clic('.d-nav [data-section="accueil"]');
+    s.ok(await attendre(() => !ZS_FOND.sonsAllumes() && ZS_FOND.sons().etat().contexte === 'suspended' && ZS_FOND.video().etat().joue, null, 20000), 'sons coupés : silence, la vidéo continue');
+    await s.attendre(1000);
+    s.ok(await p.evaluate(() => { const e = ZS_FOND.sons().etat(); return !e.veut && e.contexte === 'suspended'; }), 'sons coupés : toujours le silence une seconde après', (await F()).sons);
+  },
+  // pannes : sons introuvables, vidéo illisible
+  async maraisPannes(s) {
+    if (await s.interface() !== 'nouvelle') return;
+    const p = page(s), inst = installe(LIVRE), m = manifeste(LIVRE, ['Version livrée avec le launcher']);
+    await s.emettre({ phase: 'ready', remote: { ...m.game }, installed: inst, history: histo(m, inst) });
+    await s.apresOuverture();
+    await p.bringToFront();
+    await p.evaluate(() => { window.__fauxZs.reponses.ambiance = { rejet: 'Sons de l’ambiance introuvables.' }; });
+    await s.clic('.d-nav [data-section="reglages"]');
+    await s.clic('label:has(#d-sons)');
+    await s.clic('.d-nav [data-section="accueil"]');
+    await s.attendre(800);
+    await s.clic('.d-nav [data-section="reglages"]');
+    const r = await p.evaluate(() => ({ coupe: !ZS_FOND.sonsAllumes(), inactif: document.getElementById('d-sons').disabled, note: document.getElementById('d-sons-note').textContent,
+      bulle: [...document.querySelectorAll('.d-bulle.erreur')].map((b) => b.textContent).join(' | ') }));
+    s.ok(r.coupe && r.inactif && /Indisponibles sur ce PC : Sons de l’ambiance introuvables\./.test(r.note) && /introuvables/.test(r.bulle), 'sons introuvables : interrupteur coupé et inactif, message', r);
+    await s.capture('marais-sons-introuvables');
+    await s.clic('.d-nav [data-section="accueil"]');
+    await p.evaluate(() => document.querySelector('.d-hero-video').dispatchEvent(new Event('error')));
+    await s.attendre(300);
+    const v = await p.evaluate(() => ({ fond: document.getElementById('d-hero').dataset.fond, bulle: [...document.querySelectorAll('.d-bulle.erreur')].map((b) => b.textContent).join(' | ') }));
+    s.ok(v.fond === 'bunker' && /Bunker 7 à la place/.test(v.bulle), 'vidéo illisible : Bunker 7 à la place, message', v);
   },
   async miseAJourFaite(s) {
     const inst = installe(LIVRE), m = manifeste(LIVRE, ['Version livrée avec le launcher']);
@@ -368,6 +482,7 @@ const page = (s) => s.page;
   for (const nom of noms) {
     const ctx = await browser.newContext({ viewport: { width: LARG, height: HAUT }, deviceScaleFactor: 1, locale: 'fr-BE', timezoneId: 'Europe/Brussels' });
     await ctx.addInitScript({ content: `window.__fauxZsDepart = ${JSON.stringify({ ...depart(), ...(SCENARIOS[nom].depart || {}) })};` });
+    if (AMBIANCE) await ctx.addInitScript({ content: `window.__fauxZsAmbiance = ${JSON.stringify(AMBIANCE)};` });
     await ctx.addInitScript({ path: path.join(__dirname, 'faux-zs.js') });
     const page = await ctx.newPage();
     const erreurs = [];

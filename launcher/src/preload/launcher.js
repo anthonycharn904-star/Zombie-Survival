@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('zs', {
   resetSource: () => invoke('launcher:resetSource'),
   windowAction: (action) => invoke('launcher:window', action),
   openExternal: (url) => invoke('launcher:external', url),
+  // sons de l'ambiance du fond de l'accueil (launcher 1.4.0) : { meta, fichiers: { id: ArrayBuffer } }
+  ambiance: () => invoke('launcher:ambiance'),
   onStatus: (cb) => {
     const fn = (event, status) => cb(status);
     ipcRenderer.on('launcher:status-changed', fn);
