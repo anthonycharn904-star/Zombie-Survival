@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "cartes": {
+    "bunker7": { "video": "bunker7.webm", "affiche": "bunker7.jpg" },
+    "khamsin": { "video": "khamsin.webm", "affiche": "khamsin.jpg" },
+    "ombre": { "video": "ombre.webm", "affiche": "ombre.jpg" }
+  }
+}

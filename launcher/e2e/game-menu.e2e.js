@@ -201,10 +201,11 @@ async function openGame() {
     await game.keyboard.press('Escape');
     await game.waitForFunction(() => !document.getElementById('menu').hidden);
     ok(await game.evaluate(() => /Prestige 1/.test(document.getElementById('menu-rank').textContent)), 'Ranking : Échap ramène au menu, qui affiche le prestige');
-    // menu Amélioration d'arme (jeu 1.8.0) : après Ranking ; une fiche par mod de munition du Glas
+    // menu Amélioration d'arme (jeu 1.8.0) : depuis la refonte de l'interface, juste avant Statistiques (ordre des
+    // maquettes d'Anthony : Jouer, Amélioration d'arme, Statistiques, Modèles, Ranking) ; une fiche par mod de munition du Glas
     const order2 = await game.evaluate(() => [...document.querySelectorAll('#menu .actions .btn')].filter((b) => !b.hidden).map((b) => b.id));
     const wmLabel = await game.evaluate(() => document.getElementById('btn-mods').textContent);
-    ok(order2.indexOf('btn-mods') === order2.indexOf('btn-ranking') + 1 && wmLabel === "Amélioration d'arme", 'bouton « Amélioration d’arme » après Ranking', { order2, wmLabel });
+    ok(order2.indexOf('btn-mods') === order2.indexOf('btn-stats') - 1 && order2.indexOf('btn-mods') > order2.indexOf('btn-play') && wmLabel === "Amélioration d'arme", 'bouton « Amélioration d’arme » entre Jouer et Statistiques', { order2, wmLabel });
     await game.click('#btn-mods');
     await game.waitForFunction(() => !document.getElementById('mods').hidden);
     const wmRead = () => game.evaluate(() => {

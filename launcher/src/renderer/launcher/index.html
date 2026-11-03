@@ -10,7 +10,7 @@
 <body>
 <!-- Interface du launcher : la maquette D (validée par Anthony le 31 octobre 2026), branchée sur window.zs.
      Les identifiants btn-main, status-title et btn-modtools sont lus par les essais de bout en bout : leur état de
-     départ (désactivé, « Ouverture du bunker… », caché) fait partie du contrat. media-src 'self' : la vidéo du fond
+     départ (désactivé, « Ouverture du jeu… », caché) fait partie du contrat. media-src 'self' : la vidéo du fond
      des Marécages Maudits, lue dans les fichiers du launcher (assets/marecages). -->
 <main class="fenetre d" id="fenetre">
   <svg class="sprite" aria-hidden="true">
@@ -73,11 +73,11 @@
             <p class="d-mission"><b id="d-mission-v">Jeu —</b><span id="d-mission-t"></span></p>
             <p class="d-hero-desc" id="d-hero-desc"></p>
             <div class="d-cta">
-              <button type="button" class="d-jouer" id="btn-main" disabled><i class="d-jouer-rempli" id="d-jouer-rempli"></i><span><b id="btn-main-label">Jouer</b><small id="d-jouer-sous">Ouverture du bunker…</small></span></button>
+              <button type="button" class="d-jouer" id="btn-main" disabled><i class="d-jouer-rempli" id="d-jouer-rempli"></i><span><b id="btn-main-label">Jouer</b><small id="d-jouer-sous">Ouverture du jeu…</small></span></button>
               <button type="button" class="d-btn d-btn-verre" data-aller="maj">Notes de version</button>
               <button type="button" class="d-btn d-btn-verre" id="btn-modtools" hidden>Mod Tools</button>
             </div>
-            <p class="d-statut" id="d-statut" data-ton="neutre" aria-live="polite"><i aria-hidden="true"></i><b id="status-title">Ouverture du bunker…</b><span id="status-detail"></span><span class="d-st-liens"><button type="button" id="link-a" hidden></button><button type="button" id="link-b" hidden></button></span></p>
+            <p class="d-statut" id="d-statut" data-ton="neutre" aria-live="polite"><i aria-hidden="true"></i><b id="status-title">Ouverture du jeu…</b><span id="status-detail"></span><span class="d-st-liens"><button type="button" id="link-a" hidden></button><button type="button" id="link-b" hidden></button></span></p>
           </div>
           <div class="d-hero-grain" aria-hidden="true"></div>
           <p class="d-legende" id="d-legende"></p>

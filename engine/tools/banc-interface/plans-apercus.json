@@ -1,0 +1,233 @@
+{
+ "bunker7": [
+  {
+   "nom": "La boîte mystère",
+   "de": {
+    "x": 26.6,
+    "z": 20.6,
+    "h": 1.7
+   },
+   "a": {
+    "x": 23.4,
+    "z": 20.6,
+    "h": 1.7
+   },
+   "vise": {
+    "x": 25,
+    "z": 13.5,
+    "h": 1.3
+   },
+   "vise2": {
+    "x": 25,
+    "z": 13.5,
+    "h": 1.3
+   },
+   "duree": 4,
+   "pourquoi": "Reprend la caméra du menu (menuCam, ligne 6700 : de (24,6 ; 1,72 ; 21,6) vers (24,9 ; 1,25 ; 13,4), balancement de ±3,4 m) sous la forme d'un travelling latéral régulier, d'est en ouest, à hauteur d'yeux.\n\nMouvement :\n- 3,2 m en 4 s, soit 0,8 m/s ;\n- point visé fixe sur la boîte ;\n- cap de −12,7° à +12,7°, symétrique ; rotation totale de 25,4°, 6,45°/s au plus ;\n- tangage de −3,1°.\n\nCORRECTION : la fin passe de x 23,0 à 23,4. Avec 23,0, l'abat-jour de la lampe (21 ; 17,5) entrait par le coin haut gauche pendant la dernière demi-seconde (NDC −0,92 ; +0,90 à 4 s).\n\nDans le cadre (projections exactes, rayons contrôlés) :\n- la boîte mystère au centre, à 7,1-7,4 m (boxes[0], cases (24,13)-(25,13), boxStart 0 : lignes 6670 et 6691 ; centre (25,0 ; 13,45), ligne 29385) ; son faisceau monte jusqu'au plafond, le haut à NDC y +0,5 (buildBeam, ligne 15324) ;\n- la Kar98k à la craie, de −26° à −34° ;\n- la Gewehr 43, de +34° à +26° (lignes 6651-6652) ;\n- le digi pass, de +40° à +30° (ligne 6661) ;\n- les deux tuyaux du mur nord, en z 13,35 et 13,62, à 3,30 et 3,36 m, dans le haut de l'image ;\n- au début, au bord gauche, Lazare (Quick Revive, ligne 6663), seule machine allumée sans courant : façade visible à 100 % à 0 s, 71 % à 1 s, 20 % à 2 s, sortie du cadre à 2,5 s.\n\nCORRECTION : le mur nord (x 17 à 33, environ 92° vu d'ici) ne tient pas en entier dans l'image. Il en occupe toute la largeur ; le coin nord-ouest sort vers 1,8 s, le coin nord-est entre vers 2,2 s."
+  },
+  {
+   "nom": "Entrepôt sous la lampe",
+   "de": {
+    "x": 35.4,
+    "z": 23.2,
+    "h": 1.6
+   },
+   "a": {
+    "x": 35.4,
+    "z": 20.4,
+    "h": 1.6
+   },
+   "vise": {
+    "x": 47,
+    "z": 16.5,
+    "h": 1.4
+   },
+   "vise2": {
+    "x": 47,
+    "z": 15.5,
+    "h": 1.4
+   },
+   "duree": 4,
+   "pourquoi": "Plan d'ambiance dans une autre salle, sous la lumière orangée (lampe (40,5 ; 3,1 ; 20), #ffb46a, ligne 6678 ; teinte chaude de la zone, ligne 6645).\n\nMouvement :\n- travelling du sud vers le nord, 2,8 m en 4 s (0,7 m/s), le long du mur ouest ;\n- point visé glissant de 1 m sur Vif-Argent (Rechargement rapide, case (47,15), face à l'ouest, ligne 6664), soit 0,25 m/s ;\n- cap de 60° à 67°, rotation de 1,9°/s au plus.\n\nParallaxe entre deux tas de caisses réels :\n- à gauche, les caisses (38,16), (39,16) et (38,17) (CORRECTION : (39,17) n'est pas une caisse). La plus proche va de −33°/−23° à −20°/−11°, de 5,9 à 3,6 m ;\n- à droite, les caisses (43,21) et (44,21), de +14°/+21° à +26°/+35°, à 7,7-9,9 m.\n\nAu fond, sur le mur est :\n- Vif-Argent au centre, à 12,7-14,0 m, entièrement visible même si les caisses sont empilées ;\n- les fenêtres barricadées (48,18), de +10° à +15°, et (48,24), de +36° à +40°, ouvertures visibles à 86-100 %.\n\nÀ gauche, la Trench à la craie sur le mur nord (−25°, ligne 6654). La lampe traverse le haut de l'image (NDC y +0,40 à +0,49), de −2° à +18°."
+  },
+  {
+   "nom": "Le Glas",
+   "de": {
+    "x": 24.6,
+    "z": 11.1,
+    "h": 1.9
+   },
+   "a": {
+    "x": 27.4,
+    "z": 11.1,
+    "h": 1.9
+   },
+   "vise": {
+    "x": 25.5,
+    "z": 7.5,
+    "h": 1.9
+   },
+   "vise2": {
+    "x": 26.5,
+    "z": 7.5,
+    "h": 1.9
+   },
+   "duree": 4,
+   "pourquoi": "L'élément propre à Bunker 7 : la machine d'amélioration Le Glas (amp, cases (25,7)-(26,7), orientée au sud, ligne 6693 ; centre (26,0 ; 7,5) ; glasFootprint, ligne 6980 ; buildAmpFeature, ligne 29564).\n\nMouvement :\n- travelling latéral d'ouest en est, 2,8 m en 4 s (0,7 m/s), le long du mur sud de la salle des machines (rangée 12) ;\n- point visé glissant de 1 m le long de la façade (0,25 m/s) ;\n- cap de +14° à −14°, rotation de 7,2°/s au plus ;\n- horizon de niveau (tangage 0°).\n\nCORRECTION : hauteurs passées de 1,6 m (caméra) et 2,0 m (visée) à 1,9 m et 1,9 m. À 1,6 m avec 6,2° de tangage, le bas du cadre coupait le socle (avant à NDC y −0,92 puis −1,01).\n\nCORRECTION : « Le Glas entier » et « le beffroi qui monte par l'ouverture » sont impossibles depuis z 11,1. Le bord de l'ouverture (z 9, à 3,5 m) est à 37° au-dessus de l'œil, hors cadre. Le plafond cache le toit (4,67 à 5,36 m) et la sablière avant (4,58 m) depuis tout point au sud de z 9,3 à 9,6.\n\nDans le cadre :\n- le dessus du socle de pierre (0,91 m, NDC y −0,62 à −0,69) ;\n- la cloche levée : lèvre à 2,15 m (GLAS.lipUp, ligne 6892 ; NDC y +0,14), haut à 3,40 m (GLAS_PROFILE, ligne 15337 ; NDC y +0,72), joug juste sous le bord haut ;\n- les poteaux avant (x 24,42 et 27,58, entre ±18° et ±37°), le treuil sur le poteau est, la corde à gauche de la cloche ;\n- les jambes de force aux bords ; Le Glas occupe toute la largeur ;\n- en haut, par l'ouverture : le cadre de chêne arrière (z 6 à 6,2, 3,47 à 3,73 m), les poteaux arrière et la sablière arrière (4,58 m, NDC y +0,94 à +0,98) ;\n- en haut à gauche, de −34° à −37°, le rayon de lune qui tombe par l'ouverture (lignes 16027-16030) ; son pied entre dans le cadre à la fin ;\n- entre les poteaux, partiellement masqués : le BAR (+21° à +31°, ligne 6658) et la STG-44 (−38° à −26°, ligne 6657) ;\n- les tuyaux du mur nord, de part et d'autre ;\n- la fenêtre (25,3), derrière la cloche, entre le socle et la lèvre."
+  }
+ ],
+ "ombre": [
+  {
+   "nom": "La fosse depuis le talus sud",
+   "de": {
+    "x": 596,
+    "z": 1196,
+    "h": 24
+   },
+   "a": {
+    "x": 603.4,
+    "z": 1197.3,
+    "h": 24
+   },
+   "vise": {
+    "x": 660,
+    "z": 880,
+    "h": 2
+   },
+   "vise2": {
+    "x": 666,
+    "z": 880,
+    "h": 2
+   },
+   "duree": 4,
+   "pourquoi": "Plan large qui situe la carte : il reprend l'idée de la caméra du menu (vers le nord, au-dessus de la fosse), ramenée à 24 m.\n\nPosition : caméra au-dessus du talus sud de la fosse (r 206,8 → 205,1 ; sol 2,83 à 3,00 ; y 26,8 à 27,0). Elle regarde le gradin N2 du côté nord (sol −24,0 ; visée à y −22,0) : cap 11,4°, inclinaison −8,6°, à 326 m.\n\nCe qu'on voit :\n- les gradins de la moitié ouest, au soleil (sol au soleil jusqu'à x ≈ 600 sur z = 1007 ; les parois ouest, tournées vers l'est, sont les plus claires) ;\n- le pont à −24 m (z 975), en travers de la fosse : de x −0,38 à +0,59 à l'écran, au soleil de x 556 à ≈ 740 ;\n- le derrick (écran (0,22 ; −0,37 à −0,59)) et la cabine de la foreuse, dans l'ombre ;\n- la moitié est dans l'ombre, où tournent la poussière et les débris de l'anomalie ;\n- sur l'horizon, de gauche à droite : quatre mâts de la crête (le mât (345, 799) au bord gauche, x −0,96), puis la tour relais (sommet en (−0,35 ; 0,48)) avec la Terre 8° au-dessus (−0,36 ; 0,75), puis la voie de la catapulte (de x +0,41 à −0,20), l'atterrisseur (0,27 ; 0,24) et la Base Séléné (0,57 ; 0,18).\n\nMouvement : travelling latéral vers la droite de 7,5 m (1,88 m/s) ; la visée glisse de 6 m (1,50 m/s) ; rotation de 0,29° en 4 s."
+  },
+  {
+   "nom": "La catapulte vers la Terre",
+   "de": {
+    "x": 864.5,
+    "z": 824.5,
+    "h": 3.5
+   },
+   "a": {
+    "x": 862.5,
+    "z": 818.9,
+    "h": 3.5
+   },
+   "vise": {
+    "x": 795.9,
+    "z": 597.6,
+    "h": 13.33
+   },
+   "vise2": {
+    "x": 793.9,
+    "z": 592,
+    "h": 13.68
+   },
+   "duree": 4,
+   "pourquoi": "Une image d'identité de la carte : la voie qui file vers la Terre.\n\nMouvement : travelling avant dans l'axe de la voie (vecteur (−0,337 ; −0,941)), sur 6 m à 1,49 m/s. La caméra est 22,8 puis 16,9 m en arrière du départ (868, 799) et 11,9 m à l'ouest de l'axe. Sol 0,59 (aire aplanie de la base), y 4,09.\n\nCe qu'on voit :\n- la capsule blanche au berceau (y 4,09), à 26 puis 21 m, à droite (25° puis 32°, écran x 0,45 → 0,62). On voit surtout sa calotte arrière, éclairée ;\n- derrière la capsule, la gare (871 à 881 × 789 à 803, 5 m), qui tient le bord droit dès le début : mur ouest de x 0,50 à 0,65, puis la façade sud jusqu'au bord. En fin de plan, capsule et gare remplissent le quart droit ;\n- le premier portique en A, au berceau ;\n- la voie (caisson gris, rails bleus, un feu bleu tous les 36 m) qui file vers le nord-nord-ouest sur ses portiques, de 2,8 m à 46 m, jusqu'à converger au centre de l'image ;\n- la Terre à 8,8° à droite et 11° au-dessus du point de fuite, à l'écran (0,15 ; 0,35) ;\n- à gauche, la tour relais (x −0,41, sommet à y 0,29, à 600 m) et, au bord gauche, le mât (441, 530) (x −0,77). Les autres mâts sont hors champ.\n\nVisée : à ≈ 0,9 m au-dessus du caisson, à t ≈ 0,27 (y 15,40 ; sol 2,07), puis 6 m plus loin sur la voie (y 15,70 ; sol 2,02). Cap 343,2°, inclinaison +2,7° → +2,8°, rotation 0,07°."
+  },
+  {
+   "nom": "Base Séléné, le départ",
+   "de": {
+    "x": 921,
+    "z": 891.5,
+    "h": 1.8
+   },
+   "a": {
+    "x": 917.2,
+    "z": 894.7,
+    "h": 1.8
+   },
+   "vise": {
+    "x": 893,
+    "z": 861,
+    "h": 3.5
+   },
+   "vise2": {
+    "x": 893,
+    "z": 861,
+    "h": 3.5
+   },
+   "duree": 4,
+   "pourquoi": "La base où commence la partie (lieu A : départ, air, oxygène).\n\nPosition : caméra à hauteur d'yeux (y 2,38 ; sol 0,58 constant sur l'aire aplanie), à 41 m au sud-est du moyeu. Arc lent vers la gauche : 5 m à 1,24 m/s, rotation de 6,85° (1,7°/s). La visée est fixe sur le moyeu, à y ≈ 5,6 : cap 317,4° puis 324,3°, inclinaison +4,4°.\n\nCe qu'on voit :\n- le moyeu octogonal en panneaux blancs, bande dorée au pied, murs de 4,4 m, coupole jusqu'à y 8,83, antenne et parabole ;\n- à droite, le module est (jusqu'à x 917,8) ; à gauche, le module sud (jusqu'à z 885,8) : tubes blancs de 6 m, cerclages, hublots. Les deux tubes encadrent le moyeu et en cachent le pied ;\n- les faces est, sud-est et sud éclairées par le Soleil, qui est derrière la caméra, à droite ;\n- la Terre en haut à droite, de (0,66 ; 0,38) vers (0,50 ; 0,35) ;\n- au-dessus du module sud, à gauche, la moitié haute des panneaux de quatre mâts de la crête, avec leurs feux rouges ;\n- juste derrière l'antenne, les ≈ 15 derniers mètres de la tour relais (haut du treillis, perchoir, antennes), qui dépassent à peine de la coupole ;\n- en fin de plan, l'atterrisseur, minuscule, au bord droit.\n\nCorrection : la gare et la voie de la catapulte ne sont pas visibles d'ici. Le module est les cache entièrement : la voie reste sous 2,8° au-dessus de l'horizontale, le dessus du module monte à ≈ 5,5°."
+  }
+ ],
+ "khamsin": [
+  {
+   "nom": "Le plateau vu du nord-ouest (plan large)",
+   "de": {
+    "x": 1658,
+    "z": 1142,
+    "h": 20
+   },
+   "a": {
+    "x": 1662.2,
+    "z": 1137.8,
+    "h": 20
+   },
+   "vise": {
+    "x": 1877.9,
+    "z": 1347,
+    "h": 30
+   },
+   "vise2": {
+    "x": 1882.1,
+    "z": 1342.8,
+    "h": 30
+   },
+   "duree": 4,
+   "pourquoi": "Plan large qui situe la carte : les trois pyramides éclairées, la piste et le rideau qui ferme le plateau.\n\nMouvement : travelling latéral de 5,9 m vers le nord-est, à 1,48 m/s, 20 m au-dessus du plateau. Le regard se déplace en parallèle (cap 133°, caméra levée de 2°).\n\nLumière : soleil dans le dos. Faces nord et ouest éclairées ; pour Khéops, surtout la face ouest, la nord étant vue en rasant.\n\nCadre vérifié :\n- Khéops (2120, 1240 ; 10-core.js:68) de −0,92 à −0,23, sommet en (−0,57 ; 0,39) à 470 m, avec son faisceau ;\n- Khéphren (1915, 1440) de −0,19 à +0,43, sommet en (0,11 ; 0,33) à 394 m ; son portail est minuscule, vers −0,08 ;\n- Mykérinos (1750, 1620) de +0,55 à +0,89, sommet en (0,71 ; 0,10), portail vers +0,69 ;\n- la piste 'db' (10-core.js:80) part sous la caméra (−0,36 → −0,22 ; −0,87) et file vers Khéphren ((−0,01 ; −0,20) à 241 m) ;\n- au fond, le rideau : bord de zone à 851 m, rideau à 937 m dans l'axe (757 à 1 052 m d'un bord du cadre à l'autre), son haut entre 8,6° et 11,5°."
+  },
+  {
+   "nom": "Le portail de Khéops",
+   "de": {
+    "x": 2127.5,
+    "z": 1078,
+    "h": 3
+   },
+   "a": {
+    "x": 2127.5,
+    "z": 1082,
+    "h": 3
+   },
+   "vise": {
+    "x": 2127.5,
+    "z": 1135,
+    "h": 17
+   },
+   "vise2": {
+    "x": 2127.5,
+    "z": 1135,
+    "h": 17
+   },
+   "duree": 4,
+   "pourquoi": "Le portail de fouilles de la Grande Pyramide, face nord en plein soleil du menu (réglage « route »).\n\nMouvement : caméra dans l'axe du portail (x 2127,5, milieu de l'ouverture 2126-2129), qui avance de 4 m vers le sud à 1 m/s, de 59 à 55 m de la façade, 3 m au-dessus du sol. La visée est fixe : la caméra se lève seulement de 13,5° à 14,6° (0,27° par seconde).\n\nCadre vérifié (C5-pyramides.js:64 et 383-430) :\n- le portail : blocs x 2122-2133, de (±0,09 ; −0,54) à −0,24, chevrons jusqu'à −0,19 ; ouverture et herse de granit fermée (z 1138) au centre, de −0,44 à −0,51 ;\n- le panneau « PYRAMIDE DE KHÉOPS — Chantier de fouilles — entrée » (2120,4 ; 1134,8), tourné vers le nord, en (0,13 ; −0,48) ;\n- les deux lampes sur trépied (2124,4 et 2130,6 ; 1135,6), de part et d'autre, en (±0,05 ; −0,45) ;\n- au-dessus, la face nord jusqu'au sommet (0,04 ; 0,75), les arêtes nord-ouest et nord-est (+0,46 et −0,34 à mi-hauteur), le halo et l'étoile du faisceau (de −0,38 à +0,46, en y 0,77)."
+  },
+  {
+   "nom": "Les jeeps devant la tempête (ambiance)",
+   "de": {
+    "x": 2084,
+    "z": 1457,
+    "h": 1.9
+   },
+   "a": {
+    "x": 2088,
+    "z": 1457,
+    "h": 1.9
+   },
+   "vise": {
+    "x": 2084,
+    "z": 1472,
+    "h": 1
+   },
+   "vise2": {
+    "x": 2088,
+    "z": 1472,
+    "h": 1
+   },
+   "duree": 4,
+   "pourquoi": "Ambiance : les trois jeeps d'archéologie (62-open.js:94-96), capot vers la caméra (lacet 0, avant vers −z ; 70-vehicles.js:41), en plein soleil puisque le soleil est dans le dos ; derrière elles, le plateau qui finit sous le rideau de sable.\n\nMouvement : travelling latéral de 4 m vers l'est à 1 m/s (au lieu de 6 m à 1,5 m/s), centré sur la jeep du milieu. Le regard se déplace en parallèle, plein sud, caméra baissée de 3°.\n\nCadre vérifié :\n- les jeeps de 2092, 2086 et 2080, de gauche à droite (vers le sud, l'est est à gauche) : de −0,76 à +0,42 au début, de −0,42 à +0,76 à la fin ; toutes trois restent entières tout le plan ;\n- les jerricans (2080, 1480) et (2092, 1480), juste derrière, à 23-24 m ;\n- la piste 'ab' (10-core.js:82) sur environ 130 m, jusqu'à (2130, 1580), vers −0,35 ;\n- le bord du plateau à environ 340 m (z 1790-1800) ;\n- puis le rideau, à 410-411 m : son haut à 23°, opaque jusqu'à 10,7° environ, il remplit la moitié haute du cadre (jusqu'à +0,84 environ)."
+  }
+ ]
+}

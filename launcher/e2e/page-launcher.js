@@ -79,7 +79,7 @@ const SCENARIOS = {
     await s.emettre({ phase: 'ready', remote: { ...m.game, notes: m.game.notes }, news: ACTUS, installed: inst, history: histo(m, inst), checkedAt: Date.now() });
     await s.attendre(400);
     s.ok(await s.actif('#btn-main'), 'prêt : #btn-main actif');
-    s.ok(await s.texte('#status-title') !== 'Ouverture du bunker…', 'prêt : #status-title a changé', await s.texte('#status-title'));
+    s.ok(await s.texte('#status-title') !== 'Ouverture du jeu…', 'prêt : #status-title a changé', await s.texte('#status-title'));
     await s.clic('#btn-main');
     s.ok((await s.appels()).some((a) => a.nom === 'play'), 'un clic sur #btn-main appelle zs.play()');
   },
@@ -495,7 +495,7 @@ const page = (s) => s.page;
     const s = outils(page, nom, verifs);
     // contrats des essais, avant tout état : ce que la page porte dès son chargement
     s.ok(await page.evaluate(() => { const b = document.getElementById('btn-main'); return !!b && b.tagName === 'BUTTON' && b.disabled; }), 'au chargement : #btn-main est un bouton désactivé');
-    s.ok(await s.texte('#status-title') === 'Ouverture du bunker…', 'au chargement : #status-title vaut « Ouverture du bunker… »', await s.texte('#status-title'));
+    s.ok(await s.texte('#status-title') === 'Ouverture du jeu…', 'au chargement : #status-title vaut « Ouverture du jeu… »', await s.texte('#status-title'));
     s.ok(await page.evaluate(() => { const b = document.getElementById('btn-modtools'); return !!b && b.hidden; }), 'au chargement : #btn-modtools caché');
     try { await SCENARIOS[nom](s); } catch (e) { s.ok(false, `exception : ${e.message.split('\n')[0]}`); }
     await s.capture('fin');

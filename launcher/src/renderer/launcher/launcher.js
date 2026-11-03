@@ -135,8 +135,8 @@ function etatDe(s) {
   const pret = () => { P.actif = true; P.action = jouer; P.sous = `Déploiement · jeu ${v}`; };
   switch (s.phase) {
     case 'starting':
-      r.titre = 'Ouverture du bunker…';
-      P.sous = 'Ouverture du bunker…';
+      r.titre = 'Ouverture du jeu…';
+      P.sous = 'Ouverture du jeu…';
       break;
     case 'checking':
       r.ton = 'occupe'; r.titre = 'Vérification';

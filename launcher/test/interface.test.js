@@ -34,7 +34,7 @@ test('interface : contrats des essais de bout en bout dans le HTML de départ', 
   const main = /<button\b[^>]*\bid="btn-main"[^>]*>/.exec(HTML);
   assert.ok(main, '#btn-main est un bouton');
   assert.match(main[0], /\sdisabled[\s>]/, '#btn-main désactivé au départ');
-  assert.match(HTML, /<[a-z]+\b[^>]*\bid="status-title"[^>]*>Ouverture du bunker…</, '#status-title vaut « Ouverture du bunker… »');
+  assert.match(HTML, /<[a-z]+\b[^>]*\bid="status-title"[^>]*>Ouverture du jeu…</, '#status-title vaut « Ouverture du jeu… »');
   const mt = /<button\b[^>]*\bid="btn-modtools"[^>]*>/.exec(HTML);
   assert.ok(mt, '#btn-modtools est un bouton');
   assert.match(mt[0], /\shidden[\s>]/, '#btn-modtools caché au départ');

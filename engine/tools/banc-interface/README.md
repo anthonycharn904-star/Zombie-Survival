@@ -1,6 +1,6 @@
 # Banc de l'interface
 
-Outils d'analyse du chantier interface : couche HUD en 16:9 et en 21:9, propositions de mise en page, champ de vision. Ils ne font pas partie du jeu : `build.py` ne les lit pas, et ils n'écrivent rien dans le dépôt (le dossier de sortie doit être hors du dépôt). Analyse et décisions : `docs/audit-interface.md`.
+Outils d'analyse du chantier interface : couche HUD en 16:9 et en 21:9, propositions de mise en page, champ de vision, banc des menus, aperçus vidéo des cartes. Ils ne font pas partie du jeu : `build.py` ne les lit pas, et ils n'écrivent rien dans le dépôt (le dossier de sortie doit être hors du dépôt). Analyse et décisions : `docs/audit-interface.md`.
 
 ## Préalable
 
@@ -54,6 +54,46 @@ Le jeu entier tourne en rendu logiciel, pendant plusieurs minutes.
 - **Garde.** Hors de la file, le script refuse de partir si la machine est chargée : plus de 0,5 de charge par fil, ou moins de 3 Go disponibles. `--forcer` passe outre, seulement avec l'accord d'Anthony.
   - Sous la file, cette garde ne joue plus : la file a déjà décidé du départ, et elle laisse tourner un jeu à côté de rendus Blender. L'outil se reconnaît sous la file quand `ZS_LOURD_CLASSE` vaut `jeu` et que le fichier `ZS_LOURD_PLACE` existe. Adaptation faite le 2 novembre 2026 avec l'accord d'Anthony, comme pour la capture de la Mère-Vase (`maquettes/launcher/scene-bete/README.md`, §2 bis).
 - Pas encore lancé au 2 novembre 2026.
+
+## Banc des menus (lourd)
+
+`menus.js` : captures et mesures du menu principal, de la sélection des cartes, des options et (avec `--ecrans`) des autres écrans, à plusieurs tailles ; chevauchements, sortie de la fenêtre, textes coupés, défilement, erreurs de console, lecteur d'aperçus (`--apercus <dossier d'essai>`), boutons Reprendre et Quitter (`--reprendre`, `--launcher`).
+
+```bash
+~/outils/bin/zs-lourd --classe jeu --memoire 3500 --nom "banc des menus" -- node engine/tools/banc-interface/menus.js <dossier> [--tailles 1920x1080,1280x720,3440x1440,960x540] [--ecrans]
+```
+
+En rendu logiciel, une image de la scène prend plusieurs secondes : le banc espace la boucle du jeu et lit un pixel après chaque image (sans cela, en 3440 × 1440, les images s'empilent et les captures expirent). Autres options : `--videos` (vraies vidéos du manifeste), `--memoire` (30 ouvertures de la sélection : tas, nœuds, vidéos, toiles avant et après).
+
+## Essai rejoué dans la page (lourd)
+
+`essai-page.js` rejoue les blocs `(await game.evaluate(() => { … })).forEach(report);` d'un essai de bout en bout dans la page du jeu (souris verrouillée refusée, `#lockhint` masqué, 2,5 s entre deux blocs) ; il ne remplace pas la méthode E2 (ni launcher, ni Mod Tools).
+
+```bash
+~/outils/bin/zs-lourd --classe jeu --memoire 3500 --nom "essai menus (page)" -- node engine/tools/banc-interface/essai-page.js <dossier> menus
+```
+
+## Aperçus vidéo des cartes (lourd)
+
+`apercus.js` filme une carte dans le vrai jeu, image par image : caméra pilotée par des plans, temps du menu piloté, hasard figé, coupures au hasard des lampes retirées ; vidéo VP9 1 280 × 720, 24 images par seconde, muette, fondus de 0,6 s entre les plans, boucle sans saut, et son affiche.
+
+```bash
+~/outils/bin/zs-lourd --classe jeu --memoire 4000 --nom "aperçu bunker7" -- node engine/tools/banc-interface/apercus.js <dossier> --carte bunker7 --plans engine/tools/banc-interface/plans-apercus.json [--essai]
+```
+
+- `plans-apercus.json` : les plans retenus le 3 novembre 2026 (trois par carte, 4 s chacun ; coordonnées du monde, hauteur au-dessus du sol), choisis sur les images d'essai parmi cinq plans proposés et contrôlés par carte.
+- `--essai` : trois images par plan et une planche, pour choisir avant de filmer.
+- Coût mesuré le 3 novembre 2026 : Bunker 7 17 min, Ombre éternelle 59 min (13 s par image), Khamsin 9 min ; vidéos de 0,9 à 1,2 Mo.
+- Les vidéos et affiches retenues vont dans `launcher/gamelibs/apercus/` et dans son manifeste `index.json`.
+- Khamsin change avec la 2.0.8 : son aperçu est à refaire après cette fusion (mêmes plans, ajustés au besoin).
+
+## Fond du menu tiré de la maquette (léger)
+
+`retouche-fond.py` efface l'interface peinte sur la maquette d'Anthony (barre du haut, logo, menu, rapport, barre du bas) en remplissant ces zones à partir du décor voisin, puis agrandit l'image (numpy, scipy, Pillow ; aucun outil de génération d'images). Sortie : `launcher/gamelibs/fonds/menu.jpg`.
+
+```bash
+python3 engine/tools/banc-interface/retouche-fond.py <maquette 1499 × 834> launcher/gamelibs/fonds/menu.jpg [--largeur 3440] [--zones <contrôle.png>]
+```
 
 ## Effets sur les autres sessions (vérifiés le 31 octobre 2026)
 

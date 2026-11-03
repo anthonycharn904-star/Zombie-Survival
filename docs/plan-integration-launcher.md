@@ -48,7 +48,7 @@ Plan préparé le 31 octobre 2026, à la demande d'Anthony (« Je valide D, pré
 
 | Maquette | Vrai launcher | Remarque |
 |---|---|---|
-| `demarrage` | `starting` | le titre d'état reste « Ouverture du bunker… » (§5) |
+| `demarrage` | `starting` | le titre d'état est « Ouverture du jeu… » au départ (§5 ; « Ouverture du bunker… » jusqu'au 3 novembre 2026, et encore dans les maquettes, `maquettes/launcher/commun/maquette.js`) |
 | `verification` | `checking` | |
 | `pret` | `ready` | |
 | `maj` | `update` | « Jouer à la X » reste proposé |
@@ -82,7 +82,7 @@ Les essais lisent ces éléments de la page du launcher ; ils doivent rester.
 | Élément | Essais | Ce qui est attendu | Dans D |
 |---|---|---|---|
 | `#btn-main` | 19 | activé quand on peut jouer ; un clic lance le jeu | le bouton Jouer du bandeau prend cet identifiant |
-| `#status-title` | 10 | vaut « Ouverture du bunker… » au démarrage, puis change | la ligne d'état du bandeau prend cet identifiant et ce texte de départ |
+| `#status-title` | 10 | vaut « Ouverture du jeu… » au démarrage, puis change | la ligne d'état du bandeau prend cet identifiant et ce texte de départ |
 | `#btn-modtools` | 9 | visible pour l'auteur, caché pour un joueur ; un clic ouvre les Mod Tools | bouton « Mod Tools » visible sur l'accueil pour l'auteur (comme aujourd'hui dans la barre du bas) ; l'entrée de la barre latérale ouvre la page |
 | `#dossier.clickable`, `#notes-more`, `#history`, `#veil` | 1 (`publish-online`) | fiche des notes cliquable, historique en fenêtre | l'historique devient une page : adapter `publish-online.e2e.js` (seul essai touché) |
 

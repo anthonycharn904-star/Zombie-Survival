@@ -105,7 +105,7 @@ async function waitStatus(launcher, pred, timeoutMs) {
     fs.writeFileSync(path.join(pubDir, 'settings.json'), JSON.stringify({ repo: gh.repo.toLowerCase(), gameSource: oldHtml, lastGameVersion: '1.0.2', outDir: path.join(TMP, 'publications'), lastLauncher: oldSetup }));
     const pastVersions = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'notes-history.json'), 'utf8')).versions.map((e) => e.version);
     let { app, launcher } = await launch(author, env);
-    await launcher.waitForFunction(() => document.getElementById('status-title').textContent !== 'Ouverture du bunker…', null, { timeout: 60000 });
+    await launcher.waitForFunction(() => document.getElementById('status-title').textContent !== 'Ouverture du jeu…', null, { timeout: 60000 });
     const [pub] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.evaluate(() => window.zs.openPublisher())]);
     await pub.waitForFunction(() => document.getElementById('src-installed') && document.getElementById('game-version').value, null, { timeout: 30000 });
     const def = await pub.evaluate(() => ({ installed: document.getElementById('src-installed').checked, version: document.getElementById('game-version').value, online: !document.getElementById('publish-online').hidden, unlinked: !document.getElementById('gh-unlinked').hidden }));
