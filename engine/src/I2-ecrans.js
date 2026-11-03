@@ -73,8 +73,10 @@ function ifcMonterEcrans() {
     coquille.append(rail, sheet);
   }
   // pause et fin de partie : boutons du menu, surlignage qui suit la souris et le clavier
-  for (const id of ['pause', 'gameover']) {
-    const ecran = $(id), panel = ecran.querySelector('.panel');
+  // (confirm : l'écran des confirmations de « Sauvegarder et quitter », jeu 2.0.7 ; absent avant la fusion)
+  for (const id of ['pause', 'gameover', 'confirm']) {
+    const ecran = $(id), panel = ecran && ecran.querySelector('.panel');
+    if (!panel) continue;
     ecran.classList.add('ifc', 'ifc-panneau');
     for (const b of panel.querySelectorAll('.btn')) b.classList.add('ifc-item');
     panel.addEventListener('pointerover', (e) => { const b = e.target.closest('.ifc-item'); if (b) ifcActif(b, true); });

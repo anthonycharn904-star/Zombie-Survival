@@ -295,6 +295,14 @@ body.ifc-illu #options.ifc { background: url("data:image/svg+xml,%3Csvg xmlns='h
 #options.ifc .panel { width: min(34em, 100%); gap: 0.7em; }
 #options.ifc .ifc-r-sur { color: var(--blood-hi); margin-bottom: -0.2em; }
 
+/* sauvegarde de la partie (jeu 2.0.7) : détail sous « Continuer la partie », ligne de confirmation sous le menu */
+.screen.ifc .ifc-item .save-info {
+  display: block; margin-top: 0.3em; font-family: var(--font-type); font-weight: 400; font-size: 0.46em;
+  letter-spacing: 0.04em; text-transform: none; color: var(--paper-2);
+}
+.screen.ifc .ifc-item.ifc-actif .save-info { color: #fff1e6; }
+#menu.ifc .ifc-nav > .meta { margin: 0.7em 0 0 1.98em; max-width: 24em; font-family: var(--font-type); font-size: 0.9em; color: var(--paper-2); }
+
 /* ---------------------------------------------------------------- options -- */
 .ifc-opt-titre { margin: 8px 0 -4px; font-family: var(--font-type); color: var(--paper-2); font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; border-top: 1px solid var(--line); padding-top: 12px; }
 

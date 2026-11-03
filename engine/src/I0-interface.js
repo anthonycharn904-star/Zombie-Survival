@@ -26,7 +26,7 @@ const IFC = {
 /* Fond des écrans hors partie (demande d'Anthony du 3 novembre 2026) : une illustration, assombrie derrière les
    écrans ; ambiance 2D accordée à l'illustration. Livrée à côté du jeu (launcher/gamelibs/fonds/). */
 const IFC_FOND = { image: 'fonds/menu.jpg', position: '50% 42%', ambiance: 'sable' };
-const IFC_ECRANS_MENU = ['menu', 'mapsel', 'stats', 'models', 'ranking', 'mods', 'options'];
+const IFC_ECRANS_MENU = ['menu', 'mapsel', 'stats', 'models', 'ranking', 'mods', 'options', 'confirm'];   // confirm : confirmations de la sauvegarde (2.0.7)
 /* Ordre des maquettes : Jouer ouvre la sélection (décision d'Anthony du 2 novembre 2026), puis l'amélioration
    d'arme, les trois écrans du survivant, les options et la sortie. Commandes : fenêtres étroites seulement. */
 const IFC_ORDRE = ['btn-play', 'btn-resume-save', 'btn-mods', 'btn-stats', 'btn-models', 'btn-ranking', 'btn-options', 'btn-controls', 'btn-exit'];
@@ -98,7 +98,13 @@ function ifcMonterMenu() {
   tete.append($('menu-title'), $('menu-eyebrow'));
   const nav = el('nav', 'ifc-nav');
   nav.setAttribute('aria-label', 'Menu principal');
-  IFC_ORDRE.forEach((id, i) => { const b = $(id); b.classList.add('ifc-item'); b.style.setProperty('--ifc-i', i); actions.append(b); });
+  // boutons connus dans l'ordre des maquettes ; un bouton ajouté par un autre chantier passe avant Options
+  const fin = ['btn-options', 'btn-controls', 'btn-exit'], inconnus = [...actions.children].filter((b) => !IFC_ORDRE.includes(b.id));
+  [...IFC_ORDRE.filter((id) => !fin.includes(id)).map((id) => $(id)), ...inconnus, ...fin.map((id) => $(id))].forEach((b, i) => {
+    if (b.classList.contains('btn')) b.classList.add('ifc-item');
+    b.style.setProperty('--ifc-i', i);
+    actions.append(b);
+  });
   nav.append(actions);
   const pied = el('footer', 'ifc-pied');
   pied.append($('menu-rank'), $('game-version'), $('touch-note'));
@@ -113,8 +119,13 @@ function ifcMonterMenu() {
   carte.append(el('div', 'ifc-r-plan'), el('dl', 'ifc-faits'));
   const cmd = el('details', 'ifc-r-cmd');
   cmd.append(el('summary', '', 'Commandes'), touches);
-  dossier.replaceChildren(stamp, el('p', 'ifc-r-sur', 'Rapport opérationnel'), zone, carte, $('best'), el('h3', '', 'Briefing'), $('menu-lead'), consignes, ordres, cmd);
-  grille.replaceChildren(tete, nav, dossier, pied);
+  // un élément ajouté par un autre chantier n'est jamais retiré : en bas du rapport, sous les boutons du menu
+  const dansDossier = [...dossier.children].filter((n) => ![stamp, zone, consignes, ordres, touches].includes(n));
+  dossier.replaceChildren(stamp, el('p', 'ifc-r-sur', 'Rapport opérationnel'), zone, carte, $('best'), el('h3', '', 'Briefing'), $('menu-lead'), consignes, ordres, ...dansDossier, cmd);
+  const intro = grille.querySelector('.intro');
+  if (intro) nav.append(...intro.children);                // ex. : la ligne de la sauvegarde (#menu-save-done, 2.0.7)
+  const autres = [...grille.children].filter((n) => n !== intro && n !== dossier);
+  grille.replaceChildren(tete, nav, dossier, pied, ...autres);
   // fenêtres étroites : le rapport reste visible ; le bouton Commandes ouvre le volet des touches
   $('btn-controls').addEventListener('click', () => { cmd.open = true; cmd.scrollIntoView({ block: 'nearest' }); });
   actions.addEventListener('pointerover', (e) => { const b = e.target.closest('.btn'); if (b) ifcActif(b, true); });
@@ -197,7 +208,9 @@ function ifcMonterSelection() {
   const doc = el('div', 'ifc-fiche');
   doc.append(el('p', 'ifc-f-sur'), el('h3', 'ifc-f-nom'), el('div', 'ifc-f-tampons'), el('p', 'ifc-f-desc'), el('dl', 'ifc-faits'), el('p', 'ifc-f-lead'));
   actions.append(el('p', 'ifc-f-choix'));
-  fiche.append(apercu, doc, actions);
+  // un élément ajouté par un autre chantier n'est jamais retiré : dans la colonne de la fiche, avant JOUER
+  const autres = [...sheet.children].filter((n) => n !== head && n !== $('ms-grid') && n !== actions);
+  fiche.append(apercu, doc, ...autres, actions);
   sheet.replaceChildren(rail, liste, fiche);
   // survol (souris) et focus (clavier, Tab) : aperçu et fiche suivent, sans choisir la carte
   const grid = $('ms-grid');

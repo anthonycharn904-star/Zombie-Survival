@@ -308,3 +308,5 @@ Choix par défaut annoncés à Anthony, sans objection de sa part :
 2. Le clignotement de « SURVIVAL » reste.
 3. « Ouverture du jeu… » aussi dans la ligne d'état du launcher : fait (page, script, essais qui attendent ce texte, `docs/plan-integration-launcher.md` ; les anciennes maquettes gardent l'ancien texte).
 4. Commit : attendre son accord.
+
+**Compatibilité avec « Sauvegarder et quitter »** (Claude 5, jeu 2.0.7 ; ses choix du 3 novembre au soir : confirmations dans un écran à part `#confirm`, `#btn-save-quit` et `#pause-save-why` dans la pause, `.save-info` dans `btn-resume-save`, `#menu-save-done` sous les entrées du menu) : la mise en page ne retire plus aucun élément inconnu (enfants de `.intro` sous les boutons du menu, de `#dossier` en bas du rapport, de la feuille de la sélection dans la colonne de la fiche ; bouton inconnu avant Options) ; `#confirm` habillé comme la pause et compté parmi les écrans du menu (illustration derrière) ; styles de `.save-info` et de `#menu-save-done`. Vérifié sur son balisage simulé avant le démarrage (5 sur 5) ; commit de suivi avec l'accord d'Anthony (« Vas-y », 3 novembre).
