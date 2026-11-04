@@ -57,6 +57,8 @@ exec(open(os.path.join(HERE, 'hooks-glissade.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
 # jeu 2.0.7 : le boss de Bunker 7, « Le Dernier Pacte » (paquet boss-bunker7 ; suivi : SUIVI-BOSS-B7.md)
 exec(open(os.path.join(HERE, 'hooks-boss-b7.py'), encoding='utf-8').read())
+# jeu 2.0.7 : débris payants des cartes en grille, amas de rochers que l'on fait sauter (module HD-debris.js)
+exec(open(os.path.join(HERE, 'hooks-debris.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))

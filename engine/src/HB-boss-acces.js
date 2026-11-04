@@ -67,10 +67,10 @@ function b7DigipassDisparait() {
 
 /* ----------------------------------------------------------- Phase 5 --- */
 /* Entrée en phase 5 (évènement « etat » du combat) : toutes les portes s'ouvrent, offertes par le combat (les
-   statistiques du joueur ne les comptent pas). */
+   statistiques du joueur ne les comptent pas ; un passage de débris dont la charge bipe a été payé : il compte). */
 function b7OuvrirPortes() {
   let n = 0;
-  for (const id in World.doors) { const d = World.doors[id]; if (!d.opened) { openDoor(d); n++; } }
+  for (const id in World.doors) { const d = World.doors[id]; if (!d.opened) { const paye = d.charge; openDoor(d); if (!paye) n++; } }
   if (n) { G.stats.doors -= n; Life.add('doors', -n); }
 }
 function b7AccesEtat(d) {
