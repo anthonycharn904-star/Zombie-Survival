@@ -59,6 +59,8 @@ exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-boss-b7.py'), encoding='utf-8').read())
 # jeu 2.0.7 : débris payants des cartes en grille, amas de rochers que l'on fait sauter (module HD-debris.js)
 exec(open(os.path.join(HERE, 'hooks-debris.py'), encoding='utf-8').read())
+# jeu 2.0.7 : easter egg de l'horloge de la gare, dans les abords de Bunker 7 (module HE-horloge.js)
+exec(open(os.path.join(HERE, 'hooks-horloge.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
