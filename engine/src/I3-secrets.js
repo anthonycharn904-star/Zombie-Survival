@@ -11,9 +11,13 @@
 const SECRETS = {
   bunker7: [
     { id: 'b7-quete', type: 'principal', titre: 'Le Dernier Pacte',
-      texte: 'Le courant rétabli et toutes les portes ouvertes, une arme reforgée par Le Glas (palier II ou III) tire sur le disjoncteur de la Salle des machines. Il s’électrifie, puis le bunker plonge dans le noir : les salles se verrouillent une à une, des Machines à l’Infirmerie. Quand la lumière revient, la foudre frappe le toit, et le Septième absorbe les âmes des morts avant l’affrontement.' },
+      texte: 'Rétablir le courant, ouvrir toutes les portes, puis tirer sur le disjoncteur des Machines avec une arme au Glas II ; survivre aux quatre verrouillages ; rallumer le courant : la foudre ouvre le toit, et le Septième vient chercher votre âme.' },
     { id: 'b7-horloge', type: 'secondaire', titre: 'L’horloge de la gare',
       texte: 'Dehors, l’horloge de la gare abandonnée, visible des fenêtres du sud une fois leurs planches arrachées, s’est arrêtée sur trois heures. Chaque tir sur son cadran avance la grande aiguille d’une heure. À midi, elle laisse un atout gratuit et les munitions max. Une fois par partie.' },
+    { id: 'b7-camion', type: 'secondaire', titre: 'Le vieux débris',
+      texte: 'Derrière la Salle des machines, un vieux camion militaire rouille dans la brume. Le détruire depuis la fenêtre nord des Machines, à coups d’explosifs ou de balles.' },
+    { id: 'b7-ampoules', type: 'secondaire', titre: 'Dysfonctionnement',
+      texte: 'Tirer sur l’ampoule de chacune des six lampes de Bunker 7 ; chaque lampe touchée vacille. Impossible pendant les verrouillages.' },
   ],
   // Les Marécages Maudits (carte « marais », jeu 2.0.7, session Marécages) : aucun easter egg pour l'instant (le kit
   // n'a ni quête ni secret : « ils viendront des Mod Tools ») ; l'onglet apparaît dès que la carte est dans le jeu.
