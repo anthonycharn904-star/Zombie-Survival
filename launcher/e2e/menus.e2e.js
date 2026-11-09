@@ -230,7 +230,7 @@ const USER = path.join(TMP, 'joueur');
       const h = fiches().find((f) => f.dataset.id === 'b7-horloge');
       ok(refuse && nouveau && deja && h && h.classList.contains('decouvert') && /horloge/i.test(h.querySelector('.sc-nom').textContent) && h.querySelector('.sc-texte').textContent.length > 40 && h.querySelector('.sc-date'),
         'découverte : refusée avec le digi pass, puis enregistrée une fois ; titre, descriptif et date affichés');
-      const autre = MAPS.list.find((id) => id !== 'bunker7' && !SECRETS[id]);
+      const autre = MAPS.list.find((id) => id !== 'bunker7' && !scNombre(id));
       if (autre) {
         document.querySelector(`#sc-tabs [data-id="${autre}"]`).click();
         ok(document.querySelector('#sc-report .sc-vide') && !fiches().length, `carte sans easter egg (${autre}) : « Aucun easter egg connu »`);

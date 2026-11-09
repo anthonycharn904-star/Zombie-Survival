@@ -44913,6 +44913,9 @@ const SECRETS = {
     { id: 'b7-horloge', type: 'secondaire', titre: 'L’horloge de la gare',
       texte: 'Dehors, l’horloge de la gare abandonnée, visible des fenêtres du sud une fois leurs planches arrachées, s’est arrêtée sur trois heures. Chaque tir sur son cadran avance la grande aiguille d’une heure. À midi, elle laisse un atout gratuit et les munitions max. Une fois par partie.' },
   ],
+  // Les Marécages Maudits (carte « marais », jeu 2.0.7, session Marécages) : aucun easter egg pour l'instant (le kit
+  // n'a ni quête ni secret : « ils viendront des Mod Tools ») ; l'onglet apparaît dès que la carte est dans le jeu.
+  marais: [],
 };
 const SC = { carte: null };
 const SC_TYPES = [['principal', 'Easter egg'], ['secondaire', 'Easter eggs secondaires']];
@@ -44928,6 +44931,7 @@ function secretDecouvert(id) {
   return true;
 }
 function secretsEtat() { return store.get('zs.secrets', {}) || {}; }
+function scNombre(id) { return (SECRETS[id] || []).length; }
 
 /* --- écran : section et bouton créés au démarrage (avant la mise en page du menu, qui les range) */
 function ifcSecretsMonter() {
@@ -44964,7 +44968,7 @@ function ifcSecretsMonter() {
 }
 function ifcSecretsOuvrir() {
   // carte : celle déjà choisie, sinon la carte chargée si elle a des secrets, sinon la première qui en a
-  if (!MAPS.list.includes(SC.carte)) SC.carte = SECRETS[G.mapId] ? G.mapId : MAPS.list.find((id) => SECRETS[id]) || MAPS.list[0];
+  if (!MAPS.list.includes(SC.carte)) SC.carte = scNombre(G.mapId) ? G.mapId : MAPS.list.find(scNombre) || MAPS.list[0];
   const tabs = $('sc-tabs'), vus = secretsEtat();
   tabs.replaceChildren(...MAPS.list.map((id) => {
     const liste = SECRETS[id] || [], t = el('button', 'md-tab');
