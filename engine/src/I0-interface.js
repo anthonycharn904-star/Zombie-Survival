@@ -26,16 +26,17 @@ const IFC = {
 /* Fond des écrans hors partie (demande d'Anthony du 3 novembre 2026) : une illustration, assombrie derrière les
    écrans ; ambiance 2D accordée à l'illustration. Livrée à côté du jeu (launcher/gamelibs/fonds/). */
 const IFC_FOND = { image: 'fonds/menu.jpg', position: '50% 42%', ambiance: 'sable' };
-const IFC_ECRANS_MENU = ['menu', 'mapsel', 'stats', 'models', 'ranking', 'mods', 'options', 'confirm'];   // confirm : confirmations de la sauvegarde (2.0.7)
+const IFC_ECRANS_MENU = ['menu', 'mapsel', 'stats', 'models', 'ranking', 'mods', 'secrets', 'options', 'confirm'];   // confirm : confirmations de la sauvegarde (2.0.7)
 /* Ordre des maquettes : Jouer ouvre la sélection (décision d'Anthony du 2 novembre 2026), puis l'amélioration
    d'arme, les trois écrans du survivant, les options et la sortie. Commandes : fenêtres étroites seulement. */
-const IFC_ORDRE = ['btn-play', 'btn-resume-save', 'btn-mods', 'btn-stats', 'btn-models', 'btn-ranking', 'btn-options', 'btn-controls', 'btn-exit'];
+const IFC_ORDRE = ['btn-play', 'btn-resume-save', 'btn-mods', 'btn-stats', 'btn-models', 'btn-ranking', 'btn-secrets', 'btn-options', 'btn-controls', 'btn-exit'];
 
 /* Une fois, au démarrage (après bindUI) : nouvelle mise en page, options, clavier. Aucune carte n'est encore
    chargée : le contenu des écrans se remplit quand ils s'ouvrent (ifcEcran). */
 function ifcMonter() {
   if (IFC.pret) return;
   ifcLireReglages();
+  ifcSecretsMonter();                                       // écran « Secret » (I3-secrets.js), avant la mise en page du menu
   ifcMonterMenu();
   ifcMonterSelection();
   ifcMonterOptions();
@@ -420,6 +421,7 @@ function ifcMonterOptions() {
 function ifcClavier(e) {
   if (!IFC.pret || window.zsModtools || e.defaultPrevented) return;
   if (e.code === 'Escape' && !$('options').hidden) { e.preventDefault(); $('btn-options-back').click(); return; }
+  if (e.code === 'Escape' && !$('secrets').hidden && G.state === 'menu') { e.preventDefault(); showScreen('menu'); return; }
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   let nav = null;
   const ecran = document.querySelector('.screen.ifc:not([hidden])');
@@ -484,6 +486,7 @@ function ifcEcran(id) {
   if (!IFC.pret) return;
   const avant = IFC.ecran;
   IFC.ecran = id;
+  $('secrets').hidden = id !== 'secrets';                 // écran ajouté : absent de la liste de showScreen
   if (id === 'pause') IFC.pauseT = performance.now();
   ifcRafraichir();
   if (id === 'menu') ifcRapport();

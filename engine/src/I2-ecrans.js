@@ -5,7 +5,7 @@
    boutons du menu (surlignage rouge, flèches) ; les Options sont habillées en dossier. Les éléments du jeu 1.9.0
    gardent leurs identifiants et leurs écouteurs (le bouton Retour de chaque écran est déplacé dans son rail). */
 /* Écrans à rail, et l'entrée du menu principal qui y mène (elle reste en évidence). */
-const IFC_RAILS = { mapsel: 'btn-play', stats: 'btn-stats', models: 'btn-models', ranking: 'btn-ranking', mods: 'btn-mods' };
+const IFC_RAILS = { mapsel: 'btn-play', stats: 'btn-stats', models: 'btn-models', ranking: 'btn-ranking', mods: 'btn-mods', secrets: 'btn-secrets' };
 
 /* Rail : petit logo, navigation (remplie à chaque ouverture par ifcRail), bouton Retour de l'écran. */
 function ifcRailMonter(retour) {
@@ -63,7 +63,7 @@ function ifcFocusFiche(ecran) {
 
 function ifcMonterEcrans() {
   // fiches : rail à gauche, fiche à droite (même fond que la sélection)
-  for (const id of ['stats', 'models', 'ranking', 'mods']) {
+  for (const id of ['stats', 'models', 'ranking', 'mods', 'secrets']) {
     const ecran = $(id), sheet = ecran.querySelector('.sheet'), actions = sheet.querySelector('.sheet-actions');
     ecran.classList.add('ifc', 'ifc-fiches');
     const coquille = el('div', 'ifc-coquille');

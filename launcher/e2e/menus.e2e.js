@@ -45,7 +45,7 @@ const USER = path.join(TMP, 'joueur');
       const survol = (e) => e.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
       ok(IFC.pret && document.getElementById('menu').classList.contains('ifc') && document.getElementById('mapsel').classList.contains('ifc'), 'interface montée (menu et sélection)');
       const ordre = [...document.querySelectorAll('#menu .actions .btn')].filter((b) => !b.hidden && b.offsetParent !== null).map((b) => b.id);
-      ok(ordre[0] === 'btn-play' && ordre.indexOf('btn-mods') === 1 && ordre.slice(2, 5).join() === 'btn-stats,btn-models,btn-ranking' && ordre.indexOf('btn-options') === 5,
+      ok(ordre[0] === 'btn-play' && ordre.indexOf('btn-mods') === 1 && ordre.slice(2, 6).join() === 'btn-stats,btn-models,btn-ranking,btn-secrets' && ordre.indexOf('btn-options') === 6,
         'menu vertical dans l’ordre des maquettes (Jouer, Amélioration d’arme, Statistiques, Modèles, Ranking, Options)', ordre);
       const tete = document.querySelector('#menu .ifc-tete');
       ok(tete && tete.contains(document.getElementById('menu-title')) && tete.contains(document.getElementById('menu-eyebrow')) && document.getElementById('menu-title').classList.contains('ifc-logo'),
@@ -203,6 +203,41 @@ const USER = path.join(TMP, 'joueur');
       touche(document.body, 'Escape');
       ok(!document.getElementById('menu').hidden && !IFC.video && document.querySelectorAll('video').length === 0, 'Échap : la vidéo est arrêtée et retirée');
       delete window.__ifcEssaiAutre;
+      return out;
+    })).forEach(report);
+    // ------------------------------------------------------------------ écran « Secret » (easter eggs par carte)
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      const vis = (id) => !document.getElementById(id).hidden;
+      const touche = (cible, key) => cible.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }));
+      const avant = store.get('zs.secrets', null);
+      store.set('zs.secrets', {});
+      document.getElementById('btn-secrets').click();
+      const tabs = [...document.querySelectorAll('#sc-tabs .md-tab')];
+      const cur = document.querySelector('#secrets .ifc-liens [aria-current]');
+      ok(vis('secrets') && !vis('menu') && tabs.length === MAPS.list.length && cur && cur.textContent === 'Secret', 'Secret : un onglet par carte, rail avec « Secret » en évidence', tabs.map((t) => t.dataset.id));
+      document.querySelector('#sc-tabs [data-id="bunker7"]').click();
+      const fiches = () => [...document.querySelectorAll('#sc-report .sc-fiche')];
+      ok(document.querySelector('#sc-report .sc-principal') && document.querySelector('#sc-report .sc-secondaire') && fiches().length >= 2
+        && fiches().every((f) => f.classList.contains('cache') && f.querySelector('.sc-nom').textContent === '????' && f.querySelector('.sc-texte').textContent === '????'),
+        'Bunker 7 : « Easter egg » et « Easter eggs secondaires » séparés, non découverts : ????');
+      const g0 = G.cheat; G.cheat = true;
+      const refuse = !secretDecouvert('b7-horloge');
+      G.cheat = g0;
+      const nouveau = secretDecouvert('b7-horloge'), deja = !secretDecouvert('b7-horloge');
+      ifcSecretsOuvrir();
+      const h = fiches().find((f) => f.dataset.id === 'b7-horloge');
+      ok(refuse && nouveau && deja && h && h.classList.contains('decouvert') && /horloge/i.test(h.querySelector('.sc-nom').textContent) && h.querySelector('.sc-texte').textContent.length > 40 && h.querySelector('.sc-date'),
+        'découverte : refusée avec le digi pass, puis enregistrée une fois ; titre, descriptif et date affichés');
+      const autre = MAPS.list.find((id) => id !== 'bunker7' && !SECRETS[id]);
+      if (autre) {
+        document.querySelector(`#sc-tabs [data-id="${autre}"]`).click();
+        ok(document.querySelector('#sc-report .sc-vide') && !fiches().length, `carte sans easter egg (${autre}) : « Aucun easter egg connu »`);
+      }
+      touche(document.body, 'Escape');
+      ok(vis('menu') && !vis('secrets'), 'Échap : retour au menu');
+      if (avant === null) localStorage.removeItem('zs.secrets'); else store.set('zs.secrets', avant);
       return out;
     })).forEach(report);
     // ------------------------------------------------------------------ fiches à rail
