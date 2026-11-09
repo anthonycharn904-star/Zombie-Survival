@@ -214,6 +214,7 @@ function horlMaj(dt) {
 /* Réussite : son, puis les deux bonus au sol près du joueur (dans la même image : une sauvegarde ne peut pas les perdre). */
 function horlReussite() {
   horlSonReussite();
+  if (typeof secretDecouvert === 'function') secretDecouvert('b7-horloge');   // écran « Secrets » de l'Interface (2.0.7)
   const [a, b] = horlPlaces();
   if (atgLibres().length) atgPoser(a.x, a.z, a.gy, HORL.vie);   // le joueur a déjà tous les atouts : seulement les munitions
   spawnPowerup('ammo', b.x, b.z, b.gy); Powerups.list[Powerups.list.length - 1].life = HORL.vie;

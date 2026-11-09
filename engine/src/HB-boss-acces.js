@@ -37,6 +37,7 @@ function b7AccesBoss() { return B7A.empreinte != null && b7Carte() && B7S.actif 
 function b7CodeDigipass(code) {
   if (digipassHash(code) === DIGIPASS_HASH) return 'secret';
   if (b7AccesBoss() && !B7A.codes.boss && B7.etat === 'inactif' && b7CodeEmpreinte(code) === B7A.empreinte
+    && (typeof QP !== 'object' || QP.etape === 'attente' || QP.etape === 'fini')   // jeu 2.0.7 : pas en pleine quête (HG-quete.js)
     && B7.drapeaux[B7.combat.config.general.drapeauTermine] !== true) return 'boss';
   return null;
 }

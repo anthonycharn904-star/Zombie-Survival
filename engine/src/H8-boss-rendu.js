@@ -120,13 +120,14 @@ function b7VueMaj(dt, e) {
   if (!V.modele) return;
   b7BossEntree(e);
   if (!e) return;
+  const transfert = typeof qpTransfert === 'function' && qpTransfert();   // quête : le Septième et ses effets restent à la quête
   const vue = e.boss;
   vue.temps = e.temps;
-  V.modele.update(dt, vue);
+  if (!transfert) V.modele.update(dt, vue);
   const p = player, C = V.ctx, J = C.joueurLocal;
   J.position.x = p.pos.x; J.position.y = p.gy + p.y; J.position.z = p.pos.z; J.lieu = B7.lieu;
   C.temps = G.time; C.joueurs = b7Joueurs();
-  V.fx.mettreAJour(dt, e, C);
+  if (!transfert) V.fx.mettreAJour(dt, e, C);
   if (B7.audio) {
     const A = V.ctxA.auditeur;
     A.position.x = camera.position.x; A.position.y = camera.position.y; A.position.z = camera.position.z;
@@ -226,12 +227,13 @@ function b7VueAvantRendu(dans) {
   if (!V.modele) return;
   const e = B7.e, combat = !!e && B7.actif && b7Carte() && G.state !== 'editor';   // combat fini : ni Septième ni effets dans la scène
   const lieu = dans ? 'salle' : 'bunker';
-  b7Attacher(V.modele.object, combat && e.boss.lieu === lieu);
+  b7Attacher(V.modele.object, (combat && e.boss.lieu === lieu) || (!dans && typeof qpSeptiemeVisible === 'function' && qpSeptiemeVisible()));   // quête : le Septième en attente et pendant le transfert
   b7Attacher(V.fxSalle, combat && dans);
-  b7Attacher(V.fxBunker, combat && !dans && (e.lieu === 'bunker' || e.boss.lieu === 'bunker'));
+  b7Attacher(V.fxBunker, (combat && !dans && (e.lieu === 'bunker' || e.boss.lieu === 'bunker')) || (!dans && typeof qpSeptiemeVisible === 'function' && qpSeptiemeVisible()));   // quête : capture des âmes
   if (B7E.gS) b7Attacher(B7E.gS, dans && G.state !== 'editor');   // étape 6 : mini-boss, petits Démembrés et leurs effets
 }
 /* Après l'arme (fin de render) : voile d'écran des effets (obscurité, fondus, capture des âmes, éclairs). */
 function b7RenduEcran() {
-  if (B7V.fx && B7.e && b7Carte() && G.state !== 'editor') B7V.fx.rendreEcran(renderer);
+  if (B7V.fx && (B7.e || (typeof qpSeptiemeVisible === 'function' && qpSeptiemeVisible())) && b7Carte() && G.state !== 'editor')
+    B7V.fx.rendreEcran(typeof qpTransfert === 'function' && qpTransfert() ? qpRendeurTeleport() : renderer);   // quête : voile de la capture (et de la téléportation)
 }

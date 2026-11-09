@@ -61,6 +61,12 @@ exec(open(os.path.join(HERE, 'hooks-boss-b7.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-debris.py'), encoding='utf-8').read())
 # jeu 2.0.7 : easter egg de l'horloge de la gare, dans les abords de Bunker 7 (module HE-horloge.js)
 exec(open(os.path.join(HERE, 'hooks-horloge.py'), encoding='utf-8').read())
+# jeu 2.0.7 : easter egg principal de Bunker 7, la quête du disjoncteur (module HG-quete.js)
+exec(open(os.path.join(HERE, 'hooks-quete.py'), encoding='utf-8').read())
+# jeu 2.0.7 : camion des abords de Bunker 7, easter egg secondaire (HH-camion.js)
+exec(open(os.path.join(HERE, 'hooks-camion.py'), encoding='utf-8').read())
+# jeu 2.0.7 : ampoules des lampes de Bunker 7, easter egg secondaire (HI-ampoules.js)
+exec(open(os.path.join(HERE, 'hooks-ampoules.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
