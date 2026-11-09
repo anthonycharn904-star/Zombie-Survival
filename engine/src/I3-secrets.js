@@ -18,6 +18,8 @@ const SECRETS = {
       texte: 'Derrière la Salle des machines, un vieux camion militaire rouille dans la brume. Le détruire depuis la fenêtre nord des Machines, à coups d’explosifs ou de balles.' },
     { id: 'b7-ampoules', type: 'secondaire', titre: 'Dysfonctionnement',
       texte: 'Tirer sur l’ampoule de chacune des six lampes de Bunker 7 ; chaque lampe touchée vacille. Impossible pendant les verrouillages.' },
+    { id: 'b7-caisses', type: 'secondaire', titre: 'Contamination',
+      texte: 'Quatre petites caisses marquées d’un logo toxique rouge attendent, posées sur les grandes, dans les salles de Bunker 7 — jamais les mêmes d’une partie à l’autre. Les détruire, à la lame, aux balles ou aux explosifs ; gare au gaz vert qui s’en échappe.' },
   ],
   // Les Marécages Maudits (carte « marais », jeu 2.0.7, session Marécages) : aucun easter egg pour l'instant (le kit
   // n'a ni quête ni secret : « ils viendront des Mod Tools ») ; l'onglet apparaît dès que la carte est dans le jeu.
