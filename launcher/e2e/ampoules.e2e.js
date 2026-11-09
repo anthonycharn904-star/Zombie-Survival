@@ -80,7 +80,10 @@ const USER = path.join(TMP, 'joueur');
       ok(AMP.fait && secrets.includes('b7-ampoules') && b.includes('freeperk') && b.includes('ammo') && Powerups.list.every((p) => zoneAt(p.x, p.z, player.gy) === z0),
         'toutes touchées : « Atout gratuit » et « Munitions max » près du joueur ; secret « b7-ampoules »', b);
       // toutes ensemble, en même temps : au plus 3 baisses par seconde pour la pièce entière (règle des flashs)
-      const minis = World.lights.map(() => Infinity), bas6 = World.lights.map(() => false);
+      // (le grésillement propre de certaines lampes de la carte, coupures au hasard, est neutralisé pendant la mesure : on
+      // ne compte que le scintillement de l'easter egg)
+      const fl0 = World.lights.map((l) => l.flicker); World.lights.forEach((l) => { l.flicker = 0; l.out = 0; });
+      const minis = World.lights.map(() => Infinity);
       let creux = 0, dansCreux = false;
       for (let i = 0; i < 60; i++) {
         Q.pas(1);
@@ -89,6 +92,7 @@ const USER = path.join(TMP, 'joueur');
         if (un && !dansCreux) creux++;
         dansCreux = un;
       }
+      World.lights.forEach((l, k) => { l.flicker = fl0[k]; });
       const tous = minis.filter((m) => m < 0.5).length;
       ok(tous === 6 && AMP.finT > 0 && creux <= 3, `les lampes scintillent ensemble (${tous} sur 6), ${creux} baisse(s) en 1 s pour toutes`);
       for (let i = 0; i < 60 * 5; i++) { Q.pas(1); shake = Math.max(shake, FX.shake); }

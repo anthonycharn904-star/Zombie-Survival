@@ -67,6 +67,8 @@ exec(open(os.path.join(HERE, 'hooks-quete.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-camion.py'), encoding='utf-8').read())
 # jeu 2.0.7 : ampoules des lampes de Bunker 7, easter egg secondaire (HI-ampoules.js)
 exec(open(os.path.join(HERE, 'hooks-ampoules.py'), encoding='utf-8').read())
+# jeu 2.0.7 : caisses toxiques de Bunker 7, easter egg secondaire (HJ-caisses.js)
+exec(open(os.path.join(HERE, 'hooks-caisses.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
