@@ -246,6 +246,13 @@ async function run(userData) {
       page.on('pageerror', (e) => perr.push(e.message));
       await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
       await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
+      // Chromium sans tête : la souris verrouillée boucle sur des évènements de souris synthétiques (navigateur saturé,
+      // mémoire qui gonfle) ; refusée ici, le jeu passe en souris libre (docs/rapport-souris-verrouillee.md).
+      await page.evaluate(() => {
+        Element.prototype.requestPointerLock = function () { return Promise.reject(new DOMException('banc sans tête : souris non verrouillée', 'NotSupportedError')); };
+        const st = document.createElement('style'); st.textContent = '#lockhint{display:none!important}';   // bandeau « souris libre » masqué, comme dans les outils d'essai
+        document.head.appendChild(st);
+      });
       const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId.ombre; return { list: ZS.MAPS_ALL.list.join(), src: m.source, oxy: m.oxy.length, glas: !!m.glas, bld: m.buildings.length, wb: m.wallbuys.length, thumb: /^data:image\/jpeg/.test(m.thumb || '') }; });
       ok(g.list === 'bunker7,khamsin,ombre' && g.src === 'package' && g.oxy === 7 && g.glas && g.bld === 1 && g.wb === 13 && g.thumb, `jeu publié : Ombre éternelle vient du fichier des Mod Tools ${JSON.stringify(g)}`);
       await page.evaluate(() => { window.frame = function () {}; renderEnabled = false; __zs.map('ombre'); __zs.start(); });

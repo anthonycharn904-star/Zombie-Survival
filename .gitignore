@@ -18,3 +18,9 @@ engine/tools/khepesh-env/
 Thumbs.db
 desktop.ini
 .DS_Store
+# Traces de téléchargement de Windows (flux « Zone.Identifier » recopiés en fichiers ; nom invalide sous Windows)
+*:Zone.Identifier
+# Boss de Bunker 7 : les sons du paquet en base64, pour ouvrir son prototype en double-clic (doublon de sons/), gardés
+# hors du dépôt (choix d'Anthony du 2 novembre 2026) ; sans eux, le prototype est muet en double-clic ; servi par un
+# serveur local, il lit sons/
+boss-bunker7/le-dernier-pacte/prototype/sons-embarques.js

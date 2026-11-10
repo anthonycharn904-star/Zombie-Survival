@@ -22,6 +22,13 @@ const server = http.createServer((req, res) => {
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
   await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
+  // Chromium sans tête : la souris verrouillée boucle sur des évènements de souris synthétiques (navigateur saturé,
+  // mémoire qui gonfle) ; refusée ici, le jeu passe en souris libre (voir mains.js).
+  await page.evaluate(() => {
+    Element.prototype.requestPointerLock = function () { return Promise.reject(new DOMException('banc sans tête : souris non verrouillée', 'NotSupportedError')); };
+    const st = document.createElement('style'); st.textContent = '#lockhint{display:none!important}';   // bandeau « souris libre » hors des captures
+    document.head.appendChild(st);
+  });
   const info = await page.evaluate(async () => {
     window.frame = function () {}; renderEnabled = false; settings.quality = 'medium';
     __zs.map('khamsin'); __zs.start(); __zs.god(true);

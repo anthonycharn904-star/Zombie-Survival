@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Le Dernier Pacte</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --fond: #060505; --encre: #efe4d0; --doux: #b9aa92; --cuivre: #d0874f; --or: #f1d48a; --sang: #a3271a; --panneau: rgba(14,10,9,.86); --trait: rgba(220,160,110,.28);
+    --titre: "Teko", "Oswald", "Arial Narrow", sans-serif;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond); color: var(--encre); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  button { font: inherit; }
+  #viseur { position: fixed; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; pointer-events: none; z-index: 30; opacity: .85; }
+  #viseur::before, #viseur::after { content: ''; position: absolute; background: #fff; }
+  #viseur::before { left: 8px; top: 0; width: 2px; height: 18px; clip-path: polygon(0 0,100% 0,100% 30%,0 30%,0 70%,100% 70%,100% 100%,0 100%); }
+  #viseur::after { top: 8px; left: 0; height: 2px; width: 18px; clip-path: polygon(0 0,30% 0,30% 100%,0 100%,0 0,70% 0,100% 0,100% 100%,70% 100%); }
+  #hudJoueur { position: fixed; inset: auto 0 0 0; height: 0; z-index: 35; pointer-events: none; font-family: var(--titre); }
+  #pv { position: fixed; left: 50%; bottom: 24px; width: 280px; margin-left: -140px; height: 9px; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.18); }
+  #pv i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #8f1d12, #d9442c); transition: width .15s; }
+  #munitions { position: fixed; right: 28px; bottom: 18px; font-size: 40px; line-height: 1; text-shadow: 0 2px 6px #000; }
+  #munitions small { font-size: 20px; color: var(--doux); }
+  #points { position: fixed; left: 26px; bottom: 18px; font-size: 34px; line-height: 1; color: var(--or); text-shadow: 0 2px 6px #000; }
+  #points small { display: block; font-size: 14px; letter-spacing: .2em; color: var(--doux); }
+  .ecran { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); background: radial-gradient(ellipse at 50% 40%, rgba(70,18,10,.55), rgba(4,3,3,.94) 70%); }
+  .ecran[hidden] { display: none; }
+  .carte { width: min(680px, 100%); max-height: 100%; overflow: auto; padding: 26px 30px; background: var(--panneau); border: 1px solid var(--trait); box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+  .sur { font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: var(--cuivre); }
+  h1 { margin: 6px 0 0; font: 500 clamp(52px, 9vw, 92px)/.86 var(--titre); letter-spacing: .02em; text-transform: uppercase; color: #f6e5c4; text-wrap: balance; }
+  .sous { margin: 4px 0 14px; font: 400 26px/1 var(--titre); letter-spacing: .14em; text-transform: uppercase; color: var(--cuivre); }
+  .carte p { margin: 0 0 12px; color: var(--doux); max-width: 62ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 12px; align-items: center; }
+  .bouton { padding: 11px 20px; background: #6b2014; color: #fff3e2; border: 1px solid #d58457; cursor: pointer; font: 500 22px/1 var(--titre); letter-spacing: .08em; text-transform: uppercase; }
+  .bouton:hover { background: #87291a; }
+  .bouton.second { background: transparent; color: var(--encre); border-color: var(--trait); }
+  .bouton:disabled { opacity: .45; cursor: wait; }
+  select { padding: 9px 10px; background: #1a1311; color: var(--encre); border: 1px solid var(--trait); font: 14px system-ui, sans-serif; }
+  .touches { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 4px 18px; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--trait); font-size: 13px; color: var(--doux); }
+  kbd { display: inline-block; min-width: 22px; padding: 0 6px; margin-right: 4px; border: 1px solid #6f5a49; border-bottom-width: 2px; border-radius: 3px; font: 600 12px/1.6 system-ui, sans-serif; color: var(--encre); text-align: center; background: #1d1614; }
+  #chargement { margin-top: 10px; font-size: 12px; color: var(--doux); min-height: 18px; }
+  #debug { position: fixed; right: 10px; top: 10px; bottom: 10px; width: 270px; overflow: auto; z-index: 65; background: rgba(12,9,8,.9); border: 1px solid var(--trait); padding: 10px; font-size: 12px; }
+  #debug[hidden] { display: none; }
+  #debug h3 { margin: 10px 0 5px; font: 500 16px/1 var(--titre); letter-spacing: .1em; text-transform: uppercase; color: var(--cuivre); }
+  #debug button { margin: 2px; padding: 4px 7px; font: 12px system-ui, sans-serif; color: #eee; background: #2a2220; border: 1px solid #4a3a33; cursor: pointer; }
+  #debug button:hover { background: #3a2e2a; }
+  #debug label { display: block; margin: 4px 0; }
+  #debug pre { margin: 6px 0 0; font: 11px/1.35 ui-monospace, Consolas, monospace; white-space: pre-wrap; color: #cbbca4; }
+  #infoRapide { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 66; padding: 14px 22px; background: rgba(10,8,8,.82); border: 1px solid var(--trait); font: 500 24px/1.2 var(--titre); letter-spacing: .06em; text-align: center; }
+  #infoRapide[hidden] { display: none; }
+  #infoRapide small { display: block; font: 13px system-ui, sans-serif; letter-spacing: 0; color: var(--doux); }
+</style>
+</head>
+<body>
+
+
+<div id="viseur"></div>
+<div id="hudJoueur"><div id="pv"><i></i></div><div id="munitions"></div><div id="points"><small>Points</small><span>0</span></div></div>
+
+<section class="ecran" id="accueil">
+  <div class="carte">
+    <div class="sur">Zombie Survival · Bunker 7 · combat final de la quête principale</div>
+    <h1>Le Dernier Pacte</h1>
+    <div class="sous">Le Septième</div>
+    <p>Ancien directeur du programme occulte du bunker, il s’est soumis lui-même au Pacte et s’est lié aux âmes des morts. Cinq phases : l’invocation des morts, l’absorption des âmes, la colère du bunker, le rituel de purification, puis la traque dans le noir.</p>
+    <div class="actions">
+      <button class="bouton" id="jouer" disabled>Jouer</button>
+      <button class="bouton second" id="jouerCoop" disabled>Avec 3 coéquipiers simulés</button>
+      <select id="depuis" aria-label="Commencer à">
+        <option value="introduction">Depuis le début</option>
+        <option value="phase1">Phase 1 · Invocation</option>
+        <option value="phase2">Phase 2 · Âmes et ailes</option>
+        <option value="absence">Phase 3 · Absence puis rage</option>
+        <option value="phase3">Phase 3 · Murs arrachés</option>
+        <option value="rituel">Phase 4 · Rituel</option>
+        <option value="faiblesse">Phase 4 · Boss affaibli</option>
+        <option value="transition45">Phase 5 · Capture des âmes</option>
+        <option value="phase5">Phase 5 · Traque dans le noir</option>
+        <option value="conclusion">Conclusion et récompenses</option>
+      </select>
+    </div>
+    <div id="chargement">Chargement…</div>
+    <div class="touches">
+      <div><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> ou <kbd>W</kbd><kbd>A</kbd>… se déplacer</div>
+      <div><kbd>Maj</kbd> sprint · <kbd>Espace</kbd> saut</div>
+      <div>clic gauche tirer · clic droit viser</div>
+      <div><kbd>R</kbd> recharger · <kbd>E</kbd> interagir (maintenir)</div>
+      <div><kbd>Échap</kbd> pause · <kbd>P</kbd> panneau de test</div>
+    </div>
+  </div>
+</section>
+
+<section class="ecran" id="pause" hidden>
+  <div class="carte" style="width:min(460px,100%);text-align:center">
+    <div class="sur">Pause</div>
+    <h1 style="font-size:64px">Le Dernier Pacte</h1>
+    <div class="actions" style="justify-content:center">
+      <button class="bouton" id="reprendre">Reprendre</button>
+      <button class="bouton second" id="recommencer">Recommencer</button>
+    </div>
+    <p style="margin:0 auto">Le combat est figé pendant la pause.</p>
+  </div>
+</section>
+
+<div id="infoRapide" hidden></div>
+
+<aside id="debug" hidden>
+  <h3>Aller à l’état</h3><div id="dbgEtats"></div>
+  <h3>Combat</h3>
+  <button data-d="ames">+10 âmes (ailes)</button><button data-d="pv1">Segment à 1 PV</button><button data-d="tirs">10 tirs sur le boss</button>
+  <label><input type="checkbox" id="dbgInvincible"> joueur invincible</label>
+  <h3>Mini-boss (phase 2)</h3>
+  <button data-d="mbSeuil">Seuil suivant (75 %, 50 %, 25 %)</button><button data-d="mbRage">Mini-boss à 49 % (rage)</button><button data-d="mbTuer">Tuer le mini-boss</button>
+  <h3>Phases 3 et 5 (v1.4–1.5 ; palier 2 : intangible)</h3>
+  <button data-d="salves">Phase 3 sous 50 % (salves)</button><button data-d="palier">Palier suivant (phase 5)</button>
+  <h3>Coop simulée</h3>
+  <button data-d="bot+">Coéquipier +1</button><button data-d="bot-">Coéquipier −1</button>
+  <label><input type="checkbox" id="dbgBotsImmortels"> coéquipiers immortels</label>
+  <h3>Temps</h3>
+  <button data-d="v0.5">×0,5</button><button data-d="v1">×1</button><button data-d="v2">×2</button><button data-d="v4">×4</button>
+  <h3>Sons</h3>
+  <label>Musique <input type="range" min="0" max="2" step="0.05" value="1.4" data-vol="musique"></label>
+  <label>Effets <input type="range" min="0" max="1.2" step="0.05" value="1" data-vol="effets"></label>
+  <h3>État</h3><pre id="dbgEtat"></pre>
+</aside>
+
+<script>window.BOSS_CHEMINS = {"three": "vendor/three.min.js", "scripts": ["../src/config.js", "../src/arene.js", "../src/logique.js", "proto-commun.js", "proto-nav.js", "proto-monde.js", "proto-joueur.js", "proto-arme.js", "proto-zombies.js", "proto-bots.js", "proto-adaptateur.js", "../src/tete/boss-tete.js", "../src/boss-modele.js", "../src/fx.js", "../src/audio.js", "../src/hud.js", "proto-boss.js"], "sons": "../sons/", "sonsEmbarques": "sons-embarques.js"};</script>
+<script>
+(function () {
+  'use strict';
+  var CH = window.BOSS_CHEMINS;
+  // Coéquipiers simulés IMMORTELS pendant les essais du combat complet (demande d'Anthony).
+  // Pour les rendre de nouveau vulnérables : mettre false ici, ou ajouter ?bots=mortels à l'adresse, ou décocher la case du panneau P.
+  var BOTS_IMMORTELS = true;
+  if (/bots=mortels/.test(location.search)) BOTS_IMMORTELS = false;
+  var LOCAL = location.protocol === 'file:';
+  // Ouverte directement dans le zip : l'Explorateur de Windows n'extrait que ce fichier dans un dossier temporaire
+  var DANS_ZIP = LOCAL && /\.zip[\/\\]/i.test(decodeURIComponent(location.href));
+  var $ = function (id) { return document.getElementById(id); };
+  var etatCh = $('chargement');
+  function charger(src) {
+    return new Promise(function (ok, ko) {
+      var s = document.createElement('script'); s.src = src; s.onload = ok;
+      s.onerror = function () { ko(new Error('introuvable : ' + src)); }; document.head.appendChild(s);
+    });
+  }
+  var api = null, AUTO = /auto=1/.test(location.search);
+  async function demarrer() {
+    etatCh.textContent = 'Chargement du moteur…';
+    if (!window.THREE) await charger(CH.three);
+    for (var i = 0; i < CH.scripts.length; i++) {
+      etatCh.textContent = 'Chargement ' + (i + 1) + '/' + CH.scripts.length + ' · ' + CH.scripts[i].split('/').pop();
+      await charger(CH.scripts[i]);
+    }
+    // Page ouverte en double-clic (file://) : le navigateur interdit de lire les MP3 avec fetch → sons embarqués
+    var manifeste = null, donnees = null;
+    if (LOCAL && CH.sonsEmbarques) {
+      etatCh.textContent = 'Chargement des sons embarqués…';
+      try {
+        await charger(CH.sonsEmbarques);
+        manifeste = window.BOSS_SONS.manifeste; donnees = {};
+        Object.keys(window.BOSS_SONS.donnees).forEach(function (k) {
+          var bin = atob(window.BOSS_SONS.donnees[k]), u = new Uint8Array(bin.length);
+          for (var j = 0; j < bin.length; j++) u[j] = bin.charCodeAt(j);
+          donnees[k] = u.buffer;
+        });
+        window.BOSS_SONS.donnees = null;                       // libère les chaînes base64
+      } catch (e) { console.warn('sons embarqués introuvables', e); manifeste = null; donnees = null; }
+    } else {
+      try { manifeste = await (await fetch(CH.sons + 'manifest.json')).json(); } catch (e) { console.warn('manifeste des sons introuvable', e); }
+    }
+    etatCh.textContent = 'Construction de la Chambre du Pacte…';
+    api = await ProtoB7Boss.lancer(window.THREE, { sons: manifeste ? { manifeste: manifeste, base: CH.sons, donnees: donnees } : null, auto: AUTO, panneauJeu: false, obscurite: !/obscurite=0/.test(location.search),
+      botsImmortels: BOTS_IMMORTELS,
+      surReprise: function () { verrouiller(); } });
+    if (api.audio) {
+      etatCh.textContent = 'Chargement des sons…';
+      var r = await api.audio.precharger();
+      etatCh.textContent = r.charges === r.total ? 'Prêt. ' + r.total + ' sons chargés.' : 'Prêt (' + r.charges + '/' + r.total + ' sons).';
+    } else etatCh.textContent = 'Prêt (sans son).';
+    $('jouer').disabled = false; $('jouerCoop').disabled = false;
+    $('jouerCoop').textContent = 'Avec 3 coéquipiers simulés' + (api.botsImmortels() ? ' (immortels)' : '');
+    construireDebug();
+    if (!AUTO) { api.demarrerBoucle(); boucleHud(); }
+    window.pret = true;
+  }
+  function verrouiller() { var c = api && api.renderer.domElement; if (c && c.requestPointerLock) { try { c.requestPointerLock(); } catch (e) { /* */ } } }
+  var enJeu = false;
+  function jouer(coop) {
+    if (!api) return;
+    if (api.audio) api.audio.deverrouiller();
+    $('accueil').hidden = true; enJeu = true;
+    if (coop) { while (api.bots.liste().length < 3) api.ajouterBot(); }
+    api.lancerCombat($('depuis').value);
+    verrouiller();
+  }
+  $('jouer').addEventListener('click', function () { jouer(false); });
+  $('jouerCoop').addEventListener('click', function () { jouer(true); });
+  $('reprendre').addEventListener('click', function () { $('pause').hidden = true; api.vitesse(1); verrouiller(); });
+  $('recommencer').addEventListener('click', function () { $('pause').hidden = true; api.vitesse(1); api.lancerCombat('introduction'); verrouiller(); });
+  document.addEventListener('pointerlockchange', function () {
+    if (!api || !enJeu) return;
+    var verrou = !!document.pointerLockElement;
+    if (!verrou && $('debug').hidden && api.etat().etat !== 'echec') { $('pause').hidden = false; api.vitesse(0); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyP' && api) { $('debug').hidden = !$('debug').hidden; if (!$('debug').hidden && document.exitPointerLock) document.exitPointerLock(); else verrouiller(); }
+  });
+  // clic sur le jeu : reprendre le verrouillage de la souris
+  document.addEventListener('mousedown', function (e) {
+    if (!api || !enJeu || document.pointerLockElement) return;
+    if (e.target === api.renderer.domElement && $('pause').hidden) verrouiller();
+  });
+
+  function construireDebug() {
+    var ETATS = ['introduction', 'phase1', 'repit', 'phase2', 'transition23', 'absence', 'retour', 'phase3', 'transition34', 'rituel',
+      'rituel_fin', 'faiblesse', 'transition45', 'phase5', 'defaite', 'retour_salle', 'conclusion', 'termine'];
+    var box = $('dbgEtats');
+    ETATS.forEach(function (n) {
+      var b = document.createElement('button'); b.textContent = n;
+      b.addEventListener('click', function () { $('accueil').hidden = true; enJeu = true; api.lancerCombat(n); });
+      box.appendChild(b);
+    });
+    document.querySelectorAll('#debug [data-d]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var d = b.dataset.d;
+        if (d === 'ames') api.combat.forcer('ames', 10);
+        else if (d === 'pv1') api.combat.forcer('pvSegment', 1);
+        else if (d === 'tirs') { for (var i = 0; i < 10; i++) { var hb = api.modele.hitboxes(), h = hb[i % hb.length]; if (h) api.combat.toucherBoss({ joueur: 'j1', degats: 120, zone: h.zone, position: h.centre, type: 'balle' }); } }
+        else if (d === 'mbSeuil') {          // v1.3 : PV du Septième juste sous le prochain seuil de mini-boss (entre en phase 2 si besoin)
+          $('accueil').hidden = true; enJeu = true;
+          if (api.combat.etat().etat !== 'phase2') api.lancerCombat('phase2');
+          var e2 = api.combat.etat(), S = (api.combat.config.miniBoss || {}).seuils || [];
+          var k = (e2.tubes || []).filter(function (t) { return t.etat !== 'intact'; }).length;
+          if (k < S.length && !e2.boss.protege) api.combat.forcer('pvSegment', Math.max(1, (S[k] - 0.01) * e2.barre.max));
+        }
+        else if (d === 'mbTuer') (api.combat.etat().miniBoss || []).forEach(function (m) { if (m.etat === 'actif') api.zombies.toucher(m.id, 1e7, 'corps', { joueur: 'j1' }); });
+        else if (d === 'mbRage') {            // v1.5 : PV du mini-boss juste sous la moitié → sa rage (surcharge, infection, arrachement)
+          (api.combat.etat().miniBoss || []).forEach(function (m) {
+            if (m.etat !== 'actif') return;
+            for (var k = 0; k < 200; k++) {
+              var v = api.zombies.liste().filter(function (x) { return x.id === m.id; })[0];
+              if (!v || !(v.pvMax > 0) || v.pv / v.pvMax < 0.495) break;
+              var r = api.zombies.toucher(m.id, 0.02 * v.pvMax, 'corps', { joueur: 'j1' });
+              if (r && r.immunise) break;
+            }
+          });
+        }
+        else if (d === 'salves') {            // v1.4 : phase 3, PV juste sous 50 % : les arrachements deviennent des salves de 4 blocs
+          $('accueil').hidden = true; enJeu = true;
+          if (api.combat.etat().etat !== 'phase3') api.lancerCombat('phase3');
+          var e3 = api.combat.etat(); api.combat.forcer('pvSegment', 0.49 * e3.barre.max);
+        }
+        else if (d === 'palier') {            // v1.4 : jauge de la phase 5 juste au-dessus du seuil du palier suivant
+          $('accueil').hidden = true; enJeu = true;
+          if (api.combat.etat().etat !== 'phase5') api.lancerCombat('phase5');
+          var e5 = api.combat.etat(), SP = ((api.combat.config.phase5 || {}).paliers || {}).seuils || [], np = e5.boss.palier || 0;
+          if (np < SP.length) api.combat.forcer('jauge', Math.min(0.99, SP[np] + 0.02));
+        }
+        else if (d === 'bot+') api.ajouterBot();
+        else if (d === 'bot-') api.retirerBot();
+        else if (d[0] === 'v') api.vitesse(parseFloat(d.slice(1)));
+      });
+    });
+    $('dbgInvincible').addEventListener('change', function (e) { api.invincible(e.target.checked); });
+    $('dbgBotsImmortels').checked = api.botsImmortels();
+    $('dbgBotsImmortels').addEventListener('change', function (e) {
+      api.botsImmortels(e.target.checked);
+      $('jouerCoop').textContent = 'Avec 3 coéquipiers simulés' + (e.target.checked ? ' (immortels)' : '');
+    });
+    document.querySelectorAll('#debug [data-vol]').forEach(function (r) { r.addEventListener('input', function () { if (api.audio) api.audio.setVolume(r.dataset.vol, +r.value); }); });
+  }
+  // interface du joueur (PV, munitions, points) et panneau d'état
+  function boucleHud() {
+    var pv = document.querySelector('#pv i'), mun = $('munitions'), pts = document.querySelector('#points span'), dbg = $('dbgEtat'), t = 0;
+    api.surImage(function (dt, e) {
+      var j = api.joueur, a = api.arme;
+      pv.style.width = Math.max(0, Math.round(j.pv / j.pvMax * 100)) + '%';
+      mun.innerHTML = a.enRechargement ? '<small>recharge…</small>' : a.munitions + ' <small>/ ' + (a.reserve != null ? a.reserve : a.reglages.chargeur) + '</small>';
+      mun.style.color = a.reserve === 0 && a.munitions < 8 ? '#ff6a4d' : '';
+      var p = api.jeu.etat && api.jeu.etat.points ? api.jeu.etat.points.j1 || 0 : 0;
+      pts.textContent = p;
+      t += dt;
+      if (!$('debug').hidden && t > 0.25) {
+        t = 0;
+        var b = e.boss, i = api.info();
+        dbg.textContent = 'état ' + e.etat + ' (' + e.tempsEtat.toFixed(1) + ' s)\nphase ' + e.phase + ' · lieu ' + e.lieu + '\nboss ' + (b.present ? b.locomotion : 'absent') + (b.action ? ' · ' + b.action.id + '/' + b.action.etape : '') +
+          '\nâmes ' + b.ames + ' · ailes ' + b.ailes + ' · lames ' + b.lames + '\nbarre ' + (e.barre ? Math.round(e.barre.valeur) + '/' + Math.round(e.barre.max) + ' seg ' + e.barre.segment : '-') +
+          (e.capture ? '\ncapture ' + e.capture.etat + ' ' + Math.round(e.capture.progression * 100) + ' %' : '') + (e.jauge ? '\njauge ' + Math.round(e.jauge.valeur * 100) + ' %' : '') +
+          (b.protege ? '\nPROTÉGÉ' : '') + (e.miniBoss || []).map(function (m) { return '\n' + m.nom + ' ' + Math.ceil(m.pv) + ' / ' + Math.ceil(m.pvMax) + ' PV' + (m.etat === 'mort' ? ' (mort)' : ''); }).join('') +
+          '\nzombies ' + api.zombies.nombre() + ' · ' + api.fps().toFixed(0) + ' i/s\nappels ' + i.appels + ' · triangles ' + i.triangles;
+      }
+    });
+  }
+  function expliquer(e) {
+    var manque = /introuvable/.test(e && e.message || '');
+    if (DANS_ZIP || (LOCAL && manque)) {
+      etatCh.innerHTML = '<b style="color:#ff8a6a">Il manque les fichiers du jeu à côté de cette page.</b><br>' +
+        (DANS_ZIP ? 'Tu l’as ouverte directement dans le zip : Windows n’extrait alors que ce seul fichier. ' : 'Le dossier n’est pas complet. ') +
+        'Ferme cette page, fais <b>clic droit sur le zip → « Extraire tout… » → Extraire</b>, puis double-clique sur <b>JOUER.html</b> dans le dossier extrait.';
+    } else etatCh.textContent = 'Erreur : ' + (e && e.message || e);
+  }
+  if (DANS_ZIP) { expliquer(new Error('introuvable')); window.erreur = 'ouverte dans le zip'; return; }
+  demarrer().catch(function (e) { window.erreur = String(e && e.stack || e); console.error(e); expliquer(e); });
+})();
+</script>
+</body>
+</html>

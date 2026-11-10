@@ -97,8 +97,9 @@ const USER = path.join(TMP, 'joueur');
       const its = Features.interactables.filter((i) => i.kind === 'perk');
       const front = its.every((it) => { const m = it.machine, g = m.group, d = Math.hypot(it.x - g.position.x, it.z - g.position.z); return Math.abs(d - (ELIXIRS[m.id].d + 0.5)) < 1e-6; });
       ok(its.length === 5 && front, 'point d’achat à 0,5 m devant chaque machine');
-      // lumières : deux réservées aux machines, 16 lumières ponctuelles en tout sur Bunker 7
-      let lights = 0; scene.traverse((o) => { if (o.isPointLight) lights++; });
+      // lumières : deux réservées aux machines, 16 lumières ponctuelles en tout sur Bunker 7 (sans les lampes éteintes de
+      // complément de HC-boss-lampes.js, jeu 2.0.7 : nombre de lampes constant sur Bunker 7)
+      let lights = 0; scene.traverse((o) => { if (o.isPointLight && !o.userData.b7pad) lights++; });
       ok(ElixirLights.lights.length === 2 && lights === 16, 'deux lumières pour les cinq machines (16 lumières ponctuelles sur Bunker 7)', { pool: ElixirLights.lights.length, lights });
       // sans courant : Quick Revive allumée (pas besoin de courant), les autres éteintes
       ok(laz.lit && laz.litK === 1 && laz.lightI > 1 && M.filter((m) => m.id !== 'souffle').every((m) => !m.lit && m.litK === 0 && m.lightI === 0), 'sans courant : Lazare (Quick Revive) allumée, les quatre autres éteintes');

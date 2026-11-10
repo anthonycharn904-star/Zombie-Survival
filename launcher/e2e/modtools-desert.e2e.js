@@ -281,6 +281,13 @@ async function run(userData) {
       page.on('pageerror', (e) => perr.push(e.message));
       await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
       await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
+      // Chromium sans tête : la souris verrouillée boucle sur des évènements de souris synthétiques (navigateur saturé,
+      // mémoire qui gonfle) ; refusée ici, le jeu passe en souris libre (docs/rapport-souris-verrouillee.md).
+      await page.evaluate(() => {
+        Element.prototype.requestPointerLock = function () { return Promise.reject(new DOMException('banc sans tête : souris non verrouillée', 'NotSupportedError')); };
+        const st = document.createElement('style'); st.textContent = '#lockhint{display:none!important}';   // bandeau « souris libre » masqué, comme dans les outils d'essai
+        document.head.appendChild(st);
+      });
       const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId['mon-desert']; return { list: ZS.MAPS_ALL.list.join(), src: m && m.source, base: m && m.base, thumb: !!(m && m.thumb), card: [...document.querySelectorAll('[data-map]')].some((e) => e.dataset.map === 'mon-desert') }; });
       ok(g.list === 'bunker7,khamsin,mon-desert' && g.src === 'package' && g.base === 'desert' && g.thumb, `jeu publié : la carte est au menu (base désert, vignette) ${JSON.stringify(g)}`);
       await page.evaluate(() => { window.frame = function () {}; renderEnabled = false; __zs.map('mon-desert'); __zs.start(); });
