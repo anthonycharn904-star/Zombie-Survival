@@ -72,6 +72,8 @@ exec(open(os.path.join(HERE, 'hooks-ampoules.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-caisses.py'), encoding='utf-8').read())
 # jeu 2.0.7 : têtes de zombie au béret de Bunker 7, easter egg secondaire (HK-tetes.js)
 exec(open(os.path.join(HERE, 'hooks-tetes.py'), encoding='utf-8').read())
+# jeu 2.0.7 : « Visionnaire », le Momifié et l'hallucination du désert, easter egg secondaire (HL-visionnaire.js)
+exec(open(os.path.join(HERE, 'hooks-visionnaire.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
