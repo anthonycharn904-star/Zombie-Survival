@@ -751,23 +751,6 @@ function vsSortieMaj(dt) {
 function vsAvantRendu() {
   if (VS.on && G.state !== 'playing' && KHS.snd) KHS.snd.g.gain.value = 0;
 }
-/* Sauvegarde pendant l'hallucination : celle de l'instant du portail (rien du désert ne compte). */
-function vsSerialiser() {
-  const I = VS.I;
-  if (!I) return null;
-  const garde = { slots: Arms.slots, cur: Arms.cur, grenades: G.grenades, points: G.points, stats: G.stats, perks: [...player.perks], souffleUses: player.souffleUses };
-  VS.on = false;
-  try {
-    Arms.slots = I.slots; Arms.cur = I.cur; G.grenades = I.grenades; G.points = I.points; G.stats = I.stats;
-    player.perks.clear(); for (const k of I.perks) player.perks.add(k); player.souffleUses = I.souffleUses;
-    return serializeGame();
-  } finally {
-    VS.on = true;
-    Arms.slots = garde.slots; Arms.cur = garde.cur; G.grenades = garde.grenades; G.points = garde.points; G.stats = garde.stats;
-    player.perks.clear(); for (const k of garde.perks) player.perks.add(k); player.souffleUses = garde.souffleUses;
-  }
-}
-
 /* --------------------------------------------------------- Remise à zéro --- */
 function vsRemettre() {
   if (VS.on || VS.I) vsSortir(false);

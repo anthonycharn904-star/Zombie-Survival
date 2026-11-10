@@ -129,7 +129,4 @@ rep("""  b7SalleAvantRendu();                         // jeu 2.0.7 : salle du bo
 """, """  b7SalleAvantRendu();                         // jeu 2.0.7 : salle du boss ou Bunker 7, et leur ambiance
   vsAvantRendu();                              // jeu 2.0.7 : désert du Visionnaire (vent coupé en pause)
 """)
-# sauvegarde pendant l'hallucination : l'état de l'instant du portail
-ins_after("""function serializeGame() {
-""", """  if (VS.on) return vsSerialiser();            // jeu 2.0.7 : désert du Visionnaire, rien n'y compte
-""")
+# sauvegarde pendant l'hallucination : refusée par la sauvegarde S2 à la fusion (décision d'Anthony du 10 novembre 2026)
