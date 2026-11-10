@@ -124,6 +124,13 @@ test('publication : cartes de l’atelier, du jeu installé et intégrées', () 
     assert.deepEqual(plan.index, ['cave', 'usine', 'bunker7']);
     assert.deepEqual(plan.missing, ['fantome']);
     assert.equal(plan.files.find((f) => f.id === 'usine').name, 'Usine (atelier)');
+    // jeu 2.0.7 : une liste des Mod Tools qui nomme les Marécages Maudits (liste par défaut d'un jeu qui les contient) :
+    // carte intégrée, sans fichier ; jamais ajoutée d'office (plus bas : la liste par défaut ne change pas)
+    ws.setPublishSet({ maps: ['bunker7', 'khamsin', 'ombre', 'marais'] });
+    plan = ws.publishPlan(inst);
+    assert.deepEqual(plan.index, ['bunker7', 'khamsin', 'ombre', 'marais']);
+    assert.deepEqual(plan.missing, []);
+    assert.deepEqual(plan.files.find((f) => f.id === 'marais'), { id: 'marais', name: 'Les Marécages Maudits', from: 'intégrée', data: null });
     // aucune liste ni jeu installé : la carte intégrée
     const ws2 = new Workspace(tmpDir('zs-ws2-'));
     assert.deepEqual(ws2.publishPlan(null).index, ['bunker7', 'khamsin', 'ombre']);

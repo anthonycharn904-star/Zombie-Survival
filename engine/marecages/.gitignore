@@ -1,0 +1,5 @@
+# Marécages Maudits : caches de Python des outils et des essais, jamais dans le dépôt.
+# Verrou retiré le 2 novembre 2026, avec l'accord d'Anthony : le dossier entre dans l'historique. Pour garder de nouveau
+# un travail privé, ajouter ici une ligne « * » : Git ignore alors les fichiers non suivis de ce dossier, et build.py
+# n'écrit plus la carte dans game/zombie-survival.html (etape.py).
+__pycache__/

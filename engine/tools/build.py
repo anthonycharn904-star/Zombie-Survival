@@ -325,6 +325,9 @@ if hashlib.sha256(raw).hexdigest() != MENU_MP3[1]:
 ins_before('<script>/* GLTFLoader de three.js r128',
            "<script>/* jeu 2.0.7 : musique du menu, engine/orig/musique-menu-zombie-survival/musique/menu.mp3, insérée telle quelle "
            '(MP3 en base 64) par engine/tools/build.py */\nconst MENU_MUSIQUE_MP3 = ' + json.dumps(base64.b64encode(raw).decode('ascii')) + ';</script>\n')
+# Marécages Maudits : retouches, sources et modules du kit 2.0.7 « Stryges » (engine/marecages/LISEZ-MOI.md) ;
+# s'arrête avec un message clair si une retouche ne tient plus. En dernier : après les blocs des autres chantiers.
+exec(open(os.path.join(KH, 'marecages', 'etape.py'), encoding='utf-8').read())
 
 open(out_path, 'w', encoding='utf-8').write(s)
 print(f'{out_path} : {len(s.encode("utf-8"))} octets, {s.count(chr(10))} lignes, module {len(parts)} fichiers')

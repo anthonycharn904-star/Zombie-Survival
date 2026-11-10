@@ -56,8 +56,10 @@ async function run(userData) {
     const rebuilt = () => until(() => !MT.v3.rebuildAt && !MT.v3.owElDirty && !MT.v3.propsDirty && !MT.v3.worldDirty, null);
 
     // 1. Khamsin dans la liste, ouverture : monde du jeu, outils des cartes ouvertes
-    const list = await mt.evaluate(() => ({ ow: MT.ow.ok(), all: MT.gameMaps().list.join(), pub: MT.state.publish.maps.join(), api: ZS.editorApi }));
-    ok(list.ow && list.api >= 4 && list.all === 'bunker7,khamsin,ombre' && list.pub === 'bunker7,khamsin,ombre', `Khamsin parmi les cartes du jeu et de la publication (puis Ombre éternelle) ${JSON.stringify(list)}`);
+    const list = await mt.evaluate(() => ({ ow: MT.ow.ok(), all: MT.gameMaps().list.join(), pub: MT.state.publish.maps.join(), api: ZS.editorApi, marais: !!ZS.marais }));
+    // jeu 2.0.7 : les Marécages Maudits, quand le jeu les contient, sont la quatrième carte du jeu et de la liste par défaut
+    const cartes = ['bunker7', 'khamsin', 'ombre', ...(list.marais ? ['marais'] : [])].join();
+    ok(list.ow && list.api >= 4 && list.all === cartes && list.pub === cartes, `Khamsin parmi les cartes du jeu et de la publication (puis Ombre éternelle) ${JSON.stringify(list)}`);
     const t0 = Date.now();
     await mt.evaluate(() => { MT.openGameMap('khamsin'); MT.ui.setView('split'); });
     await until(() => MT.v3.owLoaded && !document.getElementById('mt-ow-loading') && !!MT.ow.plan.base, null, 120000);
@@ -230,8 +232,9 @@ async function run(userData) {
       const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
       await page.goto(`http://127.0.0.1:${server.address().port}/index.html`);
       await page.waitForFunction(() => window.ZS && ZS.G.state === 'menu', null, { timeout: 180000 });
-      const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId.khamsin; return { list: ZS.MAPS_ALL.list.join(), src: m.source, wb: m.wallbuys.length, perks: m.perks.length, props: m.props.length, storms: m.rules.storms, thumb: !!m.thumb }; });
-      ok(g.list === 'bunker7,khamsin' && g.src === 'package' && g.wb === 16 && g.perks === 6 && g.props === 1 && g.storms === 6 && g.thumb, `jeu publié : Khamsin vient du fichier des Mod Tools ${JSON.stringify(g)}`);
+      const g = await page.evaluate(() => { const m = ZS.MAPS_ALL.byId.khamsin; return { list: ZS.MAPS_ALL.list.join(), marais: !!ZS.marais, src: m.source, wb: m.wallbuys.length, perks: m.perks.length, props: m.props.length, storms: m.rules.storms, thumb: !!m.thumb }; });
+      // jeu 2.0.7 : le jeu qui contient les Marécages Maudits les ajoute après les trois premières cartes de la liste, ici à sa fin (editor 4, moins de 10)
+      ok(g.list === ['bunker7', 'khamsin', ...(g.marais ? ['marais'] : [])].join() && g.src === 'package' && g.wb === 16 && g.perks === 6 && g.props === 1 && g.storms === 6 && g.thumb, `jeu publié : Khamsin vient du fichier des Mod Tools ${JSON.stringify(g)}`);
     } finally { await browser.close(); server.close(); }
   } finally { await closeAll(app); }
 }

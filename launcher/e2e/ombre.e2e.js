@@ -45,7 +45,9 @@ const USER = path.join(TMP, 'joueur');
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
       ok(GAME_VERSION === '2.0.6' && ZS.version === v, `jeu 2.0.6 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
-      ok(MAPS.list.join() === 'bunker7,khamsin,ombre', 'catalogue : Bunker 7, Khamsin, puis Ombre éternelle (troisième carte)', MAPS.list);
+      // jeu 2.0.7 : les Marécages Maudits, quand le jeu les contient (MARAIS), viennent après elle
+      const marais = typeof MARAIS === 'object' ? ['marais'] : [];
+      ok(MAPS.list.join() === ['bunker7', 'khamsin', 'ombre', ...marais].join(), 'catalogue : Bunker 7, Khamsin, puis Ombre éternelle (troisième carte)', MAPS.list);
       const M = MAPS.byId.ombre;
       ok(M && M.open && M.base === 'ombre' && M.name === 'Ombre éternelle' && /^data:image\/jpeg/.test(M.thumb || ''), 'Ombre éternelle : carte ouverte (base ombre), vignette du plan en relief', M && { open: M.open, base: M.base, name: M.name, thumb: (M.thumb || '').slice(0, 22) });
       ok(!ZS.MAPS.list.includes('ombre') && !ZS.MAPS.byId.ombre && ZS.MAPS_ALL.byId.ombre === M, 'Mod Tools : absente du catalogue des cartes de grille, présente dans le catalogue complet', ZS.MAPS.list);
