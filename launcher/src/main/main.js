@@ -9,6 +9,7 @@ const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, Menu, session
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { Sauvegardes } = require('./sauvegardes');
 const { pathToFileURL } = require('url');
 const { Updater, UpdateError, compareVersions, parseVersion, editorApiOf, gameBuildOf } = require('./updater');
 const publisher = require('./publisher');
@@ -62,6 +63,9 @@ protocol.registerSchemesAsPrivileged([
 
 /* ------------------------------------------------------- Réglages --- */
 const userFile = (name) => path.join(app.getPath('userData'), name);
+// sauvegardes des parties solo (jeu 2.0.7) : dossier utilisateur, gardé aux mises à jour
+let sauvegardes = null;
+const sauves = () => sauvegardes || (sauvegardes = new Sauvegardes(userFile('sauvegardes')));
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return null; } }
 function writeJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -291,7 +295,9 @@ function createLauncherWindow() {
     if (!gameWin && !modtoolsWin) app.quit();
   });
 }
-function play() {
+/* opts.continuer : la carte dont la partie sauvegardée reprend aussitôt (accueil du launcher, jeu 2.0.7) ; opts.type :
+   'manuelle' (par défaut) ou 'secours'. */
+function play(opts = {}) {
   if (gameWin) { gameWin.focus(); return status; }
   const inst = updater.getInstalled();
   if ((busy && busy !== 'check') || !inst) return status;
@@ -306,6 +312,16 @@ function play() {
     },
   });
   harden(gameWin, 'zsgame://game/');
+  // fermeture (croix, Alt+F4) : le jeu demande d'abord s'il faut sauvegarder la partie en cours (jeu 2.0.7) ; un jeu
+  // plus ancien, ou encore en chargement, ferme aussitôt (préchargement) ; sauf s'il ne répond plus
+  const gw = gameWin;
+  gw.on('close', (e) => {
+    if (gw.allowClose) return;
+    e.preventDefault();
+    gw.webContents.send('game:close-request');
+  });
+  gw.on('unresponsive', () => { gw.allowClose = true; });
+  gw.on('responsive', () => { gw.allowClose = false; });
   gameWin.webContents.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
     if (input.key === 'F11' || (input.alt && input.key === 'Enter')) {
@@ -319,7 +335,7 @@ function play() {
     log(`Jeu arrêté : ${details.reason} (code ${details.exitCode})`);
     if (details.reason !== 'clean-exit') {
       gameCrash = details.reason;
-      if (gameWin && !gameWin.isDestroyed()) gameWin.close();
+      if (gameWin && !gameWin.isDestroyed()) { gameWin.allowClose = true; gameWin.close(); }
     }
   });
   gameWin.once('ready-to-show', () => {
@@ -343,7 +359,9 @@ function play() {
       if (settings.autoCheck && config.configured) setTimeout(() => { if (!gameWin) checkForUpdates({ auto: true }).catch(() => {}); }, 1500);
     }
   });
-  gameWin.loadURL('zsgame://game/index.html');
+  const suite = opts && typeof opts.continuer === 'string' && /^[a-z0-9_-]{1,64}$/.test(opts.continuer)
+    ? `#continuer=${opts.continuer}&type=${opts.type === 'secours' ? 'secours' : 'manuelle'}` : '';
+  gameWin.loadURL(`zsgame://game/index.html${suite}`);
   log(`Lancement du jeu ${inst.version}`);
   setStatus({ phase: 'playing' });
   if (!settings.keepLauncherOpen && launcherWin) launcherWin.hide();
@@ -689,7 +707,19 @@ function setupIpc() {
   handle('launcher:check', L, () => checkForUpdates());
   handle('launcher:install', L, () => installUpdate());
   handle('launcher:cancel', L, () => { if (abortCtrl) abortCtrl.abort(); return true; });
-  handle('launcher:play', L, () => play());
+  handle('launcher:play', L, (opts) => play(opts || {}));
+  // sauvegardes des parties (jeu 2.0.7) : le jeu les lit et les écrit ; l'accueil du launcher les liste
+  const GW = () => [gameWin];
+  handle('game:sauve', GW, (op, carte, type, texte, copie) => {
+    const s = sauves();
+    if (op === 'lire') return s.lire(carte, type);
+    if (op === 'ecrire') return s.ecrire(carte, type, texte);
+    if (op === 'supprimer') return s.supprimer(carte, type);
+    if (op === 'liste') return s.liste();
+    if (op === 'brut') return s.brut(carte, type, copie, texte);
+    throw new Error(`Opération inconnue : ${op}`);
+  });
+  handle('launcher:sauvegardes', L, () => sauves().liste());
   handle('launcher:repair', L, () => repair());
   handle('launcher:rollback', L, () => rollback());
   handle('launcher:updateLauncher', L, () => installLauncherUpdate());
@@ -723,7 +753,7 @@ function setupIpc() {
     if (typeof url === 'string' && /^https:\/\//i.test(url)) shell.openExternal(url);
     return true;
   });
-  ipcMain.on('game:quit', (event) => { if (from(gameWin, event)) gameWin.close(); });
+  ipcMain.on('game:quit', (event) => { if (from(gameWin, event)) { gameWin.allowClose = true; gameWin.close(); } });
   ipcMain.on('game:fullscreen', (event) => { if (from(gameWin, event)) gameWin.setFullScreen(!gameWin.isFullScreen()); });
 
   // ---- Mod Tools (réservés à l'auteur : vérifié à chaque appel)
@@ -943,4 +973,6 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
   app.on('window-all-closed', () => app.quit());
+  // fermeture du launcher entier (essais, arrêt de Windows) : la fenêtre du jeu ne la retient pas
+  app.on('before-quit', () => { if (gameWin && !gameWin.isDestroyed()) gameWin.allowClose = true; });
 }

@@ -1,7 +1,7 @@
 'use strict';
 /* Sons du jeu 2.0.7, dans la fenêtre du jeu du launcher.
    Annonceur des bonus : neuf voix du paquet annonceur-voix-B d'Anthony insérées telles quelles (tailles d'origine),
-   dont quatre pour des bonus à venir ; les cinq des bonus du jeu décodées une fois, à l'apparition d'un bonus ; au
+   dont trois pour des bonus à venir ; les six des bonus du jeu (machine de mort comprise) décodées une fois, à l'apparition d'un bonus ; au
    ramassage, la voix du bonus à la place de la synthèse vocale, dans le bus de la combinaison (jamais étouffée) ; une
    annonce coupe l'autre ; réglage « Voix d'annonce des bonus » respecté ; bonus sans voix : synthèse d'avant ;
    « Points doubles » au bandeau et dans les bonus actifs.
@@ -43,15 +43,15 @@ const USER = path.join(TMP, 'joueur');
       const taille = (b64) => (b64.length * 3) / 4 - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
       // durées (ffprobe) et tailles des fichiers d'origine
       const VOIX = { ammo: ['munitions-max', 3.576, 72045], insta: ['mort-instantanee', 3.96, 79725], double: ['points-doubles', 3.264, 65805],
-        nuke: ['kaboum', 3.216, 64845], carpenter: ['charpentier', 3.432, 69165] };
-      const A_VENIR = { freeperk: ['atout-gratuit', 73005], firesale: ['liquidation', 71085], deathmachine: ['machine-de-mort', 73965], bonuspoints: ['points-bonus', 68205] };
-      const MUSIQUES = { arrivee: [17.088, 410733], 'manche-a': [8.664, 208557], 'manche-b': [8.664, 208557] };
+        nuke: ['kaboum', 3.216, 64845], carpenter: ['charpentier', 3.432, 69165], deathmachine: ['machine-de-mort', 3.672, 73965] };
+      const A_VENIR = { freeperk: ['atout-gratuit', 73005], firesale: ['liquidation', 71085], bonuspoints: ['points-bonus', 68205] };
+      const MUSIQUES = { arrivee: [17.088, 410733], 'manche-a': [8.664, 208557], 'manche-b': [8.664, 208557], courant: [6.144, 148077] };
       ok(typeof ANNONCEUR_VOIX === 'object' && Object.keys(ANNONCEUR_VOIX).length === 9
         && Object.keys(VOIX).every((t) => ANNONCE.voix[t] === VOIX[t][0] && taille(ANNONCEUR_VOIX[VOIX[t][0]] || '') === VOIX[t][2])
         && Object.keys(A_VENIR).every((t) => ANNONCE.voix[t] === A_VENIR[t][0] && taille(ANNONCEUR_VOIX[A_VENIR[t][0]] || '') === A_VENIR[t][1]),
-      'neuf voix du paquet annonceur-voix-B, à leur taille d’origine (quatre pour des bonus à venir)', Object.keys(ANNONCEUR_VOIX || {}));
-      ok(typeof MANCHE_MUSIQUES === 'object' && Object.keys(MANCHE_MUSIQUES).sort().join() === 'arrivee,manche-a,manche-b'
-        && Object.keys(MUSIQUES).every((k) => taille(MANCHE_MUSIQUES[k]) === MUSIQUES[k][1]), 'musiques A, B et arrivée, à leur taille d’origine', Object.keys(MANCHE_MUSIQUES || {}));
+      'neuf voix du paquet annonceur-voix-B, à leur taille d’origine (trois pour des bonus à venir)', Object.keys(ANNONCEUR_VOIX || {}));
+      ok(typeof MANCHE_MUSIQUES === 'object' && Object.keys(MANCHE_MUSIQUES).sort().join() === 'arrivee,courant,manche-a,manche-b'
+        && Object.keys(MUSIQUES).every((k) => taille(MANCHE_MUSIQUES[k]) === MUSIQUES[k][1]), 'musiques A, B, arrivée et courant rétabli, à leur taille d’origine', Object.keys(MANCHE_MUSIQUES || {}));
       ok(/annonceBonus\(type\)/.test(applyPowerup.toString()) && !/Sound\.say/.test(applyPowerup.toString()) && /annoncePrepare\(\)/.test(spawnPowerup.toString()),
         'ramassage : annonceBonus à la place de la synthèse ; apparition : décodage des voix');
       ok(POWERUPS.double.name === 'Points doubles' && POWERUPS.double.say === 'Points doubles !', 'bonus « Points doubles » (comme sa voix)');
@@ -80,7 +80,8 @@ const USER = path.join(TMP, 'joueur');
           const b = ANNONCE.buf[t], p = b ? pic(b) : 0;
           ok(b && Math.abs(b.duration - VOIX[t][1]) < 0.15 && p > 0.5, `${VOIX[t][0]}.mp3 décodé : ${b ? b.duration.toFixed(3) : '—'} s, crête ${p.toFixed(2)}`);
         }
-        ok(Object.keys(A_VENIR).every((t) => !ANNONCE.buf[t]) && !ANNONCE.err, 'voix des bonus à venir non décodées (bonus absents), aucune voix illisible', ANNONCE.err);
+        // un bonus « à venir » qui existe désormais (l'atout gratuit du chantier Bunker 7) a sa voix décodée comme les autres
+        ok(Object.keys(A_VENIR).every((t) => !!ANNONCE.buf[t] === !!POWERUPS[t]) && !ANNONCE.err, `voix des bonus à venir décodées seulement si leur bonus existe (${Object.keys(A_VENIR).filter((t) => POWERUPS[t]).join(', ') || 'aucun'}), aucune voix illisible`, ANNONCE.err);
         for (const k of Object.keys(MUSIQUES)) {
           const b = MANCHE.buf[k], p = b ? pic(b) : 0;
           ok(b && Math.abs(b.duration - MUSIQUES[k][0]) < 0.15 && p > 0.5, `${k}.mp3 décodée : ${b ? b.duration.toFixed(3) : '—'} s, crête ${p.toFixed(2)}`);
@@ -147,12 +148,62 @@ const USER = path.join(TMP, 'joueur');
         // partie reprise sur une manche de chiens : pas d'arrivée au milieu de la partie, A ou B à la manche suivante
         mancheCoupe(); MANCHE.debut = true; MANCHE.fin = null; const t0 = G.time; G.time = 100; Sound.roundStart(); G.time = t0;
         ok(/^manche-[ab]$/.test(MANCHE.joue || '') && MANCHE.debut === false, 'première manche normale après 10 s de partie : pas d’arrivée, A ou B', MANCHE.joue);
+        // courant rétabli : sa musique, plus d'annonce vocale (demandes d'Anthony du 4 novembre 2026) ; bandeau inchangé
+        const ditsC = [], sayC = Sound.say, avantC = MANCHE.src; Sound.say = (t) => { ditsC.push(t); };
+        espion();
+        try { activatePower(); } finally { Sound.say = sayC; fin(); }
+        const titre = document.getElementById('banner-title').textContent;
+        ok(G.power && ditsC.length === 0 && titre === 'Courant rétabli', 'courant rétabli : le courant et son bandeau, plus d’annonce vocale', { ditsC, titre });
+        ok(MANCHE.joue === 'courant' && MANCHE.src && MANCHE.src.buffer === MANCHE.buf.courant && vers(MANCHE.src, Sound.musiqueBus().sortie) && (!avantC || MANCHE.src !== avantC),
+          'courant rétabli : sa musique, dans le bus de la musique, à la place de celle en cours', { joue: MANCHE.joue });
+        Sound.roundEnd();
+        ok(/^manche-[ab]$/.test(MANCHE.joue || ''), 'fin de manche pendant la musique du courant : A ou B la coupe', MANCHE.joue);
+        powerOnQuiet();
+        ok(/^manche-[ab]$/.test(MANCHE.joue || ''), 'courant rétabli d’office (règle de la carte, partie reprise) : pas de musique', MANCHE.joue);
         G.round = r1;
         Sound.roundEnd(); const avantMenu = MANCHE.joue;
         quitToMenu();
         ok(avantMenu && MANCHE.joue === null && MANCHE.src === null, 'retour au menu : la musique des manches s’arrête');
         renderEnabled = true; render(); renderEnabled = false;
         return out;
+      });
+    })).forEach(report);
+    // ------------------------------------------------ musique du menu
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      const taille = (b64) => (b64.length * 3) / 4 - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0);
+      const pause = (ms) => new Promise((fin) => setTimeout(fin, ms));
+      const prete = () => Promise.resolve(MENU_MUSIQUE.prep).then(() => pause(150));
+      if (G.state !== 'menu') quitToMenu();
+      ok(typeof MENU_MUSIQUE_MP3 === 'string' && taille(MENU_MUSIQUE_MP3) === 2329389, 'musique du menu : menu.mp3 à sa taille d’origine');
+      // nouveau départ, avec les branchements observés
+      menuMusiqueArret(0);
+      const paires = [], c0 = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function (n, ...r) { paires.push([this, n]); return c0.call(this, n, ...r); };
+      refreshMenu();
+      return prete().then(() => {
+        AudioNode.prototype.connect = c0;
+        const src = MENU_MUSIQUE.src, g = (paires.find(([a]) => a === src) || [])[1];
+        ok(MENU_MUSIQUE.buf && Math.abs(MENU_MUSIQUE.buf.duration - 97.032) < 0.15 && !MENU_MUSIQUE.err, `menu.mp3 décodée : ${MENU_MUSIQUE.buf ? MENU_MUSIQUE.buf.duration.toFixed(3) : '—'} s`, MENU_MUSIQUE.err);
+        ok(MENU_MUSIQUE.on && src && src.loop && Math.abs(src.loopStart - 0.5) < 1e-6 && Math.abs(src.loopEnd - 96.5) < 1e-6,
+          'au menu : la musique joue en boucle, de 0,5 s à 96,5 s du fichier', src && { loop: src.loop, a: src.loopStart, b: src.loopEnd });
+        ok(g && paires.some(([a, n]) => a === g && n === Sound.musiqueBus().sortie), 'dans le bus de la musique (réglage « Musique »)');
+        showScreen('stats'); showScreen('options'); showScreen('menu'); refreshMenu();
+        return prete().then(() => src);
+      }).then((src) => {
+        ok(MENU_MUSIQUE.src === src, 'sous-menus et retour au menu : la musique ne repart pas du début');
+        __zs.start(); if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
+        ok(!MENU_MUSIQUE.on && MENU_MUSIQUE.src === null, 'début de la partie : la musique du menu s’éteint (fondu d’1 s)');
+        quitToMenu();
+        return prete();
+      }).then(() => {
+        ok(MENU_MUSIQUE.on && MENU_MUSIQUE.src, 'retour au menu après la partie : elle repart');
+        menuMusiqueArret(0);
+        window.zsModtools = {}; refreshMenu(); const mt = MENU_MUSIQUE.on; delete window.zsModtools;
+        ok(!mt, 'Mod Tools : pas de musique du menu');
+        refreshMenu();
+        return prete().then(() => { renderEnabled = true; render(); renderEnabled = false; return out; });
       });
     })).forEach(report);
     for (const r of res) {

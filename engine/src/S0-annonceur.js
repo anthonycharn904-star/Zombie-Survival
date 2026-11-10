@@ -14,9 +14,10 @@
      ramassage ; une annonce demandée pendant le décodage part dès qu'il finit (ANNONCE.attente au plus) ;
    · un bonus sans voix enregistrée, une voix illisible, un jeu sans son : synthèse vocale d'avant (Sound.say, texte
      POWERUPS[type].say).
-   Quatre voix attendent leurs bonus, à venir (décision d'Anthony du 2 novembre : « les bonus en question sortiront
-   ultérieurement ») : un bonus créé dans POWERUPS sous le nom freeperk, firesale, deathmachine ou bonuspoints aura sa
-   voix sans autre changement ; seules les voix des bonus du jeu se décodent.
+   Les voix des bonus à venir sont déjà là (décision d'Anthony du 2 novembre : « les bonus en question sortiront
+   ultérieurement ») : un bonus créé dans POWERUPS sous le nom freeperk, firesale ou bonuspoints aura sa voix sans
+   autre changement (deathmachine, la machine de mort, l'a reçue le 4 novembre : section 32) ; seules les voix des
+   bonus du jeu se décodent.
    ============================================================================ */
 const ANNONCE = {
   gain: 1,                                    // volume de la voix avant le volume général (1 : le fichier tel quel)

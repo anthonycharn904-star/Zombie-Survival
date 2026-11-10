@@ -59,6 +59,12 @@ exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-annonceur.py'), encoding='utf-8').read())
 # jeu 2.0.7 : musiques des manches (paquet musiques-manches-arrivee)
 exec(open(os.path.join(HERE, 'hooks-manches.py'), encoding='utf-8').read())
+# jeu 2.0.7 : sauvegarder et quitter, reprise des parties solo
+exec(open(os.path.join(HERE, 'hooks-sauvegarde.py'), encoding='utf-8').read())
+# jeu 2.0.7 : musique du menu (paquet musique-menu-zombie-survival)
+exec(open(os.path.join(HERE, 'hooks-musique-menu.py'), encoding='utf-8').read())
+# jeu 2.0.7 : la machine de mort (paquet machine-de-mort-zombie-survival)
+exec(open(os.path.join(HERE, 'hooks-machine-de-mort.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
@@ -172,9 +178,48 @@ for name, sha in MUSIQUES:
     if hashlib.sha256(raw).hexdigest() != sha:
         sys.exit(f'musique de manche inattendue (empreinte) : orig/musiques-manches-arrivee/musique/{name}')
     musiques[name[:-4]] = base64.b64encode(raw).decode('ascii')
+# jeu 2.0.7 : musique du courant rétabli (fichier d'Anthony du 4 novembre 2026, orig/courant-retabli/), insérée telle
+# quelle avec les musiques des manches (clé « courant ») : même lecteur (src/S1-manches.js, mancheCourant)
+COURANT = ('courant-retabli-riff-1-mesure.mp3', '788edf3e1edb4468a6ecf4e651d35ce6ecf5cb13a9696bf537a2359edbbf557e')
+raw = open(os.path.join(KH, 'orig', 'courant-retabli', COURANT[0]), 'rb').read()
+if hashlib.sha256(raw).hexdigest() != COURANT[1]:
+    sys.exit(f'musique du courant inattendue (empreinte) : orig/courant-retabli/{COURANT[0]}')
+musiques['courant'] = base64.b64encode(raw).decode('ascii')
 ins_before('<script>/* GLTFLoader de three.js r128',
-           "<script>/* jeu 2.0.7 : musiques des manches, engine/orig/musiques-manches-arrivee/musique/, insérées "
-           'telles quelles (MP3 en base 64) par engine/tools/build.py */\nconst MANCHE_MUSIQUES = ' + json.dumps(musiques, separators=(',', ':')) + ';</script>\n')
+           "<script>/* jeu 2.0.7 : musiques des manches et du courant rétabli, engine/orig/musiques-manches-arrivee/musique/ "
+           'et engine/orig/courant-retabli/, insérées telles quelles (MP3 en base 64) par engine/tools/build.py */\nconst MANCHE_MUSIQUES = ' + json.dumps(musiques, separators=(',', ':')) + ';</script>\n')
+
+# jeu 2.0.7 : la machine de mort (paquet machine-de-mort-zombie-survival d'Anthony, orig/machine-de-mort/), insérée telle
+# quelle (son INTEGRATION.md : ne pas la reformater ni la réécrire), avec la licence de son paquet en commentaire ; sa
+# police Teko est le même fichier que celle du HUD des points (même empreinte), déjà recopiée plus haut. Branchement :
+# src/S5-machine-de-mort.js.
+MDMF = [('machine-de-mort.js', '38bf8efdd68ad931b3d0cfe6293955a0abe620817963429f33931e7fc46a43d9'),
+        ('LICENCES.md', 'a1867ffda2e22356b92c4aa38c2d15744e41feceb6221d0506d33b418304ea17'),
+        ('LICENCE-Teko-OFL.txt', '87373a80b1915a60ddb8386983b57c403c210c3bfa29742eeccf88f9cd27b5ea')]
+mdmf = {}
+for name, sha in MDMF:
+    raw = open(os.path.join(KH, 'orig', 'machine-de-mort', name), 'rb').read()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        sys.exit(f'fichier de la machine de mort inattendu (empreinte) : orig/machine-de-mort/{name}')
+    mdmf[name] = raw.decode('utf-8')
+if '</script' in mdmf['machine-de-mort.js'].lower() or '-->' in mdmf['LICENCES.md'] or '<!--' in mdmf['LICENCES.md']:
+    sys.exit('orig/machine-de-mort : balise de fin de script dans le module, ou commentaire HTML dans la licence')
+ins_before('<script>/* GLTFLoader de three.js r128',
+           '<!-- jeu 2.0.7 : licences du paquet de la machine de mort, engine/orig/machine-de-mort/LICENCES.md (sa police Teko : '
+           'licence recopiée avec le HUD des points, même fichier) :\n' + mdmf['LICENCES.md'] + '-->\n'
+           + '<script>/* jeu 2.0.7 : engine/orig/machine-de-mort/machine-de-mort.js, inséré tel quel par engine/tools/build.py */\n'
+           + mdmf['machine-de-mort.js'] + '</script>\n')
+
+# jeu 2.0.7 : musique du menu (paquet musique-menu-zombie-survival d'Anthony, orig/musique-menu-zombie-survival/musique/),
+# insérée telle quelle, en base 64 (MENU_MUSIQUE_MP3) ; le module audio du paquet (audio-zombies.js) n'est pas repris
+# (cas 2 de sa consigne). Branchement : src/S3-musique-menu.js.
+MENU_MP3 = ('menu.mp3', '53f08a59341971a46e3297a78e14445b91ddbb9327cd28aae8de32dd04c62797')
+raw = open(os.path.join(KH, 'orig', 'musique-menu-zombie-survival', 'musique', MENU_MP3[0]), 'rb').read()
+if hashlib.sha256(raw).hexdigest() != MENU_MP3[1]:
+    sys.exit('musique du menu inattendue (empreinte) : orig/musique-menu-zombie-survival/musique/menu.mp3')
+ins_before('<script>/* GLTFLoader de three.js r128',
+           "<script>/* jeu 2.0.7 : musique du menu, engine/orig/musique-menu-zombie-survival/musique/menu.mp3, insérée telle quelle "
+           '(MP3 en base 64) par engine/tools/build.py */\nconst MENU_MUSIQUE_MP3 = ' + json.dumps(base64.b64encode(raw).decode('ascii')) + ';</script>\n')
 
 open(out_path, 'w', encoding='utf-8').write(s)
 print(f'{out_path} : {len(s.encode("utf-8"))} octets, {s.count(chr(10))} lignes, module {len(parts)} fichiers')

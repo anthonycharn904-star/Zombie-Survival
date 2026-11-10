@@ -19,3 +19,9 @@ rep("""  double: { name: 'Double points', say: 'Double points !', duration: 30 }
 rep("""    if (G.timers.double > 0) pu.push(['double', 'Double points', G.timers.double]);
 """, """    if (G.timers.double > 0) pu.push(['double', 'Points doubles', G.timers.double]);
 """)
+# courant rétabli : plus d'annonce vocale, sa musique à la place ; le bandeau, le bruit du levier et les jingles des
+# atouts restent (demandes d'Anthony du 4 novembre 2026 : « tu laisses l'animation mais plus d'annonceur », puis la
+# musique « qui se jouera à chaque fois quand le ou les joueurs activeront le courant », pour toutes les cartes)
+rep("""  Sound.say('Courant rétabli');
+}""", """  mancheCourant();                             // jeu 2.0.7 : musique du courant rétabli, plus d'annonce vocale (section 28)
+}""")

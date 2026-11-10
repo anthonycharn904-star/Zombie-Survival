@@ -17,12 +17,17 @@
      en fin de partie, comme le carillon) ;
    · décodage à chaque nouvelle partie et au début des manches (manchePrepare, une fois par contexte audio) ; une
      arrivée demandée pendant le décodage part dès qu'il finit (MANCHE.attente au plus) ;
-   · arrêtées par la musique de fin de partie et au retour au menu (mancheCoupe).
+   · arrêtées par la musique de fin de partie et au retour au menu (mancheCoupe) ;
+   · courant rétabli (activatePower : toutes les cartes, Mod Tools compris ; demande d'Anthony du 4 novembre 2026, à la
+     place de l'annonce vocale) : courant-retabli-riff-1-mesure.mp3 (engine/orig/courant-retabli/, 6,1 s, clé
+     « courant »), par le même lecteur : elle coupe la musique en cours (arrivée, A ou B) et la fin de manche la coupe à
+     son tour ; jamais pour un courant rétabli d'office (règle de la carte, partie reprise : powerOnQuiet).
    ============================================================================ */
 const MANCHE = {
   gain: 1,                                    // volume avant le réglage « Musique » (1 : le fichier tel quel)
   musiques: ['manche-a', 'manche-b'],         // fin de manche : tirées au hasard, une chance sur deux
   arrivee: 'arrivee',                         // début de la partie
+  courant: 'courant',                         // courant rétabli
   debutMax: 10,                               // s de partie : au-delà (partie reprise sur une manche de chiens), pas d'arrivée
   attente: 2,                                 // s : une arrivée encore en décodage au-delà est abandonnée
   debut: false,                               // vrai d'une nouvelle partie jusqu'au début de sa première manche
@@ -36,7 +41,7 @@ function manchePrepare() {
   if (MANCHE.prep && MANCHE.ctx === b.ctx) return MANCHE.prep;
   const ctx = b.ctx;
   MANCHE.ctx = ctx; MANCHE.buf = {}; MANCHE.err = null;
-  MANCHE.prep = Promise.all([...MANCHE.musiques, MANCHE.arrivee].map((k) => {
+  MANCHE.prep = Promise.all([...MANCHE.musiques, MANCHE.arrivee, MANCHE.courant].map((k) => {
     const b64 = MANCHE_MUSIQUES[k];
     if (typeof b64 !== 'string') return null;
     const echec = (e) => { MANCHE.err = `${k} : ${(e && e.message) || e}`; };
@@ -89,6 +94,18 @@ function mancheDebut() {
   MANCHE.debut = false;
   if (premiere && G.time <= MANCHE.debutMax) { mancheArrivee(); return; }
   if (MANCHE.fin !== G.round - 1) mancheMusique();
+}
+/* Courant rétabli (activatePower) : sa musique, qui coupe celle en cours ; si elle se décode encore, elle part dès la fin
+   du décodage (MANCHE.attente au plus). */
+function mancheCourant() {
+  if (mancheJoue(MANCHE.courant)) return;
+  const prep = manchePrepare();
+  if (!prep) return;
+  const t0 = performance.now();
+  prep.then(() => {
+    if (performance.now() - t0 > MANCHE.attente * 1000 || G.state !== 'playing') return;
+    mancheJoue(MANCHE.courant);
+  });
 }
 /* Musique d'arrivée ; si elle se décode encore, elle part dès la fin du décodage (MANCHE.attente au plus). */
 function mancheArrivee() {

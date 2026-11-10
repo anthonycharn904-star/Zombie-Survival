@@ -10,7 +10,8 @@ contextBridge.exposeInMainWorld('zs', {
   check: () => invoke('launcher:check'),
   install: () => invoke('launcher:install'),
   cancel: () => invoke('launcher:cancel'),
-  play: () => invoke('launcher:play'),
+  play: (opts) => invoke('launcher:play', opts),                 // opts.continuer : reprendre la partie sauvegardée (jeu 2.0.7)
+  sauvegardes: () => invoke('launcher:sauvegardes'),             // parties sauvegardées (jeu 2.0.7) : pour « Continuer » à l'accueil
   repair: () => invoke('launcher:repair'),
   rollback: () => invoke('launcher:rollback'),
   updateLauncher: () => invoke('launcher:updateLauncher'),
