@@ -22,6 +22,8 @@ const SECRETS = {
       texte: 'Quatre petites caisses marquées d’un logo toxique rouge attendent, posées sur les grandes, dans les salles de Bunker 7 — jamais les mêmes d’une partie à l’autre. Les détruire, à la lame, aux balles ou aux explosifs ; gare au gaz vert qui s’en échappe.' },
     { id: 'b7-tetes', type: 'secondaire', titre: 'Trophées',
       texte: 'Trois têtes de zombie coiffées d’un béret veillent sur Bunker 7 : l’une sur le toit du wagon de la gare, l’autre sur le socle de Lazare (Quick Revive), la dernière au bord de l’ouverture au-dessus du Glas. Une balle pour chacune.' },
+    { id: 'b7-visionnaire', type: 'secondaire', titre: 'Visionnaire',
+      texte: 'Un pilleur de tombes couvert de bandelettes s’est égaré dans Bunker 7. Rares sont ceux qui l’ont croisé. Abattez-le et franchissez le tourbillon de sable qu’il laisse derrière lui : le Khamsin vous attend… mais rien de ce désert n’est réel.' },
   ],
   // Les Marécages Maudits (carte « marais », jeu 2.0.7, session Marécages) : aucun easter egg pour l'instant (le kit
   // n'a ni quête ni secret : « ils viendront des Mod Tools ») ; l'onglet apparaît dès que la carte est dans le jeu.
