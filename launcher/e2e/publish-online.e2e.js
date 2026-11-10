@@ -7,8 +7,10 @@
    launcher installe seul un nouveau launcher annoncé, une seule fois par version.
    Launcher 1.2.6 : un launcher déjà en ligne reste annoncé même s'il est plus ancien que celui qui
    publie (lien « Nouveau joueur ? ») et l'outil avertit quand aucun launcher n'est annoncé ; la
-   publication joint les notes des versions précédentes, et le joueur les voit en cliquant sur la
-   fiche des notes (« Historique des mises à jour »), même hors ligne avec le jeu livré. */
+   publication joint les notes des versions précédentes, et le joueur les voit dans la page « Mises à
+   jour » du launcher (bouton « Notes de version » de l'accueil), même hors ligne avec le jeu livré.
+   Launcher 1.4.0 : nouvelle interface (barre latérale et pages) ; les contrôles de l'ancienne fiche des
+   notes et de sa fenêtre d'historique portent sur l'accueil et la page des mises à jour. */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -77,17 +79,17 @@ async function waitStatus(launcher, pred, timeoutMs) {
   const next = publisher.nextPatch(bundled);
   try {
     /* ---- nouveau joueur, aucune version encore en ligne : jeu livré avec l'installateur.
-       La fiche montre les notes publiées de cette version (pas « Version livrée avec le
+       L'accueil montre les notes publiées de cette version (pas « Version livrée avec le
        launcher ») et l'historique est disponible hors ligne. */
     const fresh = path.join(TMP, 'nouveau-joueur');
     fs.mkdirSync(fresh, { recursive: true });
     const p0 = await launch(fresh, env);
     const s0 = await waitStatus(p0.launcher, (s) => s.installed && s.installed.version === bundled && Array.isArray(s.history) && s.history.length > 0, 60000);
-    await p0.launcher.waitForFunction(() => document.getElementById('dossier').classList.contains('clickable'), null, { timeout: 30000 });
+    await p0.launcher.waitForFunction(() => document.querySelectorAll('#d-chrono > li').length > 0, null, { timeout: 30000 });
     const seedBundled = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'notes-history.json'), 'utf8')).versions.find((e) => e.version === bundled);
-    const card0 = await p0.launcher.evaluate(() => ({ first: (document.querySelector('#notes-list li') || {}).textContent, count: document.getElementById('notes-count').textContent }));
+    const card0 = await p0.launcher.evaluate(() => ({ first: document.getElementById('d-mission-t').textContent, count: document.querySelectorAll('#d-chrono > li').length }));
     const first0 = seedBundled ? seedBundled.notes[0].replace(/^\s*[-–—•*]+\s*/, '') : 'Version livrée avec le launcher';
-    ok(s0 && card0.first === first0 && card0.count.startsWith(String(s0.history.length)), 'nouveau joueur hors ligne : notes publiées du jeu livré sur la fiche, historique disponible', { ...card0, history: s0 && s0.history.map((e) => e.version) });
+    ok(s0 && card0.first === first0 && card0.count === s0.history.length, 'nouveau joueur hors ligne : notes publiées du jeu livré à l’accueil, historique disponible', { ...card0, history: s0 && s0.history.map((e) => e.version) });
     await shot(p0.launcher, 'hist-0-nouveau-joueur');
     await closeAll(p0.app);
 
@@ -103,7 +105,7 @@ async function waitStatus(launcher, pred, timeoutMs) {
     fs.writeFileSync(path.join(pubDir, 'settings.json'), JSON.stringify({ repo: gh.repo.toLowerCase(), gameSource: oldHtml, lastGameVersion: '1.0.2', outDir: path.join(TMP, 'publications'), lastLauncher: oldSetup }));
     const pastVersions = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'notes-history.json'), 'utf8')).versions.map((e) => e.version);
     let { app, launcher } = await launch(author, env);
-    await launcher.waitForFunction(() => document.getElementById('status-title').textContent !== 'Ouverture du bunker…', null, { timeout: 60000 });
+    await launcher.waitForFunction(() => document.getElementById('status-title').textContent !== 'Ouverture du jeu…', null, { timeout: 60000 });
     const [pub] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.evaluate(() => window.zs.openPublisher())]);
     await pub.waitForFunction(() => document.getElementById('src-installed') && document.getElementById('game-version').value, null, { timeout: 30000 });
     const def = await pub.evaluate(() => ({ installed: document.getElementById('src-installed').checked, version: document.getElementById('game-version').value, online: !document.getElementById('publish-online').hidden, unlinked: !document.getElementById('gh-unlinked').hidden }));
@@ -178,41 +180,50 @@ async function waitStatus(launcher, pred, timeoutMs) {
     const ps = await waitStatus(launcher, (s) => (s.installed && s.installed.version === next) || s.phase === 'error', 120000);
     if (!ps.installed || ps.installed.version !== next) { console.log('ÉTAT', JSON.stringify(ps)); console.log(playerLog()); }
     ok(ps.installed && ps.installed.version === next && ps.remote && ps.remote.version === next, 'joueur : nouvelle version installée seule au démarrage', { installed: ps.installed && ps.installed.version, remote: ps.remote && ps.remote.version });
-    /* ---- joueur : historique des mises à jour (clic sur la fiche des notes) */
-    await launcher.waitForFunction(() => document.getElementById('dossier').classList.contains('clickable') && document.getElementById('notes-stamp').textContent !== '—', null, { timeout: 30000 });
-    const card = await launcher.evaluate(() => ({ more: document.getElementById('notes-more').textContent, role: document.getElementById('dossier').getAttribute('role'), first: document.querySelector('#notes-list li').textContent }));
-    ok(card.role === 'button' && /Historique des mises à jour/.test(card.more) && card.more.includes(`${pastVersions.length + 1}`) && card.first === 'Sélection de la carte', 'fiche des notes : cliquable, nombre de versions indiqué', card);
+    /* ---- joueur : historique des mises à jour (page « Mises à jour », depuis le bouton « Notes de version » de l'accueil) */
+    await launcher.waitForFunction(() => document.querySelectorAll('#d-chrono > li').length > 0 && document.getElementById('d-mission-t').textContent !== '', null, { timeout: 30000 });
+    const card = await launcher.evaluate(() => ({ bouton: (document.querySelector('.d-cta [data-aller="maj"]') || {}).textContent, versions: document.querySelectorAll('#d-chrono > li').length, first: document.getElementById('d-mission-t').textContent }));
+    ok(card.bouton === 'Notes de version' && card.versions === pastVersions.length + 1 && card.first === 'Sélection de la carte', 'accueil : notes de la version installée, bouton « Notes de version », toutes les versions', card);
     await shot(launcher, 'hist-1-fiche');
-    await launcher.click('#notes-title');
-    await launcher.waitForFunction(() => !document.getElementById('history').hidden, null, { timeout: 5000 });
+    await launcher.click('.d-cta [data-aller="maj"]');
+    await launcher.waitForFunction(() => !document.querySelector('[data-page="maj"]').hidden, null, { timeout: 5000 });
     const readHist = () => launcher.evaluate(() => ({
-      items: [...document.querySelectorAll('#history-list .hl-item')].map((b) => `${b.querySelector('.hl-v').textContent}${b.querySelector('.hl-badge') ? `:${b.querySelector('.hl-badge').textContent}` : ''}`),
-      sel: (document.querySelector('#history-list [aria-selected="true"]') || {}).dataset?.version,
-      focus: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.version : null,
-      stamp: document.getElementById('hs-stamp').textContent, meta: document.getElementById('hs-meta').textContent,
-      notes: [...document.querySelectorAll('#hs-notes li')].map((l) => l.textContent),
-      inert: document.getElementById('content').inert,
+      items: [...document.querySelectorAll('#d-chrono > li')].map((li) => `${li.dataset.version}${[...li.querySelectorAll('header .d-tampon')].map((t) => `:${t.textContent}`).join('')}`),
+      installee: (document.querySelector('#d-chrono > li.installee') || { dataset: {} }).dataset.version,
+      page: (document.querySelector('.d-nav [aria-current="page"]') || { dataset: {} }).dataset.section, fil: document.getElementById('d-fil').textContent,
+      carte: [document.getElementById('d-v-installee').textContent, document.getElementById('d-v-tampon').textContent, document.getElementById('d-v-dispo').hidden],
     }));
+    const entree = (v) => launcher.evaluate((x) => {
+      const li = [...document.querySelectorAll('#d-chrono > li')].find((e) => e.dataset.version === x);
+      return li ? { date: li.querySelector('header small').textContent, notes: [...li.querySelectorAll('ul li')].map((l) => l.textContent), plus: (li.querySelector('[data-plus]') || {}).textContent || null } : null;
+    }, v);
     let h = await readHist();
-    ok(JSON.stringify(h.items) === JSON.stringify([`v${next}:Installée`, ...pastVersions.map((v) => `v${v}`)]) && h.sel === next && h.focus === next && h.stamp === `v${next}` && h.inert, 'historique : toutes les versions, la version installée choisie et repérée', h);
+    ok(JSON.stringify(h.items) === JSON.stringify([`${next}:Installée`, ...pastVersions]) && h.installee === next && h.page === 'maj' && h.fil === 'Mises à jour', 'historique : toutes les versions, la version installée repérée', h);
     await shot(launcher, 'hist-2-ouvert');
-    await launcher.keyboard.press('ArrowDown');
-    h = await readHist();
-    ok(h.sel === pastVersions[0] && h.stamp === `v${pastVersions[0]}` && /^Publiée le \d+ \S+ \d{4}$/.test(h.meta) && h.notes.length > 0 && h.notes.every((n) => !/^[-•]/.test(n)), 'historique : flèche ↓ → version précédente, ses notes (tirets de tête retirés)', h);
-    await launcher.keyboard.press('End');
-    h = await readHist();
-    ok(h.sel === pastVersions[pastVersions.length - 1] && h.focus === h.sel, 'historique : Fin → plus ancienne version', { sel: h.sel, focus: h.focus });
-    await launcher.click(`#history-list .hl-item[data-version="${pastVersions[1]}"]`);
-    h = await readHist();
-    ok(h.sel === pastVersions[1] && h.stamp === `v${pastVersions[1]}`, 'historique : clic sur une version', { sel: h.sel, stamp: h.stamp });
+    let e = await entree(pastVersions[0]);
+    ok(e && /^\d+ \S+ \d{4}$/.test(e.date) && e.notes.length > 0, 'historique : version précédente, date en français, ses notes', e);
+    const oldest = await launcher.evaluate(() => {
+      const l = document.querySelector('#d-chrono > li:last-child');
+      l.scrollIntoView({ block: 'nearest' });
+      const r = l.getBoundingClientRect(), c = document.getElementById('d-contenu').getBoundingClientRect();
+      return { v: l.dataset.version, visible: r.top >= c.top - 1 && r.top < c.bottom };
+    });
+    ok(oldest.v === pastVersions[pastVersions.length - 1] && oldest.visible, 'historique : la plus ancienne version en bas de la chronologie', oldest);
+    const longue = ((await statusOf(launcher)).history || []).find((x) => x.notes.length > 4);
+    if (longue) await launcher.click(`#d-chrono [data-plus="${longue.version}"]`);
+    e = longue ? await entree(longue.version) : null;
+    // toutes les notes, dans l'ordre, tirets et puces de tête retirés (les notes à tiret de 1.5.0 sont dans la partie dépliée)
+    const attendues = longue ? longue.notes.map((n) => n.replace(/^\s*[-–—•*]+\s*/, '')) : [];
+    ok(longue && e && e.notes.join('\n') === attendues.join('\n') && e.plus === null, 'historique : « Voir les N autres notes » déplie toutes les notes (tirets de tête retirés)', longue && { version: longue.version, montrees: e && e.notes, attendues });
     await shot(launcher, 'hist-3-ancienne');
-    await launcher.keyboard.press('Escape');
-    const closed = await launcher.evaluate(() => ({ hidden: document.getElementById('history').hidden, veil: document.getElementById('veil').hidden, focus: document.activeElement && document.activeElement.id, inert: document.getElementById('content').inert }));
-    ok(closed.hidden && closed.veil && closed.focus === 'dossier' && !closed.inert, 'historique : Échap ferme et rend la main à la fiche', closed);
+    await launcher.click('.d-nav [data-section="accueil"]');
+    const back = await launcher.evaluate(() => ({ accueil: !document.querySelector('[data-page="accueil"]').hidden, maj: !document.querySelector('[data-page="maj"]').hidden, jouer: !document.getElementById('btn-main').disabled }));
+    ok(back.accueil && !back.maj && back.jouer, 'navigation : retour à l’accueil, bouton Jouer actif', back);
+    await launcher.focus('.d-cta [data-aller="maj"]');
     await launcher.keyboard.press('Enter');
-    ok(await launcher.evaluate(() => !document.getElementById('history').hidden), 'fiche des notes : Entrée ouvre aussi l’historique');
-    await launcher.click('#history-close');
-    ok(await launcher.evaluate(() => document.getElementById('history').hidden), 'historique : bouton de fermeture');
+    ok(await launcher.evaluate(() => !document.querySelector('[data-page="maj"]').hidden), 'bouton « Notes de version » : Entrée ouvre aussi les mises à jour');
+    h = await readHist();
+    ok(h.carte[0] === next && h.carte[1] === 'À jour' && h.carte[2] === true, 'mises à jour : version installée à jour, aucune autre proposée', h.carte);
     await closeAll(app);
 
     /* ---- nouveau launcher annoncé : installation automatique, une fois par version */

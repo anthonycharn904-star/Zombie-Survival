@@ -5,7 +5,7 @@
    - Mises à jour signées du jeu et du launcher (voir updater.js)
    - Outil de publication pour l'auteur (voir publisher.js)
    - Mod Tools (éditeur de cartes) pour l'auteur seulement (voir src/modtools/ et workspace.js) */
-const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, Menu, session, safeStorage, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell, dialog, Menu, session, safeStorage, clipboard, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -17,6 +17,7 @@ const github = require('./github');
 const { readGameVersion } = require('./gamepack');
 const { Workspace } = require('./workspace');
 const history = require('./history');
+const reglages = require('./reglages');
 const createLog = require('./log');
 
 if (process.env.ZS_USER_DATA) app.setPath('userData', process.env.ZS_USER_DATA);
@@ -33,7 +34,8 @@ const MODTOOLS_DIR = path.join(__dirname, '..', 'modtools');
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 const APP_ID = 'fr.zombiesurvival.launcher';
 const PLACEHOLDER = 'VOTRE-PSEUDO';
-const DEFAULT_SETTINGS = { autoCheck: true, autoInstall: true, fullscreen: true, keepLauncherOpen: false };
+// réglages (settings.json) : valeurs par défaut et contrôles dans reglages.js (fond de l'accueil depuis le launcher 1.4.0)
+const DEFAULT_SETTINGS = reglages.DEFAULTS;
 // Notes des versions publiées avant le launcher 1.2.6 (les manifestes suivants portent leur historique).
 const BUNDLED_HISTORY = (readJson(path.join(APP_ROOT, 'config', 'notes-history.json')) || {}).versions || [];
 
@@ -72,7 +74,7 @@ function writeJson(file, data) {
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2));
   fs.renameSync(`${file}.tmp`, file);
 }
-function loadSettings() { return { ...DEFAULT_SETTINGS, ...(readJson(userFile('settings.json')) || {}) }; }
+function loadSettings() { return reglages.lire(readJson(userFile('settings.json'))); }
 function loadConfig() {
   const def = readJson(path.join(APP_ROOT, 'config', 'default.json')) || {};
   const user = readJson(userFile('config.json')) || {};
@@ -281,13 +283,24 @@ function harden(win, allowPrefix) {
     if (!allowPrefix || !url.startsWith(allowPrefix)) e.preventDefault();
   });
 }
+/* Fenêtre du launcher (sans bordure : sa barre de titre fait partie de la page). 1 280 × 720 au départ, réduite à la
+   zone de travail d'un petit écran ; redimensionnable jusqu'à 960 × 600 et agrandissable (bouton de la page,
+   double-clic sur la barre, Windows + flèches). Sa taille n'est pas gardée d'une ouverture à l'autre. */
 function createLauncherWindow() {
+  const zone = screen.getPrimaryDisplay().workAreaSize;
+  const minW = Math.min(960, zone.width), minH = Math.min(600, zone.height);
   launcherWin = new BrowserWindow({
-    width: 1080, height: 660, resizable: false, maximizable: false, fullscreenable: false, frame: false,
+    width: Math.max(minW, Math.min(1280, zone.width)), height: Math.max(minH, Math.min(720, zone.height)), minWidth: minW, minHeight: minH,
+    resizable: true, maximizable: true, fullscreenable: false, frame: false,
     show: false, backgroundColor: '#07090a', title: 'Zombie Survival', icon: ICON,
     webPreferences: { preload: path.join(PRELOAD, 'launcher.js'), contextIsolation: true, sandbox: true, spellcheck: false },
   });
   harden(launcherWin);
+  // la page dessine le bouton Agrandir ou Restaurer d'après cet état
+  const etatFenetre = () => setStatus({ windowState: { maximized: launcherWin.isMaximized() } });
+  launcherWin.on('maximize', etatFenetre);
+  launcherWin.on('unmaximize', etatFenetre);
+  etatFenetre();
   launcherWin.loadFile(path.join(RENDERER, 'launcher', 'index.html'));
   launcherWin.once('ready-to-show', () => launcherWin.show());
   launcherWin.on('closed', () => {
@@ -699,6 +712,22 @@ function handle(channel, wins, fn) {
     return fn(...args);
   });
 }
+/* Sons de l'ambiance du fond « Les Marécages Maudits » (pluie, orage) : la page n'a ni fetch ni accès aux fichiers
+   (politique de sécurité) ; ils lui sont passés en ArrayBuffer, avec leurs réglages, quand elle allume les sons. Seuls
+   les sons nommés dans ambiance.json, au nom contrôlé, sont lus. */
+function lireAmbiance() {
+  const dir = path.join(RENDERER, 'launcher', 'assets', 'marecages', 'sons');
+  const doc = readJson(path.join(dir, 'ambiance.json'));
+  if (!doc || !doc.sons || typeof doc.sons !== 'object') throw new Error('ambiance.json illisible');
+  const meta = {}, fichiers = {};
+  for (const [id, m] of Object.entries(doc.sons)) {
+    if (!/^[a-z0-9-]+$/.test(id)) continue;
+    const b = fs.readFileSync(path.join(dir, `${id}.ogg`));
+    meta[id] = m;
+    fichiers[id] = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+  }
+  return { meta, fichiers };
+}
 function setupIpc() {
   const L = () => [launcherWin];
   const P = () => [publisherWin];
@@ -730,11 +759,19 @@ function setupIpc() {
     return shell.openPath(target);
   });
   handle('launcher:setting', L, (k, v) => {
-    if (!(k in DEFAULT_SETTINGS) || typeof v !== 'boolean') return settings;
+    if (!reglages.valide(k, v)) return settings;
     settings[k] = v;
-    writeJson(userFile('settings.json'), settings);
+    const f = userFile('settings.json');
+    writeJson(f, reglages.aEcrire(settings, readJson(f), k));
     setStatus({ settings: { ...settings } });
     return settings;
+  });
+  // une seule phrase pour le joueur, le détail (fichier, code) dans le journal
+  handle('launcher:ambiance', L, () => {
+    try { return lireAmbiance(); } catch (e) {
+      log(`[ambiance] ${e && e.message ? e.message : e}`);
+      throw new Error('Sons de l’ambiance introuvables.');
+    }
   });
   handle('launcher:resetSource', L, () => {
     fs.rmSync(userFile('config.json'), { force: true });
@@ -746,6 +783,7 @@ function setupIpc() {
   });
   handle('launcher:window', L, (action) => {
     if (action === 'minimize') launcherWin.minimize();
+    else if (action === 'maximize') { if (launcherWin.isMaximized()) launcherWin.unmaximize(); else launcherWin.maximize(); }
     else if (action === 'close') launcherWin.close();
     return true;
   });

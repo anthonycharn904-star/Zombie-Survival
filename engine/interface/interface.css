@@ -1,0 +1,360 @@
+/* ===================================================================== Interface ==
+   Refonte de l'interface du jeu (chantier interface) : menu principal vertical, rapport opérationnel,
+   sélection des cartes en trois zones. Inséré tel quel avant la fin de la feuille de styles du jeu par
+   engine/tools/hooks-interface.py ; le module src/I0-interface.js pose les classes « ifc » au démarrage.
+   Tailles en em sur --ifc-u : la hauteur de la fenêtre décide, bornée (de 960 × 540 à 3 440 × 1 440). */
+.screen.ifc { --ifc-u: clamp(12px, min(1.55vh, 0.95vw), 20px); }
+#menu.ifc, #mapsel.ifc { font-size: var(--ifc-u); padding: 0; }
+.screen.ifc:not([hidden]) { animation: ifc-fondu 0.28s ease-out both; }
+@keyframes ifc-fondu { from { opacity: 0; } }
+
+/* ---------------------------------------------------------------- logo -- */
+.ifc-logo, .ifc-logo-mini {
+  font-family: var(--font-display); font-weight: 900; text-transform: uppercase; line-height: 0.82; letter-spacing: 0.015em;
+  color: #ece4d0; text-shadow: 0 0.05em 0 rgba(0, 0, 0, 0.55); margin: 0;
+  /* pochoir usé : de petits manques dans la peinture, toujours les mêmes (bruit fixe) */
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 7 0 0 0 -1.75'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 7 0 0 0 -1.75'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)'/%3E%3C/svg%3E");
+  -webkit-mask-size: 240px 240px; mask-size: 240px 240px;
+  padding-block: 0.07em; margin-block: -0.07em;   /* le masque coupe ce qui sort de la boîte : ombre, haut des O */
+}
+.ifc-logo { font-size: 5.1em; }
+.ifc-logo span, .ifc-logo-mini span { display: block; color: var(--blood); }
+.ifc-logo-mini { font-size: 2.3em; }
+
+/* ------------------------------------------------------ éléments de menu -- */
+.screen.ifc .ifc-item {
+  position: relative; isolation: isolate; display: block; width: 100%; box-sizing: border-box; text-align: left;
+  clip-path: none; border: 0; background: none; color: var(--paper);
+  font-family: var(--font-display); font-weight: 800; font-size: 1.7em; letter-spacing: 0.07em; line-height: 1;
+  padding: 0.4em 1em 0.36em 1.05em; transition: color 0.15s;
+}
+#menu.ifc .ifc-item.primary { font-size: 2.15em; }
+/* surlignage rouge : il se déploie de la gauche ; un reflet le traverse lentement */
+.screen.ifc .ifc-item::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background-image: linear-gradient(100deg, transparent 42%, rgba(255, 236, 222, 0.16) 50%, transparent 58%),
+    linear-gradient(90deg, rgba(184, 20, 29, 0.96), rgba(184, 20, 29, 0.8) 58%, rgba(184, 20, 29, 0));
+  background-size: 260% 100%, 100% 100%; background-position: 160% 0, 0 0;
+  transform: scaleX(0); transform-origin: left center; transition: transform 0.2s ease-out;
+}
+.screen.ifc .ifc-item::after {
+  content: ''; position: absolute; left: 0; top: 16%; bottom: 16%; width: 0.2em; background: #fff1e6; opacity: 0; transition: opacity 0.15s;
+}
+.screen.ifc .ifc-item:hover { background: none; color: #fff6ee; }
+.screen.ifc .ifc-item.ifc-actif { color: #fff6ee; }
+.screen.ifc .ifc-item.ifc-actif::before { transform: scaleX(1); animation: ifc-reflet 3.6s linear 0.3s infinite; }
+.screen.ifc .ifc-item.ifc-actif::after { opacity: 1; }
+.screen.ifc .ifc-item:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.screen.ifc .ifc-item.ifc-actif:focus-visible { outline: none; }   /* le surlignage montre le focus */
+@keyframes ifc-reflet { from { background-position: 160% 0, 0 0; } to { background-position: -60% 0, 0 0; } }
+.screen.ifc .ifc-item:not(.ifc-actif):hover::before { transform: scaleX(0.04); }
+
+/* ---------------------------------------------------------- menu principal -- */
+#menu.ifc {
+  display: block;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,   /* grain fixe, très léger */
+    radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(3, 4, 4, 0.55) 100%),
+    linear-gradient(90deg, rgba(5, 7, 6, 0.93) 0%, rgba(5, 7, 6, 0.7) 20%, rgba(5, 7, 6, 0.08) 44%, rgba(5, 7, 6, 0.1) 58%, rgba(5, 7, 6, 0.72) 76%, rgba(5, 7, 6, 0.9) 100%);
+}
+/* fond illustré des écrans hors partie (demande d'Anthony du 3 novembre 2026) : sous les écrans, au-dessus de la
+   toile 3D ; l'image est posée par le module une fois chargée (IFC_FOND) */
+#ifc-fond {
+  position: fixed; inset: 0; z-index: 19; pointer-events: none;
+  background-color: #0b0908; background-repeat: no-repeat; background-size: cover; background-position: 50% 42%;
+}
+#ifc-fond::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 85% 80% at 55% 45%, transparent 55%, rgba(3, 3, 3, 0.55) 100%); }
+/* devant l'illustration, la sélection et les fiches la laissent voir, assombrie (maquette 3) */
+body.ifc-illu #mapsel.ifc, body.ifc-illu .sheet-screen.ifc.ifc-fiches {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
+    linear-gradient(90deg, rgba(5, 7, 6, 0.9) 0%, rgba(5, 7, 6, 0.74) 28%, rgba(5, 7, 6, 0.62) 60%, rgba(5, 7, 6, 0.72) 100%);
+}
+/* devant l'illustration, le menu principal la laisse voir davantage (maquette 2) ; gauche assez sombre pour lire le menu */
+body.ifc-illu #menu.ifc {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
+    linear-gradient(90deg, rgba(5, 7, 6, 0.8) 0%, rgba(5, 7, 6, 0.5) 18%, rgba(5, 7, 6, 0.08) 38%, rgba(5, 7, 6, 0) 60%, rgba(5, 7, 6, 0.3) 78%, rgba(5, 7, 6, 0.6) 100%);
+}
+body.ifc-illu #options.ifc { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px, rgba(5, 7, 6, 0.62); }
+/* atmosphère 2D de la carte (I1-ambiance.js) : sous le contenu, par-dessus la scène et les voiles */
+.ifc-ambiance { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#menu.ifc .ifc-menu {
+  position: relative; z-index: 1;
+  width: 100%; max-width: none; min-height: 100%; margin: 0; box-sizing: border-box; align-items: stretch;
+  display: grid; gap: 1.4em 2.6em;
+  grid-template-columns: minmax(18em, 25em) minmax(0, 1fr) minmax(25em, 35em);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "tete . rapport" "nav . rapport" "pied . rapport";
+  padding: calc(2.4em + env(safe-area-inset-top, 0px)) 3em calc(2em + env(safe-area-inset-bottom, 0px)) 3em;
+}
+#menu.ifc .ifc-tete { grid-area: tete; grid-column: 1 / 3; }
+#menu.ifc .ifc-tete .eyebrow { margin: 1.1em 0 0; font-size: 0.95em; max-width: 46em; color: var(--paper-2); }
+#menu.ifc .ifc-nav { grid-area: nav; align-self: center; margin-left: -1.05em; }
+#menu.ifc .ifc-nav .actions { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 0.18em; }
+#menu.ifc .ifc-nav .btn-narrow { display: none; }
+#menu.ifc .ifc-pied { grid-area: pied; display: flex; flex-direction: column; gap: 0.3em; }
+#menu.ifc .ifc-pied .rank-line { margin: 0; font-size: 1em; }
+#menu.ifc .ifc-pied .version { margin: 0; font-size: 0.85em; }
+#menu.ifc .ifc-pied .touch-note { margin: 0; font-size: 1em; }
+#menu.ifc .ifc-nav .actions .btn { animation: ifc-fondu 0.3s ease-out both; animation-delay: calc(var(--ifc-i, 0) * 35ms); }
+
+/* rapport opérationnel : le dossier du menu, avec la fiche de la carte chargée */
+#menu.ifc .ifc-rapport {
+  grid-area: rapport; align-self: center; justify-self: stretch; max-width: none; transform: none; box-sizing: border-box;
+  max-height: calc(100vh - 4.4 * var(--ifc-u) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto; scrollbar-width: thin;
+  padding: 1.6em 1.8em 1.3em; font-size: 0.98em;
+}
+#menu.ifc .ifc-rapport .stamp { top: 1.2em; right: 1.2em; font-size: 1.15em; }
+.ifc-r-sur { margin: 0; font-family: var(--font-type); font-size: 0.85em; letter-spacing: 0.18em; text-transform: uppercase; color: #8a1b1b; }
+#menu.ifc .ifc-rapport .ifc-r-zone { margin: 0.12em 0 0.7em; font-size: 2.3em; line-height: 0.95; letter-spacing: 0.04em; padding-right: 4.5em; }
+.ifc-r-carte { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1fr); gap: 0.9em; align-items: start; }
+.ifc-r-plan { aspect-ratio: 16 / 9; background: #0d1112; overflow: hidden; box-shadow: 0 0 0 1px rgba(43, 36, 24, 0.55), 0 0.4em 1em rgba(40, 28, 12, 0.35); }
+.ifc-r-plan img, .ifc-r-plan canvas { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ifc-faits { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.25em 0.8em; margin: 0; font-size: 0.95em; align-content: start; }
+.ifc-faits dt { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.82em; color: #6b5a3c; padding-top: 0.15em; white-space: nowrap; }
+.ifc-faits dd { margin: 0; font-weight: 700; }
+#menu.ifc .ifc-rapport .best { margin: 0.8em 0 0; color: #4a3f2c; font-size: 0.95em; }
+#menu.ifc .ifc-rapport h3 { font-size: 1.15em; margin: 1em 0 0.3em; }
+#menu.ifc .ifc-rapport .lead { margin: 0; max-width: none; font-family: var(--font-hud); font-size: 1.2em; line-height: 1.32; color: var(--paper-ink); }
+#menu.ifc .ifc-rapport .orders { font-size: 0.95em; }
+.ifc-r-cmd { margin-top: 1em; border-top: 1px dashed rgba(43, 36, 24, 0.4); padding-top: 0.6em; }
+.ifc-r-cmd summary {
+  cursor: pointer; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 1.15em;
+  list-style: none; display: flex; align-items: center; gap: 0.5em;
+}
+.ifc-r-cmd summary::-webkit-details-marker { display: none; }
+.ifc-r-cmd summary::before { content: ''; width: 0; height: 0; border-left: 0.42em solid currentColor; border-block: 0.3em solid transparent; transition: transform 0.15s; }
+.ifc-r-cmd[open] summary::before { transform: rotate(90deg); }
+.ifc-r-cmd summary:focus-visible { outline: 2px solid var(--blood); outline-offset: 3px; }
+.ifc-r-cmd .keys { margin-top: 0.6em; font-size: 0.92em; }
+
+/* ------------------------------------------------------ sélection des cartes -- */
+#mapsel.ifc {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
+    radial-gradient(ellipse 80% 70% at 70% 45%, rgba(5, 7, 6, 0.55), rgba(5, 7, 6, 0.9) 85%),
+    linear-gradient(90deg, rgba(5, 7, 6, 0.96) 0%, rgba(5, 7, 6, 0.88) 30%, rgba(5, 7, 6, 0.74) 100%);
+}
+#mapsel.ifc .ifc-sel {
+  width: 100%; max-width: none; height: 100%; min-height: 34em; margin: 0; box-sizing: border-box;
+  display: grid; gap: 2.4em; padding: calc(2.4em + env(safe-area-inset-top, 0px)) 3em calc(2em + env(safe-area-inset-bottom, 0px)) 3em;
+  grid-template-columns: minmax(14em, 19em) minmax(22em, 34em) minmax(0, 1fr);
+}
+.ifc-rail { display: flex; flex-direction: column; min-height: 0; gap: 1.6em; }
+.ifc-liens { display: flex; flex-direction: column; gap: 0.12em; margin-left: -1.05em; }
+.screen.ifc .ifc-liens .ifc-item { font-size: 1.32em; }
+.screen.ifc .ifc-rail .ifc-retour { margin-top: auto; margin-left: -1.05em; width: auto; font-size: 1.32em; }
+.ifc-retour > i { font-style: normal; margin-right: 0.45em; color: var(--blood-hi); }
+
+.ifc-liste-col { display: flex; flex-direction: column; min-height: 0; gap: 1em; }
+#mapsel.ifc .sheet-head .eyebrow { font-size: 0.95em; margin: 0 0 0.3em; }
+#mapsel.ifc .sheet-title { font-size: 3.4em; }
+.ifc-compte { margin: 0.4em 0 0; font-family: var(--font-type); color: var(--steel); font-size: 0.9em; }
+#mapsel.ifc .ms-grid {
+  display: flex; flex-direction: column; gap: 1.35em; flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  padding: 1.2em 0.9em 1em 0.9em; margin: 0 -0.9em 0 -0.7em;
+}
+/* chaque carte : un dossier, avec son onglet ; l'image à gauche, le texte à droite */
+#mapsel.ifc .ms-card {
+  display: grid; grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr); column-gap: 0.9em; align-content: start; flex: none;
+  padding: 0.75em 0.8em 0.8em; font-size: 1em; transform: none; overflow: visible;
+  transition: box-shadow 0.18s, background-color 0.18s;
+}
+#mapsel.ifc .ms-card > * { grid-column: 2; }
+#mapsel.ifc .ms-card > .ms-photo { grid-column: 1; grid-row: 1 / span 4; align-self: start; }
+#mapsel.ifc .ms-card > .ms-dev { grid-column: 1; }   /* tampon des Marécages : sur le coin de l'image, pas sur le nom */
+#mapsel.ifc .ms-card .ms-name { margin: 0.05em 0 0.15em; font-size: 1.55em; padding-right: 3.2em; }
+#mapsel.ifc .ms-card .ms-desc { font-size: 0.98em; margin: 0; }
+#mapsel.ifc .ms-card .ms-meta { font-size: 0.8em; padding-top: 0.45em; margin-top: 0.55em; }
+#mapsel.ifc .ms-card .ms-stamp { top: 0.7em; right: 0.7em; font-size: 0.95em; }
+#mapsel.ifc .ms-card:hover { transform: none; }
+#mapsel.ifc .ms-card[aria-selected="true"] { transform: none; }
+.ifc-onglet {
+  position: absolute; left: 0.9em; bottom: 100%; padding: 0.22em 0.8em 0.12em; font-family: var(--font-type); font-size: 0.72em;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--paper-ink); background: #d9cdb0; border-radius: 0.35em 0.35em 0 0;
+  box-shadow: inset 0 -0.3em 0.4em rgba(120, 90, 40, 0.18);
+}
+#mapsel.ifc .ms-card[aria-selected="true"] .ifc-onglet { background: var(--blood); color: #fff3ec; }
+/* survol : un liseré rouge à gauche ; la carte choisie garde son cadre et son tampon */
+#mapsel.ifc .ms-card::before {
+  content: ''; position: absolute; left: -0.55em; top: 0.4em; bottom: 0.4em; width: 0.22em; background: var(--blood-hi);
+  transform: scaleY(0); transition: transform 0.18s ease-out;
+}
+#mapsel.ifc .ms-card.ifc-survol::before { transform: scaleY(1); }
+#mapsel.ifc .ms-card.ifc-survol:not([aria-selected="true"]) { box-shadow: 0 0 0 2px rgba(226, 49, 58, 0.55), 0 14px 34px rgba(0, 0, 0, 0.55), inset 0 0 40px rgba(120, 90, 40, 0.22); }
+.ifc-badge {
+  justify-self: start; margin-top: 0.5em; padding: 0.08em 0.55em; font-family: var(--font-display); font-weight: 900; font-size: 0.85em;
+  letter-spacing: 0.1em; text-transform: uppercase; color: #fff3ec; background: #2f5d3a;
+}
+
+/* aperçu et fiche dans une largeur de lecture, au bord droit (en 21:9, la scène reste visible au milieu) */
+.ifc-fiche-col { display: flex; flex-direction: column; min-height: 0; gap: 1.1em; align-items: stretch; justify-self: end; width: min(100%, calc(50vh * 16 / 9)); }
+.ifc-apercu {
+  position: relative; flex: none; width: 100%; aspect-ratio: 16 / 9; background: #0b0e0e; overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(232, 223, 200, 0.22), 0 1.2em 3em rgba(0, 0, 0, 0.6);
+}
+.ifc-couche { position: absolute; inset: 0; opacity: 0; transition: opacity 0.38s ease-out; }
+.ifc-couche.on { opacity: 1; }
+.ifc-apercu.ifc-instant .ifc-couche { transition: none; }
+.ifc-couche img, .ifc-couche canvas, .ifc-couche video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ifc-couche .ifc-video { position: absolute; inset: 0; opacity: 0; transition: opacity 0.5s ease-out; }
+.ifc-couche .ifc-video.on { opacity: 1; }
+.ifc-apercu.ifc-video-on .ifc-apercu-note { display: none; }
+.ifc-apercu::after {   /* coins de viseur et grain léger : l'aperçu est une pièce du dossier */
+  content: ''; position: absolute; inset: 0.9em; pointer-events: none;
+  background:
+    linear-gradient(var(--paper), var(--paper)) left top / 1.4em 2px no-repeat, linear-gradient(var(--paper), var(--paper)) left top / 2px 1.4em no-repeat,
+    linear-gradient(var(--paper), var(--paper)) right top / 1.4em 2px no-repeat, linear-gradient(var(--paper), var(--paper)) right top / 2px 1.4em no-repeat,
+    linear-gradient(var(--paper), var(--paper)) left bottom / 1.4em 2px no-repeat, linear-gradient(var(--paper), var(--paper)) left bottom / 2px 1.4em no-repeat,
+    linear-gradient(var(--paper), var(--paper)) right bottom / 1.4em 2px no-repeat, linear-gradient(var(--paper), var(--paper)) right bottom / 2px 1.4em no-repeat;
+  opacity: 0.55;
+}
+.ifc-apercu-note {
+  position: absolute; left: 3em; bottom: 1.3em; z-index: 1; padding: 0.15em 0.6em; font-family: var(--font-type); font-size: 0.8em;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--paper); background: rgba(5, 7, 6, 0.72);
+}
+.ifc-fiche {
+  position: relative; width: 100%; box-sizing: border-box; padding: 1.3em 1.6em 1.2em; color: var(--paper-ink); font-family: var(--font-type);
+  background-color: var(--paper);
+  background-image: repeating-linear-gradient(0deg, transparent 0 1.7em, rgba(80, 60, 30, 0.1) 1.7em calc(1.7em + 1px)),
+    radial-gradient(circle at 88% 10%, rgba(150, 110, 50, 0.2), transparent 42%);
+  box-shadow: 0 1.1em 3em rgba(0, 0, 0, 0.6), inset 0 0 3.5em rgba(120, 90, 40, 0.25);
+  overflow-y: auto; min-height: 0; flex: 0 1 auto; scrollbar-width: thin;
+}
+.ifc-fiche.ifc-survol { outline: 2px dashed rgba(184, 20, 29, 0.6); outline-offset: -0.6em; }
+.ifc-f-sur { margin: 0; font-size: 0.85em; letter-spacing: 0.08em; color: #6b5a3c; }
+.ifc-f-nom { margin: 0.1em 0 0.35em; font-family: var(--font-display); font-weight: 900; font-size: 2.5em; line-height: 0.95; letter-spacing: 0.04em; text-transform: uppercase; }
+.ifc-f-tampons { display: flex; flex-wrap: wrap; gap: 0.5em; }
+.ifc-f-tampons:empty { display: none; }
+.ifc-tampon {
+  font-family: var(--font-display); font-weight: 900; font-size: 1em; letter-spacing: 0.1em; text-transform: uppercase; padding: 0.02em 0.55em;
+  color: rgba(170, 20, 25, 0.9); border: 0.17em solid rgba(170, 20, 25, 0.8); transform: rotate(-2deg);
+}
+.ifc-tampon.vert { color: #2f5d3a; border-color: rgba(47, 93, 58, 0.85); }
+.ifc-f-desc { margin: 0.6em 0 0.8em; font-family: var(--font-hud); font-size: 1.2em; line-height: 1.3; }
+.ifc-f-lead { margin: 0.8em 0 0; font-size: 0.95em; line-height: 1.45; color: #4a3f2c; }
+.ifc-f-choix { margin: 0; font-family: var(--font-type); font-size: 0.92em; color: var(--paper-2); }
+.ifc-f-choix b { color: var(--paper); font-weight: 400; }
+#mapsel.ifc .ifc-fiche-col .sheet-actions { display: flex; align-items: center; gap: 1.2em; flex-wrap: wrap; }
+#mapsel.ifc #btn-ms-play { min-width: 0; font-size: 1.5em; padding: 0.45em 2.2em; }
+#mapsel.ifc #btn-ms-play:focus-visible, #options-form .btn:focus-visible { outline-color: #fff3ec; outline-offset: -6px; }
+
+/* ------------------------------------------------- fiches à rail (phase D) -- */
+/* Statistiques, Modèles, Ranking, Amélioration d'arme : le rail de la sélection à gauche, la fiche à droite.
+   Les fiches gardent leurs propres tailles (px) : seul le rail suit --ifc-u. */
+.sheet-screen.ifc.ifc-fiches {
+  padding: 0; display: block;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
+    radial-gradient(ellipse 80% 70% at 60% 40%, rgba(5, 7, 6, 0.6), rgba(5, 7, 6, 0.92) 85%),
+    linear-gradient(90deg, rgba(5, 7, 6, 0.96) 0%, rgba(5, 7, 6, 0.86) 30%, rgba(5, 7, 6, 0.78) 100%);
+}
+.ifc-coquille {
+  display: grid; align-items: start; min-height: 100%; box-sizing: border-box;
+  grid-template-columns: minmax(calc(14 * var(--ifc-u)), calc(19 * var(--ifc-u))) minmax(0, 1fr); column-gap: calc(2.4 * var(--ifc-u));
+  padding: calc(2.4 * var(--ifc-u) + env(safe-area-inset-top, 0px)) calc(3 * var(--ifc-u)) calc(2 * var(--ifc-u) + env(safe-area-inset-bottom, 0px));
+}
+.ifc-coquille > .ifc-rail {
+  font-size: var(--ifc-u); position: sticky; top: calc(2.4 * var(--ifc-u)); box-sizing: border-box;
+  height: calc(100vh - 4.4 * var(--ifc-u) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+.ifc-coquille > .sheet { width: min(1180px, 100%); margin: 0 auto; padding-block: 0; }
+/* moins de 1 240 px de large : le rail devient une ligne (logo, Retour) au-dessus de la fiche */
+@media (max-width: 1240px) {
+  .ifc-coquille { grid-template-columns: minmax(0, 1fr); row-gap: calc(1.2 * var(--ifc-u)); align-content: start; }
+  .ifc-coquille > .ifc-rail { position: static; height: auto; flex-direction: row; align-items: center; }
+  .ifc-coquille .ifc-liens { display: none; }
+  .screen.ifc .ifc-coquille .ifc-rail .ifc-retour { margin: 0 0 0 auto; }
+}
+
+/* ------------------------------------------- pause, fin de partie, options -- */
+.panel-screen.ifc {
+  font-size: var(--ifc-u);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='3'/%3E%3CfeColorMatrix values='0 0 0 0 0.9 0 0 0 0 0.86 0 0 0 0 0.78 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E") 0 0 / 180px 180px,
+    radial-gradient(ellipse 60% 65% at 50% 50%, rgba(5, 7, 6, 0.6), rgba(5, 7, 6, 0.9) 100%);
+}
+.panel-screen.ifc .panel {
+  width: min(30em, 100%); gap: 0.3em; box-sizing: border-box; padding: 1.8em 2em 1.6em;
+  background: linear-gradient(180deg, rgba(12, 14, 13, 0.88), rgba(8, 10, 9, 0.94));
+  border-left: 0.25em solid var(--blood);
+  box-shadow: 0 1.2em 3em rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(232, 223, 200, 0.12);
+}
+.panel-screen.ifc .panel h2 { font-size: 4em; margin: 0 0 0.12em; }
+.panel-screen.ifc .panel .meta { font-size: 0.95em; margin: 0 0 0.7em; }
+.panel-screen.ifc .panel .ifc-item { font-size: 1.45em; }
+/* fin de partie : titre et chiffres en u (le jeu les donne en px, trop grands pour la fenêtre minimale) */
+#gameover.ifc .panel h2 { font-size: 4.4em; overflow-wrap: anywhere; }
+#gameover.ifc #go-rounds { font-size: 1.3em; margin: 0.2em 0 0; }
+#gameover.ifc .go-stats { margin: 0.4em 0 0.8em; gap: 0.5em 1.4em; }
+#gameover.ifc .go-stats dt { font-size: 0.82em; }
+#gameover.ifc .go-stats dd { font-size: 1.5em; }
+#options.ifc .panel { width: min(34em, 100%); gap: 0.7em; }
+#options.ifc .ifc-r-sur { color: var(--blood-hi); margin-bottom: -0.2em; }
+
+/* écran « Secret » (I3-secrets.js) : une fiche par easter egg, cachées « ???? » tant qu'elles ne sont pas découvertes */
+.sc-report { max-width: 980px; }
+.sc-report .sc-carte { margin: 0 0 4px; font-family: var(--font-display); font-weight: 900; font-size: 34px; text-transform: uppercase; letter-spacing: 0.04em; }
+.sc-vide { margin: 14px 0 6px; font-size: 16px; color: #4a3f2c; }
+.sc-section { margin-top: 18px; }
+.sc-titre { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px dashed rgba(43, 36, 24, 0.4); font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.08em; text-transform: uppercase; }
+.sc-fiche { position: relative; margin: 0 0 12px; padding: 12px 16px 12px; background: rgba(255, 252, 240, 0.45); box-shadow: inset 0 0 0 1px rgba(43, 36, 24, 0.25); }
+.sc-fiche .sc-nom { display: block; padding-right: 9em; font-family: var(--font-display); font-weight: 900; font-size: 24px; letter-spacing: 0.04em; text-transform: uppercase; }
+.sc-fiche .sc-texte { margin: 6px 0 0; font-family: var(--font-hud); font-size: 17px; line-height: 1.35; color: var(--paper-ink); }
+.sc-fiche .sc-date { margin: 6px 0 0; font-size: 13px; color: #6b5a3c; }
+.sc-fiche .sc-tampon {
+  position: absolute; top: 10px; right: 12px; padding: 0 8px; font-family: var(--font-display); font-weight: 900; font-size: 14px;
+  letter-spacing: 0.1em; text-transform: uppercase; border: 2px solid currentColor; transform: rotate(4deg);
+}
+.sc-fiche.decouvert .sc-tampon { color: #2f5d3a; }
+.sc-fiche.cache .sc-tampon { color: rgba(170, 20, 25, 0.85); }
+.sc-fiche.cache .sc-nom, .sc-fiche.cache .sc-texte { color: rgba(43, 36, 24, 0.45); letter-spacing: 0.3em; }
+
+/* sauvegarde de la partie (jeu 2.0.7) : détail sous « Continuer la partie », ligne de confirmation sous le menu */
+.screen.ifc .ifc-item .save-info {
+  display: block; margin-top: 0.3em; font-family: var(--font-type); font-weight: 400; font-size: 0.46em;
+  letter-spacing: 0.04em; text-transform: none; color: var(--paper-2);
+}
+.screen.ifc .ifc-item.ifc-actif .save-info { color: #fff1e6; }
+#menu.ifc .ifc-nav > .meta { margin: 0.7em 0 0 1.98em; max-width: 24em; font-family: var(--font-type); font-size: 0.9em; color: var(--paper-2); }
+
+/* ---------------------------------------------------------------- options -- */
+.ifc-opt-titre { margin: 8px 0 -4px; font-family: var(--font-type); color: var(--paper-2); font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; border-top: 1px solid var(--line); padding-top: 12px; }
+
+/* ------------------------------------------------- animations réduites -- */
+body.ifc-calme .screen.ifc, body.ifc-calme #menu.ifc .ifc-nav .actions .btn { animation: none; }
+body.ifc-calme .ifc-item::before, body.ifc-calme .ifc-item::after, body.ifc-calme .ms-card::before { transition: none !important; animation: none !important; }
+body.ifc-calme .ifc-couche { transition: none; }
+body.ifc-calme .title span { animation: none; }
+body.ifc-calme .screen *, body.ifc-calme .screen *::before, body.ifc-calme .screen *::after, body.ifc-calme #rankup, body.ifc-calme #rankup * {
+  animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important;
+}
+
+/* ------------------------------------------------------- fenêtres basses -- */
+/* fenêtre minimale du launcher (960 × 540, barre de titre comprise), avec Reprendre et Quitter */
+@media (max-height: 620px) {
+  #menu.ifc .ifc-menu { row-gap: 0.8em; padding-top: 1.4em; padding-bottom: 1.2em; }
+  #menu.ifc .ifc-rapport { max-height: calc(100vh - 2.6 * var(--ifc-u)); }
+  #menu.ifc .ifc-logo { font-size: 4.2em; }
+  #menu.ifc .ifc-item { padding-block: 0.28em 0.24em; }
+  #mapsel.ifc .ifc-sel { padding-top: 1.4em; padding-bottom: 1.2em; gap: 1.6em; }
+  .panel-screen.ifc .panel { padding: 1.2em 1.6em 1.1em; gap: 0.15em; }
+  .panel-screen.ifc .panel h2, #gameover.ifc .panel h2 { font-size: 3.2em; }
+  #gameover.ifc .go-stats { margin: 0.2em 0 0.4em; gap: 0.25em 1.2em; }
+  #gameover.ifc .go-stats dd { font-size: 1.25em; }
+  .panel-screen.ifc .panel .ifc-item { padding-block: 0.28em 0.24em; }
+}
+
+/* ------------------------------------------------------- fenêtres étroites -- */
+@media (max-width: 860px) {
+  #menu.ifc .ifc-menu { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tete" "nav" "rapport" "pied"; grid-template-rows: none; }
+  #menu.ifc .ifc-tete { grid-column: 1 / -1; }
+  #menu.ifc .ifc-rapport { display: block; max-height: none; }   /* record, briefing et consignes restent visibles */
+  #menu.ifc .ifc-nav .btn-narrow { display: block; }
+  #mapsel.ifc .ifc-sel { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .ifc-rail .ifc-logo-mini, .ifc-rail .ifc-liens { display: none; }   /* le rail ne garde que Retour */
+  .ifc-fiche-col { justify-self: stretch; width: 100%; }
+}

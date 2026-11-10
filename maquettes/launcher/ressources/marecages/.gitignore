@@ -1,0 +1,6 @@
+# originaux de la carte (capture, vidéos, affiches, chronologies, sons, maîtres, aperçu, et tout autre format à venir) :
+# toujours hors du dépôt, sauf ce README et ce fichier ; les copies livrées avec le launcher (publication autorisée par
+# Anthony le 2 novembre 2026) sont dans launcher/src/renderer/launcher/assets/marecages/ (scene-bete/vers-launcher.py)
+*
+!README.md
+!.gitignore

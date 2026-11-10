@@ -46,7 +46,7 @@ async function run(userData) {
   const app = await electron.launch({ executablePath: EXE, args, env: { ...process.env, ZS_USER_DATA: userData }, timeout: 60000 });
   try {
     const launcher = await app.firstWindow({ timeout: 30000 });
-    await launcher.waitForFunction(() => document.getElementById('status-title').textContent !== 'Ouverture du bunker…', null, { timeout: 60000 });
+    await launcher.waitForFunction(() => document.getElementById('status-title').textContent !== 'Ouverture du jeu…', null, { timeout: 60000 });
     const [mt] = await Promise.all([app.waitForEvent('window', { timeout: 60000 }), launcher.click('#btn-modtools')]);
     const errs = [];
     mt.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));

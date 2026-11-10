@@ -55,6 +55,8 @@ exec(open(os.path.join(HERE, 'hooks-gestes.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-glissade.py'), encoding='utf-8').read())
 # jeu 2.0.6 : HUD « portrait + points » (paquet hud-points)
 exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
+# refonte de l'interface du jeu (chantier interface) : menu vertical, sélection des cartes en trois zones
+exec(open(os.path.join(HERE, 'hooks-interface.py'), encoding='utf-8').read())
 # jeu 2.0.7 : voix enregistrées de l'annonceur des bonus (paquet annonceur-voix-B)
 exec(open(os.path.join(HERE, 'hooks-annonceur.py'), encoding='utf-8').read())
 # jeu 2.0.7 : musiques des manches (paquet musiques-manches-arrivee)

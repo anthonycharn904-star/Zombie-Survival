@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zombie Survival · Launcher · B · Launcher AAA moderne (maquette)</title>
+<!-- ressources -->
+<link rel="stylesheet" href="../commun/maquette.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="zsm-bureau">
+<main class="zsm-fenetre b" id="zsm-fenetre">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-accueil" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></symbol>
+    <symbol id="i-actus" viewBox="0 0 24 24"><rect x="3" y="4" width="15" height="16" rx="2"/><path d="M18 8h3v10a2 2 0 0 1-2 2"/><path d="M7 8h7M7 12h7M7 16h4"/></symbol>
+    <symbol id="i-maj" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 20v-4h-4"/></symbol>
+    <symbol id="i-installation" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></symbol>
+    <symbol id="i-modtools" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.5-.5-2.4z"/></symbol>
+    <symbol id="i-reglages" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-cloche" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+    <symbol id="i-jouer" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-dossier" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-fleche-g" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-fleche-d" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+  </svg>
+
+  <aside class="b-cote">
+    <div class="b-logo"><img data-img="icone" alt="" width="38" height="38"><div><b>Zombie Survival</b><span id="b-v-launcher">Launcher 1.3.3</span></div></div>
+    <nav class="b-nav" aria-label="Sections du launcher">
+      <button type="button" data-section="accueil"><svg><use href="#i-accueil"/></svg><span>Accueil</span></button>
+      <button type="button" data-section="actus"><svg><use href="#i-actus"/></svg><span>Actualités</span></button>
+      <button type="button" data-section="maj"><svg><use href="#i-maj"/></svg><span>Mises à jour</span><em class="b-point" id="b-point-maj" hidden></em></button>
+      <button type="button" data-section="installation"><svg><use href="#i-installation"/></svg><span>Installation</span></button>
+      <button type="button" data-section="modtools" id="b-nav-modtools"><svg><use href="#i-modtools"/></svg><span>Mod Tools</span><em class="b-puce">Auteur</em></button>
+      <button type="button" data-section="reglages"><svg><use href="#i-reglages"/></svg><span>Paramètres</span></button>
+    </nav>
+    <div class="b-etat-jeu" id="b-etat-jeu" data-ton="neutre">
+      <img data-img="icone" alt="" width="34" height="34">
+      <div><b id="b-ej-titre">Zombie Survival</b><span id="b-ej-detail">—</span></div>
+      <i class="b-led" aria-hidden="true"></i>
+    </div>
+  </aside>
+
+  <section class="b-principal">
+    <header class="b-haut">
+      <div class="b-fil"><span id="b-fil">Accueil</span></div>
+      <div class="b-badge" data-zsm-badge></div>
+      <button type="button" class="b-icone-btn" id="b-cloche" aria-label="Notifications"><svg><use href="#i-cloche"/></svg><em id="b-cloche-n" hidden>1</em></button>
+      <div class="b-fen">
+        <button class="b-fen-btn" type="button" aria-label="Réduire" data-sim="Réduire la fenêtre"><svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg></button>
+        <button class="b-fen-btn b-fermer" type="button" aria-label="Fermer" data-sim="Fermer le launcher"><svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button>
+      </div>
+    </header>
+    <div class="b-bandeau" id="b-bandeau" hidden><span><b>Nouveau launcher <span id="b-bandeau-v"></span></b> disponible (simulé) : il s'installe en quelques secondes et redémarre.</span><button type="button" id="b-bandeau-btn">Installer et redémarrer</button></div>
+
+    <div class="b-contenu" id="b-contenu">
+      <!-- Accueil -->
+      <section class="b-page b-accueil" data-page="accueil" aria-label="Accueil">
+        <div class="b-hero">
+          <div class="b-hero-img" id="b-hero-img"></div>
+          <div class="b-hero-voile"></div>
+          <div class="b-hero-texte">
+            <p class="b-puces"><span class="b-puce-rouge" id="b-hero-puce">Nouveau · Jeu 2.0.6</span><span id="b-hero-date">20 octobre 2026</span></p>
+            <h1 id="b-hero-titre">Khamsin se resserre, Anthony entre en scène</h1>
+            <p class="b-hero-desc" id="b-hero-desc"></p>
+            <div class="b-cta">
+              <button type="button" class="b-jouer" id="b-jouer"><i class="b-jouer-rempli" id="b-jouer-rempli"></i><svg><use href="#i-jouer"/></svg><span><b id="b-jouer-lib">Jouer</b><small id="b-jouer-sous">Jeu 2.0.6</small></span></button>
+              <button type="button" class="b-btn b-btn-verre" data-aller="maj">Notes de version</button>
+            </div>
+            <p class="b-statut" id="b-statut" data-ton="neutre"><i aria-hidden="true"></i><b id="b-st-titre"></b><span id="b-st-detail"></span><span class="b-st-liens" id="b-st-liens"></span></p>
+          </div>
+          <div class="b-carrousel" id="b-carrousel">
+            <button type="button" class="b-rond" id="b-prec" aria-label="Diapositive précédente"><svg><use href="#i-fleche-g"/></svg></button>
+            <div class="b-points" id="b-points"></div>
+            <button type="button" class="b-rond" id="b-suiv" aria-label="Diapositive suivante"><svg><use href="#i-fleche-d"/></svg></button>
+          </div>
+        </div>
+        <div class="b-rangee">
+          <div class="b-bloc b-bloc-actus">
+            <div class="b-bloc-tete"><h2>Actualités</h2><button type="button" class="b-lien" data-aller="actus">Tout voir</button></div>
+            <div class="b-mini-actus" id="b-mini-actus"></div>
+          </div>
+          <div class="b-bloc b-carte-inst">
+            <div class="b-bloc-tete"><h2>Votre installation</h2><button type="button" class="b-lien" data-aller="installation">Détails</button></div>
+            <dl class="b-mini-inst" id="b-mini-inst"></dl>
+          </div>
+        </div>
+      </section>
+
+      <!-- Actualités -->
+      <section class="b-page b-actus" data-page="actus" aria-label="Actualités" hidden>
+        <div class="b-page-tete"><div><h1>Actualités</h1><p>Communiqués publiés avec les mises à jour · contenus d'exemple</p></div>
+          <div class="b-filtres" id="b-filtres"></div></div>
+        <div class="b-grille-actus" id="b-grille-actus"></div>
+      </section>
+
+      <!-- Mises à jour -->
+      <section class="b-page b-maj" data-page="maj" aria-label="Mises à jour" hidden>
+        <div class="b-page-tete"><div><h1>Mises à jour</h1><p>Notes de version et historique de toutes les versions publiées</p></div></div>
+        <div class="b-maj-corps">
+          <div class="b-maj-gauche">
+            <div class="b-carte b-v-carte"><small>Version installée</small><b id="b-v-installee">2.0.6</b><span id="b-v-installee-sous"></span><em class="b-pilule" id="b-v-pilule">À jour</em>
+              <button type="button" class="b-btn" data-act="verifier">Vérifier maintenant</button></div>
+            <div class="b-carte b-v-carte b-v-dispo" id="b-v-dispo" hidden><small>Disponible</small><b id="b-v-distante"></b><span id="b-v-distante-sous"></span>
+              <button type="button" class="b-btn b-btn-rouge" data-act="mettreAJour">Mettre à jour</button></div>
+          </div>
+          <ol class="b-chrono" id="b-chrono"></ol>
+        </div>
+      </section>
+
+      <!-- Installation -->
+      <section class="b-page b-inst" data-page="installation" aria-label="Installation" hidden>
+        <div class="b-page-tete"><div><h1>Installation</h1><p>Le jeu installé sur ce PC</p></div></div>
+        <div class="b-chiffres" id="b-chiffres"></div>
+        <div class="b-inst-grille">
+          <div class="b-carte"><h3><svg><use href="#i-dossier"/></svg>Emplacement</h3><p class="b-chemin" id="b-chemin"></p>
+            <div class="b-boutons"><button type="button" class="b-btn" data-act="ouvrirDossier">Ouvrir le dossier</button><button type="button" class="b-btn b-btn-discret" data-act="ouvrirJournal">Journal</button></div></div>
+          <div class="b-carte"><h3><svg><use href="#i-bouclier"/></svg>Intégrité et signature</h3>
+            <p class="b-ok-ligne">Signature Ed25519 vérifiée · clé <b id="b-cle"></b></p><p class="b-petit" id="b-source-nom"></p>
+            <div class="b-boutons"><button type="button" class="b-btn" data-act="verifier">Vérifier maintenant</button><button type="button" class="b-btn b-btn-discret" data-act="reparer">Réparer le jeu</button></div></div>
+          <div class="b-carte"><h3><svg><use href="#i-maj"/></svg>Versions</h3><p id="b-versions-ligne"></p>
+            <div class="b-boutons"><button type="button" class="b-btn" data-act="revenir">Revenir à la <span id="b-precedente">2.0.4</span></button></div></div>
+        </div>
+      </section>
+
+      <!-- Mod Tools -->
+      <section class="b-page b-mod" data-page="modtools" aria-label="Mod Tools" hidden>
+        <div class="b-mod-hero">
+          <div class="b-mod-apercu" aria-hidden="true">
+            <svg viewBox="0 0 420 250"><rect x="0" y="0" width="420" height="250" rx="8" fill="#121315"/><rect x="0" y="0" width="420" height="22" rx="8" fill="#1d1f22"/>
+              <rect x="0" y="22" width="28" height="228" fill="#18191c"/><g fill="#2c2f33"><rect x="7" y="32" width="14" height="14" rx="3"/><rect x="7" y="54" width="14" height="14" rx="3"/><rect x="7" y="76" width="14" height="14" rx="3"/><rect x="7" y="98" width="14" height="14" rx="3"/></g>
+              <rect x="7" y="54" width="14" height="14" rx="3" fill="#e0262f"/>
+              <rect x="330" y="22" width="90" height="228" fill="#18191c"/><g fill="#2a2d31"><rect x="338" y="34" width="74" height="8" rx="2"/><rect x="338" y="50" width="56" height="8" rx="2"/><rect x="338" y="74" width="74" height="40" rx="4"/><rect x="338" y="124" width="74" height="8" rx="2"/><rect x="338" y="140" width="62" height="8" rx="2"/></g>
+              <g stroke="#26292d" stroke-width="1"><path d="M40 40h280M40 70h280M40 100h280M40 130h280M40 160h280M40 190h280M40 220h280M60 30v210M100 30v210M140 30v210M180 30v210M220 30v210M260 30v210M300 30v210"/></g>
+              <g fill="none" stroke="#e0262f" stroke-width="2.2"><path d="M70 60h90v40h40V60h90v130h-70v-40h-60v40H70z"/><path d="M160 100v50M200 100v50"/></g>
+              <circle cx="180" cy="125" r="9" fill="none" stroke="#f2efe9" stroke-dasharray="3 3"/><g fill="#f2efe9"><circle cx="92" cy="82" r="3"/><circle cx="270" cy="170" r="3"/></g></svg>
+          </div>
+          <div class="b-mod-texte">
+            <p class="b-puces"><span class="b-puce-rouge">Réservé à l'auteur</span><span>Interface 9 · moteur du jeu 2.0.6</span></p>
+            <h1>Mod Tools</h1>
+            <p>L'éditeur de cartes de Zombie Survival : plan et vue 3D, étages, bibliothèques de textures et de modèles, partie de test.</p>
+            <div class="b-cta"><button type="button" class="b-btn b-btn-rouge b-btn-grand" data-act="ouvrirModTools">Ouvrir les Mod Tools</button><button type="button" class="b-btn b-btn-verre" data-act="ouvrirPublication">Outil de publication</button></div>
+          </div>
+          <div class="b-verrou" id="b-verrou" hidden><svg><use href="#i-cadenas"/></svg><b>Réservé à l'auteur du jeu</b><span>Sa clé de publication n'est pas sur ce PC : les Mod Tools restent fermés.</span></div>
+        </div>
+        <div class="b-mod-cartes">
+          <div class="b-carte"><h3>Cartes intégrées</h3><p>Bunker 7 · Khamsin · Ombre éternelle, et les cartes faites à partir d'elles.</p></div>
+          <div class="b-carte"><h3>Bibliothèques</h3><p>Textures <code>gx_</code> et modèles <code>gm_</code> ; une carte qui les utilise demande le jeu 2.0.4 ou plus récent.</p></div>
+          <div class="b-carte"><h3>Partie de test</h3><p>Le bouton Test lance la carte dans le moteur du jeu livré avec le launcher.</p></div>
+        </div>
+      </section>
+
+      <!-- Paramètres -->
+      <section class="b-page b-regl" data-page="reglages" aria-label="Paramètres" hidden>
+        <div class="b-page-tete"><div><h1>Paramètres</h1><p>Simulés : rien n'est enregistré</p></div></div>
+        <div class="b-regl-grille">
+          <div class="b-carte"><h3>Partie</h3>
+            <label class="b-inter"><span>Lancer le jeu en plein écran<small>F11 ou Alt+Entrée pour basculer en partie</small></span><input type="checkbox" data-reglage="fullscreen"><i aria-hidden="true"></i></label>
+            <label class="b-inter"><span>Garder le launcher ouvert pendant la partie<small>Sinon, il se réduit et revient à la fin</small></span><input type="checkbox" data-reglage="keepLauncherOpen"><i aria-hidden="true"></i></label></div>
+          <div class="b-carte"><h3>Mises à jour</h3>
+            <label class="b-inter"><span>Rechercher au démarrage et au retour d'une partie</span><input type="checkbox" data-reglage="autoCheck"><i aria-hidden="true"></i></label>
+            <label class="b-inter"><span>Installer automatiquement<small>Jeu et launcher</small></span><input type="checkbox" data-reglage="autoInstall"><i aria-hidden="true"></i></label></div>
+          <div class="b-carte b-large"><h3>Source des mises à jour</h3><p class="b-chemin" id="b-source"></p>
+            <p class="b-petit">Clé de confiance <b id="b-cle-2"></b> · chaque version est signée par l'auteur ; un fichier dont la signature ne correspond pas est refusé.</p></div>
+          <div class="b-carte b-large"><h3>Dépannage</h3><div class="b-boutons">
+            <button type="button" class="b-btn" data-act="reparer">Réparer le jeu</button><button type="button" class="b-btn" data-act="revenir">Revenir à la version précédente</button>
+            <button type="button" class="b-btn b-btn-discret" data-act="ouvrirDossier">Dossier du jeu</button><button type="button" class="b-btn b-btn-discret" data-act="ouvrirJournal">Journal</button></div></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="b-dl" id="b-dl" hidden>
+      <div class="b-dl-titre"><b id="b-dl-titre"></b><span id="b-dl-detail"></span></div>
+      <div class="b-dl-barre"><i id="b-dl-rempli"></i></div>
+      <svg class="b-dl-courbe" id="b-dl-courbe" viewBox="0 0 120 32" preserveAspectRatio="none"><polyline id="b-dl-poly" points=""/></svg>
+      <b class="b-dl-pct" id="b-dl-pct"></b>
+      <button type="button" class="b-btn b-btn-discret" id="b-dl-annuler">Annuler</button>
+    </div>
+  </section>
+
+  <aside class="b-lecture" id="b-lecture" hidden aria-label="Lecture d'une actualité">
+    <button type="button" class="b-icone-btn b-lecture-fermer" id="b-lecture-fermer" aria-label="Fermer">×</button>
+    <div id="b-lecture-corps"></div>
+  </aside>
+  <div class="b-toasts" data-zsm-toasts></div>
+  <div class="b-splash" id="b-splash" aria-hidden="true"><img data-img="icone" alt="" width="72" height="72"><b>Zombie Survival</b><i></i><span>Ouverture du bunker…</span></div>
+</main>
+</div>
+<script src="../commun/donnees.js"></script>
+<script src="../commun/maquette.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

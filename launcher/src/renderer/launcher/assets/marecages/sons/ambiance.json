@@ -1,0 +1,119 @@
+{
+ "origine": "sons calculés par le jeu du kit 2.0.7 (pluie, orage), exportés par maquettes/launcher/scene-bete/exporter-sons.js",
+ "autorisation": "export : Anthony, 31 octobre 2026 ; publication dans le launcher : Anthony, 2 novembre 2026",
+ "source": {
+  "kit": "Zombie Survival 2.0.7 - a publier (Stryges)",
+  "fichiers": {
+   "ma17_pluie.js": "de371d7332dd41c9647ba5f96cb623f54142e549eb3c20672e72f410ca86783c",
+   "ma18_orage.js": "7e49015eda40e081234e0a45320427f2bc8ff16eefc2271eabe43a5cc95d93e6"
+  },
+  "blocs": {
+   "pluie": "d51d8438179124a305ae9774efe2b697587f7c25ba31fc585bbd1b52e968e325",
+   "eclair": "6ba984d3deab801b63d256d3382e75ec2b147eea66cd5d3df43b7984f8cb4975",
+   "tonnerre": "b27ccbb8e7332f7a7c11047e29df23f539f6832596b40415b3c63aa95d84815c"
+  }
+ },
+ "fs": 48000,
+ "sons": {
+  "pluie-eau": {
+   "echantillons": 350400,
+   "echelle": 1.038585,
+   "boucle": {
+    "debut": 2400,
+    "longueur": 350400
+   },
+   "kJeu": 0.9
+  },
+  "pluie-bois": {
+   "echantillons": 292800,
+   "echelle": 1.038307,
+   "boucle": {
+    "debut": 2400,
+    "longueur": 292800
+   },
+   "kJeu": 1
+  },
+  "pluie-feuillage": {
+   "echantillons": 283200,
+   "echelle": 1,
+   "boucle": {
+    "debut": 2400,
+    "longueur": 283200
+   },
+   "kJeu": 0.55
+  },
+  "pluie-lointain": {
+   "echantillons": 427200,
+   "echelle": 1,
+   "boucle": {
+    "debut": 2400,
+    "longueur": 427200
+   },
+   "kJeu": 0.75
+  },
+  "orage-reverberation": {
+   "echantillons": 216000,
+   "echelle": 1
+  },
+  "tonnerre-sol-450": {
+   "echantillons": 531274,
+   "echelle": 3.954005,
+   "t0": 1.193,
+   "niveauJeu": 0.13935,
+   "medium_dB": 4,
+   "envoiReverb": 0.8,
+   "type": "sol",
+   "distance": 450
+  },
+  "tonnerre-sol-900": {
+   "echantillons": 521043,
+   "echelle": 3.845777,
+   "t0": 2.529,
+   "niveauJeu": 0.1,
+   "medium_dB": 1.5,
+   "envoiReverb": 0.8,
+   "type": "sol",
+   "distance": 900
+  },
+  "tonnerre-sol-1700": {
+   "echantillons": 715622,
+   "echelle": 3.909974,
+   "t0": 4.878,
+   "niveauJeu": 0.06359,
+   "medium_dB": 1.5,
+   "envoiReverb": 0.8,
+   "type": "sol",
+   "distance": 1700
+  },
+  "tonnerre-sol-3000": {
+   "echantillons": 615490,
+   "echelle": 3.788232,
+   "t0": 8.642,
+   "niveauJeu": 0.03816,
+   "medium_dB": 1.5,
+   "envoiReverb": 0.8,
+   "type": "sol",
+   "distance": 3000
+  },
+  "tonnerre-nuages-2000": {
+   "echantillons": 278553,
+   "echelle": 3.739681,
+   "t0": 9.131,
+   "niveauJeu": 0.05545,
+   "medium_dB": 1.5,
+   "envoiReverb": 0.8,
+   "type": "nuages",
+   "distance": 2000
+  },
+  "tonnerre-nuages-3500": {
+   "echantillons": 382267,
+   "echelle": 3.24477,
+   "t0": 10.199,
+   "niveauJeu": 0.03277,
+   "medium_dB": 1.5,
+   "envoiReverb": 0.8,
+   "type": "nuages",
+   "distance": 3500
+  }
+ }
+}
