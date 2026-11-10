@@ -138,7 +138,9 @@ for p in sorted(glob.glob(os.path.join(ENG, 'src', '*.js'))):
 
 # le jeu 1.9.0 et les fichiers d'accroche, un par un (comme build.py), pour dater un motif du jeu de base
 raw190 = subprocess.run(['git', '-C', REPO, 'show', '69fe3cc:game/zombie-survival.html'], capture_output=True, check=True).stdout.decode('utf-8')
-env = {'s': raw190}
+env = {'s': raw190, 'os': os, 'sys': sys, 'glob': glob, 'subprocess': subprocess,   # comme build.py : des fichiers d'accroche
+       'HERE': os.path.join(ENG, 'tools'), 'KH': ENG, 'REPO': REPO,                    # s'en servent (hooks-interface.py : os)
+       'GAME': os.path.join(REPO, 'game', 'zombie-survival.html')}
 def _rep(old, new, count=1):
     if env['s'].count(old) != count:
         sys.exit(f'accroche introuvable en rejouant les fichiers d\'accroche : {old[:80]!r}')

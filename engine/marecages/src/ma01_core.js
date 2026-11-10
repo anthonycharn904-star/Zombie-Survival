@@ -1,5 +1,5 @@
 
-/* ================================================================== 21 LES MARÉCAGES MAUDITS ==
+/* ================================================================== 42 LES MARÉCAGES MAUDITS ==
    Quatrième carte intégrée (kit MM 2.1.0) : un marais immense, noyé de brume, la nuit. Cinq îles
    proches (traversées de 15 à 30 s en barque à moteur), des hauts-fonds où l'on patauge, des
    chenaux profonds, et ce qui vit dedans : la Mère-Vase (mere-vase.js, inséré avant le jeu).

@@ -196,9 +196,9 @@ PATCHES += [
  ('fireWeapon bruit',
   "  muzzleFlash(def, s.up);\n  const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;\n  const mw = muzzleWorld();\n",
   "  muzzleFlash(def, s.up);\n  const ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;\n  const mw = muzzleWorld();\n  if (OW.on && OW.worldId === 'marais') maNoise(ox, oz, 'shot');   // kit MM 2.1.0 : la bête entend les coups de feu\n"),
- ('hitscan let',
-  "  const wallT = RAY.t, wallHit = RAY.hit, wallSand = OW.on && RAY.hit && RAY.type >= 16;\n",
-  "  let wallT = RAY.t, wallHit = RAY.hit, wallSand = OW.on && RAY.hit && RAY.type >= 16;\n"),
+ ('hitscan let',                                     # motif raccourci le 10 novembre 2026 : Bunker 7 (hooks-visionnaire.py) change la fin de la ligne
+  "  const wallT = RAY.t, wallHit = RAY.hit, ",
+  "  let wallT = RAY.t, wallHit = RAY.hit, "),
  ('hitscan eau bête',
   "  const wx = RAY.x, wy = RAY.y, wz = RAY.z, wnx = RAY.nx, wny = RAY.ny, wnz = RAY.nz;\n  _hits.length = 0;\n",
   "  const wx = RAY.x, wy = RAY.y, wz = RAY.z, wnx = RAY.nx, wny = RAY.ny, wnz = RAY.nz;\n"
@@ -231,11 +231,10 @@ PATCHES += [
  ('grenade dans l’eau',
   "    g.vy -= GRAV.feel * dt;\n    const sp = Math.hypot(g.vx, g.vy, g.vz);\n",
   "    g.vy -= GRAV.feel * dt;\n    if (OW.on && OW.worldId === 'marais') maNadeWater(g, dt);   // kit MM 2.1.0 : elle plonge et coule\n    const sp = Math.hypot(g.vx, g.vy, g.vz);\n"),
- ('explode marais',
-  "function explode(x, y, z, radius, damage, opts = {}) {\n  const big = clamp(radius / 4.5, 0.4, 1.6);\n",
+ ('explode marais',                                  # motif raccourci le 10 novembre 2026 : Bunker 7 (hooks-camion.py, hooks-caisses.py) ajoute deux lignes en tête
+  "function explode(x, y, z, radius, damage, opts = {}) {\n",
   "function explode(x, y, z, radius, damage, opts = {}) {\n"
-  "  if (OW.on && OW.worldId === 'marais') { const w = maExplodeWater(x, y, z, radius, damage, opts); if (w >= 0) return w; }   // kit MM 2.1.0 : la bête ; sous l'eau, une gerbe\n"
-  "  const big = clamp(radius / 4.5, 0.4, 1.6);\n"),
+  "  if (OW.on && OW.worldId === 'marais') { const w = maExplodeWater(x, y, z, radius, damage, opts); if (w >= 0) return w; }   // kit MM 2.1.0 : la bête ; sous l'eau, une gerbe\n"),
  ('window.ZS marais',
   "window.ZS = {\n  version: GAME_VERSION, editorApi: EDITOR_API, build: GAME_BUILD, ready: false,\n",
   "window.ZS = {\n  marais: MA_API,                                       // kit MM 2.1.0 : crochets du marais (quêtes à venir), réglages de la bête\n  version: GAME_VERSION, editorApi: EDITOR_API, build: GAME_BUILD, ready: false,\n"),

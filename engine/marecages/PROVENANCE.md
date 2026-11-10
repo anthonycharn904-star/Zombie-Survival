@@ -23,7 +23,7 @@ hors du dépôt.
 | `orig/mere-vase-audio.js` | `sources/src/mere-vase-audio.js` | `dd3029a98d2209f1…` | `dd3029a98d2209f1…` | identique (inséré tel quel, empreinte contrôlée par etape.py) |
 | `orig/barque.js` | `sources/src/barque.js` | `d43c95f6786b6ebf…` | `d43c95f6786b6ebf…` | identique (inséré tel quel, empreinte contrôlée par etape.py) |
 | `src/ma00_confort.js` | — (nouveau) | — | `ff2b470232a0dcd4…` | écrit pour l'intégration (confort : secousses, flashs) |
-| `src/ma01_core.js` | `sources/src/ma/ma01_core.js` | `73e731fe87df7056…` | `dd34ac09433c0b14…` | réétiqueté |
+| `src/ma01_core.js` | `sources/src/ma/ma01_core.js` | `73e731fe87df7056…` | `4fc0234878915823…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma02_view.js` | `sources/src/ma/ma02_view.js` | `0149b2b37343a57a…` | `051c46bee47eae1b…` | réétiqueté |
 | `src/ma03_water.js` | `sources/src/ma/ma03_water.js` | `b6dd048face7ace2…` | `8be25ed4524be3e4…` | réétiqueté |
 | `src/ma04_load.js` | `sources/src/ma/ma04_load.js` | `9b0e4ee560b057d0…` | `82ec1efc2ab547b3…` | réétiqueté et adapté (diff : outils/comparer.py) |
@@ -42,7 +42,7 @@ hors du dépôt.
 | `src/ma17_pluie.js` | `sources/src/ma/ma17_pluie.js` | `de371d7332dd41c9…` | `63c9f33e4e906e44…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma18_orage.js` | `sources/src/ma/ma18_orage.js` | `03a937fbc613b854…` | `c343a941690fcd6a…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma19_arrivee.js` | `sources/src/ma/ma19_arrivee.js` | `eb52778d0d6ff6f6…` | `acf76a7365d8dd72…` | réétiqueté et adapté (diff : outils/comparer.py) |
-| `retouches/kit.py` | `sources/tools/patches.py` | `80334a5342d1a014…` | `f60154b7dd77125e…` | GAME_VERSION retirée, réétiqueté, adapté (2 retouches) |
+| `retouches/kit.py` | `sources/tools/patches.py` | `80334a5342d1a014…` | `0c2d8cec558353b0…` | GAME_VERSION retirée, réétiqueté, adapté (2 retouches) |
 | `retouches/confort.py` | — (nouveau) | — | `347a055028208d69…` | écrit pour l'intégration : secousses du jeu de base coupées dans le marais (décision du 2 novembre 2026) |
 | `retouches/controle.py` | — | — | `306ef83d7da5cd90…` | calculé par outils/generer-retouches.py |
 

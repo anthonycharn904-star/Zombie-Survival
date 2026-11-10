@@ -28,6 +28,12 @@ remettre une ligne « * » : Git ignore alors les fichiers non suivis du dossier
 - Textes de `MARAIS` repris par le launcher 1.4.0 (session Interface, 2 novembre 2026) : `eyebrow`, `name`, `description`,
   `dev: true` (« en développement »), et une légende sur la Mère-Vase et les Noyés. Si l'un d'eux change, prévenir la
   session Interface (ou Claude 5).
+- Noms du marais lus par « Sauvegarder et quitter » (session 5, `engine/src/S2-sauvegarde.js`, 3 novembre 2026) :
+  `maSerialize`, `maRestore`, `MA_SWIM.on`, `MAB.on`, `MAB.state` (sauvegarde permise en `dormant` et `rode`),
+  `MA_BOSS.on`, `G.dogRound` (manche des Stryges). Ne pas les renommer sans prévenir Claude 5.
+- 10 novembre 2026 (fusion d'essai de Claude 5 avec Bunker 7) : motifs `hitscan let` et `explode marais` raccourcis ;
+  section du marais passée de 21 à 42 (décision d'Anthony : la 21 est au boss de Bunker 7) ; `generer-retouches.py`
+  donne aux fichiers d'accroche l'environnement de `build.py` (`os`, `HERE`…), dont `hooks-interface.py` se sert.
 
 ## Contenu
 
@@ -213,7 +219,8 @@ compris.
 2. Comparer le code actuel avec la version validée : `git show 3667acd:engine/src/<module>`, ou le jeu 1.9.0 pour le jeu de
    base.
 3. Reprendre le motif dans `retouches/kit.py`. Le motif doit être le plus court possible, unique, et rester dans la même
-   déclaration. Exemple : `damageZombie stryges`, raccourci le 1er novembre pour Bunker 7.
+   déclaration. Exemples : `damageZombie stryges`, raccourci le 1er novembre pour Bunker 7 ; `hitscan let` et
+   `explode marais`, raccourcis le 10 novembre pour Bunker 7.
 4. Relancer `python3 engine/marecages/outils/generer-retouches.py <kit>`. Il garde `kit.py` et recalcule les contrôles.
 5. Reconstruire, relancer les essais légers, puis l'essai de bout en bout du marais.
 6. Ne jamais modifier le fichier d'une autre session. Si une retouche doit changer de nature, l'écrire à Claude 5.
