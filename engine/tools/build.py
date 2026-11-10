@@ -55,6 +55,7 @@ exec(open(os.path.join(HERE, 'hooks-gestes.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-glissade.py'), encoding='utf-8').read())
 # jeu 2.0.6 : HUD « portrait + points » (paquet hud-points)
 exec(open(os.path.join(HERE, 'hooks-points.py'), encoding='utf-8').read())
+
 # jeu 2.0.7 : le boss de Bunker 7, « Le Dernier Pacte » (paquet boss-bunker7 ; suivi : SUIVI-BOSS-B7.md)
 exec(open(os.path.join(HERE, 'hooks-boss-b7.py'), encoding='utf-8').read())
 # jeu 2.0.7 : débris payants des cartes en grille, amas de rochers que l'on fait sauter (module HD-debris.js)
@@ -69,6 +70,8 @@ exec(open(os.path.join(HERE, 'hooks-camion.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-ampoules.py'), encoding='utf-8').read())
 # jeu 2.0.7 : caisses toxiques de Bunker 7, easter egg secondaire (HJ-caisses.js)
 exec(open(os.path.join(HERE, 'hooks-caisses.py'), encoding='utf-8').read())
+# jeu 2.0.7 : têtes de zombie au béret de Bunker 7, easter egg secondaire (HK-tetes.js)
+exec(open(os.path.join(HERE, 'hooks-tetes.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))
@@ -145,6 +148,26 @@ ins_before('<script>/* GLTFLoader de three.js r128',
            + hp['LICENCE-Teko-OFL.txt'] + '-->\n'
            + '<script>/* jeu 2.0.6 : engine/orig/hud-points/hud-points.js, inséré tel quel par engine/tools/build.py */\n'
            + hp['hud-points.js'] + '</script>\n')
+
+# jeu 2.0.7 : la tête de zombie au béret d'Anthony (orig/tete-beret/, archive Zombie_Survival_Tete_Zombie_Beret_3D.zip du
+# 9 novembre 2026), version allégée, insérée telle quelle en base64 (le jeu est un seul fichier), empreinte contrôlée ;
+# son LISEZ_MOI recopié en commentaire. Branchement : src/HK-tetes.js (cinquième easter egg secondaire de Bunker 7).
+TETE = [('Zombie_Beret_Head_LOD.glb', 'fbdac7a56911fbceef1f764be8631819c7f3b69cfcdedca6ad0f4dd66460f610'),
+        ('LISEZ_MOI_Zombie_Beret.txt', '2efd9489d89b7f9a5993ffa612e96393f4732326b9b41303f64a97dae59cbeda')]
+tete = {}
+for name, sha in TETE:
+    raw = open(os.path.join(KH, 'orig', 'tete-beret', name), 'rb').read()
+    if hashlib.sha256(raw).hexdigest() != sha:
+        sys.exit(f'fichier de la tête au béret inattendu (empreinte) : orig/tete-beret/{name}')
+    tete[name] = raw
+import base64 as _b64
+_lisez = tete['LISEZ_MOI_Zombie_Beret.txt'].decode('utf-8')
+if '*/' in _lisez:
+    sys.exit('orig/tete-beret : fin de commentaire dans le LISEZ_MOI')
+ins_before('<script>/* GLTFLoader de three.js r128',
+           '<script>/* jeu 2.0.7 : engine/orig/tete-beret/Zombie_Beret_Head_LOD.glb (tête de zombie au béret d\'Anthony), insérée telle quelle '
+           'en base64 par engine/tools/build.py ; son LISEZ_MOI :\n' + _lisez + '*/\n'
+           'window.TETE_BERET_GLB = "' + _b64.b64encode(tete['Zombie_Beret_Head_LOD.glb']).decode('ascii') + '";</script>\n')
 
 # jeu 2.0.7 : le boss de Bunker 7, « Le Dernier Pacte » (paquet d'Anthony, gardé tel quel dans boss-bunker7/le-dernier-pacte/ :
 # la référence et le lieu de ses tests). Ses modules entrent tels quels, chacun dans son <script>, dans l'ordre de son

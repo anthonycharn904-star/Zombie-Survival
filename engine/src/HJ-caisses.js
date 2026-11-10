@@ -94,6 +94,8 @@ function cxRemettre() {
   for (const [z] of CX.toxiques) if (typeof b7IrrFin === 'function') b7IrrFin(z);
   CX.toxiques.clear();
   cxLueurs();
+  if (CX.debris) { for (const m of CX.debris.children.slice()) CX.debris.remove(m); }   // planches de la partie d'avant
+  CX.eclats = [];
   CX.nuages.length = 0;
   if (CX.pool) for (const p of CX.pool.L) { p.life = 0; p.s.visible = false; }
   CX.fait = false; CX.choisies = [];
@@ -194,10 +196,7 @@ function cxCasser(c) {
   solidTop[c.k] = 0.95;                         // il ne reste que la grande caisse
   cxSonBois(c.x, c.y, c.z, true);
   cxSonGaz(c.x, c.y, c.z);
-  for (let i = 0; i < 10; i++) {
-    const a = rand(0, TAU), v = rand(1.5, 4.5);
-    spawnDebris(MAT.board, rand(0.05, 0.1), rand(0.02, 0.04), rand(0.3, 0.6), c.x + rand(-0.2, 0.2), c.y + rand(-0.2, 0.2), c.z + rand(-0.2, 0.2), Math.cos(a) * v, rand(2, 5), Math.sin(a) * v, rand(2.5, 4));
-  }
+  cxEclats(c);                                 // les planches tombent et restent (sur la grande caisse ou au sol)
   for (let i = 0; i < 16; i++) FX.dirt.emit(c.x, c.y, c.z, rand(-2.5, 2.5), rand(1, 4), rand(-2.5, 2.5), rand(0.4, 0.9));
   CX.nuages.push({ x: c.x, y: c.y - 0.3, z: c.z, gy: c.y - 1.28, t: 0, tic: 0, puffT: 0 });
   for (let i = 0; i < 6; i++) cxPuff(CX.nuages[CX.nuages.length - 1], true);
@@ -240,6 +239,7 @@ function cxPuff(n, fort) {
 }
 /* Chaque image (updateFeatures) : nuages (fumée, dégâts au joueur, zombies qui deviennent toxiques), fin du poison. */
 function cxMaj(dt) {
+  if (CX.eclats.length) cxEclatsMaj(dt);
   for (let i = CX.nuages.length - 1; i >= 0; i--) {
     const n = CX.nuages[i];
     n.t += dt;
@@ -324,4 +324,52 @@ function cxLueurs() {
   const pts = B7E.irrPts, dehors = CX.toxiques.size > 0 && !(typeof B7 === 'object' && B7.actif) && World.root && World.root.visible;
   if (dehors && pts.parent !== scene) scene.add(pts);
   else if (!dehors && pts.parent !== B7E.gS) B7E.gS.add(pts);
+}
+
+/* ------------------------------------------------------------------ Débris qui restent --- */
+/* La caisse cassée : ses planches (bois de la caisse : MAT.board, sans couleurs de sommets, déjà compilée) volent, tombent
+   et restent, sur la grande caisse ou au sol autour, jusqu'à la partie suivante (demande d'Anthony du 9 novembre : « il
+   faut que ça ressemble à la réalité »). Deux tasseaux du cadre, des planches entières et cassées, des éclats. */
+function cxEclats(c) {
+  if (!CX.debris) { CX.debris = new THREE.Group(); CX.debris.name = 'caisses-debris'; }
+  if (CX.debris.parent !== (World.root || scene)) (World.root || scene).add(CX.debris);
+  const k0 = c.k % GN, ccx = (k0 % GW) + 0.5, ccz = ((k0 / GW) | 0) + 0.5, E = LVY[c.li];
+  const tailles = [[0.66, 0.05, 0.05], [0.66, 0.05, 0.05], [0.6, 0.05, 0.05], [0.64, 0.025, 0.12], [0.64, 0.025, 0.12], [0.62, 0.025, 0.12], [0.5, 0.025, 0.12],
+    [0.45, 0.025, 0.12], [0.38, 0.025, 0.12], [0.3, 0.025, 0.1], [0.24, 0.025, 0.11], [0.2, 0.02, 0.06], [0.16, 0.02, 0.07], [0.14, 0.02, 0.05],
+    [0.12, 0.02, 0.04], [0.1, 0.02, 0.05], [0.08, 0.015, 0.03], [0.07, 0.015, 0.04]];
+  for (const [L, h, w] of tailles) {
+    const m = new THREE.Mesh(GEO.box, MAT.board);
+    m.scale.set(w, h, L);                        // la longueur le long de z
+    m.position.set(c.x + rand(-0.2, 0.2), c.y + rand(-0.15, 0.25), c.z + rand(-0.2, 0.2));
+    m.rotation.set(rand(0, TAU), rand(0, TAU), rand(0, TAU));
+    if (NL > 1) m.userData.lv = LV[c.li];
+    CX.debris.add(m);
+    const a = rand(0, TAU), v = rand(0.25, 1.5);   // la plupart retombent sur la grande caisse ou à son pied
+    CX.eclats.push({ m, vx: Math.cos(a) * v, vy: rand(1, 2.8), vz: Math.sin(a) * v, ax: rand(-9, 9), ay: rand(-6, 6), az: rand(-9, 9), pose: false, h, ccx, ccz, E, li: c.li });
+  }
+}
+CX.eclats = [];
+/* Chaque image : les planches en vol ; posées à plat (un peu de travers), elles ne bougent plus. */
+function cxEclatsMaj(dt) {
+  for (const e of CX.eclats) {
+    if (e.pose) continue;
+    const m = e.m, p = m.position;
+    e.vy -= 9.8 * GRAV.k * dt;
+    let nx = p.x + e.vx * dt, nz = p.z + e.vz * dt;
+    // un mur, une fenêtre, une porte fermée : la planche rebondit
+    // une caisse (grande, ou surmontée d'une petite entière) : seulement par-dessus
+    const ok = (x, z) => { const cx = Math.floor(x), cz = Math.floor(z); if (!inb(cx, cz)) return false; const k = node(e.li, cx, cz); return walkNode(k) || (grid[k] === T.CRATE && p.y - e.h / 2 >= e.E + solidTop[k] - 0.02); };
+    if (!ok(nx, p.z)) { e.vx *= -0.3; nx = p.x; }
+    if (!ok(p.x, nz)) { e.vz *= -0.3; nz = p.z; }
+    p.x = nx; p.z = nz; p.y += e.vy * dt;
+    m.rotation.x += e.ax * dt; m.rotation.y += e.ay * dt; m.rotation.z += e.az * dt;
+    // appui : le dessus de la grande caisse (dans sa case), sinon le sol
+    const cx = Math.floor(p.x), cz = Math.floor(p.z), k = inb(cx, cz) ? node(e.li, cx, cz) : -1;
+    const sol = e.E + (k >= 0 && grid[k] === T.CRATE ? solidTop[k] : 0) + e.h / 2;
+    if (p.y <= sol) {
+      p.y = sol;
+      if (e.vy < -2.5) { e.vy = -e.vy * 0.25; e.vx *= 0.5; e.vz *= 0.5; e.ax *= 0.4; e.az *= 0.4; }
+      else { e.pose = true; m.rotation.set(rand(-0.06, 0.06), m.rotation.y, rand(-0.06, 0.06)); }
+    }
+  }
 }

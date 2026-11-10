@@ -76,6 +76,11 @@ const USER = path.join(TMP, 'joueur');
       const c0 = CX.choisies[0];
       Q.pres(c0); let n = 0; while (!c0.cassee && n < 6) { Q.tir(c0); n++; }
       ok(c0.cassee && n === 3 && !c0.mesh.visible && Math.abs(solidTop[c0.k] - 0.95) < 1e-3 && CX.nuages.length === 1, `M1911 : la caisse casse en ${n} balles ; il reste la grande caisse ; un nuage`);
+      // les planches de la caisse : elles tombent et restent (sur la grande caisse ou au sol)
+      Q.pas(60 * 3);
+      const pl = CX.eclats, E0 = LVY[c0.li];
+      ok(pl.length >= 10 && pl.every((e) => e.pose && e.m.visible && e.m.parent && e.m.position.y >= E0 && e.m.position.y <= E0 + 1.0),
+        `${pl.length} planches et éclats posés (sur la grande caisse ou au sol), qui restent`, pl.map((e) => +e.m.position.y.toFixed(2)));
       // le nuage : faibles dégâts au joueur, sans secousse
       const nu = CX.nuages[0];
       G.god = false; player.hp = player.maxHp; placePlayer(nu.x + 0.4, nu.z + 0.3);
@@ -108,11 +113,15 @@ const USER = path.join(TMP, 'joueur');
       // couteau, en diagonale : sans zombie, la lame arrive dans le vide (onMiss du module, sans sang) et casse la caisse
       const c1 = CX.choisies[1];
       Q.pres(c1, 1.25, true); Q.pas(2);
+      const cassees0 = CX.choisies.filter((c) => c.cassee).length;
       const cible = knifeChoose('contact', null);
       if (!cible) cxCouteauVide();
-      ok(!cible && c1.cassee, 'couteau (en diagonale) : pas de cible de chair, la caisse casse d’un coup');
+      const parCouteau = CX.choisies.filter((c) => c.cassee).length === cassees0 + 1;   // la caisse visée, ou une voisine plus proche dans l'axe
+      const k1 = c1.k % GN, dd = Math.hypot(c1.x - player.pos.x, c1.z - player.pos.z);
+      ok(!cible && parCouteau, 'couteau (en diagonale) : pas de cible de chair, la caisse devant le joueur casse d’un coup',
+        { cible: !!cible, d: +dd.toFixed(2), cone: +(((c1.x - player.pos.x) * -Math.sin(player.yaw) + (c1.z - player.pos.z) * -Math.cos(player.yaw)) / dd).toFixed(2), vue: cxVue(c1, camera.position.x, camera.position.y, camera.position.z), case: [(k1 % GW), (k1 / GW) | 0], joueur: [+player.pos.x.toFixed(2), +player.pos.z.toFixed(2)], cam: +camera.position.y.toFixed(2) });
       // explosion
-      const c2 = CX.choisies[2];
+      const c2 = CX.choisies.find((c) => !c.cassee);
       Q.pres(c2, 1.3, true); Q.pas(1);
       explode(player.pos.x, 0.15, player.pos.z, 1.7, 500, { src: 'grenade' });   // une grenade au sol, en diagonale, à 1,3 m (petit rayon)
       ok(c2.cassee, 'grenade au sol, en diagonale : la caisse casse');
@@ -135,8 +144,8 @@ const USER = path.join(TMP, 'joueur');
       ok(sh === 0 && Q.lampes() === Q.l0, 'ni secousse ni lampe ajoutée');
       renderEnabled = true; render(); renderEnabled = false;
       Q.partie(); Q.pas(3);
-      ok(!CX.fait && CX.liste.every((c) => !c.cassee && c.mesh.visible && Math.abs(solidTop[c.k] - 1.6) < 1e-3) && CX.choisies.length === 4 && CX.nuages.length === 0 && CX.toxiques.size === 0,
-        'nouvelle partie : caisses entières, quatre nouveaux logos, plus de nuage ni de zombie toxique');
+      ok(!CX.fait && CX.eclats.length === 0 && CX.debris.children.length === 0 && CX.liste.every((c) => !c.cassee && c.mesh.visible && Math.abs(solidTop[c.k] - 1.6) < 1e-3) && CX.choisies.length === 4 && CX.nuages.length === 0 && CX.toxiques.size === 0,
+        'nouvelle partie : caisses entières, quatre nouveaux logos, plus de planches, de nuage ni de zombie toxique');
       renderEnabled = true; render(); renderEnabled = false;
       return out;
     })).forEach(report);

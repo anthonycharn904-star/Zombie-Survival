@@ -1,0 +1,64 @@
+ZOMBIE SURVIVAL — TÊTE DE ZOMBIE AU BÉRET
+=======================================
+
+CONTENU
+-------
+Zombie_Beret_Head.glb             Modèle détaillé (54 540 triangles, ~1,1 Mo)
+Zombie_Beret_Head_LOD.glb         Version allégée (22 500 triangles, ~0,47 Mo)
+Zombie_Beret_Head_preview.png     Aperçu 3/4
+Zombie_Beret_Head_front.png       Aperçu de face
+visualiser_zombie.html           Visionneuse 3D : ouvrir dans un navigateur et sélectionner le GLB
+build_zombie_beret.py            Script Python de génération, pour le modifier
+build_zombie_beret_LOD.py        Script Python pour la version allégée
+
+SPÉCIFICATIONS
+--------------
+Format : glTF binaire 2.0 (.glb), utilisable sous Three.js et Blender.
+Orientation : +Y en haut, le visage regarde vers +Z.
+Dimensions approximatives : 0,237 x 0,403 x 0,240 m (largeur x hauteur x profondeur).
+Origine : proche de la base du cou, pratique pour fixer sur un corps.
+Couleurs : couleurs par sommet intégrées dans le GLB (aucun fichier texture requis).
+Parties : 17 objets nommés (peau, yeux, dents, béret, insigne, etc.).
+Le modèle est statique : SANS squelette, animation ni shape keys.
+Style : zombie stylisé horrifique, pas un scan photoréaliste.
+
+EXEMPLE D'INTÉGRATION THREE.JS
+-----------------------------
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const loader = new GLTFLoader();
+loader.load('/assets/models/Zombie_Beret_Head_LOD.glb', (gltf) => {
+  const tete = gltf.scene;
+  tete.traverse(obj => {
+    if (obj.isMesh) {
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+  // Privilégiez de l'attacher à l'os de tête du zombie.
+  zombieHeadBone.add(tete);
+});
+
+IMPORTANT : ajuster position, rotation et échelle au corps et à l'os de tête
+utilisés dans votre jeu. Mettre le modèle dans les assets servis par votre serveur.
+
+PERFORMANCE
+-----------
+Pour les hordes nombreuses, privilégiez la version LOD. À grande échelle,
+prévoyez un niveau de détail encore plus léger, des matériaux mutualisés,
+et une fusion de sous-maillages pour réduire les draw calls.
+La version détaillée est surtout utile pour les zombies proches de la caméra.
+
+VISUALISATION
+-------------
+Ouvrir visualiser_zombie.html avec Firefox ou Chrome, avec une connexion Internet
+(pour charger les bibliothèques Three.js). Déposer le fichier GLB dans la fenêtre
+ou utiliser le bouton pour le choisir. Déplacer la souris pour faire tourner.
+
+PERSONNALISATION
+----------------
+Le GLB peut s'ouvrir dans Blender (Fichier > Importer > glTF 2.0).
+Modifier la couleur du béret, les détails du visage ou les maillages.
+Le générateur Python permet de modifier les dimensions et couleurs source.
+
+Création originale générée pour le projet Zombie Survival, sans assets externes.
