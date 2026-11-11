@@ -1050,7 +1050,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 - **11 novembre 2026 — jeu 2.0.7 (construction 1), launcher 1.4.0 (pas encore publiés)** : **fusion des chantiers** sur l'ordre d'Anthony (« Oui, fusionne tout » ; les nouvelles animations passent à la 2.0.8).
   - `chantier/interface` (9940122) : nouveau launcher, menus du jeu, écran « Secret » ; `chantier/bunker7` (559e72b) : boss, débris, horloge, quête « Le Dernier Pacte », six easter eggs secondaires ; `chantier/marecages` (91a3f18) : Les Marécages Maudits ; avec les ajouts de la session d'intégration (voix de l'annonceur, musiques, Sauvegarder et quitter, machine de mort).
   - Fusions refaites à l'identique d'une fusion d'essai du 10 novembre (mêmes arbres) ; débris en section 33 ; motifs du marais raccourcis et section 42 par la session Marécages ; sauvegarde : refus et états gardés de Bunker 7 (voir « Sauvegarder et quitter ») ; numéros 2.0.7 et 1.4.0.
-  - 44 essais de bout en bout ; 44 tests unitaires.
+  - 45 essais de bout en bout (avec `marecages`, fusion de 905df00) ; 44 tests unitaires.
 - **3 novembre 2026 — jeu 2.0.7 (en préparation)** : **musique du menu** (demande d'Anthony ; voir « Musique du menu »).
   - `menu.mp3` du paquet d'Anthony, inséré tel quel (3,1 Mo) ; boucle exacte de 0,5 s à 96,5 s ; fondu d'entrée au menu, de sortie au début de la partie ; bus de la musique.
 - **3 novembre 2026 — jeu 2.0.7 (en préparation)** : **sauvegarder et quitter**, étape d'essai (demande d'Anthony ; voir « Sauvegarder et quitter »).
