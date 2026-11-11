@@ -44,7 +44,8 @@ const mdmVitesse = () => (MDM.inst ? MDM.inst.vitesseDeplacement : 1);
 function mdmLin(o) { o.traverse((x) => { for (const m of Array.isArray(x.material) ? x.material : x.material ? [x.material] : []) _linDone.add(m); }); }
 
 /* ------------------------------------------------------------- création --- */
-/* Premier lancement d'une partie (startGame) : l'instance de la session ; ensuite, rien. */
+/* L'instance de la session, une fois : préparée au menu (mdmAuMenu, section 43), sinon au premier lancement d'une
+   partie (startGame) ; ensuite, rien. */
 function mdmCreer() {
   if (MDM.inst || MDM.err) return !!MDM.inst;
   if (typeof MachineDeMort !== 'object' || !vmScene || !vmCamera) { MDM.err = 'paquet absent'; return false; }
@@ -90,8 +91,20 @@ function mdmCreer() {
 /* Lancement d'une partie (startGame) : l'instance (une fois), puis tout est remis à zéro (clearPowerups l'a déjà fait au
    retour au menu ; une nouvelle partie depuis la pause aussi). */
 function mdmNouvellePartie() {
-  mdmCreer();
+  if (!MDM.inst && !MDM.err) {                 // pas encore préparée au menu : créée ici, temps noté (section 43)
+    const t = performance.now();
+    mdmCreer();
+    if (typeof chgMdm === 'function') chgMdm(performance.now() - t);
+  }
   mdmVider();
+}
+/* Préparation au menu (section 43, pendant un temps mort) : l'instance, ses environnements et ses précompilations,
+   qui gelaient le lancement de la première carte de la session. Seulement quand l'audio du jeu existe (sinon le paquet
+   serait créé sans sons) ; renvoie vrai si elle vient d'être créée. */
+function mdmAuMenu() {
+  if (MDM.inst || MDM.err || G.state !== 'menu') return false;
+  if (!(Sound.bus && Sound.bus())) return false;
+  return mdmCreer();
 }
 /* Remise à zéro (clearPowerups : nouvelle partie, retour au menu, autre carte) : l'arme et les miniatures retirées. */
 function mdmVider() {

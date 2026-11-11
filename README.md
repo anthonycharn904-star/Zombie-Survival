@@ -462,11 +462,22 @@ Demande d'Anthony du 4 novembre 2026 : un nouveau bonus, la machine de mort, « 
 - **Vue FPS** : dans la vue des armes du jeu, à 72° de champ vertical pendant l'usage (réglage du paquet ; 52° pour les autres armes), position de hanche du paquet avec le balancement du regard et du sprint du jeu ; les bras d'Anthony sont posés par le paquet sur la poignée arrière et la poignée avant. **Vue TPS** : le corps tient un second modèle, allégé.
 - **HUD** : compteur, nom et barre du temps du paquet en bas à droite, munitions de l'arme du jeu cachées ; « Machine de mort » et son temps dans les bonus actifs, avec l'icône dorée du paquet.
 - **Sons** : ceux du paquet, dans le bus des effets du jeu (volume général, étouffement sur la Lune et à terre).
-- **Performances** : instance unique pour la session, créée au premier lancement d'une partie, programmes compilés d'avance (l'arme dans la vue, la miniature dans le monde, gardée pour que ses programmes ne soient jamais libérés).
+- **Performances** : instance unique pour la session, préparée au menu pendant un temps mort (construction 2, voir « Temps de chargement » ; sinon au premier lancement d'une partie), programmes compilés d'avance (l'arme dans la vue, la miniature dans le monde, gardée pour que ses programmes ne soient jamais libérés).
 - **Sauvegarde** : refusée pendant l'usage (« Machine de mort en main : attendez qu'elle se range. ») ; un bonus au sol se sauvegarde comme les autres.
 - **Essai** : `launcher/e2e/machine-de-mort.e2e.js` (critères du § 8 de son brief vérifiables dans la page) ; banc d'images hors du dépôt (miniature, vue FPS au repos et en tir, vue TPS).
 
 Où modifier : module `engine/src/S5-machine-de-mort.js` (section 32 du jeu) : caractéristiques du tir `MDM_ARME`, réglages `MDM` (vitesse, champ de la vue, position de hanche), création `mdmCreer`, arme rangée et rendue `mdmRanger` et `mdmRessortir`, coups `mdmTirer`, ramassage `mdmRamasse`, chaque image `mdmMaj` et `mdmVue`, miniatures `mdmSol`, corps `mdmCorpsArme`, refus de la sauvegarde. Points d'accroche `engine/tools/hooks-machine-de-mort.py` : `wstat`, `hitscan`, `updateArms`, `update`, `updatePlayer` (vitesse), `buildPowerupModel`, `updatePowerups`, `applyPowerup`, `clearPowerups`, bonus actifs du HUD, `startGame`, `gameOver`, `updateInteract`. Réglages du paquet (durée, munitions, cadence, renouvellement) : option `config` de `MachineDeMort.creer` (son `INTEGRATION.md`, § 7).
+
+## Temps de chargement (jeu 2.0.7, construction 2)
+
+Demande d'Anthony du 11 novembre 2026 : « Ça prend un temps fou pour lancer une map ». Profil du lancement des quatre cartes dans le Chromium sans tête : la machine de mort, créée au premier lancement de la session, coûtait le plus sur Bunker 7 et Ombre éternelle (environnement de reflets et précompilations) ; les reflets du khépesh, sur Khamsin ; sur les Marécages, l'autotest de la pluie et la texture de brume (relectures du GPU), fichiers de la session Marécages.
+
+- **Mesure** : du démarrage au menu, puis de chaque lancement (clic sur « Jouer », reprise d'une sauvegarde) à la première image rendue, puis les 30 images suivantes (la plus longue montre un gel de compilation). Une ligne `[chargement] …` dans la console : carte, « jouable après », monde, partie, machine de mort si elle a été créée là, images, nombre de shaders, et au démarrage le numéro du jeu et le nom du GPU. Le launcher recopie ces lignes dans `launcher.log` (`main.js`, `console-message`). Rien n'est affiché en jeu ; rien dans les Mod Tools.
+- **Préparé au menu**, une pièce par temps mort (`requestIdleCallback`), après les premières images du menu et seulement au menu : la machine de mort (`mdmAuMenu`, s'il y a l'audio du jeu), puis les dessins à la craie des armes murales de toutes les cartes (`chalkTexture`, déjà en cache pour la session). Une ligne `[chargement] préparé au menu : …` donne leurs temps.
+- **Effets mesurés en rendu logiciel** : mise en place d'une partie de Bunker 7 de 11,8 s à 0,9 s ; construction de Khamsin de 13,4 s à 3,2 s (les programmes de reflets compilés pour la machine de mort servent au khépesh) ; en échange, de 2 à 3 s de travail au menu, en plusieurs morceaux.
+- **Écarté** : couper le contrôle des shaders (`renderer.debug.checkShaderErrors`) ne permet pas la compilation en parallèle avec three r128, qui lit les uniforms juste après chaque liaison (`getProgram`).
+
+Où modifier : module `engine/src/S6-chargement.js` (section 43 du jeu : `chgDebut`, `chgMonde`, `chgPartie`, `chgImage`, `chgFin`, `chgPreparer`), points d'accroche `engine/tools/hooks-chargement.py` (`boot`, `playSelectedMap`, `loadMap`, `startGame`, `frame`) ; `mdmAuMenu` dans `S5-machine-de-mort.js`.
 
 ## Personnage : Anthony (jeu 2.0.6)
 
@@ -1047,6 +1058,8 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **11 novembre 2026 — jeu 2.0.7 (construction 2)** : **temps de chargement** (demande d'Anthony ; voir « Temps de chargement »).
+  - Ligne `[chargement]` mesurée par le jeu et recopiée dans `launcher.log` ; machine de mort et craies des armes murales préparées au menu.
 - **11 novembre 2026 — jeu 2.0.7 (construction 1), launcher 1.4.0 (pas encore publiés)** : **fusion des chantiers** sur l'ordre d'Anthony (« Oui, fusionne tout » ; les nouvelles animations passent à la 2.0.8).
   - `chantier/interface` (9940122) : nouveau launcher, menus du jeu, écran « Secret » ; `chantier/bunker7` (559e72b) : boss, débris, horloge, quête « Le Dernier Pacte », six easter eggs secondaires ; `chantier/marecages` (91a3f18) : Les Marécages Maudits ; avec les ajouts de la session d'intégration (voix de l'annonceur, musiques, Sauvegarder et quitter, machine de mort).
   - Fusions refaites à l'identique d'une fusion d'essai du 10 novembre (mêmes arbres) ; débris en section 33 ; motifs du marais raccourcis et section 42 par la session Marécages ; sauvegarde : refus et états gardés de Bunker 7 (voir « Sauvegarder et quitter ») ; numéros 2.0.7 et 1.4.0.

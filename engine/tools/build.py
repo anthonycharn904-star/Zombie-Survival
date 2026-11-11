@@ -85,6 +85,8 @@ exec(open(os.path.join(HERE, 'hooks-sauvegarde.py'), encoding='utf-8').read())
 exec(open(os.path.join(HERE, 'hooks-musique-menu.py'), encoding='utf-8').read())
 # jeu 2.0.7 : la machine de mort (paquet machine-de-mort-zombie-survival)
 exec(open(os.path.join(HERE, 'hooks-machine-de-mort.py'), encoding='utf-8').read())
+# jeu 2.0.7 : temps de chargement mesurés, préparations au menu (section 43, src/S6-chargement.js)
+exec(open(os.path.join(HERE, 'hooks-chargement.py'), encoding='utf-8').read())
 
 # --- le module
 parts = sorted(glob.glob(os.path.join(KH, 'src', '*.js')))

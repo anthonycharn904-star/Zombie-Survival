@@ -344,6 +344,11 @@ function play(opts = {}) {
       gameWin.webContents.toggleDevTools();
     }
   });
+  // jeu 2.0.7 (construction 2) : temps de chargement mesurés par le jeu (lignes « [chargement] », section 43), au journal
+  gameWin.webContents.on('console-message', (d, level, message) => {
+    const m = d && typeof d.message === 'string' ? d.message : message;
+    if (typeof m === 'string' && m.startsWith('[chargement] ')) log(m.slice(0, 600));
+  });
   gameWin.webContents.on('render-process-gone', (e, details) => {
     log(`Jeu arrêté : ${details.reason} (code ${details.exitCode})`);
     if (details.reason !== 'clean-exit') {
