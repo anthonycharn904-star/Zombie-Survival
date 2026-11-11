@@ -85,7 +85,10 @@ function section(essai, marqueur) {
       if (!refus) throw new Error('souris verrouillée non refusée ou bandeau visible : section non jouée');
       note('souris verrouillée refusée, bandeau « Souris libre » masqué');
       const t2 = Date.now();
-      await new AsyncFunction('game', 'report', `'use strict';\n${s.code}`)(page, (r) => res.push({ ok: !!r.ok, label: r.label, extra: r.extra }));
+      // report, ok et errors : comme en tête de chaque essai (errors : les erreurs de la page depuis son ouverture)
+      const report = (r) => res.push({ ok: !!r.ok, label: r.label, extra: r.extra });
+      const ok = (cond, label, extra) => report({ ok: !!cond, label, extra });
+      await new AsyncFunction('game', 'report', 'ok', 'errors', `'use strict';\n${s.code}`)(page, report, ok, errs);
       note(`section jouée en ${((Date.now() - t2) / 1000).toFixed(0)} s`);
     } catch (e) {
       journal.push(`ERREUR s01 ${String(e && e.message || e).split('\n')[0].slice(0, 400)}`);

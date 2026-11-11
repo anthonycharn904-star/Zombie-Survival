@@ -61,7 +61,8 @@ const USER = path.join(TMP, 'joueur');
     const cards = await game.evaluate(() => [...document.querySelectorAll('#ms-grid .ms-card')].map((c) => ({
       id: c.dataset.id, name: c.querySelector('.ms-name').textContent, img: !!c.querySelector('.ms-photo img'), desc: (c.querySelector('.ms-desc') || { textContent: '' }).textContent.slice(0, 40),
     })));
-    ok(cards.length === 3 && cards[0].id === 'bunker7' && cards[1].id === 'khamsin' && cards[1].name === 'Khamsin' && cards[1].img && /Désert égyptien/.test(cards[1].desc),
+    // jeu 2.0.7 : la fiche des Marécages Maudits, quand le jeu les contient, vient en quatrième (catalogue contrôlé plus haut)
+    ok(cards.filter((c) => c.id !== 'marais').length === 3 && cards[0].id === 'bunker7' && cards[1].id === 'khamsin' && cards[1].name === 'Khamsin' && cards[1].img && /Désert égyptien/.test(cards[1].desc),
       'Jouer : Khamsin, deuxième carte sélectionnable (nom, vignette, description)', cards);
     await game.click('#ms-grid .ms-card[data-id="khamsin"]');
     ok(await game.evaluate(() => MapSel.sel === 'khamsin' && document.querySelector('#ms-grid .ms-card[data-id="khamsin"]').getAttribute('aria-selected') === 'true'), 'Jouer : Khamsin choisie');
