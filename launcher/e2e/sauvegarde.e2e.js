@@ -469,13 +469,19 @@ const USER = path.join(TMP, 'joueur');
     await fermer();
     const demande = await game.waitForFunction(() => !document.getElementById('confirm').hidden && /Quitter le jeu/.test(document.getElementById('confirm-title').textContent), null, { timeout: 15000 }).then(() => true, () => false);
     report({ ok: demande && !game.isClosed(), label: 'fenêtre fermée pendant une partie : retenue, le jeu demande « Quitter le jeu ? »' });
-    await game.click('#btn-confirm-no').catch(() => {});
-    report({ ok: !game.isClosed() && await game.evaluate(() => G.state === 'paused').catch(() => false), label: 'Annuler : la fenêtre reste, partie en pause' });
+    // clics dans la page (les boutons des menus de l'Interface s'animent : le clic de Playwright attend en vain qu'ils
+    // soient immobiles et échoue sans bruit)
+    await game.evaluate(() => document.getElementById('btn-confirm-no').click()).catch(() => {});
+    report({ ok: !game.isClosed() && await game.evaluate(() => G.state === 'paused' && document.getElementById('confirm').hidden).catch(() => false), label: 'Annuler : la fenêtre reste, partie en pause' });
+    // au calme de nouveau (des zombies ont pu s'approcher pendant l'attente : la confirmation n'offrirait alors que
+    // « Quitter sans sauvegarder », sur le bouton principal) ; on clique le bouton qui porte ce texte
+    await game.evaluate(() => { clearZombies(); player.lastHit = -99; }).catch(() => {});
     await fermer();
     await game.waitForFunction(() => !document.getElementById('confirm').hidden, null, { timeout: 15000 }).catch(() => {});
     const fermee = game.waitForEvent('close', { timeout: 20000 }).then(() => true, () => false);
-    await game.click('#btn-confirm-alt').catch(() => {});
-    report({ ok: await fermee, label: '« Quitter sans sauvegarder » : la fenêtre se ferme' });
+    const bouton = await game.evaluate(() => (['btn-confirm-alt', 'btn-confirm-yes'].find((id) => { const b = document.getElementById(id); return b && !b.hidden && /Quitter sans sauvegarder/.test(b.textContent); }) || null)).catch(() => null);
+    if (bouton) await game.evaluate((id) => document.getElementById(id).click(), bouton).catch(() => {});
+    report({ ok: await fermee, label: '« Quitter sans sauvegarder » : la fenêtre se ferme', extra: { bouton } });
     for (const r of res) {
       if (!r.ok) failures++;
       console.log(`${r.ok ? 'ok    ' : 'ÉCHEC '} ${r.label}${r.ok || r.extra === undefined ? '' : ` → ${JSON.stringify(r.extra)}`}`);
