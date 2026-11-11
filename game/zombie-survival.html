@@ -89946,9 +89946,18 @@ if (typeof HORL === 'object') sauveEnregistrer('horloge', {
      touchées, les caisses à logo tirées et celles cassées, les têtes touchées ; chaque easter egg réussi. Au retour, les
      zombies reviennent sans état toxique ; ni son, ni effet, ni récompense rejoués. */
 if (typeof B7 === 'object') sauveEnregistrer('boss-b7', {
+  version: 1,
   refus: () => (B7.actif || B7.cine ? 'Combat du boss en cours : sauvegarde impossible pendant un boss.' : null),
-  capter: () => null,
-  restaurer() {},
+  // le boss se fait une fois par partie : code du boss déjà tapé, combat terminé (sinon il se referait après une reprise)
+  capter: () => ({ codes: typeof B7A === 'object' ? { secret: !!B7A.codes.secret, boss: !!B7A.codes.boss } : null,
+    termine: !!(B7.combat && B7.drapeaux[B7.combat.config.general.drapeauTermine]) }),
+  restaurer(d) {
+    if (!d) return;
+    if (d.codes && typeof B7A === 'object') { B7A.codes.secret = !!d.codes.secret; B7A.codes.boss = !!d.codes.boss; }
+    if (d.termine && B7.combat) B7.drapeaux[B7.combat.config.general.drapeauTermine] = true;
+    const dp = Features.digipass;                // les deux codes tapés : le digi pass avait disparu
+    if (d.codes && d.codes.boss && d.codes.secret && dp && !dp.gone) hideDigipass();
+  },
 });
 if (typeof QP === 'object') sauveEnregistrer('quete', {
   version: 1,
@@ -90007,13 +90016,31 @@ if (typeof CX === 'object') sauveEnregistrer('caisses', {
     CX.fait = !!d.fait;
   },
 });
+/* Têtes : le modèle se décode à part (GLTFLoader.parse, asynchrone) ; à la première partie d'une session, les têtes
+   n'existent qu'un peu après la reprise : leur état attend qu'elles soient posées (relevé par la session Bunker 7). */
+const SAUVE_TETES = { attente: null, carte: null, t0: 0 };
+function sauveTetesAppliquer(d) {
+  for (const t of TB.tetes) if ((d.touchees || []).includes(t.nom)) { t.touchee = true; t.g.visible = false; }
+  TB.fait = !!d.fait;
+}
+function sauveTetesAttendre() {
+  const A = SAUVE_TETES;
+  if (!A.attente) return;
+  if (G.mapId !== A.carte || G.state === 'menu' || performance.now() - A.t0 > 120000) { A.attente = null; return; }   // partie quittée
+  if (TB.tetes.length) { sauveTetesAppliquer(A.attente); A.attente = null; return; }
+  requestAnimationFrame(sauveTetesAttendre);
+}
 if (typeof TB === 'object') sauveEnregistrer('tetes', {
   version: 1,
-  capter: () => ({ touchees: TB.tetes.filter((t) => t.touchee).map((t) => t.nom), fait: TB.fait }),
+  capter: () => (SAUVE_TETES.attente ? SAUVE_TETES.attente : { touchees: TB.tetes.filter((t) => t.touchee).map((t) => t.nom), fait: TB.fait }),
   restaurer(d) {
+    SAUVE_TETES.attente = null;
     if (!d) return;
-    for (const t of TB.tetes) if ((d.touchees || []).includes(t.nom)) { t.touchee = true; t.g.visible = false; }
-    TB.fait = !!d.fait;
+    if (TB.tetes.length) { sauveTetesAppliquer(d); return; }
+    if (!tbCarte()) return;
+    Object.assign(SAUVE_TETES, { attente: d, carte: G.mapId, t0: performance.now() });
+    TB.fait = !!d.fait;                        // aucune tête ne doit rapporter la récompense une seconde fois
+    requestAnimationFrame(sauveTetesAttendre);
   },
 });
 

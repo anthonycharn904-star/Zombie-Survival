@@ -301,6 +301,9 @@ const USER = path.join(TMP, 'joueur');
       if (casse) { casse.cassee = true; casse.mesh.visible = false; solidTop[casse.k] = 0.95; }
       const tete = TB.tetes[0]; if (tete) { tete.touchee = true; tete.g.visible = false; }
       VS.fait = true;
+      const kTermine = B7.combat ? B7.combat.config.general.drapeauTermine : null;
+      if (typeof B7A === 'object') B7A.codes.boss = true;
+      if (kTermine) B7.drapeaux[kTermine] = true;                 // boss battu (le combat ne se refait pas)
       const env = sauveCapter('manuelle');
       sauveAppliquer(env);
       ok(G.state === 'paused' && QP.etape === 'fini', 'reprise : la quête reste finie (elle ne se refait pas)', { etape: QP.etape });
@@ -312,9 +315,20 @@ const USER = path.join(TMP, 'joueur');
         `caisses : les ${choix.length} caisses à logo et la caisse cassée gardées, ni nuage ni zombie toxique`, { choix, choix2 });
       ok(!tete || (TB.tetes[0].touchee && !TB.tetes[0].g.visible && TB.tetes.filter((t) => t.touchee).length === 1), 'têtes : la tête touchée reste partie');
       ok(VS.fait && !VS.on, 'Visionnaire : le Momifié ne ressortira pas');
-      SAUVE.secours.attente = null;                // la reprise demande une secours : le bloc suivant attend celle de la fin de manche
-      quitToMenu();
-      return out;
+      ok(typeof B7A !== 'object' || (B7A.codes.boss && (!kTermine || B7.drapeaux[kTermine] === true)), 'boss : code déjà tapé et combat terminé gardés (il ne se refait pas)', { codes: typeof B7A === 'object' && B7A.codes });
+      // têtes : à la première partie d'une session, le modèle se décode après la reprise (liste encore vide)
+      const vraies = TB.tetes, autre = vraies[1];
+      if (!autre) { SAUVE.secours.attente = null; quitToMenu(); return out; }
+      TB.tetes = [];
+      SAUVE.contributeurs.get('tetes').restaurer({ touchees: [autre.nom], fait: false });
+      const avant = autre.touchee;
+      TB.tetes = vraies;                           // le modèle arrive : tbPoser a posé les têtes
+      return new Promise((fin) => { const t0 = performance.now(); const t = setInterval(() => { if (autre.touchee || performance.now() - t0 > 10000) { clearInterval(t); fin(); } }, 100); }).then(() => {
+        ok(!avant && autre.touchee && !autre.g.visible && !SAUVE_TETES.attente, `têtes : l’état attend le modèle, puis s’applique (${autre.nom})`);
+        SAUVE.secours.attente = null;              // la reprise demande une secours : le bloc suivant attend celle de la fin de manche
+        quitToMenu();
+        return out;
+      });
     })).forEach(report);
     // ------------------------------------------------ secours : fin de manche, moment important, intervalle, à terre, fermeture
     (await game.evaluate(() => {
