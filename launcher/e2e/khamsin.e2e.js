@@ -44,7 +44,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate((v) => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.6' && ZS.version === v, `jeu 2.0.6 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
+      ok(GAME_VERSION === '2.0.7' && ZS.version === v, `jeu 2.0.7 dans le launcher (paquet ${v})`, { GAME_VERSION, v });
       // jeu 2.0.7 : les Marécages Maudits, quand le jeu les contient (MARAIS), viennent en quatrième
       const marais = typeof MARAIS === 'object' ? ['marais'] : [];
       ok(MAPS.list.join() === ['bunker7', 'khamsin', 'ombre', ...marais].join(), 'catalogue : Bunker 7, puis Khamsin (deuxième carte), puis Ombre éternelle', MAPS.list);

@@ -343,6 +343,85 @@ if (typeof HORL === 'object') sauveEnregistrer('horloge', {
   },
 });
 
+/* Boss, quête et easter eggs secondaires de Bunker 7 (chantier Bunker 7, sections 21 à 41, s'ils sont dans le jeu).
+   Décisions d'Anthony des 9 et 10 novembre 2026 :
+   · refus pendant le combat du boss et ses scènes, du début à la fin de la quête « Le Dernier Pacte », pendant
+     l'hallucination du Visionnaire, et tant qu'un nuage toxique des caisses dure ;
+   · ce qui est fait est gardé : la quête finie (elle ne se refait pas), les dégâts du camion (ou son épave), les ampoules
+     touchées, les caisses à logo tirées et celles cassées, les têtes touchées ; chaque easter egg réussi. Au retour, les
+     zombies reviennent sans état toxique ; ni son, ni effet, ni récompense rejoués. */
+if (typeof B7 === 'object') sauveEnregistrer('boss-b7', {
+  refus: () => (B7.actif || B7.cine ? 'Combat du boss en cours : sauvegarde impossible pendant un boss.' : null),
+  capter: () => null,
+  restaurer() {},
+});
+if (typeof QP === 'object') sauveEnregistrer('quete', {
+  version: 1,
+  refus: () => (QP.etape !== 'attente' && QP.etape !== 'fini' ? '« Le Dernier Pacte » en cours : sauvegarde impossible jusqu’à la fin de la quête.' : null),
+  capter: () => ({ fini: QP.etape === 'fini' }),
+  restaurer(d) { if (d && d.fini) QP.etape = 'fini'; },
+});
+if (typeof VS === 'object') sauveEnregistrer('visionnaire', {
+  refus: () => (VS.on ? 'Vous êtes dans l’hallucination : sauvegarde impossible avant le réveil.' : null),
+  capter: () => null,                          // VS.fait : déjà dans serializeGame (accroche du chantier Bunker 7)
+  restaurer() {},
+});
+if (typeof CAM === 'object') sauveEnregistrer('camion', {
+  version: 1,
+  capter: () => ({ degats: Math.round(CAM.degats), fait: CAM.fait }),
+  restaurer(d) {
+    if (!d || !CAM.racine) return;
+    if (d.fait) {
+      CAM.fait = true; CAM.etat = 'detruit'; CAM.degats = CAM.pv; CAM.t = CAM.feu;   // épave éteinte, sans explosion
+      if (CAM.bache) CAM.bache.visible = false;
+      if (CAM.vitres) CAM.vitres.visible = false;
+      camNoircir(1);
+      return;
+    }
+    CAM.degats = clamp(+d.degats || 0, 0, CAM.pv - 1);
+    const k = CAM.degats / CAM.pv;
+    CAM.etat = k >= 0.75 ? 'flammes' : k >= 0.5 ? 'fume' : 'neuf';
+  },
+});
+if (typeof AMP === 'object') sauveEnregistrer('ampoules', {
+  version: 1,
+  capter: () => ({ touchees: AMP.touchees ? AMP.touchees.map((v, i) => (v ? i : -1)).filter((i) => i >= 0) : [], fait: AMP.fait }),
+  restaurer(d) {
+    if (!d || G.mapId !== BUNKER7.id || !World.lights || !World.lights.length) return;
+    ampEtat();
+    for (const i of d.touchees || []) if (i >= 0 && i < AMP.touchees.length) AMP.touchees[i] = true;
+    AMP.fait = !!d.fait;
+  },
+});
+if (typeof CX === 'object') sauveEnregistrer('caisses', {
+  version: 1,
+  refus: () => (CX.nuages.length ? 'Nuage toxique en cours : attendez qu’il se dissipe pour sauvegarder.' : null),
+  capter: () => ({ choisies: CX.choisies.map((c) => CX.liste.indexOf(c)), cassees: CX.liste.map((c, i) => (c.cassee ? i : -1)).filter((i) => i >= 0), fait: CX.fait }),
+  restaurer(d) {
+    if (!d || !cxCarte() || !Array.isArray(d.choisies) || !d.choisies.length) return;
+    const ok = (i) => Number.isInteger(i) && i >= 0 && i < CX.liste.length && CX.liste[i].mesh;
+    if (!d.choisies.every(ok)) return;         // carte changée : on garde le tirage de la reprise
+    for (const c of CX.choisies) { c.toxique = false; c.mesh.material = MAT.crate; }
+    CX.choisies = d.choisies.map((i) => CX.liste[i]);
+    for (const c of CX.choisies) { c.toxique = true; c.mesh.material = cxMatiere(); }
+    for (const i of d.cassees || []) {
+      if (!ok(i)) continue;
+      const c = CX.liste[i];
+      c.cassee = true; c.mesh.visible = false; solidTop[c.k] = 0.95;   // il ne reste que la grande caisse
+    }
+    CX.fait = !!d.fait;
+  },
+});
+if (typeof TB === 'object') sauveEnregistrer('tetes', {
+  version: 1,
+  capter: () => ({ touchees: TB.tetes.filter((t) => t.touchee).map((t) => t.nom), fait: TB.fait }),
+  restaurer(d) {
+    if (!d) return;
+    for (const t of TB.tetes) if ((d.touchees || []).includes(t.nom)) { t.touchee = true; t.g.visible = false; }
+    TB.fait = !!d.fait;
+  },
+});
+
 /* ------------------------------------------------------------ capture, reprise ---- */
 function sauveCapter(type) {
   const etat = { base: serializeGame(), mode: SAUVE.mode, tempsJeu: Math.round((G.tempsAvant || 0) + G.time) };

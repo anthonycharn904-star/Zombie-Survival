@@ -104,7 +104,7 @@ async function run(userData) {
         glow: T.filter((d) => d.glow).length, thumb: c && c.width === 64, legacy: ['bunker_wall', 'kh_pyrstone', 'lu_glass', 'concrete'].every((id) => ZS.TEXLIB[id] && ZS.TEXLIB[id].state),
       };
     });
-    ok(eng.v === '2.0.6' && eng.api >= 9, `jeu 2.0.6, interface 9 des Mod Tools ${JSON.stringify({ v: eng.v, api: eng.api })}`);
+    ok(eng.v === '2.0.7' && eng.api >= 9, `jeu 2.0.7, interface 9 des Mod Tools ${JSON.stringify({ v: eng.v, api: eng.api })}`);
     ok(eng.st.gen >= 4000 && eng.st.textures >= 4170 && eng.st.genModels >= 5000 && eng.st.models >= 5200 && eng.dup === 0 && eng.facets >= 8,
       `bibliothèques : ${eng.st.textures} textures (${eng.st.gen} générées, ${eng.st.families} familles), ${eng.st.models} modèles (${eng.st.genModels} générés, ${eng.st.modelFamilies} familles), enregistrées en ${eng.st.ms} ms`);
     ok(eng.meta && eng.mmeta && eng.legacy && eng.thumb && eng.glow >= 30, `métadonnées (famille, surface, état, usages), identifiants stables gx_/gm_, textures lumineuses (${eng.glow}), vignette sans cache ${JSON.stringify({ meta: eng.meta, mmeta: eng.mmeta, legacy: eng.legacy })}`);

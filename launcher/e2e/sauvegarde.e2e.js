@@ -273,6 +273,49 @@ const USER = path.join(TMP, 'joueur');
         return out;
       });
     })).forEach(report);
+    // ------------------------------------------------ Bunker 7 : boss, quête, easter eggs (jeu 2.0.7 ; décisions d'Anthony des 9 et 10 novembre)
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      if (typeof QP !== 'object' || typeof CX !== 'object' || typeof CAM !== 'object') return out;   // jeu sans le chantier Bunker 7
+      SAUVE.mode = 'manche';
+      __zs.start(); if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
+      clearZombies(); player.lastHit = -99; __zs.step(2, 1 / 60);
+      const raison = () => ZSPartie.peutSauvegarder().raison || '';
+      ok(ZSPartie.peutSauvegarder().ok, 'Bunker 7 au calme : sauvegarde permise', raison());
+      B7.actif = true; const rBoss = raison(); B7.actif = false;
+      B7.cine = true; const rCine = raison(); B7.cine = false;
+      ok(/boss/.test(rBoss) && /boss/.test(rCine), `refus pendant le combat du boss et ses scènes : « ${rBoss} »`);
+      const e0 = QP.etape; QP.etape = 'lockdowns'; const rQuete = raison(); QP.etape = 'electrifie'; const rQuete2 = raison(); QP.etape = e0;
+      ok(/Dernier Pacte/.test(rQuete) && /Dernier Pacte/.test(rQuete2), `refus pendant la quête : « ${rQuete} »`);
+      VS.on = true; const rVs = raison(); VS.on = false;
+      ok(/hallucination/.test(rVs), `refus pendant l’hallucination du Visionnaire : « ${rVs} »`);
+      CX.nuages.push({ x: 0, y: 0, z: 0, gy: 0, t: 0, tic: 0, puffT: 0 }); const rCx = raison(); CX.nuages.length = 0;
+      ok(/toxique/.test(rCx), `refus tant qu’un nuage toxique dure : « ${rCx} »`);
+      ok(ZSPartie.peutSauvegarder().ok, 'permise de nouveau', raison());
+      // ce qui est fait : quête finie, camion qui fume, deux ampoules, une caisse cassée, une tête, le Momifié sorti
+      QP.etape = 'fini';
+      CAM.degats = Math.round(CAM.pv * 0.6); CAM.etat = 'fume';
+      ampEtat(); const amp = AMP.touchees.map((v, i) => i).filter((i) => AMP.spheres[i]).slice(0, 2); for (const i of amp) AMP.touchees[i] = true;
+      const choix = CX.choisies.map((c) => CX.liste.indexOf(c)), casse = CX.choisies[0];
+      if (casse) { casse.cassee = true; casse.mesh.visible = false; solidTop[casse.k] = 0.95; }
+      const tete = TB.tetes[0]; if (tete) { tete.touchee = true; tete.g.visible = false; }
+      VS.fait = true;
+      const env = sauveCapter('manuelle');
+      sauveAppliquer(env);
+      ok(G.state === 'paused' && QP.etape === 'fini', 'reprise : la quête reste finie (elle ne se refait pas)', { etape: QP.etape });
+      ok(CAM.etat === 'fume' && Math.abs(CAM.degats - Math.round(CAM.pv * 0.6)) < 1 && !CAM.fait, `camion : dégâts gardés (${CAM.degats} sur ${CAM.pv}, il fume)`);
+      ok(amp.length === 2 && amp.every((i) => AMP.touchees[i]) && AMP.touchees.filter(Boolean).length === 2 && !AMP.fait, `ampoules : ${amp.length} touchées gardées`);
+      const choix2 = CX.choisies.map((c) => CX.liste.indexOf(c));
+      ok(choix.length >= 1 && JSON.stringify(choix2) === JSON.stringify(choix) && CX.choisies.every((c) => c.toxique)
+        && (!casse || (CX.liste[CX.liste.indexOf(casse)].cassee && !CX.liste[CX.liste.indexOf(casse)].mesh.visible)) && !CX.nuages.length && !CX.toxiques.size,
+        `caisses : les ${choix.length} caisses à logo et la caisse cassée gardées, ni nuage ni zombie toxique`, { choix, choix2 });
+      ok(!tete || (TB.tetes[0].touchee && !TB.tetes[0].g.visible && TB.tetes.filter((t) => t.touchee).length === 1), 'têtes : la tête touchée reste partie');
+      ok(VS.fait && !VS.on, 'Visionnaire : le Momifié ne ressortira pas');
+      SAUVE.secours.attente = null;                // la reprise demande une secours : le bloc suivant attend celle de la fin de manche
+      quitToMenu();
+      return out;
+    })).forEach(report);
     // ------------------------------------------------ secours : fin de manche, moment important, intervalle, à terre, fermeture
     (await game.evaluate(() => {
       const out = [];

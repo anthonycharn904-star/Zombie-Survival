@@ -1,6 +1,8 @@
 # Points d'accroche du jeu 2.0.7 : voix enregistrées de l'annonceur des bonus. Exécuté par build.py après hooks-points.py.
 # Demande d'Anthony du 2 novembre 2026 (paquet annonceur-voix-B : engine/orig/annonceur-voix-B/voix/, inséré tel quel).
 # Le branchement est dans le module src/S0-annonceur.js ; les règles, le bandeau et les effets des bonus ne changent pas.
+# Numéro du jeu 2.0.7 (construction 1), posé à la fusion des chantiers le 11 novembre 2026 (ordre d'Anthony)
+rep("const GAME_VERSION = '2.0.6';", "const GAME_VERSION = '2.0.7';")
 
 # ramassage d'un bonus : la voix enregistrée (sinon la synthèse vocale d'avant), même réglage, une annonce coupe l'autre
 rep("""  Sound.say(POWERUPS[type].say);
