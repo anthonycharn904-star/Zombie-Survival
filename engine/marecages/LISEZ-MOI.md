@@ -168,7 +168,17 @@ Après l'adaptation de ces comptes (accord d'Anthony, même jour) :
 
 Restent les essais des Mod Tools, qui demandent le launcher.
 
-L'essai de bout en bout `marecages` (Electron, méthode E2) reste à écrire.
+L'essai de bout en bout `marecages` (`launcher/e2e/marecages.e2e.js`, Electron, méthode E2) : 54 vérifications, écrit le
+11 novembre 2026 (accord d'Anthony). Ses 46 vérifications faites dans la page passent aussi par `engine/tools/e2e-page.js`
+(chaque bloc recharge le marais s'il n'est pas là) : 46 sur 46 sur le jeu fusionné de la 2.0.7 (`89bd203`). Les 8 autres
+(clics de « Jouer », écran Modèles, retour au Bunker 7, image) : sections rejouées par `essais/e2e-tranche.js`
+(`marecages:« Jouer »`, `marecages:écran Modèles`, `marecages:retour au Bunker 7`) : 7 sur 7, et l'image du bloc conforme
+(424 appels de dessin, 0 erreur WebGL). À ajouter à `test:e2e` de `launcher/package.json` (fichier commun) à l'intégration.
+
+Le même jour, deux comptes manqués le 2 novembre : l'écran « Jouer » de `khamsin` (ligne 64) et d'`ombre` (ligne 65)
+attendait trois fiches ; avec le marais, il y en a quatre. Rejoué avec les clics (`e2e-tranche.js`) : 1 sur 2 avant la
+correction, 2 sur 2 après, sans et avec la carte. `e2e-tranche.js` donne aussi `ok` et `errors` aux sections, comme en tête
+de chaque essai.
 
 ## Confort (décisions d'Anthony du 1er novembre 2026)
 

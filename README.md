@@ -100,7 +100,7 @@ Quatrième carte du menu « Jouer », d'après le kit « Zombie Survival 2.0.7 -
 - **Écran Modèles** : fiches N°M-01 Le Noyé et N°07 La Stryge, après celles des autres cartes.
 - **Pas encore** : les quêtes, les secrets, les évènements et le déclencheur du combat de la Mère-Vase, qu'Anthony fera dans les Mod Tools. La base « Marais vierge » (le relief et l'eau, sans les lieux) existe dans le jeu ; l'ouverture du marais dans les Mod Tools n'a pas encore été essayée.
 - **Moteur** (section 42 du fichier) : troisième monde du moteur de monde ouvert (`OW_WORLDS.marais` ; le champ de hauteurs déborde de 300 m tout autour), objets `MA` et `MARAIS`, interface `window.ZS.marais`. Construit par `engine/marecages/etape.py`, exécuté à la fin de `build.py` (voir `engine/README.md`, point 8) : retouches du kit contrôlées, sources du kit, trois modules autonomes insérés tels quels (la Mère-Vase, son audio, la barque). `ZS_SANS_MARECAGES=1` donne le jeu sans la carte. Provenance de chaque fichier : `engine/marecages/PROVENANCE.md`.
-- **Essais** : `engine/marecages/essais/` (syntaxe, flashs, confort, autres cartes ; essai en navigateur et essais E2 rejoués dans la page, par la file commune `zs-lourd`). Les essais de bout en bout existants comptent le marais quand le jeu le contient ; l'essai `marecages` reste à écrire.
+- **Essais** : `engine/marecages/essais/` (syntaxe, flashs, confort, autres cartes ; essai en navigateur et essais E2 rejoués dans la page, par la file commune `zs-lourd`). Les essais de bout en bout existants comptent le marais quand le jeu le contient (fiches de l'écran « Jouer » de `khamsin` et `ombre` comprises, depuis le 11 novembre 2026). Essai de bout en bout `launcher/e2e/marecages.e2e.js` (54 vérifications, 11 novembre 2026) : catalogue, rien d'installé au chargement, choix par « Jouer », monde, éléments, rendu, confort, patauger et nager, barque et Noyés, la Mère-Vase par `ZS.marais`, manche des Stryges, pluie et foudre, F8 muet, consignes, Modèles, retour au Bunker 7 ; ses 46 vérifications faites dans la page passent aussi par `engine/tools/e2e-page.js`.
 
 ## Étages et escaliers
 
@@ -806,6 +806,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
   - Confort : aucune secousse de caméra par défaut, éclairs limités (ou « réduits »), diagnostic F8 seulement s'il est activé.
   - Launcher : une liste de publication qui nomme le marais le publie comme carte intégrée ; les essais de bout en bout comptent le marais quand le jeu le contient.
   - Numéros inchangés (2.0.6, interface 9, construction 1) : ils seront posés à l'intégration.
+  - 11 novembre 2026 : essai de bout en bout `marecages` (54 vérifications) ; `khamsin` et `ombre` comptent la fiche du marais dans l'écran « Jouer ».
 - **20 octobre 2026 — jeu 2.0.6 (construction 1)** : **HUD « portrait + points »** (demande d'Anthony ; voir « HUD des points »).
   - Paquet `hud-points` d'Anthony inséré tel quel, avec la licence de sa police (Teko, SIL OFL 1.1).
   - En bas à gauche, au-dessus des manches : portrait d'Anthony, points en jaune, bulles « +X » et « −X », secousse au refus ; caché au menu, en pause et en fin de partie ; « ∞ » avec le digi pass ; coéquipiers prêts pour la coop.

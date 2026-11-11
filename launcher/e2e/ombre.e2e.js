@@ -62,7 +62,8 @@ const USER = path.join(TMP, 'joueur');
     const cards = await game.evaluate(() => [...document.querySelectorAll('#ms-grid .ms-card')].map((c) => ({
       id: c.dataset.id, name: c.querySelector('.ms-name').textContent, img: !!c.querySelector('.ms-photo img'), desc: (c.querySelector('.ms-desc') || { textContent: '' }).textContent.slice(0, 60),
     })));
-    ok(cards.length === 3 && cards[2].id === 'ombre' && cards[2].name === 'Ombre éternelle' && cards[2].img && /Lune/.test(cards[2].desc),
+    // jeu 2.0.7 : la fiche des Marécages Maudits, quand le jeu les contient, vient en quatrième (catalogue contrôlé plus haut)
+    ok(cards.filter((c) => c.id !== 'marais').length === 3 && cards[2].id === 'ombre' && cards[2].name === 'Ombre éternelle' && cards[2].img && /Lune/.test(cards[2].desc),
       'Jouer : Ombre éternelle, troisième carte sélectionnable (nom, vignette, description)', cards);
     await game.click('#ms-grid .ms-card[data-id="ombre"]');
     ok(await game.evaluate(() => MapSel.sel === 'ombre' && document.querySelector('#ms-grid .ms-card[data-id="ombre"]').getAttribute('aria-selected') === 'true'), 'Jouer : Ombre éternelle choisie');
