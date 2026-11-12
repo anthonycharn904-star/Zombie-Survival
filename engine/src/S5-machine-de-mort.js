@@ -44,12 +44,17 @@ const mdmVitesse = () => (MDM.inst ? MDM.inst.vitesseDeplacement : 1);
 function mdmLin(o) { o.traverse((x) => { for (const m of Array.isArray(x.material) ? x.material : x.material ? [x.material] : []) _linDone.add(m); }); }
 
 /* ------------------------------------------------------------- création --- */
-/* L'instance de la session, une fois : préparée au menu (mdmAuMenu, section 43), sinon au premier lancement d'une
+/* L'instance de la session, une fois : préparée au démarrage (mdmAuMenu, section 43), sinon au premier lancement d'une
    partie (startGame) ; ensuite, rien. */
 function mdmCreer() {
   if (MDM.inst || MDM.err) return !!MDM.inst;
-  if (typeof MachineDeMort !== 'object' || !vmScene || !vmCamera) { MDM.err = 'paquet absent'; return false; }
+  if (typeof MachineDeMort !== 'object' || typeof MachineDeMort3D !== 'object' || !vmScene || !vmCamera) { MDM.err = 'paquet absent'; return false; }
   const bus = Sound.bus && Sound.bus();
+  // temps de chaque étape (ligne « [chargement] », section 43) : environnement de reflets, création, précompilations
+  const T = MDM.temps = { reflets: 0, creation: 0, vue: 0, miniature: 0, corps: 0 }, now = () => performance.now();
+  const env0 = MachineDeMort3D.environnementSecours;
+  MachineDeMort3D.environnementSecours = function () { const t = now(); try { return env0.apply(this, arguments); } finally { T.reflets += now() - t; } };
+  let t = now();
   try {
     MDM.fov0 = vmCamera.fov;
     const M = MachineDeMort.creer({
@@ -64,16 +69,20 @@ function mdmCreer() {
       jeu: { tirer: mdmTirer, rangerArme: mdmRanger, ressortirArme: mdmRessortir, sol: () => -50 },   // douilles : dans la vue
     });
     mdmLin(M.vue);
+    T.creation = now() - t - T.reflets; t = now();
     // compilation d'avance : l'arme dans la vue des armes, la miniature dans le monde (pas d'à-coup au premier bonus)
     try { M.prechauffer(); } catch (e) { console.warn('[machine de mort] précompilation de la vue', e); }
+    T.vue = now() - t; t = now();
     try {
       const b = MachineDeMort3D.creerBonus(THREE, { renderer, scene, position: new THREE.Vector3(0, -1000, 0), duree: 1e9 });
       mdmLin(b.objet);
       MachineDeMort3D.prechauffer(THREE, renderer, scene, camera, [b.objet]);
       MDM.temoin = b;                                            // pas libérée : les miniatures suivantes réutilisent ses programmes
+      T.miniature = now() - t; t = now();
       MDM.corps = MachineDeMort3D.creerArme(THREE, { renderer, qualite: 'basse' });   // le modèle du corps (vue TPS)
       mdmLin(MDM.corps.objet);
       MachineDeMort3D.prechauffer(THREE, renderer, scene, camera, [MDM.corps.objet]);
+      T.corps = now() - t;
     } catch (e) { console.warn('[machine de mort] précompilation de la miniature et du modèle du corps', e); }
     if (!document.getElementById('mdm-css')) {
       const st = document.createElement('style'); st.id = 'mdm-css';
@@ -81,11 +90,14 @@ function mdmCreer() {
       document.head.append(st);
     }
     MDM.inst = M;
+    MDM.lampes = mdmLampes(); MDM.carte = G.mapId;              // éclairage de la précompilation (mdmLampesPartie)
     return true;
   } catch (e) {
     MDM.err = String((e && e.message) || e);
     console.error('[machine de mort]', e);
     return false;
+  } finally {
+    MachineDeMort3D.environnementSecours = env0;
   }
 }
 /* Lancement d'une partie (startGame) : l'instance (une fois), puis tout est remis à zéro (clearPowerups l'a déjà fait au
@@ -98,8 +110,31 @@ function mdmNouvellePartie() {
   }
   mdmVider();
 }
-/* Préparation au menu (section 43, pendant un temps mort) : l'instance, ses environnements et ses précompilations,
-   qui gelaient le lancement de la première carte de la session. Seulement quand l'audio du jeu existe (sinon le paquet
+/* Éclairage de la scène, tel que three r128 le compte dans la clé d'un programme (lampes visibles par sorte, ombres). */
+function mdmLampes() {
+  const n = {};
+  scene.traverseVisible((o) => { if (o.isLight && o.layers.test(camera.layers)) { const k = o.type + (o.castShadow ? '*' : ''); n[k] = (n[k] || 0) + 1; } });
+  return JSON.stringify(n);
+}
+/* Lancement d'une partie sur une autre carte que celle de la précompilation (fin de startGame, section 43) : une image
+   rendue sous l'écran de chargement (lampes de la partie en place, celles de complément du boss comprises), puis, si
+   l'éclairage a changé, la miniature et le modèle du corps recompilés. Sans cela, le premier bonus de la partie se
+   compilait en pleine partie (gel). Renvoie le temps passé. */
+function mdmLampesPartie() {
+  if (!MDM.inst || !MDM.temoin || MDM.carte === G.mapId || !renderEnabled) return 0;
+  const t = performance.now();
+  try {
+    render();
+    if (mdmLampes() !== MDM.lampes) {
+      MachineDeMort3D.prechauffer(THREE, renderer, scene, camera, [MDM.temoin.objet, MDM.corps && MDM.corps.objet].filter(Boolean));
+      MDM.lampes = mdmLampes();
+    }
+  } catch (e) { console.warn('[machine de mort] précompilation pour la carte', e); }
+  MDM.carte = G.mapId;
+  return performance.now() - t;
+}
+/* Préparation au démarrage (section 43, derrière l'écran de chargement, avant le menu) : l'instance, ses environnements
+   et ses précompilations, qui gelaient le lancement de la première carte de la session. Seulement quand l'audio du jeu existe (sinon le paquet
    serait créé sans sons) ; renvoie vrai si elle vient d'être créée. */
 function mdmAuMenu() {
   if (MDM.inst || MDM.err || G.state !== 'menu') return false;

@@ -2,18 +2,22 @@
    Jeu 2.0.7, demande d'Anthony du 11 novembre 2026 (« Ça prend un temps fou pour lancer une map ») : mesurer chez lui
    et alléger le lancement d'une carte.
    · Mesure : du démarrage au menu, puis de chaque lancement de carte (clic sur Jouer, reprise d'une sauvegarde) à la
-     première image rendue (« jouable après »), puis les 30 images suivantes (la plus longue : gel d'une compilation). Une ligne « [chargement] … » dans la console ; le launcher la recopie dans son journal
-     (launcher.log). Rien n'est affiché en jeu.
-   · Préparations au menu, pendant les temps morts (requestIdleCallback), une pièce à la fois : la machine de mort
+     première image rendue (« jouable après »), puis les 30 images suivantes (la plus longue : gel d'une compilation).
+     Une ligne « [chargement] … » dans la console ; le launcher la recopie dans son journal (launcher.log). Rien n'est
+     affiché en jeu.
+   · Préparations au démarrage, derrière l'écran de chargement, juste avant le menu (construction 3) : la machine de mort
      (section 32, mdmAuMenu) et les dessins à la craie des armes murales de toutes les cartes (chalkTexture, déjà
      gardés en cache pour la session). Ces travaux étaient faits au lancement de la première carte qui en avait besoin.
+   · Le menu s'ouvre sur Bunker 7 (construction 3, choix d'Anthony du 12 novembre 2026), sauf reprise demandée par le
+     launcher ; la sélection des cartes propose la dernière carte jouée.
    Points d'accroche : tools/hooks-chargement.py. */
 const CHG = {
   m: null,               // mesure en cours : { quoi, carte, t0, monde, partie, mdm, p0 }
   images: null,          // attente des premières images : { quoi, t, n, pire, premiere }
   journal: [],           // lignes écrites (essais)
-  prep: false,           // préparations du menu lancées (une fois par session)
-  prepLog: [],           // préparations faites : [nom, ms]
+  prep: false,           // préparations du démarrage faites (une fois par session)
+  prepLog: [],           // préparations faites (textes)
+  prepMs: 0,
   gpu: null,
 };
 const CHG_IMAGES = 30, CHG_MAX_MS = 20000;
@@ -50,7 +54,7 @@ function chgPartie(ms) {
   if (!CHG.m.carte) CHG.m.carte = G.mapId;
   chgAttendre();
 }
-/* Machine de mort créée pendant le lancement (pas encore préparée au menu). */
+/* Machine de mort créée, ou recompilée pour l'éclairage d'une autre carte, pendant le lancement. */
 function chgMdm(ms) { if (CHG.m) CHG.m.mdm += ms; }
 /* Fin du démarrage (boot) : le menu est montré. */
 function chgMenu() {
@@ -79,6 +83,7 @@ function chgFin(t) {
     `${m.quoi}`, `carte ${nom} (${m.carte || '?'})`,
     `${m.quoi === 'démarrage' ? 'menu affiché' : 'jouable'} après ${chgS(I.premiere)}`,
     m.quoi === 'démarrage' ? `page ${chgS(CHG.pageMs || 0)}` : null,
+    m.quoi === 'démarrage' && CHG.prepMs ? `préparations ${chgS(CHG.prepMs)}` : null,
     m.monde ? `monde ${chgS(m.monde)}` : 'monde déjà chargé',
     m.partie ? `partie ${chgS(m.partie)}` : null,
     m.mdm ? `dont machine de mort ${chgS(m.mdm)}` : null,
@@ -89,34 +94,42 @@ function chgFin(t) {
   const ligne = `[chargement] ${morceaux.join(' ; ')}`;
   CHG.journal.push(ligne);
   console.info(ligne);
-  if (m.quoi === 'démarrage') chgPreparer();
 }
 
-/* ------------------------------------------------ préparations du menu --- */
-/* Après les premières images du menu : une pièce par temps mort, seulement au menu. */
+/* ---------------------------------------------- préparations du démarrage --- */
+/* Construction 3 (12 novembre 2026, mesures d'Anthony : machine de mort 5,4 s sur sa RTX 3080, menu figé d'autant) :
+   tout est préparé d'un bloc à la fin du démarrage (boot), derrière l'écran de chargement, juste avant le menu. Le
+   menu ne gèle plus ; les lancements de carte restent allégés. Le temps est compté dans « menu affiché après ». */
 function chgPreparer() {
   if (CHG.prep || !chgActif()) return;
   CHG.prep = true;
+  // une image du menu d'abord : les lampes de complément du boss (HC-boss-lampes.js) ne sont en place qu'après un rendu,
+  // et la précompilation doit voir l'éclairage de la partie (sinon le premier bonus se compile en pleine partie)
+  try { if (renderEnabled) render(); } catch (e) { console.warn('[chargement] image du menu', e); }
   const pieces = [];
   if (typeof mdmAuMenu === 'function') pieces.push(['machine de mort', mdmAuMenu]);
   const armes = new Set();
   for (const id of MAPS.list) for (const wb of (MAPS.byId[id] && MAPS.byId[id].wallbuys) || []) if (wb && WEAPONS[wb.w]) armes.add(wb.w);
   for (const w of armes) pieces.push([`craie ${w}`, () => { if (!CHALK[w]) { chalkTexture(w); return true; } return false; }]);
-  const plus_tard = (f) => (window.requestIdleCallback ? window.requestIdleCallback(f, { timeout: 3000 }) : setTimeout(f, 200));
-  let fait = 0, total = 0;
-  const suivante = () => {
-    if (!pieces.length) {
-      const ligne = `[chargement] préparé au menu : ${fait} élément(s) en ${chgS(total)}${CHG.prepLog.length ? ` (${CHG.prepLog.map(([n, ms]) => `${n} ${chgS(ms)}`).join(', ')})` : ''}`;
-      CHG.journal.push(ligne); console.info(ligne);
-      return;
-    }
-    if (G.state !== 'menu' || CHG.m) { setTimeout(() => plus_tard(suivante), 1000); return; }   // hors du menu : plus tard
-    const [nom, f] = pieces.shift(), t = performance.now();
+  let fait = 0, total = 0, craies = 0, craiesMs = 0;
+  for (const [nom, f] of pieces) {
+    const t = performance.now();
     let utile = false;
     try { utile = f() !== false; } catch (e) { console.warn('[chargement] préparation', nom, e); }
     const ms = performance.now() - t;
-    if (utile) { fait++; total += ms; if (ms >= 50) CHG.prepLog.push([nom, ms]); }
-    plus_tard(suivante);
-  };
-  plus_tard(suivante);
+    if (!utile) continue;
+    fait++; total += ms;
+    if (nom.startsWith('craie ')) { craies++; craiesMs += ms; continue; }
+    const T = nom === 'machine de mort' && MDM.temps;
+    CHG.prepLog.push(T ? `machine de mort ${chgS(ms)} (reflets ${chgS(T.reflets)}, création ${chgS(T.creation)}, vue ${chgS(T.vue)}, miniature ${chgS(T.miniature)}, corps ${chgS(T.corps)})` : `${nom} ${chgS(ms)}`);
+  }
+  if (craies) CHG.prepLog.push(`${craies} craie(s) ${chgS(craiesMs)}`);
+  CHG.prepMs = total;
+  const ligne = `[chargement] préparé au démarrage : ${fait} élément(s) en ${chgS(total)}${CHG.prepLog.length ? ` (${CHG.prepLog.join(' ; ')})` : ''}`;
+  CHG.journal.push(ligne); console.info(ligne);
+}
+
+/* Carte d'une reprise demandée par le launcher (#continuer=<carte>) : construite tout de suite au démarrage. */
+function chgCarteReprise() {
+  try { const c = new URLSearchParams(location.hash.slice(1)).get('continuer'); return c && MAPS.byId[c] ? c : null; } catch (e) { return null; }
 }

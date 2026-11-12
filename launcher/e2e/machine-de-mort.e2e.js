@@ -39,13 +39,13 @@ const USER = path.join(TMP, 'joueur');
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
       const image = () => { renderEnabled = true; render(); renderEnabled = false; };
-      ok(typeof MachineDeMort === 'object' && typeof MachineDeMort.creer === 'function' && MachineDeMort.VERSION === '1.0.0' && !MDM.inst,
-        'paquet chargé tel quel (MachineDeMort 1.0.0), pas d’instance avant la première partie');
+      ok(typeof MachineDeMort === 'object' && typeof MachineDeMort.creer === 'function' && MachineDeMort.VERSION === '1.0.0' && !!MDM.inst && !!MDM.temps,
+        'paquet chargé tel quel (MachineDeMort 1.0.0), instance préparée au démarrage (jeu 2.0.7, construction 3)');
       ok(POWERUPS.deathmachine && POWERUPS.deathmachine.name === 'Machine de mort' && !WEAPONS.deathmachine && !BOX_POOL.includes('deathmachine'),
         'bonus « Machine de mort » parmi les bonus ; ni dans les armes ni dans la boîte');
       __zs.map('bunker7'); __zs.start(); __zs.god(true);
       if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
-      ok(MDM.inst && !MDM.err && MDM.inst.vue.parent === vmCamera && vmCamera.parent === vmScene, 'instance créée au lancement de la partie, arme dans la vue des armes', MDM.err);
+      ok(MDM.inst && !MDM.err && MDM.inst.vue.parent === vmCamera && vmCamera.parent === vmScene, 'instance prête au lancement de la partie, arme dans la vue des armes', MDM.err);
       // tirage : le sac des bonus la contient (une chance sur six)
       const auHasard = Object.keys(POWERUPS).filter((k) => POWERUPS[k].tirage !== false);   // l'atout gratuit (easter eggs) n'en est pas
       Powerups.bag = []; const vus = new Set();

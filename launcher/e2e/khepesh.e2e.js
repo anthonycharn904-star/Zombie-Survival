@@ -47,7 +47,7 @@ const USER = path.join(TMP, 'joueur');
     (await game.evaluate(() => {
       const out = [];
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
-      ok(GAME_VERSION === '2.0.7' && GAME_BUILD === 2 && ZS.build === 2, 'jeu 2.0.7, construction 2', { GAME_VERSION, GAME_BUILD, b: ZS.build });
+      ok(GAME_VERSION === '2.0.7' && GAME_BUILD === 3 && ZS.build === 3, 'jeu 2.0.7, construction 3', { GAME_VERSION, GAME_BUILD, b: ZS.build });
       ok(typeof creerKhepesh === 'function' && window.creerKhepesh === undefined, 'module du khépesh dans le script du jeu, sans variable globale');
       ok(Khepesh === null && CUR.map && CUR.map.id === 'bunker7' && meleeName() === 'Couteau' && $('key-melee').textContent === 'Couteau',
         'au menu sur Bunker 7 : « V ou E : Couteau », pas de khépesh', { map: CUR.map && CUR.map.id, key: $('key-melee').textContent });
