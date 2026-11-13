@@ -40,7 +40,7 @@ const USER = path.join(TMP, 'joueur');
       const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
       const image = () => { renderEnabled = true; render(); renderEnabled = false; };
       ok(typeof MachineDeMort === 'object' && typeof MachineDeMort.creer === 'function' && MachineDeMort.VERSION === '1.0.0' && !!MDM.inst && !!MDM.temps,
-        'paquet chargé tel quel (MachineDeMort 1.0.0), instance préparée au démarrage (jeu 2.0.7, construction 3)');
+        'paquet chargé tel quel (MachineDeMort 1.0.0), instance préparée au démarrage (jeu 2.0.7, constructions 3 et suivantes)');
       ok(POWERUPS.deathmachine && POWERUPS.deathmachine.name === 'Machine de mort' && !WEAPONS.deathmachine && !BOX_POOL.includes('deathmachine'),
         'bonus « Machine de mort » parmi les bonus ; ni dans les armes ni dans la boîte');
       __zs.map('bunker7'); __zs.start(); __zs.god(true);

@@ -116,17 +116,35 @@ function mdmLampes() {
   scene.traverseVisible((o) => { if (o.isLight && o.layers.test(camera.layers)) { const k = o.type + (o.castShadow ? '*' : ''); n[k] = (n[k] || 0) + 1; } });
   return JSON.stringify(n);
 }
+/* Scène de compilation : des copies des lampes de la scène (mêmes sortes, même nombre, mêmes ombres), son brouillard et
+   son environnement. Les programmes de three r128 sont rangés par matière et par clé, et la clé ne dépend que de ces
+   nombres : compilés ici, ils servent tels quels dans la vraie scène. On ne compile ainsi que les objets donnés
+   (MachineDeMort3D.prechauffer sur la vraie scène compilait toute la carte : 27,8 s sur Ombre éternelle chez Anthony,
+   construction 3 du 12 novembre). */
+function mdmSceneDeCompilation() {
+  const s = new THREE.Scene();
+  s.fog = scene.fog; s.environment = scene.environment;
+  scene.traverseVisible((o) => {
+    if (!o.isLight || !o.layers.test(camera.layers) || typeof THREE[o.type] !== 'function') return;
+    const l = new THREE[o.type]();
+    l.castShadow = o.castShadow;
+    s.add(l);
+    if (l.target) s.add(l.target);
+  });
+  return s;
+}
 /* Lancement d'une partie sur une autre carte que celle de la précompilation (fin de startGame, section 43) : une image
-   rendue sous l'écran de chargement (lampes de la partie en place, celles de complément du boss comprises), puis, si
-   l'éclairage a changé, la miniature et le modèle du corps recompilés. Sans cela, le premier bonus de la partie se
-   compilait en pleine partie (gel). Renvoie le temps passé. */
+   rendue sous l'écran de chargement (lampes de la partie en place, celles de complément du boss comprises : c'est le
+   travail de la première image, fait plus tôt), puis, si l'éclairage a changé, la miniature et le modèle du corps
+   recompilés dans une scène de compilation à cet éclairage. Sans cela, le premier bonus de la partie se compilait en
+   pleine partie (gel). Renvoie le temps passé. */
 function mdmLampesPartie() {
   if (!MDM.inst || !MDM.temoin || MDM.carte === G.mapId || !renderEnabled) return 0;
   const t = performance.now();
   try {
     render();
     if (mdmLampes() !== MDM.lampes) {
-      MachineDeMort3D.prechauffer(THREE, renderer, scene, camera, [MDM.temoin.objet, MDM.corps && MDM.corps.objet].filter(Boolean));
+      MachineDeMort3D.prechauffer(THREE, renderer, mdmSceneDeCompilation(), camera, [MDM.temoin.objet, MDM.corps && MDM.corps.objet].filter(Boolean));
       MDM.lampes = mdmLampes();
     }
   } catch (e) { console.warn('[machine de mort] précompilation pour la carte', e); }
