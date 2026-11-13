@@ -25,8 +25,8 @@ hors du dépôt.
 | `src/ma00_confort.js` | — (nouveau) | — | `ff2b470232a0dcd4…` | écrit pour l'intégration (confort : secousses, flashs) |
 | `src/ma01_core.js` | `sources/src/ma/ma01_core.js` | `73e731fe87df7056…` | `4fc0234878915823…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma02_view.js` | `sources/src/ma/ma02_view.js` | `0149b2b37343a57a…` | `051c46bee47eae1b…` | réétiqueté |
-| `src/ma03_water.js` | `sources/src/ma/ma03_water.js` | `b6dd048face7ace2…` | `8be25ed4524be3e4…` | réétiqueté |
-| `src/ma04_load.js` | `sources/src/ma/ma04_load.js` | `9b0e4ee560b057d0…` | `82ec1efc2ab547b3…` | réétiqueté et adapté (diff : outils/comparer.py) |
+| `src/ma03_water.js` | `sources/src/ma/ma03_water.js` | `b6dd048face7ace2…` | `855608d1053dec0b…` | réétiqueté et adapté (diff : outils/comparer.py) |
+| `src/ma04_load.js` | `sources/src/ma/ma04_load.js` | `9b0e4ee560b057d0…` | `692acb993969222f…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma05_places.js` | `sources/src/ma/ma05_places.js` | `7e7775039416b1c7…` | `85d1c2a5daa8ea41…` | réétiqueté |
 | `src/ma06_boat.js` | `sources/src/ma/ma06_boat.js` | `ced716e77ee15d79…` | `80ed9a11c289a9ef…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma07_elements.js` | `sources/src/ma/ma07_elements.js` | `eb4c9ad40449832f…` | `eb4c9ad40449832f…` | identique |
@@ -39,7 +39,7 @@ hors du dépôt.
 | `src/ma14_brume.js` | `sources/src/ma/ma14_brume.js` | `89b77d67175240ce…` | `036292f85d28928e…` | réétiqueté |
 | `src/ma15_noyes.js` | `sources/src/ma/ma15_noyes.js` | `c9d33d2c57692202…` | `37363e5f9d827cd8…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma16_stryges.js` | `sources/src/ma/ma16_stryges.js` | `3b1d5c866a8d8f1b…` | `7dffc6d32ed70f71…` | réétiqueté et adapté (diff : outils/comparer.py) |
-| `src/ma17_pluie.js` | `sources/src/ma/ma17_pluie.js` | `de371d7332dd41c9…` | `63c9f33e4e906e44…` | réétiqueté et adapté (diff : outils/comparer.py) |
+| `src/ma17_pluie.js` | `sources/src/ma/ma17_pluie.js` | `de371d7332dd41c9…` | `f57d4605aa41c241…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma18_orage.js` | `sources/src/ma/ma18_orage.js` | `03a937fbc613b854…` | `c343a941690fcd6a…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma19_arrivee.js` | `sources/src/ma/ma19_arrivee.js` | `eb52778d0d6ff6f6…` | `acf76a7365d8dd72…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `retouches/kit.py` | `sources/tools/patches.py` | `80334a5342d1a014…` | `0c2d8cec558353b0…` | GAME_VERSION retirée, réétiqueté, adapté (2 retouches) |

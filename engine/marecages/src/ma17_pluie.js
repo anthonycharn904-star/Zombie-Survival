@@ -379,6 +379,17 @@ function maWxProbe() {
     else safe.dispose();
   }
 }
+/* Jeu 2.0.7 (temps de chargement, 12 novembre 2026) : l'autotest une fois par session, au premier chargement du
+   marais ; le pilote ne change pas d'un chargement à l'autre. Aux suivants, son résultat est repris (version simple
+   posée tout de suite si la normale ne s'affichait pas). ZS.marais.meteo.test() le refait à la demande ; le contrôle
+   en jeu (maWxProbe) reste à chaque chargement. */
+function maWxSelfTestSession() {
+  const W = MA_WX, R0 = MA.wxTest;
+  if (!R0) return (MA.wxTest = maWxSelfTest());
+  if (R0.mode === 'simple' && W.rain && !W.rain.safe) { const safe = maWxRainMat(true); W.rain.mesh.material = safe; W.rain.mat.dispose(); W.rain.mat = safe; W.rain.safe = true; }
+  W.test = R0;
+  return R0;
+}
 function maWxSelfTest() {
   const W = MA_WX;
   if (!W.rain || typeof renderer === 'undefined' || !renderer) return null;
