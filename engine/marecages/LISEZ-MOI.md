@@ -180,6 +180,27 @@ attendait trois fiches ; avec le marais, il y en a quatre. Rejoué avec les clic
 correction, 2 sur 2 après, sans et avec la carte. `e2e-tranche.js` donne aussi `ok` et `errors` aux sections, comme en tête
 de chaque essai.
 
+## Temps de chargement (13 novembre 2026)
+
+Demande d'Anthony du 12 novembre 2026, par la session 5 (`docs/integration/correctifs-fusion/pour-marecages-chargement.md`
+du worktree d'intégration) : 14,6 s pour construire le marais sur son PC (RTX 3080, Direct3D 11).
+
+- **Mesure** : `maLoad` écrit une ligne `[chargement] marais : … en tout ; préparation … ; terrain et ciel … ; lieux … ;
+  végétation … ; éléments et barques … ; couleurs … ; eau et brume … ; effets des créatures … ; pluie et orage … ;
+  réglages de la vue … ; Mère-Vase … ; précompilation … ; autotest de la pluie … ; N programmes compilés`
+  (`console.info`, recopiée par le launcher 1.4.0 dans `launcher.log` ; rien dans les Mod Tools). Une étape qui relit la
+  carte graphique (précompilation, autotest) attend aussi le travail des étapes d'avant.
+- **Brume** (`maMistTexture`) : pixels écrits dans une image neuve, sans `getImageData` ; même texture (comparée sur la
+  toile et telle que la carte graphique la reçoit : 0 octet d'écart).
+- **Autotest de la pluie** : une fois par session (`maWxSelfTestSession`, résultat dans `MA.wxTest`) ; aux chargements
+  suivants, le résultat est repris (version simple posée tout de suite si la normale ne s'affichait pas). Le contrôle en
+  jeu (`maWxProbe`) reste à chaque chargement ; `ZS.marais.meteo.test()` refait l'autotest à la demande.
+- **Mesuré en rendu logiciel** (Chromium sans tête, jeu de l'intégration `e77863f`, deux chargements du marais à la
+  suite) : premier chargement 25,1 s → 24,2 s ; second 4,9 s → 1,7 s. Au premier, 10,1 s de précompilation (96
+  programmes) et 8,1 s d'autotest, qui attend surtout la fin de cette compilation : l'attente que causait la brume s'est
+  reportée là. Le gros du temps est la compilation des shaders, voulue (`maPrewarm` évite les gels en partie). Sur la carte
+  graphique d'Anthony, la répartition est à lire dans sa ligne `[chargement] marais`.
+
 ## Confort (décisions d'Anthony du 1er novembre 2026)
 
 Deux clés des réglages du jeu (`settings`, enregistrés sous `zs.settings`) attendent l'écran des options (session

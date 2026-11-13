@@ -3,7 +3,22 @@
    Même déroulé que la Lune (luLoad) : base, relief retouché par les Mod Tools, terrain, ciel, eau,
    lieux (bâtiments, pontons, pierres), végétation, éléments de la carte (armes, atouts, boîte,
    barques, disjoncteurs, Le Glas), lumières, la bête. */
+/* Jeu 2.0.7 (temps de chargement ; demande d'Anthony du 12 novembre 2026, par la session 5) : le temps de chaque étape
+   du chargement, dans une ligne « [chargement] marais : … » de la console (console.info), que le launcher 1.4.0
+   recopie dans launcher.log. Rien dans les Mod Tools. Une étape qui relit la carte graphique (précompilation,
+   autotest) attend aussi le travail des étapes d'avant : son temps les comprend en partie. */
+const MA_CHG = { t: 0, t0: 0, l: [], p0: 0 };
+function maChgDebut() { MA_CHG.l = []; MA_CHG.t = MA_CHG.t0 = performance.now(); MA_CHG.p0 = renderer && renderer.info && renderer.info.programs ? renderer.info.programs.length : 0; }
+function maChg(nom) { const t = performance.now(); MA_CHG.l.push([nom, t - MA_CHG.t]); MA_CHG.t = t; }
+function maChgFin() {
+  const s = (ms) => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+  const p = renderer && renderer.info && renderer.info.programs ? renderer.info.programs.length - MA_CHG.p0 : 0;
+  try { console.info(`[chargement] marais : ${s(performance.now() - MA_CHG.t0)} en tout ; ${MA_CHG.l.map(([n, ms]) => `${n} ${s(ms)}`).join(' ; ')} ; ${p} programmes compilés`); }
+  catch (e) { /* console absente */ }
+}
 function maLoad(map, opts = {}) {
+  const chg = !opts.editor;
+  if (chg) maChgDebut();
   // restes de Khamsin (owLoad n'appelle pas owUnload entre deux mondes ouverts) : tempête, faisceau, Gardien
   if (KHS.snd) KHS.snd.g.gain.value = 0;
   for (const m of KHS.walls ? KHS.walls.meshes : []) m.visible = false;
@@ -29,33 +44,41 @@ function maLoad(map, opts = {}) {
   if (owModsActive(map) || OWMOD.on) { owApplyMods(map); OWH.bg = null; }
   else OW.roadsUser = [];
   OW.locsShown = owNamedLocs(map);
+  if (chg) maChg('préparation');
   const root = new THREE.Group();
   root.name = 'monde';
   owBuildTerrainChunks(root);
   for (const ch of OWTER.chunks) ch.mesh.material = maTerrainMat();
   owBuildUserRoads(root);
   maBuildSky(root);
+  if (chg) maChg('terrain et ciel');
   OWL.lamps = [];
   OW.placesRoot = root;
   if (places) { maBuildPlaces(root); owItemsWrite(); }
   else { owItemsBegin(); MA_PL.docks = {}; MA_PL.spots = {}; MA_PL.lamps = []; }
   maHooksReset();
+  if (chg) maChg('lieux');
   maBuildNature(root, places);
+  if (chg) maChg('végétation');
   owLightsInit(root);
   owBuildElements(root, map, { perProp: !!opts.editor });
+  if (chg) maChg('éléments et barques');
   World.root = root;
   linearizeTree(root);
   scene.add(root);
+  if (chg) maChg('couleurs');
   // après la conversion des couleurs : l'eau (couleurs déjà linéaires), la brume, les feux follets
   maBuildWater(root);
   maBuildMist(root);
   maBuildWisps(root);
+  if (chg) maChg('eau et brume');
   maFxInit(root);
   maNoyeGlowInit(root);                                // kit MM 2.1.6 : yeux des Noyés (dans la scène dès le chargement : précompilés)
   maStrygeFxInit(root);                                // kit 2.0.7 : yeux et traînées des Stryges (même chose)
   if (!opts.editor) maArrInit(root);                    // kit 2.0.7 : l'arrivée des Stryges (plumes, ondes, lueurs ; ma19)
   // kit 2.0.7 : la pluie (rideau, impacts, sons calculés), le temps qu'il fait, l'orage (éclairs, brûlures :
   // précompilés aussi) ; pas dans l'éditeur des Mod Tools
+  if (chg) maChg('effets des créatures');
   maWxUnload();
   MA.wxErr = false; MA.arrErr = false;
   if (!opts.editor) { maStormInit(root); maWxInit(root); }
@@ -63,6 +86,7 @@ function maLoad(map, opts = {}) {
   // kit MM 2.1.4 : les sillages des barques existent dès le chargement (leur matière est compilée avec le
   // reste) : créés au premier départ d'une barque, ils compilaient un shader en pleine partie
   for (const V of VEH.list) if (V.T.boat) maWakeFor(V).mesh.visible = false;
+  if (chg) maChg('pluie et orage');
   owSandPool();
   camera.near = 0.1; camera.far = 2600; camera.updateProjectionMatrix();
   OW.lastLoc = null;
@@ -75,9 +99,18 @@ function maLoad(map, opts = {}) {
   maApplyLight();
   maHFogUpdate(0);
   maSkyFollow();
+  if (chg) maChg('réglages de la vue');
   if (!opts.editor && places) maBeastInit(root);
-  if (!opts.editor) { maMudPool(); maPrewarm(); try { maWxSelfTest(); } catch (e) { maErr('marais : test du rendu de la pluie', e); } }
+  if (chg) maChg('Mère-Vase');
+  if (!opts.editor) {
+    maMudPool(); maPrewarm();
+    maChg('précompilation');
+    try { maWxSelfTestSession(); } catch (e) { maErr('marais : test du rendu de la pluie', e); }   // jeu 2.0.7 : une fois par session
+    maChg(MA.wxTest && MA.wxTestFait ? 'autotest de la pluie (repris)' : 'autotest de la pluie');
+    MA.wxTestFait = true;
+  }
   maDiagInstaller();                                    // diagnostic (ma11) : seulement s'il est permis
+  if (chg) maChgFin();
 }
 /* Kit MM 2.1.4 : tout compiler au chargement. Une matière se compile (son shader) au premier rendu qui la
    montre, et une lumière qui apparaît ou disparaît fait recompiler toutes les matières éclairées. En pleine

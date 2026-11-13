@@ -260,11 +260,13 @@ function maBubbles(x, z, n = 6, spread = 1.2) {
 function maMistTexture() {
   const S = 128, c = makeCanvas(S, S), g = c.getContext('2d');
   const n = valueNoise(S, S, [[4, 4, 1], [8, 8, 0.6], [16, 16, 0.3]], 1.4);
-  paintPixels(g, S, S, (x, y, col) => { col[0] = 200; col[1] = 210; col[2] = 204; });
-  const img = g.getImageData(0, 0, S, S), d = img.data;
+  // jeu 2.0.7 (temps de chargement, 12 novembre 2026) : les pixels écrits dans une image neuve, sans relire le canevas
+  // (getImageData attendait tout le travail en cours de la carte graphique) ; même texture qu'avant, au pixel près
+  const img = g.createImageData(S, S), d = img.data;
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    const dx = (x - S / 2) / (S / 2), dy = (y - S / 2) / (S / 2), r = Math.hypot(dx, dy * 1.6);
-    d[(y * S + x) * 4 + 3] = clamp((1 - r) * 1.4, 0, 1) * clamp(n[y * S + x] * 1.5 - 0.2, 0, 1) * 255;
+    const dx = (x - S / 2) / (S / 2), dy = (y - S / 2) / (S / 2), r = Math.hypot(dx, dy * 1.6), p = (y * S + x) * 4;
+    d[p] = 200; d[p + 1] = 210; d[p + 2] = 204;
+    d[p + 3] = clamp((1 - r) * 1.4, 0, 1) * clamp(n[y * S + x] * 1.5 - 0.2, 0, 1) * 255;
   }
   g.putImageData(img, 0, 0);
   return toTex(c, { clamp: true });
