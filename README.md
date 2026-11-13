@@ -1061,6 +1061,7 @@ Les sources d'origine n'existaient que dans un espace de travail temporaire. Ce 
 
 ## Historique
 
+- **13 novembre 2026 — jeu 2.0.7 (construction 5)** : chargement du marais allégé par la session Marécages (fusion de `chantier/marecages` `e81aa62` : ligne `[chargement] marais`, brume sans relecture du canevas, autotest de la pluie une fois par session ; voir « Les Marécages Maudits », « Chargement »). Construction 4 vérifiée chez Anthony (RTX 3080) : Ombre éternelle jouable après 3,6 s au lieu de 30,7 s ; premier démarrage après une installation plus lent (36,3 s puis 9,2 s : cache des shaders de Chromium à refaire).
 - **12 novembre 2026 — jeu 2.0.7 (construction 4)** : machine de mort recompilée pour l'éclairage d'une carte dans une scène de compilation (la construction 3 compilait toute la carte : 27,8 s au lancement d'Ombre éternelle chez Anthony).
 - **12 novembre 2026 — jeu 2.0.7 (construction 3)** : **temps de chargement**, suite (mesures d'Anthony sur sa RTX 3080 ; « Fais A, B et C »).
   - Machine de mort et craies préparées au démarrage, avant le menu (le menu ne gèle plus) ; détail des étapes de la machine de mort dans la ligne `[chargement]`.
