@@ -41,7 +41,7 @@ remettre une ligne « * » : Git ignore alors les fichiers non suivis du dossier
 |---|---|
 | `src/ma00_confort.js` | Nouveau, chargé en premier. Réglages de confort (secousses, flashs), garde des flashs. |
 | `src/ma01_core.js` … `ma19_arrivee.js` | Les sources du marais du kit (monde, eau, lieux, barque, bête, Noyés, Stryges, pluie, orage, arrivée), réétiquetées puis adaptées. Insérées dans le script du jeu, avant la fin du monde ouvert, après tous les modules de `engine/src/`. |
-| `orig/mere-vase.js`, `orig/mere-vase-audio.js`, `orig/barque.js` | Les trois modules autonomes du kit, insérés tels quels, chacun dans son `<script>`, avec leur empreinte contrôlée (comme la jeep). |
+| `orig/mere-vase.js`, `orig/mere-vase-audio.js`, `orig/barque.js` | Les trois modules autonomes du kit, chacun dans son `<script>`, avec leur empreinte contrôlée (comme la jeep). Insérés tels quels, sauf la Mère-Vase : 8 retouches contrôlées à l'insertion (`retouches/modules.py`, décision d'Anthony du 13 novembre 2026), le fichier restant celui du kit. |
 | `retouches/kit.py` | Les 104 retouches du moteur : 100 du script, 4 de l'en-tête. Données lues sans être exécutées. |
 | `retouches/confort.py` | Les 3 retouches écrites pour l'intégration (2 novembre 2026) : secousses et à-coups du jeu de base coupés dans le marais, là où le moteur les applique à la caméra (`updateCamera`, `vehCamera`). |
 | `retouches/controle.py` | Pour chaque retouche : lieu, déclaration englobante, session concernée. Aussi les versions validées, les empreintes des modules visés et les 232 noms du moteur dont le marais dépend. Calculé par `outils/generer-retouches.py`. |
@@ -200,6 +200,36 @@ du worktree d'intégration) : 14,6 s pour construire le marais sur son PC (RTX 3
   programmes) et 8,1 s d'autotest, qui attend surtout la fin de cette compilation : l'attente que causait la brume s'est
   reportée là. Le gros du temps est la compilation des shaders, voulue (`maPrewarm` évite les gels en partie). Sur la carte
   graphique d'Anthony, la répartition est à lire dans sa ligne `[chargement] marais`.
+- **Mesures d'Anthony** (RTX 3080, Direct3D 11, construction 5, 13 novembre 2026) : `11,6 s en tout ; lieux 1,5 s ;
+  éléments et barques 4,2 s ; Mère-Vase 4,0 s ; précompilation 1,1 s ; autotest de la pluie 0,1 s ; 96 programmes`.
+  Chez lui, la carte graphique n'est pas le goulot : la brume et l'autotest ne coûtaient presque rien ; le temps est au
+  calcul (modèles et textures).
+
+### Peau de la Mère-Vase par morceaux (13 novembre 2026)
+
+Demande d'Anthony par la session 5 (« construire la Mère-Vase seulement quand elle sert »). Elle sert déjà en partie (elle
+chasse sur l'eau, mange les Noyés) : la construire au premier besoin gèlerait le jeu 4 s. Sa décision : « Par morceaux en
+jeu ».
+
+- **Mesure** (Node, module du kit) : en qualité haute, 7,0 s de création, dont 6,4 s pour les quatre textures de la peau
+  (2048 × 1024 : couleur, relief, rugosité, pores lumineux) ; géométrie 0,18 s ; gueule 0,28 s.
+- **Retouches du module** (`retouches/modules.py`, appliquées par `etape.py` après le contrôle de l'empreinte, chacune
+  trouvée exactement une fois) : `makeSkinTextures` devient un générateur (`makeSkinTexturesPas`) qui rend la main après
+  chaque ligne de pixels et toutes les 64 verrues ; `makeSkinTextures` le déroule d'un trait comme avant ; `create` accepte
+  des textures de peau faites (`skinTextures`) ; l'API donne le générateur (`MereVase.skinTexturesSteps`). Peau identique
+  à l'octet près en qualités haute, moyenne et basse (empreintes des données comparées dans Node), pas plus lente.
+- **Dans le marais** (`src/ma09_beast.js`, `MA_PEAU`) : au premier chargement de la session, la bête est créée avec une
+  peau provisoire (textures de 4 × 4 pixels, mêmes réglages : teinte moyenne, relief plat, sans pores) ; `maPeauPas`
+  (appelée par `maUpdate`) calcule la peau pendant la partie, au plus 5 ms par image (10 ms quand le joueur est sur l'eau
+  ou qu'elle s'éveille ; un morceau n'est lancé que s'il tient dans ce budget, d'après leur durée moyenne) ; `maPeauPose`
+  remplace les provisoires une par une (une par image), chacune envoyée tout de suite à la carte graphique
+  (`maPeauEnvoi` : une image de 1 × 1 pixel), sans recompiler (mêmes réglages des textures). Ligne
+  `[chargement] marais : peau de la Mère-Vase prête en partie, … après le chargement (… de calcul en … morceaux, qualité …)`.
+  F8 : « peau en calcul » ou « peau calculée en partie ». Sans le générateur du module : création d'avant, d'un trait.
+- **Mesuré en rendu logiciel** (jeu de l'intégration, construction 5, qualité haute) : étape « Mère-Vase » de 4,5 s à
+  0,9 s ; premier chargement de 30,4 s à 24,6 s ; peau prête environ 20 s après le chargement (2,8 s de calcul, 3 111
+  morceaux) ; aucun programme de plus. Essais dans la page : `marecages` 48 sur 48 (2 vérifications de la peau),
+  `sauvegarde-cartes` 26 sur 26, `sauvegarde` 83 sur 83.
 
 ## Confort (décisions d'Anthony du 1er novembre 2026)
 

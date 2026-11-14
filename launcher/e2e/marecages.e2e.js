@@ -3,7 +3,8 @@
    catalogue (carte ouverte, « en développement », absente des Mod Tools de grille, base « Marais vierge »), rien
    d'installé au chargement du jeu (diagnostic, console.error), sélection et chargement par l'écran « Jouer », monde
    de 1 × 1 km (cinq îles, la Fosse), départ au Bourg noyé, éléments (9 armes au mur, 5 atouts, boîte à 4
-   emplacements, 3 disjoncteurs, 2 jerricans, Le Glas, 11 barques), rendu, confort (aucune secousse par défaut,
+   emplacements, 3 disjoncteurs, 2 jerricans, Le Glas, 11 barques), peau de la Mère-Vase calculée par morceaux en
+   partie, rendu, confort (aucune secousse par défaut,
    flashs limités), patauger puis nager (sans arme), barque (monter, gaz, menace de la Mère-Vase, Noyés qui sortent
    de l'eau, descendre), la Mère-Vase (interface ZS.marais, pas de combat sans déclencheur), manche des Stryges
    (bandeau, compteur rouge, nuée, munitions max de la dernière), pluie et orage, foudre, F8 sans effet pour un
@@ -113,6 +114,22 @@ const USER = path.join(TMP, 'joueur');
       const B = VEH.list.filter((V) => V.T && V.T.boat);
       ok(VEH.list.length === 11 && B.length === 11 && B.every((V) => maDepth(V.x, V.z) > MA.boatDraft && !V.capsized), 'onze barques à flot aux pontons, et aucun autre véhicule', { veh: VEH.list.length, barques: B.length });
       ok(MAB.on && MAB.state === 'dormant' && ZS.marais.menace === 0 && !MA_BOSS.on, 'la Mère-Vase dort sous l’eau ; pas de combat de boss (sans déclencheur)', { state: MAB.state, menace: ZS.marais.menace, boss: MA_BOSS.on });
+      return out;
+    })).forEach(report);
+    // ------------------------------------------------------- la peau de la Mère-Vase, calculée par morceaux en partie (13 novembre 2026)
+    (await game.evaluate(() => {
+      const out = [];
+      const ok = (cond, label, extra) => out.push({ ok: !!cond, label, extra });
+      __play();
+      const W = { high: 2048, medium: 1024, low: 512 }[MA_PEAU.q], sk = () => MAB.mv.materials.skin;
+      if (!MA_PEAU.pret) ok(MA_PEAU.gen && sk().map.image.width === 4, 'au chargement : la Mère-Vase est là, avec sa peau provisoire ; la vraie se calcule en partie', { q: MA_PEAU.q, w: sk().map.image.width });
+      else ok(true, 'la peau de la Mère-Vase est déjà calculée (session commencée avant)');
+      G.roundState = 'pre'; G.roundT = 1e9;
+      let n = 0;
+      while (!MA_PEAU.pret && n < 60 * 600) { __zs.step(1, 1 / 60); n++; }
+      const t = [sk().map, sk().normalMap, sk().roughnessMap, sk().emissiveMap];
+      ok(MA_PEAU.pret && t.every((x) => x.image.width === W && x.image.height === W / 2) && MAB.mv.materials.textures.slice(0, 4).every((x, i) => x === t[i]),
+        `peau de la Mère-Vase calculée en partie (${MA_PEAU.n} morceaux, ${(MA_PEAU.calc / 1000).toFixed(1)} s de calcul, ${n} images) : ses quatre textures de ${W} × ${W / 2} en place`, { q: MA_PEAU.q, n, w: t.map((x) => x.image.width) });
       return out;
     })).forEach(report);
     // une image du Bourg noyé (shaders compilés sans erreur)

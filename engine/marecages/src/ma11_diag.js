@@ -126,7 +126,7 @@ function maDiagText() {
   const f1 = (x) => x.toFixed(1).replace('.', ',');
   if (!(OW.on && OW.worldId === 'marais')) L.push(`carte : ${G.mapId || '?'} (pas de Mère-Vase ici)`);
   else {
-    L.push(MAB.mv ? `bête : chargée${MAB.err ? ` (${MAB.err})` : ''}` : `bête : NON CHARGÉE — ${MAB.err || 'carte ouverte dans l’éditeur, ou base sans lieux'}`);
+    L.push(MAB.mv ? `bête : chargée${MAB.err ? ` (${MAB.err})` : ''}${MA_PEAU.gen || MA_PEAU.pose ? ` · peau en calcul (${MA_PEAU.n} morceaux, ${(MA_PEAU.calc / 1000).toFixed(1)} s)` : MA_PEAU.pret ? ' · peau calculée en partie' : ''}` : `bête : NON CHARGÉE — ${MAB.err || 'carte ouverte dans l’éditeur, ou base sans lieux'}`);
     const lvN = ['calme', 'éveil', 'rôde', 'traque', 'attaque'][MAM.level] || '?';
     L.push(`menace : ${Math.round(MAM.attn)}/100 · palier ${MAM.level} (${lvN}) · paliers à 20, 40, 60, 80 ; morsure à 92`);
     const p = player, V = VEH.drive, onW = maPlayerOnWater(), d = maDepth(p.pos.x, p.pos.z);
