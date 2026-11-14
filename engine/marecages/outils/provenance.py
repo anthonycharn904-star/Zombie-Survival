@@ -60,7 +60,7 @@ L.append(f'| `retouches/kit.py` | `{k}` | `{man[k]["sha256"][:16]}…` | `{sha(o
 if os.path.exists(os.path.join(MA, 'retouches', 'confort.py')):
     L.append(f'| `retouches/confort.py` | — (nouveau) | — | `{sha(os.path.join(MA, "retouches", "confort.py"))[:16]}…` | écrit pour l\'intégration : secousses du jeu de base coupées dans le marais (décision du 2 novembre 2026) |')
 if os.path.exists(os.path.join(MA, 'retouches', 'modules.py')):
-    L.append(f'| `retouches/modules.py` | — (nouveau) | — | `{sha(os.path.join(MA, "retouches", "modules.py"))[:16]}…` | écrit pour l\'intégration : peau de la Mère-Vase calculée par morceaux en partie (décision du 13 novembre 2026) |')
+    L.append(f'| `retouches/modules.py` | — (nouveau) | — | `{sha(os.path.join(MA, "retouches", "modules.py"))[:16]}…` | écrit pour l\'intégration : peau de la Mère-Vase (13 novembre 2026) et textures des barques (14 novembre) calculées par morceaux en partie |')
 L.append(f'| `retouches/controle.py` | — | — | `{sha(os.path.join(MA, "retouches", "controle.py"))[:16]}…` | calculé par outils/generer-retouches.py |')
 L += ['', 'Fichiers du kit **non repris** : `jeu/` (le jeu construit, la référence des comparaisons), `a-publier/` et `verifier/`',
       '(publication : action d\'Anthony), `captures/`, `sources/tools/build_swamp.py` et `package.py` (remplacés par `etape.py`',

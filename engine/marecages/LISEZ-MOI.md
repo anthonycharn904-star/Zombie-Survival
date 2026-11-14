@@ -219,8 +219,8 @@ jeu ».
   des textures de peau faites (`skinTextures`) ; l'API donne le générateur (`MereVase.skinTexturesSteps`). Peau identique
   à l'octet près en qualités haute, moyenne et basse (empreintes des données comparées dans Node), pas plus lente.
 - **Dans le marais** (`src/ma09_beast.js`, `MA_PEAU`) : au premier chargement de la session, la bête est créée avec une
-  peau provisoire (textures de 4 × 4 pixels, mêmes réglages : teinte moyenne, relief plat, sans pores) ; `maPeauPas`
-  (appelée par `maUpdate`) calcule la peau pendant la partie, au plus 5 ms par image (10 ms quand le joueur est sur l'eau
+  peau provisoire (textures de 4 × 4 pixels, mêmes réglages : teinte moyenne, relief plat, sans pores) ; `maFondPas`
+  (appelée par `maUpdate`, commune avec les barques depuis le 14 novembre) calcule la peau pendant la partie, au plus 5 ms par image (10 ms quand le joueur est sur l'eau
   ou qu'elle s'éveille ; un morceau n'est lancé que s'il tient dans ce budget, d'après leur durée moyenne) ; `maPeauPose`
   remplace les provisoires une par une (une par image), chacune envoyée tout de suite à la carte graphique
   (`maPeauEnvoi` : une image de 1 × 1 pixel), sans recompiler (mêmes réglages des textures). Ligne
@@ -230,6 +230,34 @@ jeu ».
   0,9 s ; premier chargement de 30,4 s à 24,6 s ; peau prête environ 20 s après le chargement (2,8 s de calcul, 3 111
   morceaux) ; aucun programme de plus. Essais dans la page : `marecages` 48 sur 48 (2 vérifications de la peau),
   `sauvegarde-cartes` 26 sur 26, `sauvegarde` 83 sur 83.
+
+
+### Textures des barques par morceaux (14 novembre 2026)
+
+Décision d'Anthony du 14 novembre 2026 (« Ok pour éléments et barques »), après ses mesures de la construction 6
+(« éléments et barques » 2,6 s, la plus longue étape).
+
+- **Mesure** : profil dans le jeu (rendu logiciel) : les 11 barques 1,1 s, les craies des 9 armes au mur 1,0 s (préparées
+  au démarrage depuis la construction 3 de la session 5), le reste presque rien. Dans Node (module du kit, qualité
+  haute) : 2,9 s pour les 11 barques, dont 2,8 s de textures (coque peinte 1024 × 512, bois intérieur et plancher
+  512 × 512, capot 256 × 256), chacune propre à sa barque (graine, couleur). Elles étaient refaites à chaque chargement.
+- **Retouches du module** (`retouches/modules.py`, 11 pour `orig/barque.js`) : `vnoise`, `hullTexture` et `woodTexture`
+  deviennent des générateurs (`vnoisePas`, `hullTexturePas`, `woodTexturePas`) qui rendent la main toutes les quelques
+  lignes ; les fonctions d'avant les déroulent d'un trait ; `create` accepte des textures faites (`textures`) ; l'API
+  donne `Barque.texturesSteps(THREE, opts)` (mêmes options que `create`). Textures identiques à l'octet près en qualités
+  haute, moyenne et basse, pour plusieurs barques (Node), pas plus lentes.
+- **Dans le marais** (`src/ma06_boat.js`, `MA_BARQ`) : les textures de chaque barque (qualité, graine, couleur) sont
+  gardées pour la session ; au premier chargement, les barques à moins de 90 m du départ (les deux du ponton du Bourg)
+  sont faites tout de suite, les autres reçoivent des textures provisoires (une teinte, mêmes réglages : rien à
+  recompiler), calculées ensuite en partie par `maFondPas` (ma09), la barque la plus proche du joueur d'abord, puis posées
+  une barque par image et envoyées à la carte graphique. Ligne `[chargement] marais : textures des barques prêtes en
+  partie, … (… barques, … de calcul en … morceaux)`. Dans les Mod Tools : comme avant, d'un trait.
+- **Mesuré en rendu logiciel** (jeu de l'intégration, construction 6, qualité haute) : étape « éléments et barques » de
+  6,6 s à 1,0 s ; premier chargement de 22,4 s à 19,6 s ; second chargement de 4,8 s à 1,6 s ; textures des barques
+  prêtes environ 20 s après le chargement (2,2 s de calcul) ; à la fin, les onze barques ont leurs textures, le même
+  ensemble de programmes. L'étape « Mère-Vase » y remonte à 4,8 s : l'attente de la carte graphique émulée s'y reporte
+  (comme pour la brume) ; sur une vraie carte graphique, à lire dans la ligne `[chargement] marais`. Essais dans la page :
+  `marecages` 50 sur 50, `sauvegarde-cartes` 26 sur 26, `sauvegarde` 83 sur 83.
 
 ## Confort (décisions d'Anthony du 1er novembre 2026)
 

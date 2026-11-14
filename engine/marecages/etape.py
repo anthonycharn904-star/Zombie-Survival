@@ -199,7 +199,7 @@ def _marecages(s, racine, fidele=False):
     nb = {'base': sum(1 for n, o, nw in listes['PATCHES'] if not R[n]['lieu'].startswith('src/')),
           'mod': sum(1 for n, o, nw in listes['PATCHES'] if R[n]['lieu'].startswith('src/'))}
     print(f'Marécages Maudits : {len(listes["PATCHES"])} retouches du script ({nb["base"]} dans le jeu de base, {nb["mod"]} dans '
-          f'des modules) et {len(listes["HTML_PATCHES"])} de l\'en-tête, plus {len(confort)} de confort ; {len(parts)} sources, 3 modules autonomes ({len(rmod)} retouches de la Mère-Vase) ; '
+          f'des modules) et {len(listes["HTML_PATCHES"])} de l\'en-tête, plus {len(confort)} de confort ; {len(parts)} sources, 3 modules autonomes ({sum(1 for r in rmod if r[0] == "mere-vase.js")} retouches de la Mère-Vase, {sum(1 for r in rmod if r[0] == "barque.js")} de la barque) ; '
           f'jeu {v[0]}, interface {e[0]} ; {len(C["dependances"])} noms du moteur présents')
     if changes:
         print(f'  modules modifiés depuis la validation du {C["valide_le"]} (retouches retrouvées, à revalider par les essais) : {", ".join(changes)}')
