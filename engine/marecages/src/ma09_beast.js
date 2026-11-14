@@ -122,6 +122,78 @@ const MA_BOSS = { on: false, hp: 0, maxHp: 0, phase: 0, dead: false, bar: null }
 const _mbV = new THREE.Vector3(), _mbV2 = new THREE.Vector3(), _mbV3 = new THREE.Vector3(), _mbV4 = new THREE.Vector3(), _mbQ = new THREE.Quaternion();
 const maFwd = (yaw) => [Math.sin(yaw), Math.cos(yaw)];
 
+/* ---------------------------------------------------------------- Peau par morceaux --
+   Jeu 2.0.7 (décision d'Anthony du 13 novembre 2026, « Par morceaux en jeu ») : la peau de la Mère-Vase (quatre
+   textures de 2048 × 1024 en qualité haute : 91 % du temps de sa création, 4 s sur son PC) ne se calcule plus au
+   chargement. La bête est créée avec une peau provisoire (teinte moyenne, relief plat, sans les pores lumineux), puis
+   sa peau se calcule par morceaux pendant la partie (MereVase.skinTexturesSteps : retouches/modules.py), quelques
+   millisecondes par image (5 ms, 10 ms quand le joueur est sur l'eau ou qu'elle s'éveille). À la fin, les textures
+   remplacent les provisoires une par une (mêmes réglages : le programme ne change pas, rien à recompiler), chacune
+   envoyée tout de suite à la carte graphique. Une fois par session : la bête est gardée d'une partie à l'autre. */
+const MA_PEAU = { gen: null, q: null, t0: 0, calc: 0, pret: false, pose: null, n: 0, envoi: null, prov: null, moy: 0 };
+function maPeauProvisoire() {
+  const tex = (rgb, srgb) => {
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const g = c.getContext('2d'); g.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`; g.fillRect(0, 0, 4, 4);
+    const t = new THREE.CanvasTexture(c);                // mêmes réglages que les textures du module (son toTex)
+    t.flipY = false; t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+    if (srgb) t.encoding = THREE.sRGBEncoding;
+    return t;
+  };
+  return { map: tex([44, 43, 32], true), normalMap: tex([128, 128, 255], false), roughnessMap: tex([140, 140, 140], false), emissiveMap: tex([0, 0, 0], true) };
+}
+/* Une texture envoyée tout de suite à la carte graphique (sinon, au premier rendu de la bête : un à-coup à son
+   apparition) : une image de 1 × 1 pixel d'un carré qui la porte. Ses deux programmes (sRGB, linéaire) sont compilés
+   au chargement (compile : sans rendu), avec la peau provisoire. */
+function maPeauEnvoi(t, compile) {
+  try {
+    const E = MA_PEAU.envoi || (MA_PEAU.envoi = { rt: new THREE.WebGLRenderTarget(1, 1), sc: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2),
+      mats: {}, geo: new THREE.PlaneGeometry(2, 2) });
+    const cle = t.encoding === THREE.sRGBEncoding ? 's' : 'l';
+    const m = E.mats[cle] || (E.mats[cle] = new THREE.MeshBasicMaterial({ fog: false, depthTest: false, depthWrite: false }));
+    m.map = t; m.needsUpdate = !m.userData.fait; m.userData.fait = true;
+    const me = new THREE.Mesh(E.geo, m); me.frustumCulled = false; me.position.z = -1;
+    E.sc.add(me);
+    if (compile) renderer.compile(E.sc, E.cam);
+    else { const prev = renderer.getRenderTarget(); renderer.setRenderTarget(E.rt); renderer.render(E.sc, E.cam); renderer.setRenderTarget(prev); }
+    E.sc.remove(me);                                   // (la matière garde sa texture : le même programme resservira)
+  } catch (e) { maErr('marais : envoi de la peau de la Mère-Vase', e); }
+}
+/* Chaque image, dans le marais (maUpdate) : un morceau de peau, ou une texture posée. */
+function maPeauPas() {
+  const P = MA_PEAU;
+  if (P.pose) { maPeauPose(); return; }
+  if (!P.gen) return;
+  // budget par image : 5 ms (deux morceaux d'environ 2 ms en qualité haute), 10 ms quand le joueur est sur l'eau ou
+  // qu'elle s'éveille ; un morceau n'est lancé que s'il tient dans le budget, d'après leur durée moyenne (au moins un)
+  const vite = maPlayerOnWater() || (MAB.state !== 'dormant' && MAB.state !== 'devore') || MAM.attn > 20;
+  const budget = vite ? 10 : 5, t0 = performance.now();
+  try {
+    for (let k = 0; ; k++) {
+      const t1 = performance.now();
+      const r = P.gen.next();
+      P.n++;
+      P.moy = P.moy ? P.moy * 0.9 + (performance.now() - t1) * 0.1 : performance.now() - t1;
+      if (r.done) { P.gen = null; P.pose = [['map', 0], ['normalMap', 1], ['roughnessMap', 2], ['emissiveMap', 3]].map(([k2, i]) => [k2, i, r.value[k2]]); break; }
+      if (performance.now() - t0 + P.moy > budget) break;
+    }
+  } catch (e) { P.gen = null; maErr('marais : la peau de la Mère-Vase (elle garde sa peau provisoire)', e); }
+  P.calc += performance.now() - t0;
+}
+function maPeauPose() {
+  const P = MA_PEAU, M = MAB.mv && MAB.mv.materials;
+  if (!M) { P.pose = null; return; }
+  const [k, i, t] = P.pose.shift(), old = M.skin[k];
+  share(t);
+  M.skin[k] = t; M.textures[i] = t;
+  maPeauEnvoi(t);
+  if (old && old !== t) old.dispose();                 // la provisoire
+  if (P.pose.length) return;
+  P.pose = null; P.pret = true;
+  const s = (ms) => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+  try { console.info(`[chargement] marais : peau de la Mère-Vase prête en partie, ${s(performance.now() - P.t0)} après le chargement (${s(P.calc)} de calcul en ${P.n} morceaux, qualité ${P.q})`); } catch (e) { /* console absente */ }
+}
+
 /* ---------------------------------------------------------------- Création -- */
 function maBeastInit(root) {
   // kit MM 2.1.1 : un échec ne passe plus inaperçu (la carte se jouait sans la bête, sans un mot) : la
@@ -131,8 +203,15 @@ function maBeastInit(root) {
     const q0 = settings.quality === 'high' ? 'high' : settings.quality === 'low' ? 'low' : 'medium';
     for (const q of q0 === 'low' ? ['low'] : [q0, 'low']) {
       try {
-        MAB.mv = MereVase.create(THREE, { renderer, quality: q, shadows: settings.quality !== 'low' && q === q0, linear: true, glow: 1.7, wet: 0.75 });
+        // jeu 2.0.7 : peau provisoire, la vraie se calcule par morceaux en partie (maPeauPas) ; sans le générateur du
+        // module (retouches/modules.py), la création d'avant, d'un trait
+        const prov = typeof MereVase.skinTexturesSteps === 'function' ? maPeauProvisoire() : null;
+        MAB.mv = MereVase.create(THREE, { renderer, quality: q, shadows: settings.quality !== 'low' && q === q0, linear: true, glow: 1.7, wet: 0.75, skinTextures: prov || undefined });
         MAB.err = q === q0 ? null : `chargée en qualité basse (échec en ${q0})`;
+        if (prov) {
+          Object.assign(MA_PEAU, { gen: MereVase.skinTexturesSteps(THREE, q), q, t0: performance.now(), calc: 0, n: 0, pret: false, pose: null, moy: 0 });
+          MA_PEAU.prov = prov;                         // les deux programmes de l'envoi : compilés par maPrewarm (ma04)
+        }
         break;
       } catch (e) { MAB.mv = null; MAB.err = `création (${q}) : ${(e && e.message) || e}`; maErr('marais : la Mère-Vase', e); }
     }

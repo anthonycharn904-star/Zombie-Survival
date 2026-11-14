@@ -101,7 +101,7 @@ function maLoad(map, opts = {}) {
   maSkyFollow();
   if (chg) maChg('réglages de la vue');
   if (!opts.editor && places) maBeastInit(root);
-  if (chg) maChg('Mère-Vase');
+  if (chg) maChg(MA_PEAU.gen ? 'Mère-Vase (peau en partie)' : 'Mère-Vase');
   if (!opts.editor) {
     maMudPool(); maPrewarm();
     maChg('précompilation');
@@ -123,6 +123,7 @@ function maPrewarm() {
   const t0 = performance.now(), info = renderer.info, p0 = info.programs ? info.programs.length : 0;
   try {
     renderer.compile(scene, camera);
+    if (MA_PEAU.prov) { maPeauEnvoi(MA_PEAU.prov.map, true); maPeauEnvoi(MA_PEAU.prov.normalMap, true); MA_PEAU.prov = null; }   // jeu 2.0.7 : l'envoi de la peau (ma09)
     const o = MAB.obj;
     if (o && MAB.mv && o.parent) {
       const vis = o.visible, px = o.position.x, py = o.position.y, pz = o.position.z;
@@ -208,6 +209,7 @@ function maTerrainLod() {
   }
 }
 function maUpdate(dt) {
+  maPeauPas();                                           // jeu 2.0.7 : la peau de la Mère-Vase, par morceaux (ma09)
   maUpdateView(dt);
   if (OW.sandFX) OW.sandFX.update(dt);
   owVehUpdate(dt);

@@ -146,15 +146,35 @@ def _marecages(s, racine, fidele=False):
     ORIG = [('mere-vase.js', '94df6a25ce3cfb7152e8be7309f138efe9753707388368663c395463db8b1f25'),
             ('mere-vase-audio.js', 'dd3029a98d2209f1607805f70c59eb659c66d1a28b9864661709b4879b67269d'),
             ('barque.js', 'd43c95f6786b6ebf04c9c8dbd21bd59027be5140fcb7b4af7ca8654879ebaa49')]
+    # retouches des modules (retouches/modules.py ; décision d'Anthony du 13 novembre 2026 : la peau de la Mère-Vase
+    # par morceaux) : appliquées après le contrôle de l'empreinte, chacune trouvée exactement une fois
+    rmod = []
+    if os.path.exists(os.path.join(racine, 'retouches', 'modules.py')):
+        for node in donnees(os.path.join(racine, 'retouches', 'modules.py'))[0].body:
+            if isinstance(node, ast.Assign):
+                rmod += list(ast.literal_eval(node.value))
     extra = ''
     for f, h in ORIG:
         raw = open(os.path.join(racine, 'orig', f), 'rb').read()
         if hashlib.sha256(raw).hexdigest() != h:
             stop(f'orig/{f} n\'est plus le fichier du kit (empreinte)')
         txt = raw.decode('utf-8')
+        nr = 0
+        for mf, n, o, nw in rmod:
+            if mf != f:
+                continue
+            c = txt.count(o)
+            if c != 1:
+                stop(f'la retouche du module orig/{f} « {n} » ne tient plus : son motif est présent {c} fois au lieu d\'une '
+                     f'(retouches/modules.py)\n  motif (début) : {o[:240]!r}')
+            txt = txt.replace(o, nw)
+            nr += 1
         if '</script' in txt.lower():
             stop(f'orig/{f} contient une balise de fin de script')
-        extra += f'<script>\n/* Marécages Maudits : engine/marecages/orig/{f}, inséré tel quel (kit 2.0.7 « Stryges », empreinte contrôlée) */\n{txt}\n</script>\n'
+        quoi = (f'inséré avec {nr} retouches contrôlées (retouches/modules.py)' if nr else 'inséré tel quel')
+        extra += f'<script>\n/* Marécages Maudits : engine/marecages/orig/{f}, {quoi} (kit 2.0.7 « Stryges », empreinte contrôlée) */\n{txt}\n</script>\n'
+    if any(mf not in [f for f, _ in ORIG] for mf, *_ in rmod):
+        stop('retouches/modules.py vise un module qui n\'est pas dans orig/')
 
     # -- 6. l'en-tête HTML (comme le kit : motif cherché dans l'en-tête seulement)
     for n, o, nw in listes['HTML_PATCHES']:
@@ -179,7 +199,7 @@ def _marecages(s, racine, fidele=False):
     nb = {'base': sum(1 for n, o, nw in listes['PATCHES'] if not R[n]['lieu'].startswith('src/')),
           'mod': sum(1 for n, o, nw in listes['PATCHES'] if R[n]['lieu'].startswith('src/'))}
     print(f'Marécages Maudits : {len(listes["PATCHES"])} retouches du script ({nb["base"]} dans le jeu de base, {nb["mod"]} dans '
-          f'des modules) et {len(listes["HTML_PATCHES"])} de l\'en-tête, plus {len(confort)} de confort ; {len(parts)} sources, 3 modules autonomes ; '
+          f'des modules) et {len(listes["HTML_PATCHES"])} de l\'en-tête, plus {len(confort)} de confort ; {len(parts)} sources, 3 modules autonomes ({len(rmod)} retouches de la Mère-Vase) ; '
           f'jeu {v[0]}, interface {e[0]} ; {len(C["dependances"])} noms du moteur présents')
     if changes:
         print(f'  modules modifiés depuis la validation du {C["valide_le"]} (retouches retrouvées, à revalider par les essais) : {", ".join(changes)}')

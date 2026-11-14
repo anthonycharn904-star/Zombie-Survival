@@ -31,10 +31,18 @@ L = ['# Marécages Maudits : provenance des fichiers', '',
      'pour un travail à garder privé (`etape.py`). La copie privée du kit, les rapports et les constructions restent',
      'hors du dépôt.', '',
      '| Fichier | Origine dans le kit | SHA-256 du kit | SHA-256 actuel | Transformation |', '|---|---|---|---|---|']
+# retouches des modules (retouches/modules.py, 13 novembre 2026) : le fichier reste celui du kit, retouché à l'insertion
+rmod = {}
+if os.path.exists(os.path.join(MA, 'retouches', 'modules.py')):
+    for node in ast.parse(open(os.path.join(MA, 'retouches', 'modules.py'), encoding='utf-8').read()).body:
+        if isinstance(node, ast.Assign):
+            for mf, *_ in ast.literal_eval(node.value): rmod[mf] = rmod.get(mf, 0) + 1
 for f in ['mere-vase.js', 'mere-vase-audio.js', 'barque.js']:
     k = f'sources/src/{f}'
     cur = sha(os.path.join(MA, 'orig', f))
-    L.append(f'| `orig/{f}` | `{k}` | `{man[k]["sha256"][:16]}…` | `{cur[:16]}…` | {"identique (inséré tel quel, empreinte contrôlée par etape.py)" if cur == man[k]["sha256"] else "**DIFFÉRENT**"} |')
+    quoi = (f'identique ; inséré avec {rmod[f]} retouches contrôlées (`retouches/modules.py`), empreinte contrôlée par etape.py' if rmod.get(f)
+            else 'identique (inséré tel quel, empreinte contrôlée par etape.py)')
+    L.append(f'| `orig/{f}` | `{k}` | `{man[k]["sha256"][:16]}…` | `{cur[:16]}…` | {quoi if cur == man[k]["sha256"] else "**DIFFÉRENT**"} |')
 for p in sorted(glob.glob(os.path.join(MA, 'src', 'ma*.js'))):
     f = os.path.basename(p)
     k = f'sources/src/ma/{f}'
@@ -51,6 +59,8 @@ k = 'sources/tools/patches.py'
 L.append(f'| `retouches/kit.py` | `{k}` | `{man[k]["sha256"][:16]}…` | `{sha(os.path.join(MA, "retouches", "kit.py"))[:16]}…` | GAME_VERSION retirée, réétiqueté, adapté (2 retouches) |')
 if os.path.exists(os.path.join(MA, 'retouches', 'confort.py')):
     L.append(f'| `retouches/confort.py` | — (nouveau) | — | `{sha(os.path.join(MA, "retouches", "confort.py"))[:16]}…` | écrit pour l\'intégration : secousses du jeu de base coupées dans le marais (décision du 2 novembre 2026) |')
+if os.path.exists(os.path.join(MA, 'retouches', 'modules.py')):
+    L.append(f'| `retouches/modules.py` | — (nouveau) | — | `{sha(os.path.join(MA, "retouches", "modules.py"))[:16]}…` | écrit pour l\'intégration : peau de la Mère-Vase calculée par morceaux en partie (décision du 13 novembre 2026) |')
 L.append(f'| `retouches/controle.py` | — | — | `{sha(os.path.join(MA, "retouches", "controle.py"))[:16]}…` | calculé par outils/generer-retouches.py |')
 L += ['', 'Fichiers du kit **non repris** : `jeu/` (le jeu construit, la référence des comparaisons), `a-publier/` et `verifier/`',
       '(publication : action d\'Anthony), `captures/`, `sources/tools/build_swamp.py` et `package.py` (remplacés par `etape.py`',
