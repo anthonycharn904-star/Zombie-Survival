@@ -15,9 +15,85 @@ VEH_TYPES.barque = {
   protect: 0.85, noise: 30, kill: 99, seat: [-0.22, 0.22, 1.58], eye: 0.86, cam: [7.8, 2.7], axles: [], exit: null,
 };
 const MA_BOAT_PAINT = [0x4f6356, 0x5a5f52, 0x51606a, 0x6a5a48, 0x4a5a4a, 0x5f5446, 0x56645c];
+/* Jeu 2.0.7 (demande d'Anthony du 14 novembre 2026, « Ok pour éléments et barques ») : les textures des barques (95 %
+   du temps de leur création ; 2,8 s pour les onze en qualité haute) sont gardées pour la session et, au premier
+   chargement, se calculent par morceaux en partie (Barque.texturesSteps : retouches/modules.py), comme la peau de la
+   Mère-Vase (ma09, maFondPas) : les barques à moins de 90 m du départ sont faites tout de suite (on les voit en
+   arrivant) ; les autres reçoivent des textures provisoires (une teinte, mêmes réglages : rien à recompiler), remplacées
+   une par une quand les leurs sont prêtes. Dans les Mod Tools : comme avant, d'un trait. */
+const MA_BARQ = { tex: new Map(), taches: new Map(), pose: [], t0: 0, calc: 0, n: 0, moy: 0, faites: 0 };
+function maBarqProvisoire(paint) {
+  const tex = (rgb, reglage) => {
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const g = c.getContext('2d'); g.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`; g.fillRect(0, 0, 4, 4);
+    const t = new THREE.CanvasTexture(c); reglage(t); t.encoding = THREE.sRGBEncoding;
+    return t;
+  };
+  const P = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
+  return {                                             // mêmes réglages que hullTexture, woodTexture, cowlTexture du module
+    hull: tex(P.map((c) => Math.round(c * 0.9)), (t) => { t.flipY = false; t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = 4; }),
+    inner: tex([72, 64, 54], (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }),
+    plank: tex([84, 75, 63], (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; }),
+    cowl: tex([60, 64, 50], () => {}),
+  };
+}
+const MA_BARQ_MAT = { hull: 'hull', inner: 'inner', plank: 'wood', cowl: 'cowl' };     // texture → matière de la barque
+function maBarqPose(B, tex) {
+  if (!B.materials) return;
+  for (const k of ['hull', 'inner', 'plank', 'cowl']) {
+    const m = B.materials[MA_BARQ_MAT[k]], old = m && m.map;
+    if (!m || old === tex[k]) continue;
+    m.map = tex[k]; B.textures[k] = tex[k];
+    if (old && !SHARED.has(old)) old.dispose();          // la provisoire
+  }
+}
+/* Des morceaux des textures de la barque la plus proche du joueur (maFondPas, ma09) ; finies : gardées pour la session,
+   posées sur ses barques (une par image : maBarqPoseUne). */
+function maBarqMorceaux(fin) {
+  const vivantes = (T) => T.cibles.filter((c) => VEH.list.includes(c.V));
+  let T = null, d = Infinity;
+  for (const X of MA_BARQ.taches.values()) {
+    const c = vivantes(X)[0];
+    const dx = c ? Math.hypot(c.V.x - player.pos.x, c.V.z - player.pos.z) : 1e6;
+    if (dx < d) { d = dx; T = X; }
+  }
+  if (!T) return;
+  try {
+    if (!T.gen) T.gen = Barque.texturesSteps(THREE, T.o);
+    const r = maMorceaux(MA_BARQ, T.gen, fin);
+    if (!r) return;
+    for (const k in r.value) share(r.value[k]);
+    MA_BARQ.tex.set(T.cle, r.value);
+    MA_BARQ.taches.delete(T.cle);
+    MA_BARQ.faites++;
+    for (const c of vivantes(T)) MA_BARQ.pose.push({ B: c.B, tex: r.value });
+    if (!MA_BARQ.taches.size) MA_BARQ.fin = true;
+  } catch (e) { MA_BARQ.taches.delete(T.cle); maErr('marais : textures d’une barque (elle garde ses textures provisoires)', e); }
+}
+function maBarqPoseUne() {
+  const p = MA_BARQ.pose.shift();
+  maBarqPose(p.B, p.tex);
+  for (const k of ['hull', 'inner', 'plank', 'cowl']) maEnvoi(p.tex[k]);
+  if (MA_BARQ.pose.length || !MA_BARQ.fin) return;
+  MA_BARQ.fin = false;
+  const s = (ms) => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+  try { console.info(`[chargement] marais : textures des barques prêtes en partie, ${s(performance.now() - MA_BARQ.t0)} après le chargement (${MA_BARQ.faites} barques, ${s(MA_BARQ.calc)} de calcul en ${MA_BARQ.n} morceaux)`); } catch (e) { /* console absente */ }
+}
 VEH_MODELS.barque = function maBoatModel(V) {
   const q = settings.quality === 'high' ? 'high' : settings.quality === 'low' ? 'low' : 'medium';
-  const B = Barque.create(THREE, { quality: q, seed: 7 + V.id * 13, paint: MA_BOAT_PAINT[V.id % MA_BOAT_PAINT.length] });
+  const o = { quality: q, seed: 7 + V.id * 13, paint: MA_BOAT_PAINT[V.id % MA_BOAT_PAINT.length] }, cle = `${q}|${o.seed}|${o.paint}`;
+  const parMorceaux = typeof Barque.texturesSteps === 'function' && !(typeof CUR === 'object' && CUR && CUR.editor);
+  const faite = MA_BARQ.tex.get(cle), pres = Math.hypot(V.sp.x - MA.spawn.pos[0], V.sp.z - MA.spawn.pos[1]) < 90;
+  let B;
+  if (faite || !parMorceaux || pres) {
+    B = Barque.create(THREE, faite ? { ...o, textures: faite } : o);
+    if (!faite) { for (const k in B.textures) share(B.textures[k]); MA_BARQ.tex.set(cle, B.textures); }
+  } else {
+    B = Barque.create(THREE, { ...o, textures: maBarqProvisoire(o.paint) });
+    let T = MA_BARQ.taches.get(cle);
+    if (!T) { T = { cle, o, gen: null, cibles: [], fait: null }; MA_BARQ.taches.set(cle, T); if (!MA_BARQ.t0) MA_BARQ.t0 = performance.now(); }
+    T.cibles.push({ B, V });
+  }
   V.group.add(B.object);
   V.barque = B;
   V.heads = [[0.32, 0.62, -1.6]];

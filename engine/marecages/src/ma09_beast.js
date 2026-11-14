@@ -130,7 +130,7 @@ const maFwd = (yaw) => [Math.sin(yaw), Math.cos(yaw)];
    millisecondes par image (5 ms, 10 ms quand le joueur est sur l'eau ou qu'elle s'éveille). À la fin, les textures
    remplacent les provisoires une par une (mêmes réglages : le programme ne change pas, rien à recompiler), chacune
    envoyée tout de suite à la carte graphique. Une fois par session : la bête est gardée d'une partie à l'autre. */
-const MA_PEAU = { gen: null, q: null, t0: 0, calc: 0, pret: false, pose: null, n: 0, envoi: null, prov: null, moy: 0 };
+const MA_PEAU = { gen: null, q: null, t0: 0, calc: 0, pret: false, pose: null, n: 0, envoi: null, moy: 0 };
 function maPeauProvisoire() {
   const tex = (rgb, srgb) => {
     const c = document.createElement('canvas'); c.width = c.height = 4;
@@ -142,10 +142,17 @@ function maPeauProvisoire() {
   };
   return { map: tex([44, 43, 32], true), normalMap: tex([128, 128, 255], false), roughnessMap: tex([140, 140, 140], false), emissiveMap: tex([0, 0, 0], true) };
 }
-/* Une texture envoyée tout de suite à la carte graphique (sinon, au premier rendu de la bête : un à-coup à son
+/* Une texture envoyée tout de suite à la carte graphique (sinon, au premier rendu de ce qui la porte : un à-coup à son
    apparition) : une image de 1 × 1 pixel d'un carré qui la porte. Ses deux programmes (sRGB, linéaire) sont compilés
-   au chargement (compile : sans rendu), avec la peau provisoire. */
-function maPeauEnvoi(t, compile) {
+   au chargement, une fois par session (maEnvoiPrepare, appelée par maPrewarm : compile, sans rendu). */
+function maEnvoiPrepare() {
+  if (MA_PEAU.envoi && MA_PEAU.envoi.pret) return;
+  const t = (srgb) => { const c = document.createElement('canvas'); c.width = c.height = 4; const x = new THREE.CanvasTexture(c); if (srgb) x.encoding = THREE.sRGBEncoding; return x; };
+  const a = t(true), b = t(false);
+  maEnvoi(a, true); maEnvoi(b, true);
+  if (MA_PEAU.envoi) MA_PEAU.envoi.pret = true;
+}
+function maEnvoi(t, compile) {
   try {
     const E = MA_PEAU.envoi || (MA_PEAU.envoi = { rt: new THREE.WebGLRenderTarget(1, 1), sc: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2),
       mats: {}, geo: new THREE.PlaneGeometry(2, 2) });
@@ -157,28 +164,45 @@ function maPeauEnvoi(t, compile) {
     if (compile) renderer.compile(E.sc, E.cam);
     else { const prev = renderer.getRenderTarget(); renderer.setRenderTarget(E.rt); renderer.render(E.sc, E.cam); renderer.setRenderTarget(prev); }
     E.sc.remove(me);                                   // (la matière garde sa texture : le même programme resservira)
-  } catch (e) { maErr('marais : envoi de la peau de la Mère-Vase', e); }
+  } catch (e) { maErr('marais : envoi d’une texture à la carte graphique', e); }
 }
-/* Chaque image, dans le marais (maUpdate) : un morceau de peau, ou une texture posée. */
-function maPeauPas() {
+/* Chaque image, dans le marais (maUpdate) : le calcul en partie de la peau de la Mère-Vase et des textures des barques
+   (ma06, MA_BARQ), dans un même budget ; ou une pose (une texture de la peau, ou une barque, par image).
+   Budget par image : 5 ms, 10 ms quand le joueur est sur l'eau ou qu'elle s'éveille ; un morceau n'est lancé que s'il
+   tient dans le budget, d'après la durée moyenne des morceaux (au moins un). Les barques d'abord (les plus proches du
+   joueur en premier), la peau d'abord quand elle est éveillée. */
+function maFondPas() {
+  if (MA_PEAU.pose) { maPeauPose(); return; }
+  if (MA_BARQ.pose.length) { maBarqPoseUne(); return; }
+  if (!MA_PEAU.gen && !MA_BARQ.taches.size) return;
+  const eveil = MAB.state !== 'dormant' && MAB.state !== 'devore';
+  const vite = maPlayerOnWater() || eveil || MAM.attn > 20;
+  const fin = performance.now() + (vite ? 10 : 5);
+  for (const f of eveil ? [maPeauMorceaux, maBarqMorceaux] : [maBarqMorceaux, maPeauMorceaux]) {
+    if (performance.now() >= fin) break;
+    f(fin);
+  }
+}
+/* Des morceaux d'un générateur jusqu'à l'échéance ; S garde la durée moyenne d'un morceau (moy) et leur nombre (n).
+   Rend le résultat du générateur s'il est fini, sinon undefined. */
+function maMorceaux(S, gen, fin) {
+  for (;;) {
+    const t1 = performance.now();
+    const r = gen.next();
+    const dt = performance.now() - t1;
+    S.n++; S.calc += dt;
+    S.moy = S.moy ? S.moy * 0.9 + dt * 0.1 : dt;
+    if (r.done) return r;
+    if (performance.now() + S.moy > fin) return undefined;
+  }
+}
+function maPeauMorceaux(fin) {
   const P = MA_PEAU;
-  if (P.pose) { maPeauPose(); return; }
   if (!P.gen) return;
-  // budget par image : 5 ms (deux morceaux d'environ 2 ms en qualité haute), 10 ms quand le joueur est sur l'eau ou
-  // qu'elle s'éveille ; un morceau n'est lancé que s'il tient dans le budget, d'après leur durée moyenne (au moins un)
-  const vite = maPlayerOnWater() || (MAB.state !== 'dormant' && MAB.state !== 'devore') || MAM.attn > 20;
-  const budget = vite ? 10 : 5, t0 = performance.now();
   try {
-    for (let k = 0; ; k++) {
-      const t1 = performance.now();
-      const r = P.gen.next();
-      P.n++;
-      P.moy = P.moy ? P.moy * 0.9 + (performance.now() - t1) * 0.1 : performance.now() - t1;
-      if (r.done) { P.gen = null; P.pose = [['map', 0], ['normalMap', 1], ['roughnessMap', 2], ['emissiveMap', 3]].map(([k2, i]) => [k2, i, r.value[k2]]); break; }
-      if (performance.now() - t0 + P.moy > budget) break;
-    }
+    const r = maMorceaux(P, P.gen, fin);
+    if (r) { P.gen = null; P.pose = [['map', 0], ['normalMap', 1], ['roughnessMap', 2], ['emissiveMap', 3]].map(([k, i]) => [k, i, r.value[k]]); }
   } catch (e) { P.gen = null; maErr('marais : la peau de la Mère-Vase (elle garde sa peau provisoire)', e); }
-  P.calc += performance.now() - t0;
 }
 function maPeauPose() {
   const P = MA_PEAU, M = MAB.mv && MAB.mv.materials;
@@ -186,7 +210,7 @@ function maPeauPose() {
   const [k, i, t] = P.pose.shift(), old = M.skin[k];
   share(t);
   M.skin[k] = t; M.textures[i] = t;
-  maPeauEnvoi(t);
+  maEnvoi(t);
   if (old && old !== t) old.dispose();                 // la provisoire
   if (P.pose.length) return;
   P.pose = null; P.pret = true;
@@ -203,14 +227,13 @@ function maBeastInit(root) {
     const q0 = settings.quality === 'high' ? 'high' : settings.quality === 'low' ? 'low' : 'medium';
     for (const q of q0 === 'low' ? ['low'] : [q0, 'low']) {
       try {
-        // jeu 2.0.7 : peau provisoire, la vraie se calcule par morceaux en partie (maPeauPas) ; sans le générateur du
+        // jeu 2.0.7 : peau provisoire, la vraie se calcule par morceaux en partie (maFondPas) ; sans le générateur du
         // module (retouches/modules.py), la création d'avant, d'un trait
         const prov = typeof MereVase.skinTexturesSteps === 'function' ? maPeauProvisoire() : null;
         MAB.mv = MereVase.create(THREE, { renderer, quality: q, shadows: settings.quality !== 'low' && q === q0, linear: true, glow: 1.7, wet: 0.75, skinTextures: prov || undefined });
         MAB.err = q === q0 ? null : `chargée en qualité basse (échec en ${q0})`;
         if (prov) {
           Object.assign(MA_PEAU, { gen: MereVase.skinTexturesSteps(THREE, q), q, t0: performance.now(), calc: 0, n: 0, pret: false, pose: null, moy: 0 });
-          MA_PEAU.prov = prov;                         // les deux programmes de l'envoi : compilés par maPrewarm (ma04)
         }
         break;
       } catch (e) { MAB.mv = null; MAB.err = `création (${q}) : ${(e && e.message) || e}`; maErr('marais : la Mère-Vase', e); }

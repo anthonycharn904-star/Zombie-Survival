@@ -21,17 +21,17 @@ hors du dépôt.
 |---|---|---|---|---|
 | `orig/mere-vase.js` | `sources/src/mere-vase.js` | `94df6a25ce3cfb71…` | `94df6a25ce3cfb71…` | identique ; inséré avec 8 retouches contrôlées (`retouches/modules.py`), empreinte contrôlée par etape.py |
 | `orig/mere-vase-audio.js` | `sources/src/mere-vase-audio.js` | `dd3029a98d2209f1…` | `dd3029a98d2209f1…` | identique (inséré tel quel, empreinte contrôlée par etape.py) |
-| `orig/barque.js` | `sources/src/barque.js` | `d43c95f6786b6ebf…` | `d43c95f6786b6ebf…` | identique (inséré tel quel, empreinte contrôlée par etape.py) |
+| `orig/barque.js` | `sources/src/barque.js` | `d43c95f6786b6ebf…` | `d43c95f6786b6ebf…` | identique ; inséré avec 11 retouches contrôlées (`retouches/modules.py`), empreinte contrôlée par etape.py |
 | `src/ma00_confort.js` | — (nouveau) | — | `ff2b470232a0dcd4…` | écrit pour l'intégration (confort : secousses, flashs) |
 | `src/ma01_core.js` | `sources/src/ma/ma01_core.js` | `73e731fe87df7056…` | `4fc0234878915823…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma02_view.js` | `sources/src/ma/ma02_view.js` | `0149b2b37343a57a…` | `051c46bee47eae1b…` | réétiqueté |
 | `src/ma03_water.js` | `sources/src/ma/ma03_water.js` | `b6dd048face7ace2…` | `855608d1053dec0b…` | réétiqueté et adapté (diff : outils/comparer.py) |
-| `src/ma04_load.js` | `sources/src/ma/ma04_load.js` | `9b0e4ee560b057d0…` | `6322762d11f894c4…` | réétiqueté et adapté (diff : outils/comparer.py) |
+| `src/ma04_load.js` | `sources/src/ma/ma04_load.js` | `9b0e4ee560b057d0…` | `b87523c35c9dbd9c…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma05_places.js` | `sources/src/ma/ma05_places.js` | `7e7775039416b1c7…` | `85d1c2a5daa8ea41…` | réétiqueté |
-| `src/ma06_boat.js` | `sources/src/ma/ma06_boat.js` | `ced716e77ee15d79…` | `80ed9a11c289a9ef…` | réétiqueté et adapté (diff : outils/comparer.py) |
+| `src/ma06_boat.js` | `sources/src/ma/ma06_boat.js` | `ced716e77ee15d79…` | `9f72973dce84f140…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma07_elements.js` | `sources/src/ma/ma07_elements.js` | `eb4c9ad40449832f…` | `eb4c9ad40449832f…` | identique |
 | `src/ma08_nature.js` | `sources/src/ma/ma08_nature.js` | `ca404d8c4d96ca6f…` | `c5a48c487eb5a210…` | réétiqueté |
-| `src/ma09_beast.js` | `sources/src/ma/ma09_beast.js` | `4efbbe299b15c1ad…` | `60b25ed3e5d7a22d…` | réétiqueté et adapté (diff : outils/comparer.py) |
+| `src/ma09_beast.js` | `sources/src/ma/ma09_beast.js` | `4efbbe299b15c1ad…` | `cf3a22f3f286ce03…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma10_amb.js` | `sources/src/ma/ma10_amb.js` | `70a4ab6fe565d550…` | `c965934e22c30428…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma11_diag.js` | `sources/src/ma/ma11_diag.js` | `6e5cf7340e9150a7…` | `b70c359253620814…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `src/ma12_nav.js` | `sources/src/ma/ma12_nav.js` | `ca600c8712f54e20…` | `1034f066d33757af…` | réétiqueté |
@@ -44,7 +44,7 @@ hors du dépôt.
 | `src/ma19_arrivee.js` | `sources/src/ma/ma19_arrivee.js` | `eb52778d0d6ff6f6…` | `acf76a7365d8dd72…` | réétiqueté et adapté (diff : outils/comparer.py) |
 | `retouches/kit.py` | `sources/tools/patches.py` | `80334a5342d1a014…` | `0c2d8cec558353b0…` | GAME_VERSION retirée, réétiqueté, adapté (2 retouches) |
 | `retouches/confort.py` | — (nouveau) | — | `347a055028208d69…` | écrit pour l'intégration : secousses du jeu de base coupées dans le marais (décision du 2 novembre 2026) |
-| `retouches/modules.py` | — (nouveau) | — | `4d0f282da675ab42…` | écrit pour l'intégration : peau de la Mère-Vase calculée par morceaux en partie (décision du 13 novembre 2026) |
+| `retouches/modules.py` | — (nouveau) | — | `ae95a39dffa0d298…` | écrit pour l'intégration : peau de la Mère-Vase (13 novembre 2026) et textures des barques (14 novembre) calculées par morceaux en partie |
 | `retouches/controle.py` | — | — | `306ef83d7da5cd90…` | calculé par outils/generer-retouches.py |
 
 Fichiers du kit **non repris** : `jeu/` (le jeu construit, la référence des comparaisons), `a-publier/` et `verifier/`
