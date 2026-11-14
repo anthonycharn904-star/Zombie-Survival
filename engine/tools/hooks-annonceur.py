@@ -5,9 +5,10 @@
 # jour (temps de chargement mesurés, préparations au menu : section 43), pour remplacer la construction 1 déjà installée ;
 # construction 3 le 12 novembre (préparations au démarrage, menu sur Bunker 7) ; construction 4 le même jour (machine de
 # mort recompilée pour l'éclairage d'une carte sans compiler toute la carte : 27,8 s sur Ombre éternelle chez Anthony) ;
-# construction 5 le 13 novembre (fusion du chargement du marais, chantier/marecages e81aa62)
+# construction 5 le 13 novembre (fusion du chargement du marais, chantier/marecages e81aa62) ; construction 6 le
+# 14 novembre (fusion de la peau de la Mère-Vase calculée en partie, chantier/marecages bc4b906)
 rep("const GAME_VERSION = '2.0.6';", "const GAME_VERSION = '2.0.7';")
-rep("const GAME_BUILD = 1;", "const GAME_BUILD = 5;")
+rep("const GAME_BUILD = 1;", "const GAME_BUILD = 6;")
 
 # ramassage d'un bonus : la voix enregistrée (sinon la synthèse vocale d'avant), même réglage, une annonce coupe l'autre
 rep("""  Sound.say(POWERUPS[type].say);
