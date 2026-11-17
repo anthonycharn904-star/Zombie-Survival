@@ -57,6 +57,11 @@ const USER = path.join(TMP, 'joueur');
       ok(POWERUPS.double.name === 'Points doubles' && POWERUPS.double.say === 'Points doubles !', 'bonus « Points doubles » (comme sa voix)');
       // nouvelle partie : décodage des musiques lancé, arrivée au début de la première manche
       Sound.init(); settings.voice = true;
+      // le jeu abandonne une arrivée dont le décodage dépasse MANCHE.attente (2 s) ; ce bloc fait d'un trait beaucoup de
+      // travail synchrone (400 pas de jeu au plus) qui retarde la fin du décodage : en rendu logiciel dans Electron, plus
+      // de 2 s (suite E2 du 16 novembre 2026). L'essai laisse donc le temps au décodage, puis rétablit le délai du jeu.
+      const attente0 = MANCHE.attente, tDebut = performance.now();
+      MANCHE.attente = 600;
       __zs.start(); __zs.god(true);
       if (G.state === 'paused') { showScreen(null); G.state = 'playing'; }
       const prepM = MANCHE.prep;
@@ -96,8 +101,10 @@ const USER = path.join(TMP, 'joueur');
         const o0 = BaseAudioContext.prototype.createOscillator;
         const compte = () => { osc = 0; BaseAudioContext.prototype.createOscillator = function (...r) { osc++; return o0.apply(this, r); }; };
         const finCompte = () => { BaseAudioContext.prototype.createOscillator = o0; };
-        const arr = MANCHE.src;
-        ok(MANCHE.joue === 'arrivee' && arr && arr.buffer === MANCHE.buf.arrivee, 'début de la première manche : musique d’arrivée', MANCHE.joue);
+        const arr = MANCHE.src, msArrivee = Math.round(performance.now() - tDebut);
+        MANCHE.attente = attente0;
+        ok(MANCHE.joue === 'arrivee' && arr && arr.buffer === MANCHE.buf.arrivee, 'début de la première manche : musique d’arrivée', { joue: MANCHE.joue, ms: msArrivee });
+        if (!arr) return out;                             // sans arrivée, la suite du bloc n'a pas de sens
         const r0 = G.round;
         G.round = 2; MANCHE.fin = 1;                      // la manche 1 a fini sur A ou B
         compte();
