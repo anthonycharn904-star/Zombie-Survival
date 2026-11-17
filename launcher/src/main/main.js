@@ -644,12 +644,19 @@ async function createPublication(form, repoOverride) {
     maps: { index: plan.index, files: plan.files.filter((f) => f.data) },
     news, outDir: form.outDir || ps.outDir, privatePem: pem, libsDir: LIBS_DIR, repo,
     launcher: form.setupPath ? { setupPath: form.setupPath, version: form.launcherVersion, notes: String(form.launcherNotes || '').split('\n') } : null,
-    previousLauncher: form.setupPath ? null : ps.lastLauncher,
+    previousLauncher: form.setupPath ? null : carriedLauncher(ps),
     history: publishedHistory(),
   });
+  // Installateur envoyé avec cette publication : retenu « en attente » (pending) tant que la mise en ligne
+  // n'est pas faite par cet outil. Jusqu'au launcher 1.4.0, il était retenu dès la création avec son adresse
+  // sur GitHub, et une publication suivante le croyait déjà en ligne : la 2.0.8 (17 novembre 2026) a annoncé
+  // un installateur jamais envoyé (réponse 404).
+  const setupSent = result.upload.find((n) => /\.exe$/i.test(n));
   savePublisherSettings({
     repo: repo || '', outDir: form.outDir || ps.outDir, gameSource: form.gameSource, lastGameVersion: result.version,
-    lastLauncher: result.manifest.launcher ? { ...result.manifest.launcher, localPath: /^https?:/.test(result.manifest.launcher.file) ? undefined : path.join(result.dir, result.manifest.launcher.file) } : ps.lastLauncher,
+    lastLauncher: setupSent && result.manifest.launcher
+      ? { ...result.manifest.launcher, localPath: path.join(result.dir, setupSent), pending: result.version }
+      : result.manifest.launcher || ps.lastLauncher,
   });
   log(`Publication ${result.version} créée dans ${result.dir} (cartes : ${plan.index.join(', ')})`);
   return {
@@ -674,7 +681,11 @@ async function uploadPublication({ dir, version, upload, notes }) {
   // versions en ligne, pour l'historique des publications suivantes
   let online = [];
   try { online = history.manifestEntries(JSON.parse(readJson(path.join(dir, 'latest.json')).signed)); } catch (e) { online = []; }
+  // l'installateur envoyé avec cette version est maintenant en ligne : il n'est plus « en attente »
+  const ll = ps.lastLauncher && ps.lastLauncher.pending === version && (upload || []).includes(path.basename(ps.lastLauncher.localPath || ''))
+    ? (({ pending, ...rest }) => rest)(ps.lastLauncher) : ps.lastLauncher;
   savePublisherSettings({
+    lastLauncher: ll,
     lastOnline: { version, at: new Date().toISOString(), release: r.release, verified: r.verified },
     onlineHistory: history.mergeHistory(online, ps.onlineHistory || []),
   });
@@ -687,12 +698,18 @@ async function uploadPublication({ dir, version, upload, notes }) {
    récent (sans cela, la page de la version n'a plus d'installateur : versions 1.4.0 et 1.5.0).
    Un installateur local est abandonné s'il est plus ancien que le launcher qui publie (installateur
    de test d'une version provisoire, par exemple) ou si son fichier a disparu. Sans launcher retenu
-   (réglages perdus, autre PC), celui qu'annonce la version en ligne est repris. */
+   (réglages perdus, autre PC), celui qu'annonce la version en ligne est repris. Un installateur
+   « en attente » (joint à une publication créée mais pas mise en ligne par cet outil) n'est jamais
+   tenu pour en ligne : il est renvoyé avec la publication suivante, depuis sa copie locale. */
 function carriedLauncher(ps) {
   const l = ps.lastLauncher;
   if (l && parseVersion(l.version)) {
-    if (/^https?:/.test(l.file || '')) return l;
-    if (compareVersions(l.version, app.getVersion()) >= 0 && l.localPath && fs.existsSync(l.localPath)) return l;
+    if (l.pending) {
+      if (compareVersions(l.version, app.getVersion()) >= 0 && l.localPath && fs.existsSync(l.localPath)) return { ...l, file: path.basename(l.localPath) };
+    } else {
+      if (/^https?:/.test(l.file || '')) return l;
+      if (compareVersions(l.version, app.getVersion()) >= 0 && l.localPath && fs.existsSync(l.localPath)) return l;
+    }
   }
   const online = config && !config.custom && lastManifest ? lastManifest.launcher : null;
   return online && parseVersion(online.version) && /^https?:/.test(online.file || '') ? online : null;

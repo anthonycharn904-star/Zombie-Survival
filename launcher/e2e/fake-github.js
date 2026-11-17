@@ -90,6 +90,9 @@ function fakeGitHub({ token = 'github_pat_essai_0123456789abcdef', owner = 'Anth
         if (!r) return send(res, 404, { message: 'Not Found' });
         const b = json();
         for (const k of ['name', 'body', 'draft']) if (k in b) r[k] = b[k];
+        // étiquette : donnée par la demande ; st.sansEtiquette = n simule n publications sans étiquette (« untagged-… »)
+        if (typeof b.tag_name === 'string') r.tag_name = b.tag_name;
+        if (!r.draft && st.sansEtiquette > 0) { st.sansEtiquette--; r.tag_name = `untagged-${r.id}`; }
         if (b.make_latest === 'true') { for (const x of st.releases) x.latest = x === r; }
         return send(res, 200, pub(r));
       }

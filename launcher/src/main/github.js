@@ -189,7 +189,7 @@ function createClient({ token, apiBase = API_BASE, webBase = WEB_BASE }) {
     if (rel && !rel.draft) throw new GitHubError(`La version ${version} est déjà en ligne (${tag}). Publiez un numéro de version plus grand.`);
     const body = releaseBody(notes, fs.readFileSync(path.join(dir, 'latest.json'), 'utf8'));
     if (rel) {
-      rel = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { name: `Zombie Survival ${version}`, body, draft: true, target_commitish: branch }, 'reprise du brouillon');
+      rel = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { tag_name: tag, name: `Zombie Survival ${version}`, body, draft: true, target_commitish: branch }, 'reprise du brouillon');
     } else {
       rel = await api('POST', `/repos/${repo}/releases`, { tag_name: tag, target_commitish: branch, name: `Zombie Survival ${version}`, body, draft: true, prerelease: false }, 'création de la version');
     }
@@ -199,7 +199,17 @@ function createClient({ token, apiBase = API_BASE, webBase = WEB_BASE }) {
       await uploadAsset(rel, path.join(dir, name), name, (sent, total) => onProgress({ step: 'upload', name, sent, total }));
     }
     onProgress({ step: 'publish' });
-    rel = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { draft: false, make_latest: 'true' }, 'publication');
+    // l'étiquette est redonnée à la publication : le 17 novembre 2026, GitHub a publié la 2.0.8 sans étiquette
+    // (« untagged-… ») ; les adresses du manifeste (…/download/v2.0.8/…) répondaient 404
+    rel = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { tag_name: tag, target_commitish: branch, draft: false, make_latest: 'true' }, 'publication');
+    if (rel.tag_name !== tag) rel = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { tag_name: tag, target_commitish: branch }, 'étiquette de la version');
+    if (rel.tag_name !== tag) {
+      // version cassée pour les joueurs (adresses en 404) : remise en brouillon, la version précédente reste la dernière
+      const cachee = await api('PATCH', `/repos/${repo}/releases/${rel.id}`, { draft: true }, 'remise en brouillon').then(() => true, () => false);
+      throw new GitHubError(cachee
+        ? `GitHub a publié la version ${version} sans son étiquette ${tag} (« ${rel.tag_name} ») ; elle a été remise en brouillon, invisible des joueurs. Réessayez la mise en ligne ; si cela recommence, regardez la version sur GitHub.`
+        : `GitHub a publié la version ${version} sans son étiquette ${tag} (« ${rel.tag_name} ») : les joueurs ne peuvent pas la télécharger. Sur GitHub, modifiez cette version et donnez-lui l'étiquette ${tag} (branche ${branch}).`);
+    }
     onProgress({ step: 'verify' });
     const check = await verify(repo, fs.readFileSync(path.join(dir, 'latest.json'), 'utf8'));
     return { tag, release: rel.html_url || `${webBase}/${repo}/releases/tag/${tag}`, ...check };

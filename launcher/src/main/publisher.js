@@ -67,6 +67,14 @@ async function createRelease(opts) {
   const base = githubBase(opts.repo, opts.webBase);
   const ref = (name) => (base ? base.replace('{version}', version) + encodeURIComponent(name) : name);
   const dir = path.join(opts.outDir, `v${version}`);
+  // installateur d'une publication précédente pas encore en ligne, gardé dans le dossier que l'on refait
+  // (même numéro) : mis de côté avant d'effacer le dossier, puis remis dans le nouveau
+  let prevLocal = opts.previousLauncher && !/^https?:/.test(opts.previousLauncher.file || '') ? opts.previousLauncher.localPath : null, aside = null;
+  if (prevLocal && fs.existsSync(prevLocal) && path.resolve(prevLocal).startsWith(path.resolve(dir) + path.sep)) {
+    aside = path.join(opts.outDir, `.launcher-${process.pid}-${Date.now()}-${path.basename(prevLocal)}`);
+    await fsp.rename(prevLocal, aside);
+    prevLocal = aside;
+  }
   await fsp.rm(dir, { recursive: true, force: true });
   await fsp.mkdir(dir, { recursive: true });
   const zipName = `zombie-survival-${version}.zip`;
@@ -94,12 +102,16 @@ async function createRelease(opts) {
   } else if (opts.previousLauncher) {
     // Garde l'annonce de la dernière version du launcher pour les joueurs en retard.
     const prev = opts.previousLauncher;
-    if (/^https?:/.test(prev.file)) manifest.launcher = prev;
-    else if (prev.localPath && fs.existsSync(prev.localPath)) {
-      const name = path.basename(prev.localPath);
-      await fsp.copyFile(prev.localPath, path.join(dir, name));
-      manifest.launcher = { ...prev, file: name };
+    // les champs propres à ce PC (copie locale, attente de mise en ligne) n'entrent jamais dans le manifeste
+    if (/^https?:/.test(prev.file)) { manifest.launcher = { ...prev }; delete manifest.launcher.localPath; delete manifest.launcher.pending; }
+    else if (prevLocal && fs.existsSync(prevLocal)) {
+      const name = path.basename(opts.previousLauncher.localPath);
+      if (aside) await fsp.rename(aside, path.join(dir, name));
+      else await fsp.copyFile(prevLocal, path.join(dir, name));
+      // adresse complète, comme un installateur joint à l'étape 4 (jusqu'au launcher 1.4.0 : nom seul)
+      manifest.launcher = { ...prev, file: ref(name) };
       delete manifest.launcher.localPath;
+      delete manifest.launcher.pending;
       upload.push(name);
     }
   }

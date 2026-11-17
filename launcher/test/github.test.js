@@ -131,3 +131,60 @@ test('page de la version : lien d’installation pour les nouveaux joueurs, mêm
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test('version publiée sans étiquette (« untagged-… », 2.0.8 du 17 novembre 2026) : étiquette redonnée, sinon erreur claire', async () => {
+  const gh = await fakeGitHub();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zs-gh-'));
+  try {
+    const { privatePem } = publisher.generateKeyPair();
+    // une fois : l'outil redonne l'étiquette et la version se télécharge
+    gh.state.sansEtiquette = 1;
+    const r1 = await makeRelease(gh, '1.5.0', tmp, privatePem);
+    const o1 = await client(gh).publish({ repo: gh.repo, version: r1.version, dir: r1.dir, files: r1.upload, notes: [] });
+    assert.equal(o1.verified, true, 'adresses du manifeste joignables');
+    assert.ok(gh.state.releases.some((x) => x.tag_name === 'v1.5.0' && !x.draft));
+    // toujours sans étiquette : erreur qui dit quoi faire, jamais « en ligne » en silence
+    gh.state.sansEtiquette = 2;
+    const r2 = await makeRelease(gh, '1.5.1', tmp, privatePem);
+    await assert.rejects(client(gh).publish({ repo: gh.repo, version: r2.version, dir: r2.dir, files: r2.upload, notes: [] }), /sans son étiquette v1\.5\.1.*remise en brouillon/);
+    assert.ok(gh.state.releases.filter((x) => x.name === 'Zombie Survival 1.5.1').every((x) => x.draft), 'invisible des joueurs');
+  } finally {
+    await gh.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('installateur joint à une publication créée mais pas mise en ligne : renvoyé avec la suivante, même numéro compris', async () => {
+  const gh = await fakeGitHub();
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zs-gh-'));
+  try {
+    const { privatePem } = publisher.generateKeyPair();
+    const setup = path.join(tmp, 'Zombie-Survival-Setup-1.4.1.exe');
+    fs.writeFileSync(setup, 'installateur factice');
+    const base = { source: { htmlPath: SOURCE }, notes: ['a'], outDir: path.join(tmp, 'pub'), privatePem, libsDir: LIBS, repo: gh.repo, webBase: gh.base };
+    // « Créer la publication » avec l'installateur : rien en ligne
+    const r1 = await publisher.createRelease({ ...base, version: '2.0.8', launcher: { setupPath: setup, version: '1.4.1', notes: ['b'] } });
+    assert.ok(r1.upload.includes('Zombie-Survival-Setup-1.4.1.exe'));
+    // ce que main.js retient : en attente, copie locale dans le dossier de la 2.0.8 ; refait sous le même numéro
+    const local = path.join(r1.dir, 'Zombie-Survival-Setup-1.4.1.exe');
+    const prev = { ...r1.manifest.launcher, file: path.basename(local), localPath: local, pending: '2.0.8' };
+    const r2 = await publisher.createRelease({ ...base, version: '2.0.8', previousLauncher: prev });
+    assert.ok(r2.upload.includes('Zombie-Survival-Setup-1.4.1.exe'), 'installateur renvoyé');
+    assert.equal(fs.readFileSync(path.join(r2.dir, 'Zombie-Survival-Setup-1.4.1.exe'), 'utf8'), 'installateur factice', 'gardé malgré le dossier refait');
+    const l = JSON.parse(JSON.parse(fs.readFileSync(path.join(r2.dir, 'latest.json'), 'utf8')).signed).launcher;
+    assert.match(l.file, /^http.*\/download\/v2\.0\.8\/Zombie-Survival-Setup-1\.4\.1\.exe$/, 'adresse complète');
+    assert.equal(l.localPath, undefined); assert.equal(l.pending, undefined);
+    assert.deepEqual(fs.readdirSync(base.outDir).filter((n) => n.startsWith('.launcher-')), [], 'rien laissé de côté');
+    // mis en ligne : l'installateur se télécharge à l'adresse annoncée
+    const o = await client(gh).publish({ repo: gh.repo, version: r2.version, dir: r2.dir, files: r2.upload, notes: [] });
+    assert.equal(o.verified, true);
+    assert.ok(gh.state.releases.find((x) => x.tag_name === 'v2.0.8').assets.some((a) => a.name === 'Zombie-Survival-Setup-1.4.1.exe'));
+    // installateur déjà en ligne, repris : ni chemin local ni attente dans le manifeste signé
+    const r3 = await publisher.createRelease({ ...base, version: '2.0.9', previousLauncher: { ...l, localPath: local, pending: undefined } });
+    const l3 = JSON.parse(JSON.parse(fs.readFileSync(path.join(r3.dir, 'latest.json'), 'utf8')).signed).launcher;
+    assert.equal(l3.file, l.file); assert.ok(!('localPath' in l3)); assert.ok(!r3.upload.includes('Zombie-Survival-Setup-1.4.1.exe'));
+  } finally {
+    await gh.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
